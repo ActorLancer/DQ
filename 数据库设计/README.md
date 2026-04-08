@@ -66,6 +66,7 @@
 ## 4. 迁移策略
 
 - `V1`：基础身份、商品、订单、交付、账单、争议、审计、搜索、开发者支持
+  - 身份部分显式包含：主体、成员、应用、角色权限、邀请、SSO、MFA、设备、会话、Fabric 身份与证书治理
 - `V2`：模型、算法、受控计算、联邦协作、证明、分润、公链增强
 - `V3`：跨链、图风控、监管穿透、治理冻结、连接器互联、合作伙伴与互认
 
@@ -87,8 +88,32 @@
 ## 6. 新增支付与清结算落库要点
 
 - 新增独立 `payment` schema，承载支付渠道、支付意图、支付交易、Webhook、打款、对账与清结算对象
+- `V1` 额外落库起步司法辖区、新加坡走廊策略和卖方收款偏好
 - `billing` 继续承载费用规则、费用快照、账单事件、保证金、退款、赔付、分润
 - `trade.order_main` 额外快照支付状态、支付方式和费用快照
 - `developer` 额外承载 `mock payment` 调试对象，支持开发演练
 - `V2` 继续扩展自动打款、渠道分账与周期扣费
 - `V3` 再扩展多币种、跨境、数字资产/交易所结算路由
+
+## 7. 新增身份认证与会话落库要点
+
+- 新增独立 `iam` schema，承载邀请、认证方式、MFA、设备、会话、SSO、step-up、Fabric 身份与证书治理
+- 平台 IAM 身份与 Fabric 链上身份分层建模，不把链上证书直接作为普通网页登录主凭证
+- `V1` 即落主体注册、成员邀请、企业 OIDC、MFA、会话与设备治理骨架
+- `V2` 增量补齐 `SAML/SCIM`、更完整的企业身份联邦
+- `V3` 再扩展跨平台身份联邦与自适应认证策略
+
+## 8. 新增审计、证据链与回放落库要点
+
+- 在 `audit` schema 下补齐 `EvidenceItem`、`EvidenceManifest`、`AnchorBatch`、`ReplayJob`、`LegalHold`、`AuditAccessRecord`
+- `audit.audit_event` 扩展 `event_hash`、`previous_event_hash`、`before/after_state_digest`、`retention_class`、`legal_hold_status`
+- `ops.system_log` 扩展 `traceparent`、`log_hash` 和保留状态
+- `V1` 通过 `055_audit_hardening.sql` 落强审计基础结构
+
+## 9. 新增双层权威模型与一致性落库要点
+
+- `V1` 通过 `056_dual_authority_consistency.sql` 补齐关键业务对象的 `proof_commit_state / external_fact_status / reconcile_status`
+- `ops.outbox_event` 扩展 Kafka 路由、幂等、重试与发布元数据
+- 新增 `ops.event_route_policy`、`ops.outbox_publish_attempt`、`ops.consumer_idempotency_record`
+- `V2` 通过 `004_dual_authority_consistency.sql` 把训练、计算、分润对象纳入同一模型
+- `V3` 通过 `004_dual_authority_consistency.sql` 把跨链请求和数字资产结算对象纳入同一模型

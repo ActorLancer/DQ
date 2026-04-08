@@ -21,6 +21,7 @@ DROP SCHEMA IF EXISTS review CASCADE;
 DROP SCHEMA IF EXISTS contract CASCADE;
 DROP SCHEMA IF EXISTS catalog CASCADE;
 DROP SCHEMA IF EXISTS authz CASCADE;
+DROP SCHEMA IF EXISTS iam CASCADE;
 DROP SCHEMA IF EXISTS core CASCADE;
 DROP SCHEMA IF EXISTS common CASCADE;
 -- Payment settlement sync: payment schema drops before billing/common teardown.

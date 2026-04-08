@@ -225,6 +225,31 @@ INSERT INTO payment.provider (
   ('paypal', 'PayPal', 'international_wallet', 'international', true, true, true, true, false, true, true, true)
 ON CONFLICT (provider_key) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS payment.jurisdiction_profile (
+  jurisdiction_code text PRIMARY KEY,
+  jurisdiction_name text NOT NULL,
+  regulator_name text,
+  launch_phase text NOT NULL DEFAULT 'future',
+  supports_fiat_collection boolean NOT NULL DEFAULT true,
+  supports_fiat_payout boolean NOT NULL DEFAULT true,
+  supports_crypto_settlement boolean NOT NULL DEFAULT false,
+  status text NOT NULL DEFAULT 'active',
+  policy_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO payment.jurisdiction_profile (
+  jurisdiction_code, jurisdiction_name, regulator_name, launch_phase,
+  supports_fiat_collection, supports_fiat_payout, supports_crypto_settlement,
+  status, policy_snapshot
+) VALUES (
+  'SG', 'Singapore', 'MAS', 'launch_active',
+  true, true, false,
+  'active', '{"launch_scope":"initial_production","price_currency":"USD","note":"V1 production starts from Singapore-only real settlement routes"}'::jsonb
+)
+ON CONFLICT (jurisdiction_code) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS payment.provider_account (
   provider_account_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   provider_key text NOT NULL REFERENCES payment.provider(provider_key),
@@ -235,12 +260,62 @@ CREATE TABLE IF NOT EXISTS payment.provider_account (
   sub_merchant_id text,
   settlement_subject_type text,
   settlement_subject_id uuid,
+  jurisdiction_code text REFERENCES payment.jurisdiction_profile(jurisdiction_code) ON DELETE SET NULL,
   account_mode text NOT NULL DEFAULT 'production',
   status text NOT NULL DEFAULT 'active',
   config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (provider_key, account_scope, account_scope_id, account_name)
+);
+
+CREATE TABLE IF NOT EXISTS payment.corridor_policy (
+  corridor_policy_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  policy_name text NOT NULL UNIQUE,
+  payer_jurisdiction_code text NOT NULL REFERENCES payment.jurisdiction_profile(jurisdiction_code),
+  payee_jurisdiction_code text NOT NULL REFERENCES payment.jurisdiction_profile(jurisdiction_code),
+  product_scope text NOT NULL DEFAULT 'general',
+  price_currency_code text NOT NULL DEFAULT 'USD',
+  allowed_collection_currencies text[] NOT NULL DEFAULT ARRAY['USD']::text[],
+  allowed_payout_currencies text[] NOT NULL DEFAULT ARRAY['USD']::text[],
+  route_mode text NOT NULL DEFAULT 'partner_routed',
+  requires_manual_review boolean NOT NULL DEFAULT false,
+  allows_crypto boolean NOT NULL DEFAULT false,
+  status text NOT NULL DEFAULT 'draft',
+  effective_from timestamptz,
+  effective_to timestamptz,
+  policy_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (payer_jurisdiction_code, payee_jurisdiction_code, product_scope, price_currency_code, effective_from)
+);
+
+INSERT INTO payment.corridor_policy (
+  policy_name, payer_jurisdiction_code, payee_jurisdiction_code, product_scope,
+  price_currency_code, allowed_collection_currencies, allowed_payout_currencies,
+  route_mode, requires_manual_review, allows_crypto, status, effective_from, policy_snapshot
+) VALUES (
+  'SG Launch Standard Corridor', 'SG', 'SG', 'general',
+  'USD', ARRAY['USD','SGD']::text[], ARRAY['USD','SGD']::text[],
+  'partner_routed', false, false, 'active', now(),
+  '{"launch_scope":"V1","real_payment_enabled":true,"real_crypto_enabled":false}'::jsonb
+)
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS payment.payout_preference (
+  payout_preference_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  beneficiary_subject_type text NOT NULL,
+  beneficiary_subject_id uuid NOT NULL,
+  destination_jurisdiction_code text REFERENCES payment.jurisdiction_profile(jurisdiction_code) ON DELETE SET NULL,
+  preferred_currency_code text NOT NULL DEFAULT 'SGD',
+  payout_method text NOT NULL,
+  preferred_provider_key text REFERENCES payment.provider(provider_key) ON DELETE SET NULL,
+  preferred_provider_account_id uuid REFERENCES payment.provider_account(provider_account_id) ON DELETE SET NULL,
+  beneficiary_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_default boolean NOT NULL DEFAULT true,
+  status text NOT NULL DEFAULT 'active',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS payment.payment_intent (
@@ -253,8 +328,13 @@ CREATE TABLE IF NOT EXISTS payment.payment_intent (
   payer_subject_id uuid NOT NULL,
   payee_subject_type text,
   payee_subject_id uuid,
+  payer_jurisdiction_code text REFERENCES payment.jurisdiction_profile(jurisdiction_code) ON DELETE SET NULL,
+  payee_jurisdiction_code text REFERENCES payment.jurisdiction_profile(jurisdiction_code) ON DELETE SET NULL,
+  launch_jurisdiction_code text NOT NULL DEFAULT 'SG' REFERENCES payment.jurisdiction_profile(jurisdiction_code),
+  corridor_policy_id uuid REFERENCES payment.corridor_policy(corridor_policy_id) ON DELETE SET NULL,
   fee_preview_id uuid REFERENCES billing.fee_preview(fee_preview_id) ON DELETE SET NULL,
   amount numeric(24, 8) NOT NULL,
+  price_currency_code text NOT NULL DEFAULT 'USD',
   currency_code text NOT NULL DEFAULT 'CNY',
   payment_method text NOT NULL,
   status text NOT NULL DEFAULT 'created',
@@ -323,8 +403,10 @@ CREATE TABLE IF NOT EXISTS payment.payout_instruction (
   settlement_id uuid REFERENCES billing.settlement_record(settlement_id) ON DELETE SET NULL,
   provider_key text NOT NULL REFERENCES payment.provider(provider_key),
   provider_account_id uuid REFERENCES payment.provider_account(provider_account_id) ON DELETE SET NULL,
+  payout_preference_id uuid REFERENCES payment.payout_preference(payout_preference_id) ON DELETE SET NULL,
   beneficiary_subject_type text NOT NULL,
   beneficiary_subject_id uuid NOT NULL,
+  destination_jurisdiction_code text REFERENCES payment.jurisdiction_profile(jurisdiction_code) ON DELETE SET NULL,
   amount numeric(24, 8) NOT NULL,
   currency_code text NOT NULL DEFAULT 'CNY',
   payout_mode text NOT NULL DEFAULT 'manual',
@@ -449,8 +531,11 @@ CREATE INDEX IF NOT EXISTS idx_fee_preview_order_id ON billing.fee_preview(order
 CREATE INDEX IF NOT EXISTS idx_dispute_case_order_id ON support.dispute_case(order_id);
 CREATE INDEX IF NOT EXISTS idx_payment_intent_order_id ON payment.payment_intent(order_id);
 CREATE INDEX IF NOT EXISTS idx_payment_intent_status ON payment.payment_intent(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_intent_corridor_policy_id ON payment.payment_intent(corridor_policy_id);
 CREATE INDEX IF NOT EXISTS idx_payment_transaction_intent_id ON payment.payment_transaction(payment_intent_id);
 CREATE INDEX IF NOT EXISTS idx_payout_instruction_settlement_id ON payment.payout_instruction(settlement_id);
+CREATE INDEX IF NOT EXISTS idx_corridor_policy_pair_status ON payment.corridor_policy(payer_jurisdiction_code, payee_jurisdiction_code, status);
+CREATE INDEX IF NOT EXISTS idx_payout_preference_beneficiary ON payment.payout_preference(beneficiary_subject_type, beneficiary_subject_id, is_default);
 CREATE INDEX IF NOT EXISTS idx_reputation_snapshot_subject ON risk.reputation_snapshot(subject_type, subject_id, effective_at DESC);
 
 CREATE TRIGGER trg_fee_rule_updated_at BEFORE UPDATE ON billing.fee_rule
@@ -471,7 +556,13 @@ CREATE TRIGGER trg_invoice_request_updated_at BEFORE UPDATE ON billing.invoice_r
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_payment_provider_updated_at BEFORE UPDATE ON payment.provider
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+CREATE TRIGGER trg_payment_jurisdiction_profile_updated_at BEFORE UPDATE ON payment.jurisdiction_profile
+FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_payment_provider_account_updated_at BEFORE UPDATE ON payment.provider_account
+FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+CREATE TRIGGER trg_payment_corridor_policy_updated_at BEFORE UPDATE ON payment.corridor_policy
+FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+CREATE TRIGGER trg_payment_payout_preference_updated_at BEFORE UPDATE ON payment.payout_preference
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_payment_intent_updated_at BEFORE UPDATE ON payment.payment_intent
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();

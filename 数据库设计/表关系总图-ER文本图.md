@@ -503,11 +503,33 @@ payment.provider(provider_key)
   ├─ payment.payout_instruction.provider_key
   └─ payment.reconciliation_statement.provider_key
 
+payment.jurisdiction_profile(jurisdiction_code)
+  ├─ payment.provider_account.jurisdiction_code
+  ├─ payment.corridor_policy.payer_jurisdiction_code
+  ├─ payment.corridor_policy.payee_jurisdiction_code
+  ├─ payment.payout_preference.destination_jurisdiction_code
+  ├─ payment.payment_intent.payer_jurisdiction_code
+  ├─ payment.payment_intent.payee_jurisdiction_code
+  ├─ payment.payment_intent.launch_jurisdiction_code
+  └─ payment.settlement_route.source_jurisdiction_code / target_jurisdiction_code
+
 payment.provider_account(provider_account_id)
   ├─ payment.payment_intent.provider_account_id
+  ├─ payment.payout_preference.preferred_provider_account_id
   ├─ payment.refund_intent.provider_account_id
   ├─ payment.payout_instruction.provider_account_id
   └─ payment.reconciliation_statement.provider_account_id
+
+payment.corridor_policy(corridor_policy_id)
+  ├─ payment.payment_intent.corridor_policy_id
+  └─ payment.settlement_route.corridor_policy_id
+
+payment.payout_preference(payout_preference_id)
+  └─ payment.payout_instruction.payout_preference_id
+
+payment.settlement_route(settlement_route_id)
+  ├─ payment.fx_quote.settlement_route_id
+  └─ payment.crypto_settlement_transfer.settlement_route_id
 
 payment.payment_intent(payment_intent_id)
   ├─ payment.payment_transaction.payment_intent_id
@@ -523,11 +545,11 @@ payment.reconciliation_statement(reconciliation_statement_id)
 
 ### 7.1 V1 必落主表
 
-- 身份与权限：`core.*`、`authz.*`
+- 身份与权限：`core.*`、`iam.*`、`authz.*`
 - 商品与策略：`catalog.*`、`contract.template_*`、`contract.usage_policy`
 - 交易链路：`trade.*`、`delivery.*`
 - 账单与争议：`billing.*`、`support.*`
-- 支付与对账：`payment.provider*`、`payment.payment_*`、`payment.reconciliation_*`
+- 支付与对账：`payment.provider*`、`payment.jurisdiction_profile`、`payment.corridor_policy`、`payment.payout_preference`、`payment.payment_*`、`payment.reconciliation_*`
 - 审核与审批：`review.*`、`ops.approval_*`
 - 审计、搜索、开发者：`audit.*`、`search.product_search_document`、`developer.*`
 - 链下主状态与联盟链锚定：`chain.contract_event_projection`、`chain.chain_anchor`
@@ -603,3 +625,96 @@ common.tg_write_outbox
 - 哪些对象虽然 V1 暂不完整启用但必须预留
 
 统一描述清楚。实际落地时，以 [数据库设计](/home/luna/Documents/DataB/数据库设计) 下的 SQL 迁移脚本为最终执行基线。
+
+## 10. 身份认证、注册登录与会话管理关系补充
+
+```text
+core.organization(org_id)
+  ├─ core.user_account.org_id
+  ├─ iam.invitation.org_id
+  ├─ iam.sso_connection.org_id
+  └─ iam.fabric_ca_registry.org_id
+
+core.user_account(user_id)
+  ├─ iam.invitation.accepted_by_user_id
+  ├─ iam.auth_method_binding.user_id
+  ├─ iam.mfa_authenticator.user_id
+  ├─ iam.trusted_device.user_id
+  ├─ iam.refresh_token_family.user_id
+  ├─ iam.user_session.user_id
+  ├─ iam.external_identity_binding.user_id
+  ├─ iam.step_up_challenge.user_id
+  ├─ iam.fabric_identity_binding.user_id
+  └─ iam.certificate_revocation_record.revoked_by_user_id
+
+iam.trusted_device(trusted_device_id)
+  ├─ iam.refresh_token_family.trusted_device_id
+  └─ iam.user_session.trusted_device_id
+
+iam.refresh_token_family(refresh_token_family_id)
+  └─ iam.user_session.refresh_token_family_id
+
+iam.sso_connection(sso_connection_id)
+  ├─ iam.external_identity_binding.sso_connection_id
+  └─ iam.provisioning_job.sso_connection_id
+
+iam.fabric_ca_registry(fabric_ca_registry_id)
+  ├─ iam.certificate_record.fabric_ca_registry_id
+  └─ iam.fabric_identity_binding.fabric_ca_registry_id
+
+iam.certificate_record(certificate_id)
+  ├─ iam.fabric_identity_binding.certificate_id
+  └─ iam.certificate_revocation_record.certificate_id
+
+core.service_identity(service_identity_id)
+  └─ iam.fabric_identity_binding.service_identity_id
+
+ecosystem.partner(partner_id)
+  ├─ iam.external_identity_binding.partner_id
+  └─ iam.risk_auth_policy.partner_id
+```
+
+## 11. 审计、证据链与回放关系补充
+
+```text
+audit.audit_event(audit_id)
+  ├─ audit.anchor_item.audit_id
+  └─ audit.access_audit.target_id (当 target_type=audit_event)
+
+audit.retention_policy(retention_policy_id)
+  ├─ audit.evidence_item.retention_policy_id
+  └─ audit.legal_hold.retention_policy_id
+
+audit.evidence_manifest(evidence_manifest_id)
+  ├─ audit.evidence_manifest_item.evidence_manifest_id
+  ├─ audit.evidence_package.evidence_manifest_id
+  └─ audit.anchor_item.evidence_manifest_id
+
+audit.evidence_item(evidence_item_id)
+  └─ audit.evidence_manifest_item.evidence_item_id
+
+audit.anchor_batch(anchor_batch_id)
+  └─ audit.anchor_item.anchor_batch_id
+
+audit.replay_job(replay_job_id)
+  └─ audit.replay_result.replay_job_id
+```
+
+## 12. 双层权威模型与一致性关系补充
+
+```text
+trade.order_main(order_id)
+  ├─ ops.outbox_event.aggregate_id(order_id)
+  └─ proof_commit_state / external_fact_status / reconcile_status
+
+payment.payment_intent(payment_intent_id)
+  ├─ ops.outbox_event.aggregate_id(payment_intent_id)
+  └─ proof_commit_state / external_fact_status / reconcile_status
+
+ops.event_route_policy(event_route_policy_id)
+  └─ defines target_bus / target_topic / proof_commit_policy
+
+ops.outbox_event(outbox_event_id)
+  ├─ ops.outbox_publish_attempt.outbox_event_id
+  └─ ops.consumer_idempotency_record.event_id
+```
