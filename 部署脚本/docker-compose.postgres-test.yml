@@ -1,0 +1,37 @@
+services:
+  postgres_test:
+    image: pgvector/pgvector:pg18
+    container_name: luna-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: luna
+      POSTGRES_PASSWORD: "5686"
+      POSTGRES_DB: luna_data_trading
+    ports:
+      - "55432:5432"
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - wal_level=replica
+      - -c
+      - log_statement=ddl
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U luna -d luna_data_trading"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - luna_pg_test_data:/var/lib/postgresql
+
+volumes:
+  luna_pg_test_data:
