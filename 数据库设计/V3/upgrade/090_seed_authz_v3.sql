@@ -45,6 +45,8 @@ INSERT INTO authz.permission_definition (permission_code, domain_name, resource_
 ('payment.crypto_transfer.execute','payment','crypto_transfer','execute','V3','high'),
 ('iam.federation.manage','iam','federation','manage','V3','high'),
 ('iam.risk_auth.manage','iam','risk_auth','manage','V3','high'),
+('ops.recommend_page_optimize.manage','ops','recommend_page_optimize','manage','V3','high'),
+('ops.recommend_ecosystem.manage','ops','recommend_ecosystem','manage','V3','high'),
 ('developer.crosschain_trace.read','developer','crosschain_trace','read','V3','normal'),
 ('developer.risk_sample.read','developer','risk_sample','read','V3','normal'),
 ('developer.regulator_sandbox.read','developer','regulator_sandbox','read','V3','normal')

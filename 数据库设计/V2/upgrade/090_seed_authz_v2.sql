@@ -73,5 +73,9 @@ INSERT INTO authz.permission_definition (permission_code, domain_name, resource_
 ('publicchain.credential.issue','publicchain','credential','issue','V2','high'),
 ('publicchain.credential.revoke','publicchain','credential','revoke','V2','high'),
 ('publicchain.credential.hide','publicchain','credential','hide','V2','medium'),
-('publicchain.verify_page.read','publicchain','verify_page','read','V2','normal')
+('publicchain.verify_page.read','publicchain','verify_page','read','V2','normal'),
+('ops.recommend_model.read','ops','recommend_model','read','V2','normal'),
+('ops.recommend_model.manage','ops','recommend_model','manage','V2','high'),
+('ops.recommend_experiment.read','ops','recommend_experiment','read','V2','normal'),
+('ops.recommend_experiment.manage','ops','recommend_experiment','manage','V2','high')
 ON CONFLICT (permission_code) DO NOTHING;

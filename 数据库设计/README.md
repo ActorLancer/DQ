@@ -41,6 +41,8 @@
 
 - `vector` 用于向量检索
 - PostgreSQL 自带全文检索与 `GIN/GiST` 用于倒排检索
+- PostgreSQL 同时承担商品/卖方/模型搜索投影主表，OpenSearch 作为搜索读模型
+- Redis 只承担搜索缓存，不承担权威状态
 - 大对象、原始密文、模型二进制、证据原文默认放对象存储，数据库只保存元数据、摘要、索引、审计和小型结构化数据
 - 数据库显式建模 `平台托管 / 卖方自持 / 受控执行 / 第三方可信存储` 的信任边界，不把“已登记”误等同于“平台可读明文”
 
@@ -67,8 +69,12 @@
 
 - `V1`：基础身份、商品、订单、交付、账单、争议、审计、搜索、开发者支持
   - 身份部分显式包含：主体、成员、应用、角色权限、邀请、SSO、MFA、设备、会话、Fabric 身份与证书治理
+  - 数据对象部分显式包含：可交付对象、版本订阅、只读共享授权、模板查询授权、元信息档案、字段结构说明、质量报告、加工责任链、数据契约
+  - 搜索部分显式包含：商品/服务搜索投影、卖方搜索投影、排序配置、别名绑定、索引同步任务
 - `V2`：模型、算法、受控计算、联邦协作、证明、分润、公链增强
+  - 搜索增量显式包含：模型搜索投影、同义词规则
 - `V3`：跨链、图风控、监管穿透、治理冻结、连接器互联、合作伙伴与互认
+  - 搜索增量显式包含：伙伴/生态搜索投影
 
 规则：
 
@@ -81,7 +87,9 @@
 
 - `catalog.asset_custody_profile`：定义资产或版本的托管模式、明文边界、交付路由、保留/销毁策略
 - `catalog.asset_trust_evidence`：定义卖方自持、第三方托管、执行边界等信任证据
+- `catalog.asset_object_binding`：定义某个版本下真正可交付、可共享、可查询的逻辑对象
 - `trade.order_main` / `delivery.delivery_record`：快照 `storage_mode`、`delivery_route`、`trust_boundary`
+- `delivery.data_share_grant` / `delivery.revision_subscription` / `delivery.template_query_grant`：分别承接零拷贝共享、版本订阅和模板查询授权
 - `ml.*`：显式记录模型权重托管方式、训练数据驻留方式、结果导出策略
 - `ecosystem.partner` / `crosschain.cross_chain_request`：显式记录跨平台存储能力与责任边界快照
 
@@ -117,3 +125,60 @@
 - 新增 `ops.event_route_policy`、`ops.outbox_publish_attempt`、`ops.consumer_idempotency_record`
 - `V2` 通过 `004_dual_authority_consistency.sql` 把训练、计算、分润对象纳入同一模型
 - `V3` 通过 `004_dual_authority_consistency.sql` 把跨链请求和数字资产结算对象纳入同一模型
+
+## 10. 新增搜索与索引同步落库要点
+
+- `search.product_search_document` 扩展为商品/服务搜索投影主表
+- `search.seller_search_document` 支撑卖方主体搜索与卖方主页
+- `search.search_signal_aggregate` 聚合热度、点击、成交等排序特征
+- `search.ranking_profile`、`search.index_alias_binding`、`search.index_sync_task` 用于排序治理、别名切换和重建修复
+- `V2` 补 `search.model_search_document` 同步字段和 `search.synonym_rule`
+- `V3` 补 `search.partner_search_document`
+
+## 10A. 新增数据商品元信息与数据契约落库要点
+
+- `catalog.product_metadata_profile`：统一承接十大元信息域档案
+- `catalog.asset_field_definition`：承接字段结构、主键/时间字段、编码规则摘要
+- `catalog.asset_quality_report`：承接缺失率、覆盖范围、采样方式、异常率和质量评分
+- `catalog.asset_processing_job` / `catalog.asset_processing_input`：承接清洗、脱敏、标注、标准化和结果加工责任链
+- `contract.data_contract`：承接交付义务、验收标准、授权边界、责任边界和争议口径
+- `contract.digital_contract`：继续作为订单签约合同，但必须引用签约时刻绑定的数据契约摘要
+
+## 11. 新增推荐与个性化发现落库要点
+
+- 新增独立 `recommend` schema，承载推荐位、推荐排序配置、行为事件、画像快照、推荐请求与推荐结果
+- `V1` 通过 `058_recommendation_module.sql` 落：
+  - `recommend.placement_definition`
+  - `recommend.ranking_profile`
+  - `recommend.behavior_event`
+  - `recommend.subject_profile_snapshot`
+  - `recommend.cohort_definition`
+  - `recommend.cohort_popularity`
+  - `recommend.entity_similarity`
+  - `recommend.bundle_relation`
+  - `recommend.recommendation_request`
+  - `recommend.recommendation_result`
+  - `recommend.recommendation_result_item`
+- `V2` 通过 `006_recommendation_module.sql` 补：
+  - `recommend.model_registry`
+  - `recommend.experiment_assignment`
+  - `recommend.model_inference_log`
+- `V3` 通过 `006_recommendation_module.sql` 补：
+  - `recommend.page_optimization_profile`
+  - `recommend.ecosystem_affinity`
+- 推荐域与搜索域共享候选基础数据，但 PostgreSQL 继续是推荐行为、结果和配置的权威源
+
+## 12. 新增日志、可观测性与告警落库要点
+
+- `V1` 通过 `059_logging_observability.sql` 落：
+  - `ops.observability_backend`
+  - `ops.log_retention_policy`
+  - `ops.trace_index`
+  - `ops.alert_rule`
+  - `ops.alert_event`
+  - `ops.incident_ticket`
+  - `ops.incident_event`
+  - `ops.slo_definition`
+  - `ops.slo_snapshot`
+- `ops.system_log` 扩展为关键日志镜像，不承载 Loki 原始全文日志权威存储。
+- 指标、原始日志与 trace 继续分别归属于 `Prometheus`、`Loki`、`Tempo`；PostgreSQL 保存配置、索引、工单和审计联动数据。

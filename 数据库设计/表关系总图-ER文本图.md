@@ -35,11 +35,17 @@ catalog.data_asset
   ├─< catalog.asset_version
   ├─< catalog.asset_storage_binding
   ├─< catalog.asset_sample
+  ├─< catalog.asset_field_definition
+  ├─< catalog.asset_quality_report
+  ├─< catalog.asset_processing_job
+  │    └─< catalog.asset_processing_input
   ├─< catalog.asset_structured_dataset
   │    └─< catalog.asset_structured_row
   └─< catalog.product
+        ├─< catalog.product_metadata_profile
         ├─< catalog.product_tag >─ catalog.tag
         ├─< catalog.product_sku
+        ├─< contract.data_contract
         ├─< contract.template_binding >─ contract.template_definition
         └─< contract.policy_binding >─ contract.usage_policy
 
@@ -48,6 +54,7 @@ trade.inquiry
         ├─< trade.order_line >─ catalog.product_sku
         ├─< trade.order_status_history
         ├─1 contract.digital_contract
+        │    ├─1 contract.data_contract
         │    └─< contract.contract_signer
         ├─< trade.authorization_grant
         ├─< delivery.delivery_record
@@ -89,6 +96,11 @@ ops.outbox_event
   └─< ops.dead_letter_event
 
 search.product_search_document
+search.seller_search_document
+search.search_signal_aggregate
+search.ranking_profile
+search.index_alias_binding
+search.index_sync_task
 
 developer.test_application
 developer.test_wallet
@@ -111,16 +123,26 @@ DataAsset
   ├─ AssetVersion
   ├─ AssetStorageBinding
   ├─ AssetSample
+  ├─ AssetFieldDefinition
+  ├─ AssetQualityReport
+  ├─ AssetProcessingJob
   └─ Product
+       ├─ ProductMetadataProfile
        ├─ ProductTag
        ├─ ProductSku
+       ├─ DataContract
+       ├─ ProductSearchDocument
        ├─ TemplateBinding
        └─ PolicyBinding
+
+Organization(卖方)
+  └─ SellerSearchDocument
 
 Inquiry
   └─ OrderMain
        ├─ OrderLine
        ├─ DigitalContract
+       │   └─ DataContract
        ├─ AuthorizationGrant
        ├─ DeliveryRecord
        ├─ BillingEvent
@@ -159,6 +181,8 @@ billing.profit_share_rule
 chain.public_anchor_batch
   └─< chain.credential_token
        └─< chain.credential_status_history
+
+search.synonym_rule
 ```
 
 ## 5. V3 增量 ER 图
@@ -174,6 +198,7 @@ crosschain.gateway_identity
 ecosystem.partner
   ├─< ecosystem.connector_version
   └─< ecosystem.mutual_recognition
+  └─< search.partner_search_document
 
 risk.graph_node
   └─< risk.graph_edge
@@ -551,7 +576,7 @@ payment.reconciliation_statement(reconciliation_statement_id)
 - 账单与争议：`billing.*`、`support.*`
 - 支付与对账：`payment.provider*`、`payment.jurisdiction_profile`、`payment.corridor_policy`、`payment.payout_preference`、`payment.payment_*`、`payment.reconciliation_*`
 - 审核与审批：`review.*`、`ops.approval_*`
-- 审计、搜索、开发者：`audit.*`、`search.product_search_document`、`developer.*`
+- 审计、搜索、开发者：`audit.*`、`search.product_search_document`、`search.seller_search_document`、`search.search_signal_aggregate`、`search.ranking_profile`、`search.index_alias_binding`、`search.index_sync_task`、`developer.*`
 - 链下主状态与联盟链锚定：`chain.contract_event_projection`、`chain.chain_anchor`
 
 ### 7.2 V1 预埋对象
@@ -565,6 +590,7 @@ payment.reconciliation_statement(reconciliation_statement_id)
 
 - `ml.*`
 - `search.model_search_document`
+- `search.synonym_rule`
 - `billing.profit_share_rule`
 - `billing.reward_pool`
 - `billing.contribution_record`
@@ -580,6 +606,7 @@ payment.reconciliation_statement(reconciliation_statement_id)
 
 - `crosschain.*`
 - `ecosystem.*`
+- `search.partner_search_document`
 - `risk.risk_alert`
 - `risk.risk_case`
 - `risk.graph_node`
@@ -609,6 +636,18 @@ common.tg_dispute_status_history
 search.tg_refresh_product_search_document
   -> catalog.product insert/update
   -> search.product_search_document upsert
+
+search.refresh_seller_search_document_by_id
+  -> core.organization / risk.reputation_snapshot / search.search_signal_aggregate changes
+  -> search.seller_search_document upsert
+
+search.refresh_model_search_document_by_id
+  -> ml.model_asset / ml.model_version changes
+  -> search.model_search_document upsert
+
+search.refresh_partner_search_document_by_id
+  -> ecosystem.partner / ecosystem.mutual_recognition changes
+  -> search.partner_search_document upsert
 
 common.tg_write_outbox
   -> catalog.product / trade.order_main / support.dispute_case / payment.payment_intent / payment.payout_instruction
@@ -717,4 +756,68 @@ ops.event_route_policy(event_route_policy_id)
 ops.outbox_event(outbox_event_id)
   ├─ ops.outbox_publish_attempt.outbox_event_id
   └─ ops.consumer_idempotency_record.event_id
+```
+
+## 13. 推荐与个性化发现关系补充
+
+```text
+recommend.placement_definition(placement_code)
+  ├─ recommend.behavior_event.placement_code
+  └─ recommend.recommendation_request.placement_code
+
+recommend.ranking_profile(recommendation_ranking_profile_id)
+  ├─ recommend.recommendation_request.ranking_profile_id
+  └─ recommend.recommendation_result.ranking_profile_id
+
+recommend.recommendation_request(recommendation_request_id)
+  ├─ recommend.recommendation_result.recommendation_request_id
+  ├─ recommend.behavior_event.recommendation_request_id
+  └─ recommend.model_inference_log.recommendation_request_id (V2)
+
+recommend.recommendation_result(recommendation_result_id)
+  ├─ recommend.recommendation_result_item.recommendation_result_id
+  ├─ recommend.behavior_event.recommendation_result_id
+  └─ recommend.model_inference_log.recommendation_result_id (V2)
+
+core.organization(org_id)
+  ├─ recommend.behavior_event.subject_org_id
+  ├─ recommend.subject_profile_snapshot.org_id
+  └─ recommend.recommendation_request.subject_org_id
+
+core.user_account(user_id)
+  ├─ recommend.behavior_event.subject_user_id
+  ├─ recommend.subject_profile_snapshot.user_id
+  └─ recommend.recommendation_request.subject_user_id
+
+recommend.cohort_definition(cohort_key)
+  └─ recommend.cohort_popularity.cohort_key
+
+ecosystem.partner(partner_id)
+  └─ recommend.ecosystem_affinity.target_partner_id (V3)
+```
+
+## 14. 日志、可观测性与告警关系补充
+
+```text
+ops.observability_backend(backend_key)
+  ├─ ops.log_retention_policy.storage_backend_key
+  ├─ ops.trace_index.backend_key
+  ├─ ops.alert_rule.source_backend_key
+  ├─ ops.alert_event.source_backend_key
+  ├─ ops.slo_definition.source_backend_key
+  └─ ops.slo_snapshot.source_backend_key
+
+ops.alert_rule(alert_rule_id)
+  ├─ ops.alert_event.alert_rule_id
+  └─ ops.slo_definition.alert_rule_id
+
+ops.incident_ticket(incident_ticket_id)
+  ├─ ops.alert_event.incident_ticket_id
+  └─ ops.incident_event.incident_ticket_id
+
+ops.trace_index(trace_index_id)
+  └─ links to trade/payment/audit/ops objects by ref_type + ref_id + trace_id
+
+ops.system_log(system_log_id)
+  └─ links to business objects by request_id / trace_id / object_type + object_id
 ```
