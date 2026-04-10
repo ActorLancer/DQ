@@ -144,6 +144,31 @@
 - `contract.data_contract`：承接交付义务、验收标准、授权边界、责任边界和争议口径
 - `contract.digital_contract`：继续作为订单签约合同，但必须引用签约时刻绑定的数据契约摘要
 
+## 10B. 新增数据原样处理与产品化加工落库要点
+
+- `catalog.raw_ingest_batch`：原始接入批次，承接来源、权利声明、接入策略和批次状态
+- `catalog.raw_object_manifest`：原始对象清单，承接对象 URI、hash、大小、sidecar manifest 与来源时间范围
+- `catalog.format_detection_result`：对象族识别、格式识别与推荐加工路径
+- `catalog.extraction_job`：schema 抽取、OCR、ASR、转码、摘要抽取、预览生成等前置任务
+- `catalog.preview_artifact`：样例、文本预览、图像预览、query preview 等展示工件
+- `catalog.asset_version.processing_stage / standardization_status`：显式表达资产从原始登记到标准化完成的加工阶段
+
+## 10C. 新增数据商品存储与分层存储落库要点
+
+- `catalog.storage_namespace`：抽象 bucket / prefix / namespace 与 `raw / curated / product / preview / delivery / archive / evidence / model` 分层区域
+- `catalog.storage_policy_profile`：定义不同对象族默认落在哪些分层区域、采用何种生命周期和查询面
+- `catalog.asset_version.storage_policy_id / query_surface_type`：把版本和正式存储策略、查询暴露方式绑定
+- `catalog.asset_storage_binding` 增补分层区域、命名空间、存储类与保留截止时间
+- `delivery.storage_object` 增补命名空间、分层区域与交付临时对象的保留截止时间
+
+## 10D. 新增数据商品查询与执行面落库要点
+
+- `catalog.query_surface_definition`：定义某个资产版本正式暴露的查询面类型、执行环境、读取范围、输出边界与配额策略
+- `delivery.query_template_definition`：定义查询模板版本、参数 schema、analysis rule、结果 schema 与导出策略
+- `delivery.query_execution_run`：记录每次模板查询或沙箱查询的请求摘要、结果摘要、结果对象、计费单位和状态
+- `delivery.template_query_grant` 增补 `query_surface_id / allowed_template_ids / execution_rule_snapshot`
+- `delivery.sandbox_workspace` 增补 `query_surface_id / clean_room_mode`
+
 ## 11. 新增推荐与个性化发现落库要点
 
 - 新增独立 `recommend` schema，承载推荐位、推荐排序配置、行为事件、画像快照、推荐请求与推荐结果

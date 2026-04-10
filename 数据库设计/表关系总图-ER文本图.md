@@ -25,7 +25,9 @@ core.organization
   ├─< core.application
   ├─< core.service_identity
   ├─< core.connector
-  └─< core.execution_environment
+  ├─< core.execution_environment
+  ├─< catalog.storage_namespace
+  └─< catalog.storage_policy_profile
 
 authz.role_definition
   ├─< authz.role_permission >─ authz.permission_definition
@@ -33,8 +35,15 @@ authz.role_definition
 
 catalog.data_asset
   ├─< catalog.asset_version
+  │    └─1 catalog.storage_policy_profile
+  │    └─< catalog.query_surface_definition
+  ├─< catalog.raw_ingest_batch
+  │    └─< catalog.raw_object_manifest
+  │         ├─< catalog.format_detection_result
+  │         └─< catalog.extraction_job
   ├─< catalog.asset_storage_binding
   ├─< catalog.asset_sample
+  ├─< catalog.preview_artifact
   ├─< catalog.asset_field_definition
   ├─< catalog.asset_quality_report
   ├─< catalog.asset_processing_job
@@ -63,7 +72,12 @@ trade.inquiry
         │    ├─< delivery.key_envelope
         │    ├─< delivery.api_credential
         │    ├─< delivery.sandbox_workspace
-        │    │    └─< delivery.sandbox_session
+        │    │    ├─< delivery.sandbox_session
+        │    │    └─1 catalog.query_surface_definition
+        │    ├─< delivery.template_query_grant
+        │    │    └─1 catalog.query_surface_definition
+        │    │    └─< delivery.query_template_definition
+        │    │         └─< delivery.query_execution_run
         │    └─< delivery.report_artifact
         ├─< billing.billing_event
         ├─< billing.settlement_record
@@ -117,7 +131,20 @@ Organization(卖方/买方/平台)
   ├─ Department
   ├─ UserAccount
   ├─ Application
+  ├─ StorageNamespace
+  ├─ StoragePolicyProfile
   └─ WalletAccount
+
+DataAsset
+  ├─ RawIngestBatch
+  │    └─ RawObjectManifest
+  │         ├─ FormatDetectionResult
+  │         └─ ExtractionJob
+  ├─ AssetVersion
+  │    ├─ PreviewArtifact
+  │    ├─ AssetFieldDefinition
+  │    ├─ AssetQualityReport
+  │    └─ AssetProcessingJob
 
 DataAsset
   ├─ AssetVersion
@@ -376,6 +403,12 @@ delivery.delivery_record(id)
 
 delivery.sandbox_workspace(id)
   └─ delivery.sandbox_session.workspace_id
+
+catalog.query_surface_definition(id)
+  ├─ delivery.sandbox_workspace.query_surface_id
+  ├─ delivery.template_query_grant.query_surface_id
+  ├─ delivery.query_template_definition.query_surface_id
+  └─ delivery.query_execution_run.query_surface_id
 ```
 
 ### 6.4 计费、托管、保证金、惩罚、奖励、分润
