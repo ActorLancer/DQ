@@ -267,3 +267,16 @@ INSERT INTO authz.permission_definition (permission_code, domain_name, resource_
 ('ops.kafka.read','ops','kafka','read','V1','normal'),
 ('ops.kafka.manage','ops','kafka','manage','V1','high')
 ON CONFLICT (permission_code) DO NOTHING;
+
+INSERT INTO authz.permission_definition (permission_code, domain_name, resource_name, action_name, stage_from, risk_level) VALUES
+('catalog.sensitive_policy.read','catalog','sensitive_policy','read','V1','normal'),
+('catalog.sensitive_policy.manage','catalog','sensitive_policy','manage','V1','high'),
+('contract.legal_basis.read','contract','legal_basis','read','V1','medium'),
+('contract.legal_basis.manage','contract','legal_basis','manage','V1','high'),
+('catalog.safe_preview.read','catalog','safe_preview','read','V1','normal'),
+('catalog.safe_preview.manage','catalog','safe_preview','manage','V1','high'),
+('delivery.sensitive_execution.manage','delivery','sensitive_execution','manage','V1','high'),
+('delivery.attestation.read','delivery','attestation','read','V1','medium'),
+('delivery.result_disclosure.review','delivery','result_disclosure','review','V1','high'),
+('delivery.destruction.attest','delivery','destruction','attest','V1','high')
+ON CONFLICT (permission_code) DO NOTHING;

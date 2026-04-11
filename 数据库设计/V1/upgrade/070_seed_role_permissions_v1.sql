@@ -357,3 +357,29 @@ INSERT INTO authz.role_permission (role_key, permission_code) VALUES
 ('regulator_observer','audit.masked_view.read'),
 ('regulator_observer','audit.manifest.read')
 ON CONFLICT DO NOTHING;
+
+INSERT INTO authz.role_permission (role_key, permission_code) VALUES
+('data_governance_admin','catalog.sensitive_policy.read'),
+('data_governance_admin','catalog.sensitive_policy.manage'),
+('data_governance_admin','contract.legal_basis.read'),
+('data_governance_admin','contract.legal_basis.manage'),
+('data_governance_admin','catalog.safe_preview.read'),
+('data_governance_admin','catalog.safe_preview.manage'),
+('compliance_reviewer','catalog.sensitive_policy.read'),
+('compliance_reviewer','contract.legal_basis.read'),
+('compliance_reviewer','catalog.safe_preview.read'),
+('compliance_reviewer','delivery.attestation.read'),
+('compliance_reviewer','delivery.result_disclosure.review'),
+('audit_admin','catalog.sensitive_policy.read'),
+('audit_admin','contract.legal_basis.read'),
+('audit_admin','catalog.safe_preview.read'),
+('audit_admin','delivery.attestation.read'),
+('audit_admin','delivery.result_disclosure.review'),
+('audit_admin','delivery.destruction.attest'),
+('sandbox_operator','catalog.safe_preview.read'),
+('sandbox_operator','catalog.safe_preview.manage'),
+('sandbox_operator','delivery.sensitive_execution.manage'),
+('retention_admin','delivery.destruction.attest'),
+('legal_manager','contract.legal_basis.read'),
+('legal_manager','contract.legal_basis.manage')
+ON CONFLICT DO NOTHING;

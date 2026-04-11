@@ -854,3 +854,61 @@ ops.trace_index(trace_index_id)
 ops.system_log(system_log_id)
   └─ links to business objects by request_id / trace_id / object_type + object_id
 ```
+
+## 16. 敏感数据治理增量 ER 图
+
+```text
+catalog.asset_version
+  ├─1 catalog.sensitive_handling_policy
+  ├─< contract.legal_basis_evidence
+  └─< catalog.safe_preview_artifact
+
+trade.order_main
+  ├─< delivery.sensitive_execution_policy
+  ├─< delivery.attestation_record
+  ├─< delivery.result_disclosure_review
+  └─< delivery.destruction_attestation
+
+delivery.query_execution_run
+  ├─< delivery.attestation_record
+  ├─< delivery.result_disclosure_review
+  └─< delivery.privacy_budget_ledger
+
+ml.compute_task
+  └─< delivery.privacy_budget_ledger
+```
+
+## 17. 交易链监控、公平性与信任安全关系补充
+
+```text
+ops.monitoring_policy_profile(monitoring_policy_profile_id)
+  └─< ops.trade_lifecycle_checkpoint
+
+trade.order_main(order_id)
+  ├─< ops.trade_lifecycle_checkpoint
+  ├─< ops.external_fact_receipt
+  ├─< risk.fairness_incident
+  └─< ops.chain_projection_gap
+
+ops.trade_lifecycle_checkpoint(trade_lifecycle_checkpoint_id)
+  └─< risk.fairness_incident.source_checkpoint_id
+
+ops.external_fact_receipt(external_fact_receipt_id)
+  └─< risk.fairness_incident.source_receipt_id
+
+ops.outbox_event(outbox_event_id)
+  └─< ops.chain_projection_gap
+
+chain.chain_anchor(chain_anchor_id)
+  └─< ops.chain_projection_gap
+
+crosschain.cross_chain_request(cross_chain_request_id)
+  ├─< ops.trade_lifecycle_checkpoint (V3)
+  ├─< ops.external_fact_receipt (V3)
+  └─< risk.fairness_incident (V3)
+
+ml.compute_task(task_id)
+  ├─< ops.trade_lifecycle_checkpoint (V2)
+  ├─< ops.external_fact_receipt (V2)
+  └─< risk.fairness_incident (V2)
+```

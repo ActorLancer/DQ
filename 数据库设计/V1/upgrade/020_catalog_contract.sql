@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS catalog.product (
   product_type text NOT NULL,
   description text,
   status text NOT NULL DEFAULT 'draft',
-  price_mode text NOT NULL DEFAULT 'fixed',
+  price_mode text NOT NULL DEFAULT 'one_time',
   price numeric(20, 8) NOT NULL DEFAULT 0,
   currency_code text NOT NULL DEFAULT 'CNY',
   delivery_type text NOT NULL,

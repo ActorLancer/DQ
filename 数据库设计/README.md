@@ -82,6 +82,10 @@
 - `V3` 默认基于 `V2` 已完成升级
 - 每个升级脚本都有对应降级脚本
 - 降级按同版本脚本逆序执行
+- `catalog.product_sku` 必须区分三层语义：
+  - `sku_type`：标准 SKU 真值
+  - `sku_code`：实现型商业套餐编码
+  - `trade_mode`：交付/计费路径
 
 ## 5. 新增信任边界落库要点
 
@@ -207,3 +211,23 @@
   - `ops.slo_snapshot`
 - `ops.system_log` 扩展为关键日志镜像，不承载 Loki 原始全文日志权威存储。
 - 指标、原始日志与 trace 继续分别归属于 `Prometheus`、`Loki`、`Tempo`；PostgreSQL 保存配置、索引、工单和审计联动数据。
+
+## 13. 新增敏感数据治理落库要点
+
+- `V1` 通过 `066_sensitive_data_controlled_delivery.sql` 落：
+  - `catalog.sensitive_handling_policy`
+  - `contract.legal_basis_evidence`
+  - `catalog.safe_preview_artifact`
+  - `delivery.sensitive_execution_policy`
+  - `delivery.attestation_record`
+  - `delivery.result_disclosure_review`
+  - `delivery.destruction_attestation`
+- `delivery.query_execution_run` 增补 `masked_level / export_scope / approval_ticket_id / sensitive_policy_snapshot`
+- `delivery.delivery_record`、`delivery.api_credential`、`delivery.sandbox_workspace` 增补敏感边界快照字段
+- `V2` 通过 `007_sensitive_privacy_controls.sql` 继续补齐 `delivery.privacy_budget_ledger`
+- 敏感数据对象统一表达：
+  - 为什么能处理
+  - 允许如何预览
+  - 允许如何执行
+  - 结果能导出到什么范围
+  - 到期后如何销毁或保留

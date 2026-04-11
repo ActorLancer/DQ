@@ -220,7 +220,7 @@ DECLARE
 BEGIN
   v_subject_ref := COALESCE(NEW.subject_org_id::text, NEW.subject_user_id::text, NEW.anonymous_session_key);
   v_last_category := NEW.attrs ->> 'category';
-  v_last_delivery := NEW.attrs ->> 'delivery_type';
+  v_last_delivery := COALESCE(NEW.attrs ->> 'delivery_mode', NEW.attrs ->> 'delivery_type');
 
   IF v_subject_ref IS NULL THEN
     RETURN NEW;
