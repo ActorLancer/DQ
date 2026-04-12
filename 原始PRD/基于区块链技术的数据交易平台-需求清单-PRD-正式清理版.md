@@ -250,6 +250,22 @@
 5. **商圈/门店选址查询服务**
    买方按次发起查询，在沙箱中查看候选区域画像与评分，导出受限结果。
 
+### 5.3.2A 首批标准场景到 V1 SKU 与模板映射
+
+| 首批标准场景 | 主标准 SKU | 可选补充 SKU | 合同模板 | 验收模板 | 退款模板 | 说明 |
+|---|---|---|---|---|---|---|
+| 工业设备运行指标 API 订阅 | `API_SUB` | `API_PPU` | `CONTRACT_API_SUB_V1` | `ACCEPT_API_SUB_V1` | `REFUND_API_SUB_V1` | 主路径是周期订阅；若按调用量加购，补充落到 `API_PPU` |
+| 工业质量与产线日报文件包交付 | `FILE_STD` | `FILE_SUB` | `CONTRACT_FILE_V1` | `ACCEPT_FILE_V1` | `REFUND_FILE_V1` | 主路径是单次文件包交付；若按周/月持续推送，可补充 `FILE_SUB` |
+| 供应链协同查询沙箱 | `SBX_STD` | `SHARE_RO` | `CONTRACT_SANDBOX_V1` | `ACCEPT_SANDBOX_V1` | `REFUND_SANDBOX_V1` | 主路径是项目空间与席位；若买方只需只读共享开通，可补充 `SHARE_RO` |
+| 零售门店经营分析 API / 报告订阅 | `API_SUB` | `RPT_STD` | `CONTRACT_API_SUB_V1` | `ACCEPT_API_SUB_V1` | `REFUND_API_SUB_V1` | 主路径是 API 订阅；若按月报/结果包交付，可补充 `RPT_STD` |
+| 商圈/门店选址查询服务 | `QRY_LITE` | `RPT_STD` | `CONTRACT_QUERY_LITE_V1` | `ACCEPT_QUERY_LITE_V1` | `REFUND_QUERY_LITE_V1` | 主路径是按次模板查询；若形成正式评分报告或选址结果包，补充 `RPT_STD` |
+
+补充要求：
+
+- 首批 5 条标准链路必须覆盖全部 8 个 `V1` 标准 SKU 的正式落点，不得出现“正式 SKU 存在但无首批业务挂点”的情况。
+- `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 在首批场景中都必须按独立 SKU 理解，不能再并入“文件 / API / 沙箱大类”。
+- 若一个场景同时使用多个 SKU，订单、合同、授权、验收、结算仍应按 SKU 逐一快照，不得用场景名替代 SKU 事实源。
+
 ### 5.3.3 场景排除项
 - 医疗明细、金融明细、涉及敏感个人信息原始副本交易。
 - 跨境自动交付。
@@ -852,6 +868,22 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - revoke_reason_code
 - last_reconciled_at
 
+关系基数、唯一约束、快照边界与落库建议：
+
+- 基数：
+  - `Order 1 -> N Authorization`
+  - `Digital Contract 1 -> N Authorization`
+  - `Usage Policy 1 -> N Authorization`
+- 唯一约束建议：
+  - 同一 `order_id + subject_type + subject_id + bind_policy_id + effective_from` 不得重复生成有效授权
+  - 同一授权对象在任一时刻只能有一个生效中的主 `grant_status`
+- 快照边界：
+  - 必须快照 `contract_id / sku_id / policy_id / authority_model / proof_commit_policy / allow_subject_scope / allow_action_set / allow_quota`
+  - 历史授权不得因后续策略模板变更而被静默改写
+- 落库建议：
+  - 建议实体表直接落库，不建议仅由 `Usage Policy` 动态推导
+  - 若存在令牌、Key、share grant、template grant 等实现对象，应作为 `Authorization` 的下游凭证对象，不替代授权实例本身
+
 ## 10.12B 交付实体（Delivery）
 
 - delivery_id
@@ -869,6 +901,22 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - delivery_receipt_ref
 - delivered_at
 - last_reconciled_at
+
+关系基数、唯一约束、快照边界与落库建议：
+
+- 基数：
+  - `Order 1 -> N Delivery`
+  - `Digital Contract 1 -> N Delivery`
+  - `Authorization 1 -> N Delivery`
+- 唯一约束建议：
+  - 对 `FILE_STD / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD`，同一 `order_id + delivery_mode + delivery_sequence_no` 必须唯一
+  - 对 `FILE_SUB`，同一 `order_id + revision_no` 或同一 `order_id + delivery_period` 必须唯一
+- 快照边界：
+  - 必须快照 `delivery_mode / storage_mode_snapshot / delivery_route_snapshot / trust_boundary_snapshot / executor_type / source_binding_id`
+  - 交付回执、下载票据、共享开通结果、模板授权结果、沙箱席位、报告文件都应挂接在 `Delivery` 之下
+- 落库建议：
+  - 建议实体表直接落库，并作为交付重试、回放、补交付、赔付的主对象
+  - 下载票据、共享对象、模板授权、沙箱实例、结果包等可拆子表，但主 `Delivery` 不得缺失
 
 ## 10.12C 结算实体（Settlement）
 
@@ -888,6 +936,22 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - settled_at
 - last_reconciled_at
 
+关系基数、唯一约束、快照边界与落库建议：
+
+- 基数：
+  - `Order 1 -> N Settlement`
+  - `Billing Event N -> 1 Settlement` 或通过结算明细关系表挂接
+  - `Digital Contract 1 -> N Settlement`
+- 唯一约束建议：
+  - 同一 `order_id + settlement_cycle + settlement_type` 必须唯一
+  - 同一 `bill_event_id` 不得在同一 `settlement_status in (pending, payable, settled)` 语义下被重复归集
+- 快照边界：
+  - 必须快照 `pricing_mode / settlement_rule_id / revenue_split_snapshot / tax_snapshot / payable_amount / receivable_amount / channel_fee_snapshot`
+  - 历史结算不得因后续分账规则或收费规则调整而被静默改写
+- 落库建议：
+  - 建议实体表直接落库，结算明细另建关系表关联 `Billing Event`
+  - `Settlement` 是订单结算、分账、打款、退款、赔付和对账的正式主对象，不应只在账单聚合后临时计算
+
 ## 10.12D 争议实体（Dispute）
 
 - dispute_id
@@ -905,6 +969,23 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - dispute_reason_code
 - resolution_type
 - resolved_at
+
+关系基数、唯一约束、快照边界与落库建议：
+
+- 基数：
+  - `Order 1 -> N Dispute`
+  - `Digital Contract 1 -> N Dispute`
+  - `Delivery 0..N -> 1 Dispute`
+  - `Settlement 0..N -> 1 Dispute`
+- 唯一约束建议：
+  - 同一 `order_id + dispute_type + dispute_reason_code + opened_at_bucket` 不得重复生成并行主争议单
+  - 同一交付批次或同一结算批次在未关闭前不得重复创建等价争议
+- 快照边界：
+  - 必须快照 `contract_id / sku_id / delivery_id / settlement_id / evidence_scope / claimed_amount / blocking_effect`
+  - 争议证据、裁决结果、恢复动作必须与当时快照绑定，不因后续对象变化而丢失语义
+- 落库建议：
+  - 建议实体表直接落库，并作为争议受理、证据调取、责任判定、赔付执行和信用惩戒的主对象
+  - 若另有工单系统，可作为 `Dispute` 的协同对象，不得替代 `Dispute` 本身
 
 ## 10.13 交易订单实体（Order）
 - order_id
@@ -1822,6 +1903,11 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 3. 受控模型训练权在 V1 默认禁止；如确有业务需求，需走 V2 受控计算路径。
 4. 有限内部共享权必须限定到 Tenant 内指定 Department / User / Application。
 5. 每个 SKU 必须标明：允许动作、禁止动作、交付方式、验收条件、账单口径、赔付方式。
+6. `FILE_STD / FILE_SUB` 共用文件类权利主轴，但必须分别绑定一次性文件交付与版本订阅交付规则。
+7. `SHARE_RO` 的主交付对象是共享开通结果，不得按文件下载或 API 调用路径解释。
+8. `QRY_LITE` 的主交付对象是模板授权与模板执行结果，不得按沙箱席位或文件下载路径解释。
+9. `SBX_STD` 的主交付对象是席位、项目空间与环境访问权，不得误按模板授权或报告交付路径解释。
+10. `RPT_STD` 的主交付对象是报告、结果包或签收回执，不得误按模板可执行或环境开通路径解释。
 
 ## 16.3 审批与阻断规则
 1. 高风险交易必须进入人工审批，不得系统自动放行。
@@ -1840,27 +1926,40 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 ## 16.4 交付规则
 1. 文件产品交付单位是“文件包/版本包”，不是原始库表全量访问。
 2. API 产品交付单位是“应用级访问权”，不是“用户共享口令”。
-3. 沙箱产品交付单位是“席位 + 模板 + 结果导出限制”。
-4. V2 计算产品交付单位是“任务执行权 + 结果获取权”，不是数据副本。
-5. 到期自动断权必须覆盖用户、应用、连接器和环境四层。
+3. `SHARE_RO` 交付单位是“共享对象开通结果 + recipient/subscriber 绑定 + revoke 生命周期”。
+4. `QRY_LITE` 交付单位是“模板授权 + 参数边界 + 输出边界 + 可审计执行结果”。
+5. `SBX_STD` 交付单位是“席位/项目空间 + 环境访问权 + 导出限制”，不是模板授权本身。
+6. `RPT_STD` 交付单位是“报告文件/结果包 + 交付回执/签收回执”，不是可重复执行权限。
+7. V2 计算产品交付单位是“任务执行权 + 结果获取权”，不是数据副本。
+8. 到期自动断权必须覆盖用户、应用、连接器和环境四层。
 
 ## 16.5 验收规则
 1. 不同产品类型必须有不同验收模板，禁止统一一个“已收到”即验收。
 2. 自动验收计时器必须在“交付完成”后启动，而不是支付后启动。
 3. 验收失败后仅允许进入：补交付、部分退款、全额退款、争议处理四种路径。
+4. `SHARE_RO` 必须验证共享对象可见性、授权范围与首个只读查询结果。
+5. `QRY_LITE` 必须验证模板授权、模板执行成功和输出边界符合约定。
+6. `SBX_STD` 必须验证席位/项目空间已开通、环境可用和导出限制已生效。
+7. `RPT_STD` 必须验证报告或结果包已生成、结构完整且交付回执可核验。
 
 ## 16.6 结算规则
 1. 结算必须由 Billing Event 汇总触发。
 2. 没有账单事件，不得结算。
 3. 账单争议期间，待争议部分金额冻结，其他无争议部分允许先行结算。
 4. 分账规则必须在合同生效前锁定，避免事后改分账。
+5. `FILE_SUB`、`API_SUB`、`SHARE_RO` 等周期型 SKU 允许按结算周期形成多笔 `Settlement`，不得强行压缩为单笔结算。
+6. `QRY_LITE`、`API_PPU` 等按次计费 SKU 必须以执行或调用成功事件为主计费依据，不得仅凭订单创建结算。
+7. `RPT_STD` 必须以报告/结果包交付成功或签收为主结算触发条件，不得用模板执行次数替代。
 
 ## 16.7 争议规则
 争议至少覆盖：
 - 数据与描述不符
 - 文件损坏/字段缺失
 - API 不可用/SLA 不达标
-- 沙箱模板不可用
+- 只读共享未开通或共享范围不符
+- 模板查询不可执行或输出边界不符
+- 沙箱席位/环境不可用
+- 报告/结果包未交付或内容明显不符
 - 越权使用
 - 误计费/重复计费
 - 恶意退款
@@ -2092,7 +2191,7 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 | C-002 | 原始敏感个人信息 + 文件副本交付 | 自动阻断 | 无 | 下单前阻断 | 分类分级结果 | 实时 |
 | C-003 | 含个人信息但未填写处理依据 | 自动驳回 | 无 | 上架前阻断 | 同意/授权/法定义务证明 | 实时 |
 | C-004 | 境外主体申请下载副本 | 自动阻断 | 无 | 交易协商前阻断 | 主体信息、交付方式 | 实时 |
-| C-005 | 模型训练用途 + V1 文件/API/沙箱产品 | 自动阻断 | 无 | 合同生效前 | 训练用途说明、环境说明 | 实时 |
+| C-005 | 模型训练用途 + V1 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD` | 自动阻断 | 无 | 合同生效前 | 训练用途说明、环境说明 | 实时 |
 | C-006 | 公共数据授权运营产品 | 转专项审批 | L3 + L4 | 上架前 | 授权文件、运营范围 | 3 个工作日 |
 | C-007 | 重要数据 / 高风险行业数据 | 转人工增强审批 | L4 | 合同生效前 | 分类证明、安全评估 | 3 个工作日 |
 | C-008 | 申请商业输出权 | 转人工审批 | L3 | 合同生效前 | 业务场景说明、输出边界 | 2 个工作日 |
@@ -3725,7 +3824,7 @@ V1 生产环境要求：
 
 当前版本的范围判断补充如下：
 
-- V1 必做：标准注册准入、文件/API/沙箱/结果包、标准模板合同、基础验收退款、基础账单、联盟链存证、基础搜索与审核。
+- V1 必做：标准注册准入、`FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD`、标准模板合同、基础验收退款、基础账单、联盟链存证、基础搜索与审核。
 - V1 预留：询价入口、管理员人工审批位、Solana 演示级锚定字段、公链展示页占位。
 - V2 再做：不可转让交易凭证、供应商认证凭证、数据产品护照 NFT、C2D/FL/MPC/TEE 正式产品化、复杂连接器。
 - V3 再做：跨域可信数据空间、跨平台互认证书、生态市场化协同。
@@ -4323,6 +4422,7 @@ V1 若实现开发者通道，页面最小集合建议如下：
 - 起步司法辖区：新加坡
 - `V1` 首发商业闭环按“先做新加坡落地，再保留中国规则兼容能力”执行。
 - 中国数据要素、公共数据、B2B / B2G / G2B 等规则语境继续作为字段设计、权限边界、审计口径和后续扩展兼容输入，但不构成 `V1` 首发商用支付、税票和收款流程的优先基线。
+- 因此，`V1` 的首批行业与 5 条标准场景是目标市场与产品场景基线，`V1` 的新加坡司法辖区与支付结算走廊是首发商用落地基线；两者是“场景设计先行、商用走廊先在新加坡落地”的关系，不构成战略冲突。
 - 商品建议统一以 `USD` 计价；买方付款币种、卖方收款币种和真实支付通道受起步走廊策略约束。
 - `V1` 的真实生产路由以新加坡主体和新加坡合作伙伴体系为起点，其他地区须等对应走廊显式开启后进入生产。
 
