@@ -283,6 +283,10 @@ V1 必须落地以下对象：
 - Product SKU
 - Digital Contract
 - Usage Policy
+- Authorization
+- Delivery
+- Settlement
+- Dispute
 - Order
 - Billing Event
 - Audit Event
@@ -309,6 +313,13 @@ V1 必须落地以下对象：
 
 - 合同负责法律与业务条款
 - Policy 负责系统级访问与使用控制
+
+#### Authorization / Delivery / Settlement / Dispute
+
+- Authorization 表示可审计授权实例，不得仅由策略规则临时推导
+- Delivery 表示交付或开通实例，承载回执、开通状态与重试
+- Settlement 表示可对账、可分账、可打款的结算实例
+- Dispute 表示争议阻断、处理过程和恢复动作实例
 
 #### Order / Billing Event
 
@@ -457,6 +468,35 @@ V1 的标准 SKU 统一冻结为：
 - 文件快照、只读共享、API、模板查询、结果产品的最小差异化授权与验收口径
 - 模板查询的白名单、输出边界、导出限制、审计留痕
 
+### 7.6 V1 实施分组
+
+该分组只用于实施顺序与验收批次管理，不改变 `V1 / V2 / V3` 范围结论。
+
+- `V1-Core`
+  - 主体与账户
+  - 八个标准 SKU
+  - 上架、合同、支付锁定、交付、验收、结算、争议
+  - 文件交付、只读共享、API 开通、模板查询 lite、查询沙箱、报告交付
+  - 联盟链存证、审计日志、基础对账、回放、Mock PaymentProvider
+- `V1-Extended`
+  - 搜索与推荐增强
+  - 企业 OIDC 深化、设备信任治理
+  - SDK、Webhook、外部系统对接
+  - 监管视图、重点交易监控、风险事件上报
+- `V1-Reserved`
+  - Solana 演示锚定与公开验证页
+  - 合作伙伴控制台、第三方应用审批
+  - 复杂共享连接器增强与深度联邦增强
+
+### 7.7 状态机粒度冻结
+
+- `FILE_STD / FILE_SUB` 共用文件类主状态机，但必须保留订阅交付批次差异
+- `SHARE_RO` 必须拥有独立共享开通状态机
+- `API_SUB / API_PPU` 共用 API 主状态机，但必须保留订阅与按量账单事件差异
+- `QRY_LITE` 必须拥有独立模板授权与模板执行状态机
+- `SBX_STD` 必须拥有独立沙箱开通与席位状态机
+- `RPT_STD` 必须拥有独立报告交付与签收状态机
+
 当前仅按最小路径实现、不要求 `V1` 一次彻底完成：
 
 - 只读共享的完整异构协议矩阵与多连接器治理
@@ -505,10 +545,10 @@ V1 必须支持：
 
 #### API 模板
 
-- 合同：`CONTRACT_API_V1`
-- 授权：`LICENSE_API_USE_V1`
-- 验收：`ACCEPT_API_V1`
-- 退款：`REFUND_API_V1`
+- 合同：`CONTRACT_API_SUB_V1 / CONTRACT_API_PPU_V1`
+- 授权：`LICENSE_API_SUB_V1 / LICENSE_API_PPU_V1`
+- 验收：`ACCEPT_API_SUB_V1 / ACCEPT_API_PPU_V1`
+- 退款：`REFUND_API_SUB_V1 / REFUND_API_PPU_V1`
 
 固定字段：
 
@@ -556,6 +596,8 @@ V1 必须支持：
 - 可配字段有限开放
 - 不支持动态模板设计器
 - 不支持复杂条款自由编排
+- `FILE_SUB / SBX_STD / RPT_STD` 的授权模板分别固定为 `LICENSE_FILE_USE_V1 / LICENSE_SANDBOX_USE_V1 / LICENSE_RESULT_USE_V1`
+- `QRY_LITE`、`SBX_STD`、`RPT_STD` 不得共用同一开通或验收模板族
 
 ### 8.3A 数据契约基线
 

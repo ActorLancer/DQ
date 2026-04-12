@@ -88,6 +88,26 @@ V1 交付范围包括：
   - 调试联查入口
   - 测试资产与测试钱包机制
 
+### 3.1A V1 实施分组
+
+以下分组只用于实施顺序、排期与验收批次管理，不改变 `V1 / V2 / V3` 范围结论：
+
+- `V1-Core`
+  - 主体与账户建模
+  - 八个标准 SKU
+  - 上架、合同、支付锁定、交付、验收、结算、争议
+  - 文件交付、只读共享、API 开通、模板查询 lite、查询沙箱、报告交付
+  - 联盟链存证、审计日志、基础对账、回放、Mock PaymentProvider
+- `V1-Extended`
+  - 搜索与推荐增强
+  - 企业 OIDC 深化、设备信任治理
+  - SDK、Webhook、外部 SIEM / BI / ERP / CRM 对接
+  - 监管视图、重点交易监控、风险事件上报
+- `V1-Reserved`
+  - Solana 演示锚定与公开验证页
+  - 合作伙伴控制台、第三方应用审批
+  - 复杂共享连接器增强与深度联邦增强
+
 ### 3.2 非范围
 
 V1 不交付：
@@ -244,15 +264,26 @@ V1 默认禁止：
 ### 7.2 各产品的交付方式
 
 - 文件产品：下载令牌 + 文件包 + 哈希校验
+- 只读共享：share grant / linked dataset / datashare
 - API 产品：Application 绑定 + Key/OAuth + 配额
-- 沙箱产品：席位开通 + 模板查询 + 导出限制
+- 模板查询 lite：模板授权 + 白名单模板执行 + 输出边界控制
+- 沙箱产品：席位开通 + 项目空间 + 导出限制
 - 报告产品：下载链接/发送 + 签收回执
 
 ### 7.3 订单状态机
 
-通用状态：
+通用主状态：
 
 `draft -> quoted -> approval_pending -> contract_pending -> contract_effective -> payment_locked -> delivery_in_progress -> acceptance_pending -> accepted/rejected/disputed -> settled -> closed`
+
+SKU 粒度冻结要求：
+
+- `FILE_STD / FILE_SUB` 共用文件类主状态机，但必须保留订阅交付批次差异
+- `SHARE_RO` 必须拥有独立共享开通状态机
+- `API_SUB / API_PPU` 共用 API 主状态机，但必须保留订阅与按量账单事件差异
+- `QRY_LITE` 必须拥有独立模板授权与模板执行状态机
+- `SBX_STD` 必须拥有独立沙箱开通与席位状态机
+- `RPT_STD` 必须拥有独立报告交付与签收状态机
 
 ---
 
@@ -284,6 +315,8 @@ V1 默认禁止：
 
 - 文件交付页
 - API 开通页
+- 只读共享开通页
+- 模板查询开通页
 - 沙箱开通页
 - 报告交付页
 - 验收页

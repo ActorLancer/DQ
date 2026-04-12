@@ -80,6 +80,12 @@ V2 保留 V1 全部能力：
 - 合规规则、风控规则、审计证据包
 - 开发者通道
 
+并继续沿用以下 `V1` 工程冻结约束：
+
+- `Authorization / Delivery / Settlement / Dispute` 作为正式生命周期对象继续保留
+- 统一一致性状态字段族继续适用于 `Order / Contract / Authorization / Delivery / Settlement / Dispute / Billing Event`
+- `V1-Core / V1-Extended / V1-Reserved` 属于实施分组，不改变 `V1` 范围结论；`V2` 继续在此基础上扩展，不得回退为“大范围同时开工”模式
+
 ### 3.2 新增能力
 
 - 模型 API 商品
@@ -93,6 +99,24 @@ V2 保留 V1 全部能力：
 - 交易凭证、供应商认证凭证、数据产品护照 NFT
 - 自动分润
 - 贡献度驱动分润
+
+### 3.3 生命周期对象扩展要求
+
+`V2` 新增模型、受控计算、联邦、证明和分润能力时，不得重新发明第二套交易生命周期对象。新增能力必须挂接到以下对象之一，或显式形成其扩展对象：
+
+- `Authorization`
+- `Delivery`
+- `Settlement`
+- `Dispute`
+- `Billing Event`
+
+例如：
+
+- 计算任务授权应落在 `Authorization`
+- 任务开通、环境就绪、结果交付应落在 `Delivery`
+- 自动分润、贡献度结算、收益拆分应落在 `Settlement`
+- 算法争议、结果争议、证明争议应落在 `Dispute`
+- 算力费、阶段费、分润补记应落在 `Billing Event`
 
 ---
 

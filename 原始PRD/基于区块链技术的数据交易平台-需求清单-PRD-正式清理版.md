@@ -447,43 +447,43 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 
 ```text
 ┌──────────────────────────────────────────────┐
-│                应用层 / 门户层                │
-│ 目录搜索 | 上架中心 | 询报价 | 订单 | 合同 | 工单 │
-│ 公开验证页 | 凭证展示页 | 数据产品护照页       │
+│         应用层 / 门户层 [V1 Active + V2 Reserved] │
+│ [V1 Active] 目录搜索 | 上架中心 | 询报价 | 订单 | 合同 | 工单 │
+│ [V2 Reserved] 公开验证页 | 凭证展示页 | 数据产品护照页       │
 └──────────────────────────────────────────────┘
                     │
 ┌──────────────────────────────────────────────┐
-│            交易控制层 / 规则执行层            │
-│ 身份认证 | 权限策略 | 合规审查 | 风控 | 定价 | 结算 │
-│ 数字合约 | 审批流 | 使用控制 | 审计编排 | 争议处理 │
-│ 公链披露策略 | 公示脱敏规则 | 凭证发行编排       │
+│      交易控制层 / 规则执行层 [V1 Active + V2 Reserved] │
+│ [V1 Active] 身份认证 | 权限策略 | 合规审查 | 风控 | 定价 | 结算 │
+│ [V1 Active] 数字合约 | 审批流 | 使用控制 | 审计编排 | 争议处理 │
+│ [V2 Reserved] 公链披露策略 | 公示脱敏规则 | 凭证发行编排       │
 └──────────────────────────────────────────────┘
                     │
 ┌──────────────────────────────────────────────┐
-│           执行层 / 数据与计算交付层           │
-│ 文件交付 | API 网关 | 查询沙箱 | 安全空间 | C2D │
-│ MPC | FL | ZKP 校验 | TEE 证明 | 连接器网络     │
-│ 版本管理 | 数据血缘 | POC 测试环境 | SLA 监测   │
+│      执行层 / 数据与计算交付层 [V1 Active + V2 Reserved] │
+│ [V1 Active] 文件交付 | API 网关 | 查询沙箱 | 连接器网络 │
+│ [V2 Reserved] 安全空间 | C2D | MPC | FL | ZKP 校验 | TEE 证明 │
+│ [V1 Active] 版本管理 | 数据血缘 | POC 测试环境 | SLA 监测   │
 └──────────────────────────────────────────────┘
                     │
 ┌──────────────────────────────────────────────┐
-│         信任层 / 联盟链 / 存证与清算层         │
+│      信任层 / 联盟链 / 存证与清算层 [V1 Active]      │
 │ DID/VC | 合约哈希 | 授权状态 | 订单状态 | 回执 |   │
 │ 账单摘要 | 分润结果 | 证据摘要 | 监管观察节点     │
 │ 冻结标记 | 下架标记 | 审批结果 | 日志批次         │
 └──────────────────────────────────────────────┘
                     │
 ┌──────────────────────────────────────────────┐
-│     公链展示层 / Solana 公示锚点与凭证层      │
+│    公链展示层 / Solana 公示锚点与凭证层 [V2 Reserved] │
 │ 事件批次哈希 | 公开时间戳 | 供应商认证凭证      │
 │ 不可转让交易凭证 | 数据产品护照 NFT | 展示索引  │
 └──────────────────────────────────────────────┘
                     │
 ┌──────────────────────────────────────────────┐
-│            外部服务 / 预言机 / 生态接口        │
-│ KYC/KYB | CA/电子签章 | 支付/发票 | 评级 |      │
-│ 法务审查 | 时间戳 | TEE 远程证明 | 安全检测      │
-│ KMS/HSM | SIEM/SOC | 消息桥/同步服务           │
+│       外部服务 / 预言机 / 生态接口 [V1 Active + V2 Reserved] │
+│ [V1 Active] KYC/KYB | CA/电子签章 | 支付/发票 | 评级 | 时间戳 │
+│ [V2 Reserved] TEE 远程证明 | 安全检测      │
+│ [V1 Active] KMS/HSM | SIEM/SOC | 消息桥/同步服务           │
 └──────────────────────────────────────────────┘
 ```
 
@@ -796,6 +796,14 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - contract_template_id
 - buyer_party_id / seller_party_id
 - bind_sku_id
+- authority_model
+- proof_commit_policy
+- proof_commit_state
+- external_fact_status
+- reconcile_status
+- idempotency_key
+- request_id / trace_id
+- status_version
 - use_purpose
 - use_scope
 - time_limit
@@ -825,6 +833,78 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - watermark_rule
 - breach_trigger_rule
 - auto_revoke_rule
+
+## 10.12A 授权实例实体（Authorization）
+
+- authorization_id
+- bind_contract_id / bind_sku_id / bind_policy_id
+- subject_type / subject_id
+- authority_model
+- proof_commit_policy
+- proof_commit_state
+- external_fact_status
+- reconcile_status
+- idempotency_key
+- request_id / trace_id
+- status_version
+- grant_status
+- effective_from / effective_to
+- revoke_reason_code
+- last_reconciled_at
+
+## 10.12B 交付实体（Delivery）
+
+- delivery_id
+- order_id / sku_id / contract_id
+- delivery_mode
+- authority_model
+- proof_commit_policy
+- proof_commit_state
+- external_fact_status
+- reconcile_status
+- idempotency_key
+- request_id / trace_id
+- status_version
+- delivery_status
+- delivery_receipt_ref
+- delivered_at
+- last_reconciled_at
+
+## 10.12C 结算实体（Settlement）
+
+- settlement_id
+- order_id / bill_event_id
+- settlement_cycle
+- authority_model
+- proof_commit_policy
+- proof_commit_state
+- external_fact_status
+- reconcile_status
+- idempotency_key
+- request_id / trace_id
+- status_version
+- settlement_status
+- payable_amount / receivable_amount
+- settled_at
+- last_reconciled_at
+
+## 10.12D 争议实体（Dispute）
+
+- dispute_id
+- order_id / contract_id / delivery_id / settlement_id
+- dispute_type
+- authority_model
+- proof_commit_policy
+- proof_commit_state
+- external_fact_status
+- reconcile_status
+- idempotency_key
+- request_id / trace_id
+- status_version
+- dispute_status
+- dispute_reason_code
+- resolution_type
+- resolved_at
 
 ## 10.13 交易订单实体（Order）
 - order_id
@@ -881,6 +961,14 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - bill_event_id
 - order_id
 - sku_id
+- authority_model
+- proof_commit_policy
+- proof_commit_state
+- external_fact_status
+- reconcile_status
+- idempotency_key
+- request_id / trace_id
+- status_version
 - event_type（一次性交付 / 月度订阅 / API 调用 / 沙箱席位 / 逾期赔付 / 退款 / 分账）
 - event_time
 - metered_quantity
@@ -1254,13 +1342,13 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 | 标准 SKU | 商品族 | 默认权利 | 默认交付 | 默认模板族 |
 |---|---|---|---|---|
 | `FILE_STD` | 文件快照 | 使用权 + 有限内部共享权（可选） | 文件令牌下载 / 限次下载 | `CONTRACT_FILE_V1 / LICENSE_FILE_USE_V1 / DELIVERY_FILE_V1 / ACCEPT_FILE_V1 / REFUND_FILE_V1 / BILL_FILE_ONCE_V1` |
-| `FILE_SUB` | 版本订阅 | 使用权 + 有限内部共享权（可选） | 周期版本推送 / 周期交付 | `CONTRACT_FILE_SUB_V1 / LICENSE_FILE_SUB_V1 / DELIVERY_FILE_SUB_V1 / ACCEPT_FILE_SUB_V1 / REFUND_FILE_SUB_V1 / BILL_FILE_SUB_V1` |
+| `FILE_SUB` | 版本订阅 | 使用权 + 有限内部共享权（可选） | 周期版本推送 / 周期交付 | `CONTRACT_FILE_SUB_V1 / LICENSE_FILE_USE_V1 / DELIVERY_FILE_SUB_V1 / ACCEPT_FILE_SUB_V1 / REFUND_FILE_SUB_V1 / BILL_FILE_SUB_V1` |
 | `SHARE_RO` | 只读共享 | 访问权 + 查询权 + 结果获取权 | `share grant / linked dataset / datashare` | `CONTRACT_SHARE_RO_V1 / LICENSE_SHARE_RO_V1 / DELIVERY_SHARE_RO_V1 / ACCEPT_SHARE_RO_V1 / REFUND_SHARE_RO_V1 / BILL_SHARE_RO_V1` |
 | `API_SUB` | API / 服务 | 访问权 + 结果获取权 | `Application + Key / OAuth` | `CONTRACT_API_SUB_V1 / LICENSE_API_SUB_V1 / DELIVERY_API_SUB_V1 / ACCEPT_API_SUB_V1 / REFUND_API_SUB_V1 / BILL_API_SUB_V1` |
 | `API_PPU` | API / 服务 | 访问权 + 结果获取权 | `Application + Key / OAuth` | `CONTRACT_API_PPU_V1 / LICENSE_API_PPU_V1 / DELIVERY_API_PPU_V1 / ACCEPT_API_PPU_V1 / REFUND_API_PPU_V1 / BILL_API_PPU_V1` |
 | `QRY_LITE` | 模板查询 lite | 查询权 + 结果获取权 | `template grant / 白名单模板执行` | `CONTRACT_QUERY_LITE_V1 / LICENSE_QUERY_LITE_V1 / DELIVERY_QUERY_LITE_V1 / ACCEPT_QUERY_LITE_V1 / REFUND_QUERY_LITE_V1 / BILL_QUERY_LITE_V1` |
-| `SBX_STD` | 查询沙箱 | 查询权 + 结果获取权（必要时可附有限内部共享权） | `沙箱账号 / 项目空间 / 受限导出` | `CONTRACT_SANDBOX_V1 / LICENSE_SANDBOX_V1 / DELIVERY_SANDBOX_V1 / ACCEPT_SANDBOX_V1 / REFUND_SANDBOX_V1 / BILL_SANDBOX_V1` |
-| `RPT_STD` | 固定报告 / 结果产品 | 结果获取权 + 使用权 + 有限内部共享权（可选） | `报告交付 / 结果包下载` | `CONTRACT_REPORT_V1 / LICENSE_REPORT_V1 / DELIVERY_REPORT_V1 / ACCEPT_REPORT_V1 / REFUND_REPORT_V1 / BILL_REPORT_V1` |
+| `SBX_STD` | 查询沙箱 | 查询权 + 结果获取权（必要时可附有限内部共享权） | `沙箱账号 / 项目空间 / 受限导出` | `CONTRACT_SANDBOX_V1 / LICENSE_SANDBOX_USE_V1 / DELIVERY_SANDBOX_V1 / ACCEPT_SANDBOX_V1 / REFUND_SANDBOX_V1 / BILL_SANDBOX_V1` |
+| `RPT_STD` | 固定报告 / 结果产品 | 结果获取权 + 使用权 + 有限内部共享权（可选） | `报告交付 / 结果包下载` | `CONTRACT_REPORT_V1 / LICENSE_RESULT_USE_V1 / DELIVERY_REPORT_V1 / ACCEPT_REPORT_V1 / REFUND_REPORT_V1 / BILL_REPORT_V1` |
 
 ### 11.4.2 设计约束
 
@@ -1534,6 +1622,29 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - 运营与生态：用户与角色管理、供需运营、评价与信用体系、案例中心、平台公告与规则中心
 - 开发者平台与集成：API 门户与开发者中心、SDK / OpenAPI / 示例代码、测试沙箱 / Mock 数据、应用凭证与密钥管理、调用分析与配额管理、Webhook / 事件订阅、数据连接器接入规范、外部 SIEM / BI / ERP / CRM 对接接口
 
+### 14.10.1 V1-Core（首笔标准交易闭环必需）
+
+- 主体与账户：租户、企业主体、部门、用户、应用、连接器、执行环境、KYC/KYB、黑白灰名单、RBAC、基础 OIDC、MFA、会话治理
+- 商品与交易：目录中心、上架中心、八个标准 SKU、询报价、合同、授权、订单、支付锁定、交付、验收、结算、争议
+- 交付与控制：文件交付、API 网关、模板查询 lite、查询沙箱、只读共享开通、基础断权
+- 审计与一致性：联盟链存证、证据包导出、审计日志、双层权威一致性、基础对账、回放
+- 支付与财务：支付意图、基础退款、人工打款、账单中心、发票申请、Mock PaymentProvider
+
+### 14.10.2 V1-Extended（首批客户需要，可在首个商用客户前补齐）
+
+- 搜索与推荐增强
+- 企业 OIDC SSO 深化、设备信任治理
+- 开发者平台、SDK、Webhook、外部 SIEM / BI / ERP / CRM 对接
+- 监管视图、重点交易监控、风险事件上报
+- 半自动分账、周期账单增强、发票流转增强
+
+### 14.10.3 V1-Reserved（仍属 V1 架构范围，但默认后置实施）
+
+- Solana 演示锚定、公开验证页、凭证展示页
+- 合作伙伴控制台、第三方应用审批与上架
+- 复杂共享连接器增强、卖方自持共享增强
+- 二维码授权、SCIM、SAML 2.0 深度联邦
+
 ## 15. 核心交易链路设计（完整闭环）
 
 ## 15.1 统一主链路（适用于全部产品）
@@ -1630,15 +1741,39 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 - **退款/赔付触发点**：上线失败、连续 SLA 违约、账单误计费。
 - **账单事件源**：订阅周期、调用量、超额调用、峰值并发。
 
-### 15.3.4 查询沙箱 / 报告产品状态机（V1）
-- **交付完成条件**：账号/席位开通、指定模板可执行、样例查询通过。
-- **自动验收条件**：首次登录且指定查询成功；或 5 个工作日未异议。
-- **拒收条件**：账号未开通、模板不可用、导出规则与合同不符、结果明显异常。
-- **失败重试**：补开席位、重置权限、修复模板。
-- **退款/赔付触发点**：席位无法使用、模板长期不可用、报告未按约交付。
-- **账单事件源**：席位天数、查询次数、报告份数、加购模块。
+### 15.3.4 只读共享状态机（SHARE_RO）
+- **交付完成条件**：共享对象开通、读权限可验证、样例查询返回结果。
+- **自动验收条件**：买方完成首个只读查询；或 5 个工作日未异议。
+- **拒收条件**：共享未开通、对象不可见、授权范围与合同不符、样例查询失败。
+- **失败重试**：重下发共享授权、重建共享对象、修复只读策略。
+- **退款/赔付触发点**：共享长期不可用、授权范围错误、SLA 连续违约。
+- **账单事件源**：共享席位周期、共享对象数量、共享可用天数。
 
-### 15.3.5 C2D / 受控计算产品状态机（V2 预留）
+### 15.3.5 模板查询 lite 状态机（QRY_LITE）
+- **交付完成条件**：模板授权开通、白名单模板可执行、结果边界校验通过。
+- **自动验收条件**：买方首次执行模板成功；或 5 个工作日未异议。
+- **拒收条件**：模板未开通、模板执行失败、输出边界与合同不符、结果异常。
+- **失败重试**：补开模板授权、修复模板参数、重放模板执行。
+- **退款/赔付触发点**：模板长期不可用、模板授权错误、结果持续不符合约定。
+- **账单事件源**：模板执行次数、结果集导出次数、超额执行次数。
+
+### 15.3.6 查询沙箱状态机（SBX_STD）
+- **交付完成条件**：账号/席位开通、项目空间创建、样例查询通过。
+- **自动验收条件**：首次登录且样例查询成功；或 5 个工作日未异议。
+- **拒收条件**：账号未开通、席位不可用、导出规则与合同不符、沙箱环境异常。
+- **失败重试**：补开席位、重置权限、修复环境、替换项目空间。
+- **退款/赔付触发点**：席位无法使用、环境长期不可用、导出能力错误配置。
+- **账单事件源**：席位天数、席位数、项目空间天数、导出次数。
+
+### 15.3.7 固定报告 / 结果产品状态机（RPT_STD）
+- **交付完成条件**：报告或结果包生成完成、交付回执生成、下载或签收路径可验证。
+- **自动验收条件**：买方下载或签收结果包；或 5 个工作日未异议。
+- **拒收条件**：报告未交付、结果结构与合同不符、关键指标缺失、交付件损坏。
+- **失败重试**：重生成报告、补发结果包、重签交付回执。
+- **退款/赔付触发点**：未按期交付、内容明显不符、交付件反复损坏。
+- **账单事件源**：报告份数、结果包数量、加急交付次数。
+
+### 15.3.8 C2D / 受控计算产品状态机（V2 预留）
 - **交付完成条件**：任务创建、算法审核通过、任务在指定环境完成。
 - **自动验收条件**：结果包生成并满足输出模板；证明材料齐全。
 - **拒收条件**：任务失败、输出越界、算法被拒、证明缺失。
@@ -1653,8 +1788,11 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 
 ### 15.4.2 V1 支持的计费口径
 - 文件产品：文件包数、版本数、分批交付次数
+- 只读共享：共享周期、共享对象数量、共享可用天数
 - API 产品：订阅周期、调用次数、超额调用量、峰值并发档位
-- 沙箱产品：席位数、席位天数、查询次数、导出次数、报告份数
+- 模板查询 lite：模板执行次数、结果导出次数、超额执行量
+- 查询沙箱：席位数、席位天数、项目空间天数、导出次数
+- 固定报告/结果产品：报告份数、结果包数量、加急交付次数
 
 ### 15.4.3 分账顺序
 买方付款 -> 平台托管 -> 验收成功或自动验收 -> 平台服务费扣除 -> 供方分账 -> 税务/发票状态更新 -> 账单归档
@@ -2634,7 +2772,7 @@ V3 必须彻底完成前两阶段未完全收口的跨平台能力：
 把输入字段、命中规则、审批层级、阻断点、证据材料、输出动作冻结下来。
 
 ### 27.5 《订单-验收-结算状态机》
-按文件/API/沙箱/C2D 分别定义状态流转、失败分支、补救分支、账单事件源。
+按 `FILE_STD / FILE_SUB`、`SHARE_RO`、`API_SUB / API_PPU`、`QRY_LITE`、`SBX_STD`、`RPT_STD`、`C2D(V2)` 分别定义状态流转、失败分支、补救分支和账单事件源；若使用共享状态机，必须另附 SKU 差异点矩阵。
 
 ### 27.6 《主体与权限对象模型》
 冻结 Tenant、Party、Department、User、Application、Connector、Execution Environment 之间的关系。
@@ -4183,6 +4321,8 @@ V1 若实现开发者通道，页面最小集合建议如下：
 ### 40.3 V1 支持的支付方式
 
 - 起步司法辖区：新加坡
+- `V1` 首发商业闭环按“先做新加坡落地，再保留中国规则兼容能力”执行。
+- 中国数据要素、公共数据、B2B / B2G / G2B 等规则语境继续作为字段设计、权限边界、审计口径和后续扩展兼容输入，但不构成 `V1` 首发商用支付、税票和收款流程的优先基线。
 - 商品建议统一以 `USD` 计价；买方付款币种、卖方收款币种和真实支付通道受起步走廊策略约束。
 - `V1` 的真实生产路由以新加坡主体和新加坡合作伙伴体系为起点，其他地区须等对应走廊显式开启后进入生产。
 
@@ -5159,7 +5299,19 @@ V1 的唯一真值应当是：
 - `trace_id`
 - `status_version`
 
-任何服务若另起一套同义字段，视为违反建模规范。
+落地要求如下：
+
+| 对象 | 落地方式 | 最低要求 |
+|---|---|---|
+| `Order` | 实体同名字段 | 作为流程主对象，必须完整落库并作为状态映射基准 |
+| `Digital Contract` | 实体同名字段 | 合同签署、授权放行、链上摘要和回放必须直接引用同名字段 |
+| `Authorization` | 实体同名字段 | 授权实例不得只由 `Usage Policy` 规则推导，必须形成可审计授权对象 |
+| `Delivery` | 实体同名字段 | 交付回执、开通状态、回放和赔付必须直接关联交付对象状态族 |
+| `Settlement` | 实体同名字段 | 结算状态、分账、打款与对账必须直接关联结算对象状态族 |
+| `Dispute` | 实体同名字段 | 争议阻断、复议、处理结果和恢复动作必须落在争议对象状态族 |
+| `Billing Event` | 实体同名字段 | 账单事件允许按事件源建模，但涉及补记、冲正、赔付、退款时仍必须具备完整状态族 |
+
+任何服务若另起一套同义字段，视为违反建模规范。若采用事件表或视图映射实现，字段名也必须与本表保持一致，不得再发明第二套语义相同但命名不同的状态字段。
 
 #### 49.1.4 字段字典单一事实源
 
