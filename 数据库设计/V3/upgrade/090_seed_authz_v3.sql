@@ -1,15 +1,4 @@
-INSERT INTO authz.role_definition (role_key, role_name, role_scope, stage_from, description) VALUES
-('crosschain_admin', '跨链管理员', 'platform', 'V3', '跨链请求治理'),
-('witness_admin', '见证人/预言机管理员', 'platform', 'V3', '见证配置与签名治理'),
-('mutual_recognition_admin', '数据空间互认管理员', 'platform', 'V3', '互认关系维护'),
-('graph_risk_operator', '图风控运营角色', 'platform', 'V3', '图风控分析与处置'),
-('regulatory_collab_admin', '监管协同管理员', 'platform', 'V3', '监管协同与冻结联动'),
-('ecosystem_admin', '生态合作管理员', 'platform', 'V3', '生态合作与伙伴能力开放'),
-('connector_admin', '连接器管理员', 'platform', 'V3', '连接器接入管理'),
-('cross_platform_trust_admin', '跨平台信任管理员', 'platform', 'V3', '跨平台托管与信任边界治理'),
-('digital_asset_settlement_admin', '数字资产结算管理员', 'platform', 'V3', '多币种、跨境与数字资产结算治理'),
-('regulator_operator', '监管协同操作员', 'regulator', 'V3', '监管查询与协同操作')
-ON CONFLICT (role_key) DO NOTHING;
+-- V3 不新增一级核心角色，新增职责通过 V1 已冻结的核心角色挂载权限包承接。
 
 INSERT INTO authz.permission_definition (permission_code, domain_name, resource_name, action_name, stage_from, risk_level) VALUES
 ('crosschain.request.create','crosschain','request','create','V3','high'),

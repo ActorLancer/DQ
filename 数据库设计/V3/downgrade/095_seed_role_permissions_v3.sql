@@ -1,6 +1,6 @@
 DELETE FROM authz.role_permission
 WHERE role_key IN (
-  'crosschain_admin','witness_admin','graph_risk_operator',
-  'regulatory_collab_admin','mutual_recognition_admin',
-  'connector_admin','ecosystem_admin','cross_platform_trust_admin','digital_asset_settlement_admin','regulator_operator'
+  'platform_admin','platform_reviewer','platform_risk_settlement','platform_audit_security',
+  'tenant_admin','seller_operator','buyer_operator','tenant_developer','tenant_audit_readonly',
+  'tenant_app_identity','platform_service_identity','regulator_readonly'
 );

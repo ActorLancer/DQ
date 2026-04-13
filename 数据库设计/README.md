@@ -2,16 +2,15 @@
 
 ## 1. 目标
 
-本目录基于当前工作区全部核心文档生成，覆盖：
+本目录基于当前全集成文档和数据库实现稿生成，阅读入口统一如下：
 
-- [正式PRD](/home/luna/Documents/DataB/正式PRD)
-- [业务流程](/home/luna/Documents/DataB/业务流程)
-- [领域模型](/home/luna/Documents/DataB/领域模型)
-- [页面说明书](/home/luna/Documents/DataB/页面说明书)
-- [权限设计](/home/luna/Documents/DataB/权限设计)
-- [用户角色说明](/home/luna/Documents/DataB/用户角色说明)
-- [data_trading_blockchain_system_design_split](/home/luna/Documents/DataB/data_trading_blockchain_system_design_split)
-- [原始PRD](/home/luna/Documents/DataB/原始PRD)
+- [数据交易平台-全集成基线-全阶段.md](../全集成文档/数据交易平台-全集成基线-全阶段.md)
+- [数据交易平台-全集成基线-V1.md](../全集成文档/数据交易平台-全集成基线-V1.md)
+- [数据交易平台-全集成基线-V2.md](../全集成文档/数据交易平台-全集成基线-V2.md)
+- [数据交易平台-全集成基线-V3.md](../全集成文档/数据交易平台-全集成基线-V3.md)
+- [数据库设计总说明.md](./数据库设计总说明.md)
+- [数据库表字典正式版.md](./数据库表字典正式版.md)
+- [表关系总图-ER文本图.md](./表关系总图-ER文本图.md)
 
 目标输出：
 

@@ -4,15 +4,11 @@
 
 本文件基于以下输入统一整理：
 
-- [正式PRD](/home/luna/Documents/DataB/正式PRD)
-- [业务流程](/home/luna/Documents/DataB/业务流程)
-- [页面说明书](/home/luna/Documents/DataB/页面说明书)
-- [领域模型](/home/luna/Documents/DataB/领域模型)
-- [用户角色说明](/home/luna/Documents/DataB/用户角色说明)
-- [权限设计](/home/luna/Documents/DataB/权限设计)
-- [数据库设计](/home/luna/Documents/DataB/数据库设计)
-- [data_trading_blockchain_system_design_split](/home/luna/Documents/DataB/data_trading_blockchain_system_design_split)
-- [原始PRD](/home/luna/Documents/DataB/原始PRD)
+- [数据交易平台-全集成基线-全阶段.md](../全集成文档/数据交易平台-全集成基线-全阶段.md)
+- [数据交易平台-全集成基线-V1.md](../全集成文档/数据交易平台-全集成基线-V1.md)
+- [数据交易平台-全集成基线-V2.md](../全集成文档/数据交易平台-全集成基线-V2.md)
+- [数据交易平台-全集成基线-V3.md](../全集成文档/数据交易平台-全集成基线-V3.md)
+- [数据库表字典正式版.md](./数据库表字典正式版.md)
 
 目标是给研发和 AI 提供一份可快速阅读的全量对象关系文本图。这里不是替代 SQL，而是把全局主干、版本增量和跨域关联集中描述出来。
 
@@ -170,13 +166,18 @@ Inquiry
        ├─ OrderLine
        ├─ DigitalContract
        │   └─ DataContract
-       ├─ AuthorizationGrant
-       ├─ DeliveryRecord
+       ├─ Authorization
+       ├─ Delivery
        ├─ BillingEvent
-       ├─ SettlementRecord
-       ├─ DisputeCase
+       ├─ Settlement
+       ├─ Dispute
        └─ ChainAnchor
 ```
+
+说明：
+
+- 本文本图使用冻结后的领域主对象名：`Authorization / Delivery / Settlement / Dispute`。
+- 若底层物理表仍保留 `authorization_grant / delivery_record / settlement_record / dispute_case` 等实现层命名，不改变这里的领域口径。
 
 ## 4. V2 增量 ER 图
 
@@ -696,7 +697,7 @@ common.tg_write_outbox
 - 哪些关系跨版本扩展
 - 哪些对象虽然 V1 暂不完整启用但必须预留
 
-统一描述清楚。实际落地时，以 [数据库设计](/home/luna/Documents/DataB/数据库设计) 下的 SQL 迁移脚本为最终执行基线。
+统一描述清楚。实际落地时，以本目录下的 SQL 迁移脚本为最终执行基线。
 
 ## 10. 身份认证、注册登录与会话管理关系补充
 
