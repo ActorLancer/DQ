@@ -688,3 +688,39 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已按用户新增要求完成“静态+实跑”执行验证；本批次完成后暂停等待审批。
+
+### BATCH-019
+
+- 状态：计划中
+- 当前任务编号：ENV-018, ENV-019, ENV-020, ENV-021
+- 当前批次目标：完成 Keycloak realm import 机制与平台本地 realm 占位文件，完善 Mock Payment Provider 容器与可触发的成功/失败/超时/退款/人工打款场景，并补齐 runbook。
+- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/keycloak/**`、`infra/docker/docker-compose.local.yml`、`infra/mock-payment/**`、`docs/04-runbooks/mock-payment.md`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. 交付路径存在性检查；2. compose 语法检查；3. 新增脚本/映射静态检查；4. 容器实跑检查（realm 可访问、mock-payment 场景可触发）。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`领域模型/全量领域模型与对象关系说明.md`
+- 覆盖的任务清单条目：`ENV-018`, `ENV-019`, `ENV-020`, `ENV-021`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次按“静态+实跑”校验并在当前分支做本地 commit。
+
+### BATCH-019
+
+- 状态：待审批
+- 当前任务编号：ENV-018, ENV-019, ENV-020, ENV-021
+- 当前批次目标：完成 Keycloak realm import 机制与平台本地 realm 占位文件，完善 Mock Payment Provider 容器与可触发的成功/失败/超时/退款/人工打款场景，并补齐 runbook。
+- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/keycloak/**`、`infra/docker/docker-compose.local.yml`、`infra/mock-payment/**`、`docs/04-runbooks/mock-payment.md`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：完成 Keycloak realm import 配置（`start-dev --import-realm` + import 目录挂载），新增 `infra/keycloak/realm-export/platform-local-realm.json`（realm、角色、测试用户、客户端、MFA 占位）；完成 Mock Payment Provider 容器启动参数与 mappings 挂载，新增支付成功/失败/超时、退款成功、人工打款成功、就绪检查映射；新增 `docs/04-runbooks/mock-payment.md`、`docs/04-runbooks/keycloak-local.md`；新增验证脚本 `scripts/check-keycloak-realm.sh`、`scripts/check-mock-payment.sh`；新增 fixtures 清单 `keycloak-realm-manifest.json`、`mock-payment-scenarios.json`。
+- 涉及文件：`infra/docker/docker-compose.local.yml`、`infra/keycloak/realm-export/platform-local-realm.json`、`infra/mock-payment/mappings/health-ready.json`、`infra/mock-payment/mappings/payment-success.json`、`infra/mock-payment/mappings/payment-fail.json`、`infra/mock-payment/mappings/payment-timeout.json`、`infra/mock-payment/mappings/refund-success.json`、`infra/mock-payment/mappings/manual-transfer-success.json`、`infra/mock-payment/__files/.gitkeep`、`docs/04-runbooks/mock-payment.md`、`docs/04-runbooks/keycloak-local.md`、`docs/04-runbooks/local-startup.md`、`scripts/check-keycloak-realm.sh`、`scripts/check-mock-payment.sh`、`fixtures/local/keycloak-realm-manifest.json`、`fixtures/local/mock-payment-scenarios.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `bash -n scripts/check-keycloak-realm.sh scripts/check-mock-payment.sh`；2. `jq -e .` 校验 realm/mappings/fixtures JSON；3. `docker compose ... config`；4. `docker compose ... up -d keycloak mock-payment-provider`；5. 实跑 `./scripts/check-keycloak-realm.sh`；6. 实跑 `./scripts/check-mock-payment.sh`（含 timeout 场景）；7. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：通过。Keycloak realm 导入验证通过；Mock Payment 五类场景验证通过（成功/失败/超时/退款/人工打款）；core 健康检查通过。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`领域模型/全量领域模型与对象关系说明.md`、`原始PRD/链上链下技术架构与能力边界稿.md`
+- 覆盖的任务清单条目：`ENV-018`, `ENV-019`, `ENV-020`, `ENV-021`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：已按要求完成“静态+实跑”验证；等待人工审批后进入下一批。

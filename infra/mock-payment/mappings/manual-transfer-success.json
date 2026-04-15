@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mock/payment/manual-transfer/success"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "status": "MANUAL_TRANSFER_SUCCESS",
+      "provider_transfer_id": "mock-mtf-{{randomValue type='UUID'}}",
+      "message": "Manual transfer marked as success"
+    }
+  }
+}

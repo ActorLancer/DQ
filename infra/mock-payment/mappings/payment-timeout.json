@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mock/payment/charge/timeout"
+  },
+  "response": {
+    "status": 504,
+    "fixedDelayMilliseconds": 15000,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "status": "TIMEOUT",
+      "error_code": "UPSTREAM_TIMEOUT",
+      "message": "Payment timeout simulated by mock provider"
+    }
+  }
+}

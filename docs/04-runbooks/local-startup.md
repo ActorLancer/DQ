@@ -7,4 +7,6 @@
 5. 初始化 Kafka topics：`./infra/kafka/init-topics.sh`
 6. 初始化 MinIO：`./infra/minio/init-minio.sh`
 7. 初始化 OpenSearch：`./infra/opensearch/init-opensearch.sh`
-8. 健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+8. 验证 Keycloak realm：`./scripts/check-keycloak-realm.sh`
+9. 验证 Mock Payment 场景：`./scripts/check-mock-payment.sh`
+10. 健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`

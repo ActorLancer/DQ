@@ -1,0 +1,11 @@
+{
+  "baseUrl": "http://127.0.0.1:8089",
+  "health": "/health/ready",
+  "scenarios": [
+    "/mock/payment/charge/success",
+    "/mock/payment/charge/fail",
+    "/mock/payment/charge/timeout",
+    "/mock/payment/refund/success",
+    "/mock/payment/manual-transfer/success"
+  ]
+}

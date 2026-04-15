@@ -143,7 +143,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: start-dev
+    command: start-dev --import-realm
     environment:
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
@@ -154,6 +154,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123456}
     ports:
       - "${KEYCLOAK_PORT:-8081}:8080"
+    volumes:
+      - ../keycloak/realm-export:/opt/keycloak/data/import:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
       interval: 15s
@@ -216,8 +218,16 @@ services:
     profiles: ["mocks"]
     image: wiremock/wiremock:3.13.1
     container_name: datab-mock-payment-provider
+    command:
+      - --verbose
+      - --global-response-templating
+    environment:
+      WIREMOCK_OPTIONS: --verbose --global-response-templating
     ports:
       - "${MOCK_PAYMENT_PORT:-8089}:8080"
+    volumes:
+      - ../mock-payment/mappings:/home/wiremock/mappings:ro
+      - ../mock-payment/__files:/home/wiremock/__files:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/__admin >/dev/null"]
       interval: 15s

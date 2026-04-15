@@ -1,0 +1,7 @@
+{
+  "realm": "platform-local",
+  "clients": ["platform-core", "portal-web"],
+  "roles": ["platform-admin", "seller", "buyer", "reviewer"],
+  "users": ["local-admin", "local-seller", "local-buyer", "local-reviewer"],
+  "requiredActions": ["CONFIGURE_TOTP"]
+}

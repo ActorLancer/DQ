@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mock/payment/refund/success"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "status": "REFUND_SUCCESS",
+      "provider_refund_id": "mock-rfd-{{randomValue type='UUID'}}",
+      "message": "Refund success"
+    }
+  }
+}

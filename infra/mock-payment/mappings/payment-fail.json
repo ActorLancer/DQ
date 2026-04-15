@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mock/payment/charge/fail"
+  },
+  "response": {
+    "status": 402,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "status": "FAILED",
+      "error_code": "PAYMENT_DECLINED",
+      "message": "Payment failed by mock provider"
+    }
+  }
+}

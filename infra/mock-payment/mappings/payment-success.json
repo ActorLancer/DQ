@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/mock/payment/charge/success"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "status": "SUCCESS",
+      "provider_txn_id": "mock-chg-{{randomValue type='UUID'}}",
+      "message": "Payment success"
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "realm": "platform-local",
+  "enabled": true,
+  "displayName": "DataB Platform Local Realm",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "platform-admin", "description": "Platform administrator role" },
+      { "name": "seller", "description": "Seller role for data provider" },
+      { "name": "buyer", "description": "Buyer role for data consumer" },
+      { "name": "reviewer", "description": "Catalog/compliance reviewer role" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "platform-core",
+      "name": "platform-core-service",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "platform-core-local-secret",
+      "redirectUris": [],
+      "defaultClientScopes": ["profile", "email", "roles"]
+    },
+    {
+      "clientId": "portal-web",
+      "name": "portal-web-client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:3001/*",
+        "http://127.0.0.1:3001/*"
+      ],
+      "webOrigins": ["*"],
+      "defaultClientScopes": ["profile", "email", "roles"]
+    }
+  ],
+  "users": [
+    {
+      "username": "local-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Admin",
+      "email": "local-admin@datab.local",
+      "credentials": [{ "type": "password", "value": "LocalAdmin123!", "temporary": false }],
+      "realmRoles": ["platform-admin"]
+    },
+    {
+      "username": "local-seller",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Seller",
+      "email": "local-seller@datab.local",
+      "credentials": [{ "type": "password", "value": "LocalSeller123!", "temporary": false }],
+      "realmRoles": ["seller"]
+    },
+    {
+      "username": "local-buyer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Buyer",
+      "email": "local-buyer@datab.local",
+      "credentials": [{ "type": "password", "value": "LocalBuyer123!", "temporary": false }],
+      "realmRoles": ["buyer"]
+    },
+    {
+      "username": "local-reviewer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Reviewer",
+      "email": "local-reviewer@datab.local",
+      "credentials": [{ "type": "password", "value": "LocalReviewer123!", "temporary": false }],
+      "realmRoles": ["reviewer"]
+    }
+  ],
+  "requiredActions": [
+    {
+      "alias": "CONFIGURE_TOTP",
+      "name": "Configure OTP",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 10
+    }
+  ]
+}
