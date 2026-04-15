@@ -15,6 +15,7 @@ db = { path = "crates/db" }
 http = { path = "crates/http" }
 kernel = { path = "crates/kernel" }
 outbox-kit = { path = "crates/outbox-kit" }
+provider-kit = { path = "crates/provider-kit" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

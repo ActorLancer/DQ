@@ -89,3 +89,4 @@
 - `BATCH-036`（`ENV-043`）：新增 `V1-gap` 阻塞项 `TODO-ENV-043-001`（`CORE-032` 前置未完成）。
 - `BATCH-037`（`CORE-001`, `CORE-002`, `CORE-003`, `CORE-004`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-038`（`CORE-005`, `CORE-006`, `CORE-007`, `CORE-008`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-039`（`CORE-009`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。

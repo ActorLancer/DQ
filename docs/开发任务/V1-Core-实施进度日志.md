@@ -619,24 +619,6 @@
 
 ### BATCH-017
 
-- 状态：计划中
-- 当前任务编号：ENV-010, ENV-011, ENV-012, ENV-013
-- 当前批次目标：完善 Kafka topic 初始化能力与本地默认策略文档，补齐 Redis 基础配置并冻结 key 命名模式，确保本地缓存/消息中间件口径可复用。
-- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/kafka/init-topics.sh`、`docs/04-runbooks/kafka-topics.md`、`infra/redis/redis.conf`、`docs/04-runbooks/redis-keys.md`、`infra/docker/.env.local`、`infra/docker/docker-compose.local.yml`、`docs/04-runbooks/local-startup.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 交付路径存在性检查；2. compose 语法检查；3. 脚本语法检查；4. 文档关键字段覆盖检查（consumer group、DLQ、retention、cleanup policy、redis key 模式）。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`
-- 覆盖的任务清单条目：`ENV-010`, `ENV-011`, `ENV-012`, `ENV-013`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次仅推进 `ENV-010~013`。
-
-### BATCH-017
-
 - 状态：待审批
 - 当前任务编号：ENV-010, ENV-011, ENV-012, ENV-013
 - 当前批次目标：完善 Kafka topic 初始化能力与本地默认策略文档，补齐 Redis 基础配置并冻结 key 命名模式，确保本地缓存/消息中间件口径可复用。
@@ -652,24 +634,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：本批次已完成并暂停，等待人工审批后进入下一批。
-
-### BATCH-018
-
-- 状态：计划中
-- 当前任务编号：ENV-014, ENV-015, ENV-016, ENV-017
-- 当前批次目标：完成 MinIO bucket 与初始化脚本收口，完成 OpenSearch 模板/索引/别名初始化脚本，确保对象存储与搜索索引可一键初始化并可验证。
-- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/minio/*`、`infra/opensearch/*`、`scripts/*`、`docs/04-runbooks/*`、`fixtures/local/*`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 交付路径文件存在性检查；2. 脚本语法检查；3. 脚本实跑（MinIO/OpenSearch 初始化）；4. 初始化结果查询校验（bucket/index/alias）。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`
-- 覆盖的任务清单条目：`ENV-014`, `ENV-015`, `ENV-016`, `ENV-017`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次按“静态+实跑”双重校验执行。
 
 ### BATCH-018
 
@@ -691,24 +655,6 @@
 
 ### BATCH-019
 
-- 状态：计划中
-- 当前任务编号：ENV-018, ENV-019, ENV-020, ENV-021
-- 当前批次目标：完成 Keycloak realm import 机制与平台本地 realm 占位文件，完善 Mock Payment Provider 容器与可触发的成功/失败/超时/退款/人工打款场景，并补齐 runbook。
-- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/keycloak/**`、`infra/docker/docker-compose.local.yml`、`infra/mock-payment/**`、`docs/04-runbooks/mock-payment.md`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 交付路径存在性检查；2. compose 语法检查；3. 新增脚本/映射静态检查；4. 容器实跑检查（realm 可访问、mock-payment 场景可触发）。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`领域模型/全量领域模型与对象关系说明.md`
-- 覆盖的任务清单条目：`ENV-018`, `ENV-019`, `ENV-020`, `ENV-021`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次按“静态+实跑”校验并在当前分支做本地 commit。
-
-### BATCH-019
-
 - 状态：待审批
 - 当前任务编号：ENV-018, ENV-019, ENV-020, ENV-021
 - 当前批次目标：完成 Keycloak realm import 机制与平台本地 realm 占位文件，完善 Mock Payment Provider 容器与可触发的成功/失败/超时/退款/人工打款场景，并补齐 runbook。
@@ -724,24 +670,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已按要求完成“静态+实跑”验证；等待人工审批后进入下一批。
-
-### BATCH-020
-
-- 状态：计划中
-- 当前任务编号：ENV-022, ENV-023, ENV-024, ENV-025
-- 当前批次目标：接入 Fabric 本地测试网络与脚本包装，补充最小链码部署占位流程，并完成 OpenTelemetry Collector 统一采集转发配置与验证脚本。
-- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/fabric/**`、`Makefile`、`infra/docker/docker-compose.local.yml`、`infra/otel/otel-collector-config.yaml`、`scripts/check-fabric-local.sh`、`scripts/check-otel-collector.sh`、`docs/04-runbooks/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：已完成代码草稿，当前补记计划后执行静态+实跑验证并按结果收口。
-- 涉及文件：待验证后补充。
-- 验证步骤：1. `docker compose ... config`；2. shell 脚本语法与可执行权限检查；3. Fabric 启停/通道/链码占位实跑；4. OTel Collector 启动与健康/指标端点校验；5. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`ENV-022`, `ENV-023`, `ENV-024`, `ENV-025`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本条为先前中断后的计划补记；后续以验证结果为准。
 
 ### BATCH-020
 
@@ -763,24 +691,6 @@
 
 ### BATCH-021
 
-- 状态：计划中
-- 当前任务编号：ENV-026, ENV-027, ENV-028, ENV-029
-- 当前批次目标：补齐本地观测栈闭环，完成 Prometheus 抓取目标、Alertmanager 最小告警规则、Grafana 数据源与初始 dashboard，以及 Loki/Tempo 存储与保留策略配置。
-- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/docker/monitoring/**`、`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/grafana/**`、`scripts/**`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. Prometheus/Alertmanager/Grafana/Loki/Tempo 配置语法检查；2. `docker compose ... config`；3. 观测栈容器启动与健康检查；4. Prometheus targets/alerts、Grafana datasource/dashboard、Loki/Tempo 持久化目录核验；5. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`ENV-026`, `ENV-027`, `ENV-028`, `ENV-029`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次继续执行“静态+实跑”双重校验并按要求提交本地 commit。
-
-### BATCH-021
-
 - 状态：待审批
 - 当前任务编号：ENV-026, ENV-027, ENV-028, ENV-029
 - 当前批次目标：补齐本地观测栈闭环，完成 Prometheus 抓取目标、Alertmanager 最小告警规则、Grafana 数据源与初始 dashboard，以及 Loki/Tempo 存储与保留策略配置。
@@ -796,24 +706,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：为避免容器冷启动瞬时 `503/302` 误判，`scripts/verify-local-stack.sh` 已补充 HTTP 重试与 mock admin 路径修正；本批次仍遵循“静态+实跑”双重验证。
-
-### BATCH-022
-
-- 状态：计划中
-- 当前任务编号：ENV-030
-- 当前批次目标：在本地 compose 中实现 `core`、`observability`、`fabric`、`demo` 四类 profile 机制，支持最小核心栈先启动并可按需叠加观测与链环境。
-- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`scripts/up-local.sh`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. compose 配置静态校验；2. `make up-local`（默认 core）并执行 `scripts/check-local-stack.sh core`；3. `fabric` profile 启动验证；4. profile 说明 runbook 校验。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`ENV-030`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次按复杂任务单批执行，完成后提交本地 commit。
 
 ### BATCH-022
 
@@ -835,24 +727,6 @@
 
 ### BATCH-023
 
-- 状态：计划中
-- 当前任务编号：ENV-031
-- 当前批次目标：为基础服务补充 `curl`/`nc`/`mc`/`kcat`/`psql` 级别启动后自检，收敛到 `scripts/check-local-stack.sh` 统一入口。
-- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`scripts/verify-local-stack.sh`、`scripts/check-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. shell 语法检查；2. `make up-local` 后执行 `scripts/check-local-stack.sh core/full`；3. 命令级自检项输出核验（psql/redis-cli/kcat or kafka-topics/mc/curl/nc）。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`
-- 覆盖的任务清单条目：`ENV-031`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次按复杂任务单批执行，完成后提交本地 commit。
-
-### BATCH-023
-
 - 状态：待审批
 - 当前任务编号：ENV-031
 - 当前批次目标：为基础服务补充 `curl`/`nc`/`mc`/`kcat`/`psql` 级别启动后自检，收敛到 `scripts/check-local-stack.sh` 统一入口。
@@ -871,24 +745,6 @@
 
 ### BATCH-024
 
-- 状态：计划中
-- 当前任务编号：ENV-032
-- 当前批次目标：建立 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo` 组合命令，支持 local/staging/demo 三套模式切换基础。
-- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`Makefile`、`docs/04-runbooks/compose-profiles.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. `make` 命令入口静态检查；2. 依次执行 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo`；3. 执行 `scripts/check-local-stack.sh core/full` 验证。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`ENV-032`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次按复杂任务单批执行，完成后提交本地 commit。
-
-### BATCH-024
-
 - 状态：待审批
 - 当前任务编号：ENV-032
 - 当前批次目标：建立 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo` 组合命令，支持 local/staging/demo 三套模式切换基础。
@@ -904,24 +760,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：`up-local` 仍保持兼容入口，默认等价于 `up-core`。
-
-### BATCH-025
-
-- 状态：计划中
-- 当前任务编号：ENV-033
-- 当前批次目标：在 `docs/04-runbooks/local-startup.md` 明确本地启动顺序：基础设施 -> schema/migration -> seed -> 应用 -> 回执模拟。
-- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`docs/04-runbooks/local-startup.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. runbook 结构和术语一致性检查；2. `make up-local`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`ENV-033`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次为文档收口任务，命令保持与仓库现有入口一致。
 
 ### BATCH-025
 
@@ -1159,24 +997,6 @@
 
 ### BATCH-038
 
-- 状态：计划中
-- 当前任务编号：CORE-005, CORE-006, CORE-007, CORE-008
-- 当前批次目标：继续补齐 `platform-core` 内部共享 crate：`db`、`auth`、`audit-kit`、`outbox-kit`，并落地最小可编译能力边界（事务模板、会话与权限门面、审计写入接口、outbox 事件写入接口）。
-- 前置依赖核对结果：4 个任务均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述任务已完成且你已确认审批通过。
-- 预计涉及文件：`Cargo.toml`、`apps/platform-core/Cargo.toml`、`apps/platform-core/crates/db/**`、`apps/platform-core/crates/auth/**`、`apps/platform-core/crates/audit-kit/**`、`apps/platform-core/crates/outbox-kit/**`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. `cargo build`；2. `cargo test`。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`开发准备/技术选型正式版.md`
-- 覆盖的任务清单条目：`CORE-005`, `CORE-006`, `CORE-007`, `CORE-008`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
-- 备注：本批次按连续 4 个任务一次性实现与统一汇报。
-
-### BATCH-038
-
 - 状态：待审批
 - 当前任务编号：CORE-005, CORE-006, CORE-007, CORE-008
 - 当前批次目标：继续补齐 `platform-core` 内部共享 crate：`db`、`auth`、`audit-kit`、`outbox-kit`，并落地最小可编译能力边界（事务模板、会话与权限门面、审计写入接口、outbox 事件写入接口）。
@@ -1190,5 +1010,41 @@
 - 覆盖的任务清单条目：`CORE-005`, `CORE-006`, `CORE-007`, `CORE-008`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批仅补齐 `db/auth/audit-kit/outbox-kit`；`provider-kit` 在下一批按任务顺序继续推进。
+
+### BATCH-039
+
+- 状态：计划中
+- 当前任务编号：CORE-009
+- 当前批次目标：创建 `crates/provider-kit`，收敛 KYC/签章/支付/通知/Fabric 写入 Provider trait，并为每类 Provider 提供 `mock` 与 `real` 实现入口。
+- 前置依赖核对结果：`CORE-009` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过；`CORE-010` 依赖 `CORE-033~051` 未满足，本批不越过阻塞项。
+- 预计涉及文件：`Cargo.toml`、`apps/platform-core/Cargo.toml`、`apps/platform-core/crates/provider-kit/**`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl /health/ready`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-009`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批按“复杂单任务”执行（接口契约与跨模块 Provider 抽象收敛）。
+
+### BATCH-039
+
+- 状态：待审批
+- 当前任务编号：CORE-009
+- 当前批次目标：创建 `crates/provider-kit`，收敛 KYC/签章/支付/通知/Fabric 写入 Provider trait，并为每类 Provider 提供 `mock` 与 `real` 实现入口。
+- 前置依赖核对结果：`CORE-009` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过；`CORE-010` 依赖 `CORE-033~051` 未满足，本批不越过阻塞项。
+- 预计涉及文件：`Cargo.toml`、`apps/platform-core/Cargo.toml`、`apps/platform-core/crates/provider-kit/**`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `crates/provider-kit`，定义 `KycProvider`、`SigningProvider`、`PaymentProvider`、`NotificationProvider`、`FabricWriterProvider` 五类 trait；每类都提供 `mock` 与 `real` 两套实现入口与工厂函数；主应用启动流程按配置模式将五类 provider 统一注入容器；架构文档补充 `provider-kit` 职责边界与目录说明。
+- 涉及文件：`Cargo.toml`、`Cargo.lock`、`apps/platform-core/Cargo.toml`、`apps/platform-core/src/lib.rs`、`apps/platform-core/crates/provider-kit/Cargo.toml`、`apps/platform-core/crates/provider-kit/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl http://127.0.0.1:8080/health/ready`。
+- 验证结果：通过。`cargo build` 通过；`cargo test` 通过（新增 `provider-kit` 单测通过）；运行态探测返回 `{"success":true,"data":"ready"}`。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-009`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：后续 `CORE-010` 仍受 `CORE-033~051` 前置约束，需按依赖顺序推进。

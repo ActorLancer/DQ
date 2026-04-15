@@ -9,6 +9,7 @@ members = [
   "apps/platform-core/crates/auth",
   "apps/platform-core/crates/audit-kit",
   "apps/platform-core/crates/outbox-kit",
+  "apps/platform-core/crates/provider-kit",
 ]
 resolver = "2"
 

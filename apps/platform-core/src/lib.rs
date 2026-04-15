@@ -1,18 +1,26 @@
 use audit_kit::NoopAuditWriter;
 use auth::{NoopStepUpGateway, RolePermissionChecker};
-use config::RuntimeConfig;
+use config::{ProviderMode, RuntimeConfig};
 use db::{DbPool, DbPoolConfig, TxTemplate};
 use http::{ApiResponse, build_router, live_handler, serve};
 use kernel::{AppLauncher, AppResult, Module, ModuleContext};
 use outbox_kit::NoopOutboxWriter;
+use provider_kit::{
+    FabricWriterProvider, KycProvider, NotificationProvider, PaymentProvider, ProviderBackend,
+    SigningProvider, build_fabric_writer_provider, build_kyc_provider,
+    build_notification_provider, build_payment_provider, build_signing_provider,
+};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 use tracing::info;
 
 mod app;
 mod modules;
 mod shared;
 
-struct CoreModule;
+struct CoreModule {
+    provider_backend: ProviderBackend,
+}
 
 #[async_trait::async_trait]
 impl Module for CoreModule {
@@ -34,6 +42,25 @@ impl Module for CoreModule {
         ctx.container.insert(NoopStepUpGateway).await;
         ctx.container.insert(NoopAuditWriter).await;
         ctx.container.insert(NoopOutboxWriter).await;
+        ctx.container
+            .insert::<Arc<dyn KycProvider>>(build_kyc_provider(self.provider_backend))
+            .await;
+        ctx.container
+            .insert::<Arc<dyn SigningProvider>>(build_signing_provider(self.provider_backend))
+            .await;
+        ctx.container
+            .insert::<Arc<dyn PaymentProvider>>(build_payment_provider(self.provider_backend))
+            .await;
+        ctx.container
+            .insert::<Arc<dyn NotificationProvider>>(build_notification_provider(
+                self.provider_backend,
+            ))
+            .await;
+        ctx.container
+            .insert::<Arc<dyn FabricWriterProvider>>(build_fabric_writer_provider(
+                self.provider_backend,
+            ))
+            .await;
         Ok(())
     }
 }
@@ -67,7 +94,13 @@ pub async fn run() -> AppResult<()> {
         );
 
     let mut launcher = AppLauncher::new("platform-core");
-    launcher.registry_mut().register(CoreModule);
+    let provider_backend = match cfg.provider {
+        ProviderMode::Mock => ProviderBackend::Mock,
+        ProviderMode::Real => ProviderBackend::Real,
+    };
+    launcher
+        .registry_mut()
+        .register(CoreModule { provider_backend });
 
     info!(
         "platform-core starting: mode={}, provider={}, addr={}",

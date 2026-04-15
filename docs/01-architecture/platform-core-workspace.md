@@ -11,6 +11,7 @@
 - `apps/platform-core/crates/auth`：JWT/会话主体解析、权限检查门面与 step-up 占位网关。
 - `apps/platform-core/crates/audit-kit`：审计上下文与事件写入接口、证据清单挂接、导出记录入口。
 - `apps/platform-core/crates/outbox-kit`：`outbox_event` 写入接口、事件 envelope、幂等键、发布状态与重试策略。
+- `apps/platform-core/crates/provider-kit`：KYC、签章、支付、通知、Fabric 写入等 Provider trait 与 `mock/real` 实现入口工厂。
 
 当前 V1-Core 基线健康检查路由：
 
