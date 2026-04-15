@@ -776,7 +776,7 @@
 - 覆盖的任务清单条目：`ENV-026`, `ENV-027`, `ENV-028`, `ENV-029`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：
+- 待人工审批结论：通过
 - 备注：本批次继续执行“静态+实跑”双重校验并按要求提交本地 commit。
 
 ### BATCH-021
@@ -794,5 +794,41 @@
 - 覆盖的任务清单条目：`ENV-026`, `ENV-027`, `ENV-028`, `ENV-029`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：为避免容器冷启动瞬时 `503/302` 误判，`scripts/verify-local-stack.sh` 已补充 HTTP 重试与 mock admin 路径修正；本批次仍遵循“静态+实跑”双重验证。
+
+### BATCH-022
+
+- 状态：计划中
+- 当前任务编号：ENV-030
+- 当前批次目标：在本地 compose 中实现 `core`、`observability`、`fabric`、`demo` 四类 profile 机制，支持最小核心栈先启动并可按需叠加观测与链环境。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`scripts/up-local.sh`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. compose 配置静态校验；2. `make up-local`（默认 core）并执行 `scripts/check-local-stack.sh core`；3. `fabric` profile 启动验证；4. profile 说明 runbook 校验。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`ENV-030`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次按复杂任务单批执行，完成后提交本地 commit。
+
+### BATCH-022
+
+- 状态：待审批
+- 当前任务编号：ENV-030
+- 当前批次目标：在本地 compose 中实现 `core`、`observability`、`fabric`、`demo` 四类 profile 机制，支持最小核心栈先启动并可按需叠加观测与链环境。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`scripts/up-local.sh`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `docker-compose.local.yml` 为核心服务补齐 `core` profile，为观测服务统一补齐 `observability` profile 并纳入 `demo`，新增 `fabric-ca/fabric-orderer/fabric-peer` 三个 `fabric` profile 服务并纳入 `demo`，将 `mock-payment-provider` 纳入 `demo`；更新 `scripts/up-local.sh` 默认 `COMPOSE_PROFILES=core`，实现 `make up-local` 默认仅拉起最小核心栈；新增 runbook `compose-profiles.md` 与 fixture `compose-profiles-manifest.json`，并更新 `local-startup.md` 说明 profile 组合启动方式。
+- 涉及文件：`infra/docker/docker-compose.local.yml`、`scripts/up-local.sh`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/compose-profiles.md`、`fixtures/local/compose-profiles-manifest.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `bash -n scripts/up-local.sh scripts/down-local.sh`；2. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config` 与 `COMPOSE_PROFILES=demo ... config`；3. `make down-local && make up-local` 验证默认 `core` 启动；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；5. `COMPOSE_PROFILES=fabric docker compose ... up -d fabric-ca fabric-orderer fabric-peer` + `docker ps` 校验三容器在运行。
+- 验证结果：通过。默认 `make up-local` 仅拉起 core profile 且 `check-local-stack.sh core` 通过；`fabric` profile 三容器可独立拉起；`demo` profile 配置可解析。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`、`原始PRD/链上链下技术架构与能力边界稿.md`
+- 覆盖的任务清单条目：`ENV-030`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批次按复杂任务单批闭环执行，已完成静态+实跑校验。

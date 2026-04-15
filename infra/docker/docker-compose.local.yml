@@ -14,6 +14,7 @@ x-service-defaults: &service-defaults
 services:
   postgres:
     <<: *service-defaults
+    profiles: ["core", "demo"]
     image: postgres:16-alpine
     container_name: datab-postgres
     environment:
@@ -38,6 +39,7 @@ services:
 
   redis:
     <<: *service-defaults
+    profiles: ["core", "demo"]
     image: redis:7-alpine
     container_name: datab-redis
     command:
@@ -60,6 +62,7 @@ services:
 
   kafka:
     <<: *service-defaults
+    profiles: ["core", "demo"]
     image: apache/kafka:3.9.1
     container_name: datab-kafka
     ports:
@@ -88,6 +91,7 @@ services:
 
   minio:
     <<: *service-defaults
+    profiles: ["core", "demo"]
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: datab-minio
     command: server /data --console-address ":9001"
@@ -108,6 +112,7 @@ services:
 
   opensearch:
     <<: *service-defaults
+    profiles: ["core", "demo"]
     image: opensearchproject/opensearch:2.18.0
     container_name: datab-opensearch
     environment:
@@ -138,6 +143,7 @@ services:
 
   keycloak:
     <<: *service-defaults
+    profiles: ["core", "demo"]
     image: quay.io/keycloak/keycloak:26.3
     container_name: datab-keycloak
     depends_on:
@@ -165,7 +171,7 @@ services:
 
   prometheus:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: prom/prometheus:v3.5.0
     container_name: datab-prometheus
     depends_on:
@@ -186,7 +192,7 @@ services:
 
   alertmanager:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: prom/alertmanager:v0.28.1
     container_name: datab-alertmanager
     command:
@@ -200,7 +206,7 @@ services:
 
   postgres-exporter:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: datab-postgres-exporter
     environment:
@@ -210,7 +216,7 @@ services:
 
   redis-exporter:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: oliver006/redis_exporter:v1.67.0
     container_name: datab-redis-exporter
     environment:
@@ -221,7 +227,7 @@ services:
 
   kafka-exporter:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: danielqsj/kafka-exporter:v1.9.0
     container_name: datab-kafka-exporter
     command:
@@ -232,7 +238,7 @@ services:
 
   opensearch-exporter:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: prometheuscommunity/elasticsearch-exporter:v1.9.0
     container_name: datab-opensearch-exporter
     command:
@@ -244,7 +250,7 @@ services:
 
   grafana:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: grafana/grafana:12.2.0
     container_name: datab-grafana
     environment:
@@ -259,7 +265,7 @@ services:
 
   loki:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: grafana/loki:3.5.5
     container_name: datab-loki
     user: "0:0"
@@ -272,7 +278,7 @@ services:
 
   tempo:
     <<: *service-defaults
-    profiles: ["observability"]
+    profiles: ["observability", "demo"]
     image: grafana/tempo:2.8.2
     container_name: datab-tempo
     user: "0:0"
@@ -285,6 +291,7 @@ services:
 
   otel-collector:
     <<: *service-defaults
+    profiles: ["core", "demo"]
     image: otel/opentelemetry-collector-contrib:0.107.0
     container_name: datab-otel-collector
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
@@ -304,7 +311,7 @@ services:
 
   mock-payment-provider:
     <<: *service-defaults
-    profiles: ["mocks"]
+    profiles: ["mocks", "demo"]
     image: wiremock/wiremock:3.13.1
     container_name: datab-mock-payment-provider
     command:
@@ -323,6 +330,55 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  fabric-ca:
+    <<: *service-defaults
+    profiles: ["fabric", "demo"]
+    image: hyperledger/fabric-ca:1.5.15
+    container_name: datab-fabric-ca
+    command: sh -c "mkdir -p /var/hyperledger/fabric-ca && echo 'fabric-ca local mock started' && tail -f /dev/null"
+    ports:
+      - "7054:7054"
+    volumes:
+      - ../fabric/state/ca:/var/hyperledger/fabric-ca
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /var/hyperledger/fabric-ca"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fabric-orderer:
+    <<: *service-defaults
+    profiles: ["fabric", "demo"]
+    image: hyperledger/fabric-orderer:2.5.10
+    container_name: datab-fabric-orderer
+    command: sh -c "mkdir -p /var/hyperledger/orderer && echo 'fabric-orderer local mock started' && tail -f /dev/null"
+    ports:
+      - "7050:7050"
+    volumes:
+      - ../fabric/state/orderer:/var/hyperledger/orderer
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /var/hyperledger/orderer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fabric-peer:
+    <<: *service-defaults
+    profiles: ["fabric", "demo"]
+    image: hyperledger/fabric-peer:2.5.10
+    container_name: datab-fabric-peer
+    command: sh -c "mkdir -p /var/hyperledger/peer && echo 'fabric-peer local mock started' && tail -f /dev/null"
+    ports:
+      - "7051:7051"
+      - "7053:7053"
+    volumes:
+      - ../fabric/state/peer:/var/hyperledger/peer
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /var/hyperledger/peer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   datab-local:

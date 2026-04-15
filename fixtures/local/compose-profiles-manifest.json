@@ -1,0 +1,33 @@
+{
+  "profiles": {
+    "core": [
+      "postgres",
+      "redis",
+      "kafka",
+      "minio",
+      "opensearch",
+      "keycloak",
+      "otel-collector"
+    ],
+    "observability": [
+      "prometheus",
+      "alertmanager",
+      "grafana",
+      "loki",
+      "tempo",
+      "kafka-exporter",
+      "postgres-exporter",
+      "redis-exporter",
+      "opensearch-exporter"
+    ],
+    "fabric": [
+      "fabric-ca",
+      "fabric-orderer",
+      "fabric-peer"
+    ],
+    "demo": [
+      "all core/observability/fabric services",
+      "mock-payment-provider"
+    ]
+  }
+}
