@@ -812,7 +812,7 @@
 - 覆盖的任务清单条目：`ENV-030`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按复杂任务单批执行，完成后提交本地 commit。
 
 ### BATCH-022
@@ -830,5 +830,41 @@
 - 覆盖的任务清单条目：`ENV-030`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按复杂任务单批闭环执行，已完成静态+实跑校验。
+
+### BATCH-023
+
+- 状态：计划中
+- 当前任务编号：ENV-031
+- 当前批次目标：为基础服务补充 `curl`/`nc`/`mc`/`kcat`/`psql` 级别启动后自检，收敛到 `scripts/check-local-stack.sh` 统一入口。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`scripts/verify-local-stack.sh`、`scripts/check-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. shell 语法检查；2. `make up-local` 后执行 `scripts/check-local-stack.sh core/full`；3. 命令级自检项输出核验（psql/redis-cli/kcat or kafka-topics/mc/curl/nc）。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`
+- 覆盖的任务清单条目：`ENV-031`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：通过
+- 备注：本批次按复杂任务单批执行，完成后提交本地 commit。
+
+### BATCH-023
+
+- 状态：待审批
+- 当前任务编号：ENV-031
+- 当前批次目标：为基础服务补充 `curl`/`nc`/`mc`/`kcat`/`psql` 级别启动后自检，收敛到 `scripts/check-local-stack.sh` 统一入口。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`scripts/verify-local-stack.sh`、`scripts/check-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：增强 `scripts/verify-local-stack.sh`，在原有 TCP/HTTP 检测基础上新增命令级探测：Postgres `psql`、Redis `redis-cli`、Kafka `kcat`（容器无 `kcat` 时自动回退 `kafka-topics.sh` 元数据探测）、MinIO `mc`、OpenSearch API 命令探测，并补充 Keycloak 容器内 TCP 命令探测；`check_tcp` 优先使用 `nc`；`check_docker_exec` 增加重试；更新 `local-startup.md` 说明命令级探测内容；新增 `fixtures/local/local-healthcheck-probes-manifest.json` 作为探测项清单。
+- 涉及文件：`scripts/verify-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`fixtures/local/local-healthcheck-probes-manifest.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `bash -n scripts/verify-local-stack.sh scripts/check-local-stack.sh`；2. `jq -e . fixtures/local/local-healthcheck-probes-manifest.json`；3. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；4. `make down-local && make up-local` 后执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；5. `COMPOSE_PROFILES=demo docker compose ... up -d` 后执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`。
+- 验证结果：通过。`core` 与 `full` 模式均通过；日志显示 `nc/psql/redis-cli/mc` 探测成功，Kafka 在缺少 `kcat` 时按预期走回退探测并通过。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`原始PRD/链上链下技术架构与能力边界稿.md`
+- 覆盖的任务清单条目：`ENV-031`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：保持 `scripts/check-local-stack.sh` 作为统一入口，命令级探测能力全部内聚于 `verify-local-stack.sh`。

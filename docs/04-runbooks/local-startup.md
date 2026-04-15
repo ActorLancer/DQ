@@ -18,3 +18,4 @@
 16. 一键演示模式（全量）：`COMPOSE_PROFILES=demo docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml up -d`
 17. 观测栈自检：`./scripts/check-observability-stack.sh`
 18. 健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
+    - 该检查包含端口与 HTTP 存活探测，以及命令级探测：`psql`、`redis-cli`、`kcat`（无 `kcat` 时回退 `kafka-topics.sh`）、`mc`、`curl`。

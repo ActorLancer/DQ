@@ -1,0 +1,11 @@
+{
+  "check_script": "scripts/check-local-stack.sh",
+  "command_level_probes": [
+    "postgres: psql -c 'select 1;'",
+    "redis: redis-cli ping",
+    "kafka: kcat -L (fallback kafka-topics --list)",
+    "minio: mc ls",
+    "opensearch: curl /_cluster/health",
+    "keycloak: curl realm openid-configuration"
+  ]
+}
