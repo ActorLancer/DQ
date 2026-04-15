@@ -29,6 +29,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "audit-kit"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kernel",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "auth"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "kernel",
+ "serde",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -110,6 +129,15 @@ version = "0.1.0"
 dependencies = [
  "kernel",
  "serde",
+]
+
+[[package]]
+name = "db"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kernel",
+ "tokio",
 ]
 
 [[package]]
@@ -341,6 +369,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "outbox-kit"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "kernel",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -357,10 +395,14 @@ name = "platform-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "audit-kit",
+ "auth",
  "axum",
  "config",
+ "db",
  "http 0.1.0",
  "kernel",
+ "outbox-kit",
  "tokio",
  "tracing",
  "tracing-subscriber",

@@ -7,10 +7,14 @@ authors.workspace = true
 
 [dependencies]
 async-trait = "0.1"
+audit-kit = { path = "crates/audit-kit" }
+auth = { path = "crates/auth" }
 axum = { version = "0.8", features = ["macros"] }
 config = { path = "crates/config" }
+db = { path = "crates/db" }
 http = { path = "crates/http" }
 kernel = { path = "crates/kernel" }
+outbox-kit = { path = "crates/outbox-kit" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

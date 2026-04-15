@@ -1,6 +1,10 @@
+use audit_kit::NoopAuditWriter;
+use auth::{NoopStepUpGateway, RolePermissionChecker};
 use config::RuntimeConfig;
+use db::{DbPool, DbPoolConfig, TxTemplate};
 use http::{ApiResponse, build_router, live_handler, serve};
 use kernel::{AppLauncher, AppResult, Module, ModuleContext};
+use outbox_kit::NoopOutboxWriter;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tracing::info;
 
@@ -16,7 +20,20 @@ impl Module for CoreModule {
         "platform-core"
     }
 
-    async fn start(&self, _ctx: &ModuleContext) -> AppResult<()> {
+    async fn start(&self, ctx: &ModuleContext) -> AppResult<()> {
+        let dsn = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://local:local@localhost:5432/platform".to_string());
+        let pool = DbPool::connect(DbPoolConfig {
+            dsn,
+            max_connections: 16,
+        })?;
+
+        ctx.container.insert(pool).await;
+        ctx.container.insert(TxTemplate).await;
+        ctx.container.insert(RolePermissionChecker).await;
+        ctx.container.insert(NoopStepUpGateway).await;
+        ctx.container.insert(NoopAuditWriter).await;
+        ctx.container.insert(NoopOutboxWriter).await;
         Ok(())
     }
 }

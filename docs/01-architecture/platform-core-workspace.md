@@ -7,6 +7,10 @@
 - `apps/platform-core/crates/kernel`：应用启动器、模块注册器、依赖容器、生命周期钩子与 shutdown 流程。
 - `apps/platform-core/crates/config`：运行模式与 provider 选择配置装载（`local/staging/demo`）。
 - `apps/platform-core/crates/http`：HTTP server、路由、统一响应与健康检查端点封装。
+- `apps/platform-core/crates/db`：PostgreSQL 连接池抽象、只读/写事务边界、迁移执行接口。
+- `apps/platform-core/crates/auth`：JWT/会话主体解析、权限检查门面与 step-up 占位网关。
+- `apps/platform-core/crates/audit-kit`：审计上下文与事件写入接口、证据清单挂接、导出记录入口。
+- `apps/platform-core/crates/outbox-kit`：`outbox_event` 写入接口、事件 envelope、幂等键、发布状态与重试策略。
 
 当前 V1-Core 基线健康检查路由：
 
