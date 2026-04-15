@@ -1210,3 +1210,93 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过；fabric 运行态产物已清理，未纳入提交。
+
+### BATCH-034
+
+- 状态：待审批
+- 当前任务编号：ENV-056, ENV-057
+- 当前批次目标：收敛本地依赖等待脚本与本地栈检查脚本，并确保 runbook 对最终 compose 与迁移兼容关系说明完整。
+- 前置依赖核对结果：2 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`scripts/wait-for-services.sh`、`scripts/check-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：`wait-for-services.sh` 从单次探测脚本升级为可重试等待器（支持 `TIMEOUT_SECONDS`、`INTERVAL_SECONDS`）；`check-local-stack.sh` 改为“先 wait 再 verify”的串联入口；`local-startup.md` 补齐等待步骤和旧 `部署脚本/` 到 `infra/docker/` 的迁移兼容说明。
+- 涉及文件：`scripts/wait-for-services.sh`、`scripts/check-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `bash -n scripts/wait-for-services.sh scripts/check-local-stack.sh`；2. `make up-local`；3. `./scripts/wait-for-services.sh core`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：通过。脚本语法检查通过；等待脚本在 core 模式返回 ready；check-local-stack core 全量探测通过。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/测试用例矩阵正式版.md`、`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`ENV-056`, `ENV-057`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
+
+### BATCH-035
+
+- 状态：计划中
+- 当前任务编号：ENV-001, ENV-042
+- 当前批次目标：收敛 ENV 全量 compose 主入口边界，补齐 compose 责任边界文档与旧目录兼容说明。
+- 前置依赖核对结果：`ENV-001` 依赖 `ENV-044~057`，已全部落地；`ENV-042` 依赖 `ENV-001; CTX-020`，`CTX-020` 已完成，`ENV-001` 本批同步收口。
+- 预计涉及文件：`docs/04-runbooks/compose-boundary.md`、`部署脚本/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `docker compose ... config`；2. `./scripts/wait-for-services.sh core`；3. `check-local-stack.sh core`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`原始PRD/链上链下技术架构与能力边界稿.md`
+- 覆盖的任务清单条目：`ENV-001`, `ENV-042`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次为“总边界收口 + 兼容说明”。
+
+### BATCH-035
+
+- 状态：待审批
+- 当前任务编号：ENV-001, ENV-042
+- 当前批次目标：收敛 ENV 全量 compose 主入口边界，补齐 compose 责任边界文档与旧目录兼容说明。
+- 前置依赖核对结果：`ENV-001` 依赖 `ENV-044~057`，均已完成；`ENV-042` 依赖 `ENV-001; CTX-020`，本批次已满足。
+- 预计涉及文件：`docs/04-runbooks/compose-boundary.md`、`部署脚本/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `compose-boundary.md`，明确 `docker-compose.local.yml` 的服务清单、可选 profile、端口矩阵入口与“不纳入 compose 的业务进程”边界；补齐旧 `部署脚本/docker-compose.local.yml` 到 `infra/docker/docker-compose.local.yml` 的兼容迁移说明；确认主 compose 已收敛 `postgres/redis/kafka/minio/opensearch/keycloak/otel/prometheus/alertmanager/grafana/loki/tempo/mock-payment/fabric` 全量服务。
+- 涉及文件：`docs/04-runbooks/compose-boundary.md`、`部署脚本/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；2. `./scripts/wait-for-services.sh core`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：通过。compose 聚合解析通过；等待脚本通过；core 健康检查通过。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`原始PRD/链上链下技术架构与能力边界稿.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
+- 覆盖的任务清单条目：`ENV-001`, `ENV-042`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`ENV-043` 仍受 `CORE-032` 依赖约束，不在本批闭环范围内。
+
+### BATCH-036
+
+- 状态：计划中
+- 当前任务编号：ENV-043
+- 当前批次目标：预留 `infra/docker/docker-compose.apps.local.example.yml` 占位文件（仅供后续容器化联调参考）。
+- 前置依赖核对结果：`ENV-043` 依赖 `ENV-042; CORE-032`；`ENV-042` 已完成，`CORE-032` 未完成（`docs/01-architecture/service-runtime-map.md` 尚不存在）。
+- 预计涉及文件：`infra/docker/docker-compose.apps.local.example.yml`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：未开始。
+- 涉及文件：无
+- 验证步骤：阻塞，待依赖解除后执行。
+- 验证结果：阻塞。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`原始PRD/链上链下技术架构与能力边界稿.md`
+- 覆盖的任务清单条目：`ENV-043`
+- 未覆盖项：`CORE-032` 前置依赖未满足。
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：触发强制暂停条件“前置任务未完成”，按流程不得继续推进 `ENV-043` 实现。
+
+### BATCH-034
+
+- 状态：计划中
+- 当前任务编号：ENV-056, ENV-057
+- 当前批次目标：收敛本地依赖等待脚本与本地栈检查脚本，并确保 runbook 对最终 compose 与迁移兼容关系说明完整。
+- 前置依赖核对结果：2 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`scripts/wait-for-services.sh`、`scripts/check-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `bash -n scripts/wait-for-services.sh scripts/check-local-stack.sh`；2. `make up-local`；3. `./scripts/wait-for-services.sh core`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/测试用例矩阵正式版.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`ENV-056`, `ENV-057`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次按连续 2 任务执行，统一实现和统一汇报。

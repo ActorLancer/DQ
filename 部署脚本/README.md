@@ -11,6 +11,7 @@
 ## 依赖
 
 - 由根 `Makefile` 与 `scripts/` 调用。
+- 历史文件 `部署脚本/docker-compose.local.yml` 仅保留兼容；主入口为 `infra/docker/docker-compose.local.yml`。
 
 ## 禁止事项
 
