@@ -704,7 +704,7 @@
 - 覆盖的任务清单条目：`ENV-018`, `ENV-019`, `ENV-020`, `ENV-021`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按“静态+实跑”校验并在当前分支做本地 commit。
 
 ### BATCH-019
@@ -722,5 +722,41 @@
 - 覆盖的任务清单条目：`ENV-018`, `ENV-019`, `ENV-020`, `ENV-021`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：已按要求完成“静态+实跑”验证；等待人工审批后进入下一批。
+
+### BATCH-020
+
+- 状态：计划中
+- 当前任务编号：ENV-022, ENV-023, ENV-024, ENV-025
+- 当前批次目标：接入 Fabric 本地测试网络与脚本包装，补充最小链码部署占位流程，并完成 OpenTelemetry Collector 统一采集转发配置与验证脚本。
+- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/fabric/**`、`Makefile`、`infra/docker/docker-compose.local.yml`、`infra/otel/otel-collector-config.yaml`、`scripts/check-fabric-local.sh`、`scripts/check-otel-collector.sh`、`docs/04-runbooks/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：已完成代码草稿，当前补记计划后执行静态+实跑验证并按结果收口。
+- 涉及文件：待验证后补充。
+- 验证步骤：1. `docker compose ... config`；2. shell 脚本语法与可执行权限检查；3. Fabric 启停/通道/链码占位实跑；4. OTel Collector 启动与健康/指标端点校验；5. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`ENV-022`, `ENV-023`, `ENV-024`, `ENV-025`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本条为先前中断后的计划补记；后续以验证结果为准。
+
+### BATCH-020
+
+- 状态：待审批
+- 当前任务编号：ENV-022, ENV-023, ENV-024, ENV-025
+- 当前批次目标：接入 Fabric 本地测试网络与脚本包装，补充最小链码部署占位流程，并完成 OpenTelemetry Collector 统一采集转发配置与验证脚本。
+- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/fabric/**`、`Makefile`、`infra/docker/docker-compose.local.yml`、`infra/otel/otel-collector-config.yaml`、`scripts/check-fabric-local.sh`、`scripts/check-otel-collector.sh`、`scripts/verify-local-stack.sh`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `infra/fabric/docker-compose.fabric.local.yml` 及 `fabric-up/down/reset/channel` 脚本，提供 `make fabric-up/down/reset/channel` 包装入口；新增 `infra/fabric/deploy-chaincode-placeholder.sh`，生成订单摘要、授权摘要、验收摘要、证据批次根四类链码占位接口工件；新增 `scripts/check-fabric-local.sh` 做 Fabric 容器与工件自检；新增 `infra/otel/otel-collector-config.yaml` 与 compose `otel-collector` 服务，统一接收 OTLP 并转发到 Prometheus/Loki/Tempo；新增 `scripts/check-otel-collector.sh`（含重试）；更新 `scripts/verify-local-stack.sh` 增加 OTel health/metrics 核验；新增 runbook `fabric-local.md`、`otel-local.md`，更新 `local-startup.md` 串联 Fabric/OTel 流程；新增 `fixtures/local/fabric-local-manifest.json`、`fixtures/local/otel-collector-manifest.json`。
+- 涉及文件：`infra/fabric/docker-compose.fabric.local.yml`、`infra/fabric/fabric-up.sh`、`infra/fabric/fabric-down.sh`、`infra/fabric/fabric-reset.sh`、`infra/fabric/fabric-channel.sh`、`infra/fabric/deploy-chaincode-placeholder.sh`、`infra/fabric/state/.gitkeep`、`infra/fabric/state/.gitignore`、`Makefile`、`infra/otel/otel-collector-config.yaml`、`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`scripts/check-fabric-local.sh`、`scripts/check-otel-collector.sh`、`scripts/verify-local-stack.sh`、`docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/otel-local.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/fabric-local-manifest.json`、`fixtures/local/otel-collector-manifest.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `bash -n` 校验所有新增/更新 shell 脚本；2. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config` 与 `docker compose -f infra/fabric/docker-compose.fabric.local.yml config`；3. `jq -e .` 校验新增 fixtures JSON；4. 实跑 `make fabric-up && make fabric-channel && ./infra/fabric/deploy-chaincode-placeholder.sh && ./scripts/check-fabric-local.sh && make fabric-down`；5. 实跑 `docker compose ... up -d otel-collector` 与 `./scripts/check-otel-collector.sh`；6. 实跑 `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：通过。Fabric 包装命令、通道工件与链码占位工件均成功生成并通过自检；OTel Collector 启动正常，health/metrics 端点可达；`check-local-stack.sh core` 通过并包含 OTel 核验。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`、`原始PRD/链上链下技术架构与能力边界稿.md`
+- 覆盖的任务清单条目：`ENV-022`, `ENV-023`, `ENV-024`, `ENV-025`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批次按“静态+实跑”完成验证；Docker 相关实跑在提权模式执行，避免沙箱网络/权限误报。

@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up-local down-local logs migrate-up migrate-down seed-local test lint
+.PHONY: up-local down-local logs migrate-up migrate-down seed-local test lint fabric-up fabric-down fabric-reset fabric-channel
 COMPOSE_FILE ?= infra/docker/docker-compose.local.yml
 COMPOSE_ENV_FILE ?= infra/docker/.env.local
 
@@ -27,3 +27,15 @@ test:
 
 lint:
 	cargo check
+
+fabric-up:
+	./infra/fabric/fabric-up.sh
+
+fabric-down:
+	./infra/fabric/fabric-down.sh
+
+fabric-reset:
+	./infra/fabric/fabric-reset.sh
+
+fabric-channel:
+	./infra/fabric/fabric-channel.sh

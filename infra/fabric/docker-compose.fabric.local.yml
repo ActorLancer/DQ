@@ -1,0 +1,45 @@
+name: datab-fabric-local
+
+services:
+  fabric-ca:
+    image: hyperledger/fabric-ca:1.5.15
+    container_name: datab-fabric-ca
+    command: sh -c "mkdir -p /var/hyperledger/fabric-ca && echo 'fabric-ca local mock started' && tail -f /dev/null"
+    ports:
+      - "7054:7054"
+    volumes:
+      - ./state/ca:/var/hyperledger/fabric-ca
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /var/hyperledger/fabric-ca"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fabric-orderer:
+    image: hyperledger/fabric-orderer:2.5.10
+    container_name: datab-fabric-orderer
+    command: sh -c "mkdir -p /var/hyperledger/orderer && echo 'fabric-orderer local mock started' && tail -f /dev/null"
+    ports:
+      - "7050:7050"
+    volumes:
+      - ./state/orderer:/var/hyperledger/orderer
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /var/hyperledger/orderer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fabric-peer:
+    image: hyperledger/fabric-peer:2.5.10
+    container_name: datab-fabric-peer
+    command: sh -c "mkdir -p /var/hyperledger/peer && echo 'fabric-peer local mock started' && tail -f /dev/null"
+    ports:
+      - "7051:7051"
+      - "7053:7053"
+    volumes:
+      - ./state/peer:/var/hyperledger/peer
+    healthcheck:
+      test: ["CMD-SHELL", "test -d /var/hyperledger/peer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

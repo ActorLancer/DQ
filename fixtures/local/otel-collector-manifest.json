@@ -1,0 +1,15 @@
+{
+  "config": "infra/otel/otel-collector-config.yaml",
+  "ports": {
+    "otlp_grpc": 4317,
+    "otlp_http": 4318,
+    "health": 13133,
+    "metrics": 8889
+  },
+  "pipelines": [
+    "traces -> tempo:4317",
+    "logs -> loki:3100/loki/api/v1/push",
+    "metrics -> prometheus exporter :8889"
+  ],
+  "check_script": "scripts/check-otel-collector.sh"
+}

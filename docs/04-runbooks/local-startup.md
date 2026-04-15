@@ -9,4 +9,8 @@
 7. 初始化 OpenSearch：`./infra/opensearch/init-opensearch.sh`
 8. 验证 Keycloak realm：`./scripts/check-keycloak-realm.sh`
 9. 验证 Mock Payment 场景：`./scripts/check-mock-payment.sh`
-10. 健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+10. 启动 Fabric 本地链（按需）：`make fabric-up`
+11. 生成本地通道与链码占位工件：`make fabric-channel && ./infra/fabric/deploy-chaincode-placeholder.sh`
+12. Fabric 自检：`./scripts/check-fabric-local.sh`
+13. OTel Collector 自检：`./scripts/check-otel-collector.sh`
+14. 健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`

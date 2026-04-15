@@ -208,10 +208,27 @@ services:
     command: ["-config.file=/etc/tempo/tempo.yml"]
     ports:
       - "${TEMPO_PORT:-3200}:3200"
-      - "${OTLP_GRPC_PORT:-4317}:4317"
-      - "${OTLP_HTTP_PORT:-4318}:4318"
     volumes:
       - ./monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
+
+  otel-collector:
+    <<: *service-defaults
+    image: otel/opentelemetry-collector-contrib:0.107.0
+    container_name: datab-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports:
+      - "${OTLP_GRPC_PORT:-4317}:4317"
+      - "${OTLP_HTTP_PORT:-4318}:4318"
+      - "${OTEL_COLLECTOR_METRICS_PORT:-8889}:8889"
+      - "${OTEL_COLLECTOR_HEALTH_PORT:-13133}:13133"
+    volumes:
+      - ../otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13133/ >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   mock-payment-provider:
     <<: *service-defaults

@@ -61,6 +61,8 @@ GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 LOKI_PORT="${LOKI_PORT:-3100}"
 TEMPO_PORT="${TEMPO_PORT:-3200}"
 MOCK_PAYMENT_PORT="${MOCK_PAYMENT_PORT:-8089}"
+OTEL_COLLECTOR_HEALTH_PORT="${OTEL_COLLECTOR_HEALTH_PORT:-13133}"
+OTEL_COLLECTOR_METRICS_PORT="${OTEL_COLLECTOR_METRICS_PORT:-8889}"
 
 echo "[info] Verifying local stack mode: ${MODE}"
 echo "[info] Using env file: ${ENV_FILE}"
@@ -73,6 +75,8 @@ check_http "MinIO API" "http://127.0.0.1:${MINIO_API_PORT}/minio/health/live" '^
 check_http "MinIO Console" "http://127.0.0.1:${MINIO_CONSOLE_PORT}" '^(200|301|302|307|403)$'
 check_http "OpenSearch" "http://127.0.0.1:${OPENSEARCH_HTTP_PORT}" '^(200|401|403)$'
 check_http "Keycloak" "http://127.0.0.1:${KEYCLOAK_PORT}" '^(200|301|302)$'
+check_http "OTel Collector Health" "http://127.0.0.1:${OTEL_COLLECTOR_HEALTH_PORT}/" '^(200)$'
+check_http "OTel Collector Metrics" "http://127.0.0.1:${OTEL_COLLECTOR_METRICS_PORT}/metrics" '^(200)$'
 
 case "${MODE}" in
   core)

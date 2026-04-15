@@ -1,0 +1,15 @@
+{
+  "compose_file": "infra/fabric/docker-compose.fabric.local.yml",
+  "scripts": [
+    "infra/fabric/fabric-up.sh",
+    "infra/fabric/fabric-down.sh",
+    "infra/fabric/fabric-reset.sh",
+    "infra/fabric/fabric-channel.sh",
+    "infra/fabric/deploy-chaincode-placeholder.sh",
+    "scripts/check-fabric-local.sh"
+  ],
+  "artifacts": [
+    "infra/fabric/state/channel/datab-channel.tx",
+    "infra/fabric/state/chaincode/contracts.json"
+  ]
+}
