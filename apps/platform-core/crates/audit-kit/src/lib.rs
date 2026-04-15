@@ -3,6 +3,50 @@ use kernel::AppResult;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditRiskLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditResultStatus {
+    Success,
+    Failed,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuditAnnotation {
+    pub action: String,
+    pub risk_level: AuditRiskLevel,
+    pub object_type: String,
+    pub object_id: String,
+    pub result: AuditResultStatus,
+}
+
+impl AuditAnnotation {
+    pub fn new(
+        action: impl Into<String>,
+        risk_level: AuditRiskLevel,
+        object_type: impl Into<String>,
+        object_id: impl Into<String>,
+        result: AuditResultStatus,
+    ) -> Self {
+        Self {
+            action: action.into(),
+            risk_level,
+            object_type: object_type.into(),
+            object_id: object_id.into(),
+            result,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuditContext {
     pub request_id: String,
     pub actor_id: String,
@@ -55,6 +99,22 @@ impl AuditWriter for NoopAuditWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn annotation_builder_keeps_declared_fields() {
+        let annotation = AuditAnnotation::new(
+            "order.create",
+            AuditRiskLevel::High,
+            "order",
+            "ord-1",
+            AuditResultStatus::Success,
+        );
+        assert_eq!(annotation.action, "order.create");
+        assert_eq!(annotation.risk_level, AuditRiskLevel::High);
+        assert_eq!(annotation.object_type, "order");
+        assert_eq!(annotation.object_id, "ord-1");
+        assert_eq!(annotation.result, AuditResultStatus::Success);
+    }
 
     #[tokio::test]
     async fn noop_writer_accepts_event() {

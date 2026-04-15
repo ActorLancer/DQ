@@ -25,6 +25,7 @@
 - `request_id`：优先透传 `x-request-id`，缺失时自动生成。
 - `trace`：优先透传 `x-trace-id`，缺失时复用 `request_id`。
 - `tenant`：解析 `x-tenant-id`，缺失回落到 `public`。
+- `idempotency`：优先透传 `idempotency-key`，兼容 `x-idempotency-key`，缺失回落到 `request_id`。
 - `access-log`：统一记录 method/path/status/elapsed/request_id/trace_id/tenant_id。
 
 统一错误体系：
@@ -45,6 +46,11 @@
 统一运行时模式页（V1-Core）：
 
 - `/internal/runtime` 返回 `mode`、`provider`、`service_version`、`git_sha`、`migration_version`，用于环境自检与联调排障。
+
+统一审计注解机制（V1-Core）：
+
+- 在 `crates/audit-kit` 提供 `AuditAnnotation`，支持在 handler 层声明 `action`、`risk_level`、`object_type`、`object_id`、`result`。
+- 在 `crates/http` 提供 `set_audit_annotation/get_audit_annotation`，将注解挂载到请求上下文，供应用层审计写入统一消费。
 
 约束：
 

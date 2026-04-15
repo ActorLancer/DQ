@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+audit-kit = { path = "../audit-kit" }
 axum = { version = "0.8", features = ["macros"] }
 kernel = { path = "../kernel" }
 serde = { version = "1", features = ["derive"] }

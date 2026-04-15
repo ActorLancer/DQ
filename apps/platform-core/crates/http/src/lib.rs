@@ -1,11 +1,12 @@
 use axum::{
     Json, Router,
     extract::Request,
-    http::{HeaderName, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::Response,
     routing::get,
 };
+use audit_kit::AuditAnnotation;
 use kernel::{AppError, AppResult, ErrorResponse};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -112,6 +113,7 @@ pub struct RequestContext {
     pub request_id: String,
     pub trace_id: String,
     pub tenant_id: String,
+    pub idempotency_key: String,
 }
 
 pub fn build_router() -> Router {
@@ -205,6 +207,7 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
         .unwrap_or_else(|| "public".to_string());
+    let idempotency_key = resolve_idempotency_key(req.headers(), &request_id);
 
     let method = req.method().clone();
     let path = req.uri().path().to_string();
@@ -212,17 +215,20 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
         request_id: request_id.clone(),
         trace_id: trace_id.clone(),
         tenant_id: tenant_id.clone(),
+        idempotency_key: idempotency_key.clone(),
     });
 
     let mut response = next.run(req).await;
     set_header(&mut response, "x-request-id", &request_id);
     set_header(&mut response, "x-trace-id", &trace_id);
     set_header(&mut response, "x-tenant-id", &tenant_id);
+    set_header(&mut response, "x-idempotency-key", &idempotency_key);
 
     info!(
         request_id = %request_id,
         trace_id = %trace_id,
         tenant_id = %tenant_id,
+        idempotency_key = %idempotency_key,
         method = %method,
         path = %path,
         status = %response.status().as_u16(),
@@ -230,6 +236,25 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
         "request finished"
     );
     response
+}
+
+pub fn set_audit_annotation(req: &mut Request, annotation: AuditAnnotation) {
+    req.extensions_mut().insert(annotation);
+}
+
+pub fn get_audit_annotation(req: &Request) -> Option<&AuditAnnotation> {
+    req.extensions().get::<AuditAnnotation>()
+}
+
+fn resolve_idempotency_key(headers: &HeaderMap, request_id: &str) -> String {
+    headers
+        .get("idempotency-key")
+        .or_else(|| headers.get("x-idempotency-key"))
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| request_id.to_string())
 }
 
 fn set_header(response: &mut Response, name: &str, value: &str) {
@@ -271,6 +296,26 @@ mod tests {
         );
         assert_eq!(q.pagination.offset(), 25);
         assert_eq!(q.filter.status.as_deref(), Some("open"));
+    }
+
+    #[test]
+    fn idempotency_key_prefers_standard_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("idempotency-key", HeaderValue::from_static("idem-001"));
+        headers.insert("x-idempotency-key", HeaderValue::from_static("legacy-001"));
+        assert_eq!(
+            resolve_idempotency_key(&headers, "req-001"),
+            "idem-001".to_string()
+        );
+    }
+
+    #[test]
+    fn idempotency_key_falls_back_to_request_id() {
+        let headers = HeaderMap::new();
+        assert_eq!(
+            resolve_idempotency_key(&headers, "req-007"),
+            "req-007".to_string()
+        );
     }
 }
 

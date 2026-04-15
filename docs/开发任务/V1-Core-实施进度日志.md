@@ -814,3 +814,21 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：本批按“连续 3 个简单任务”执行并统一汇报。
+
+### BATCH-043
+
+- 状态：待审批
+- 当前任务编号：CORE-018, CORE-019
+- 当前批次目标：一次性完成统一幂等键中间件与统一审计注解机制，供创建订单、支付回调、模板执行与重试场景复用。
+- 前置依赖核对结果：`CORE-018`, `CORE-019` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/http/**`、`apps/platform-core/crates/audit-kit/**`、`apps/platform-core/src/**`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `crates/http` 中间件链新增统一幂等键收敛（优先 `idempotency-key`，兼容 `x-idempotency-key`，缺失时回落 `request_id`），并将 `idempotency_key` 注入 `RequestContext`、访问日志及响应头 `x-idempotency-key`；在 `crates/audit-kit` 新增 `AuditAnnotation`、`AuditRiskLevel`、`AuditResultStatus`，支持 handler 层声明审计动作、风险等级、对象类型、对象 ID、结果状态；在 `crates/http` 提供 `set_audit_annotation/get_audit_annotation` 以挂载与读取请求级审计注解。
+- 涉及文件：`apps/platform-core/crates/http/Cargo.toml`、`apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/crates/audit-kit/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. 运行 `platform-core` 并校验幂等头透传与审计注解输出。
+- 验证结果：通过。`cargo build` 通过；`cargo test` 通过（新增 `audit-kit` 注解构建单测与 `http` 幂等键解析单测通过）；运行态校验通过：携带 `idempotency-key: idem-b043` 请求时响应头返回 `x-idempotency-key: idem-b043`，仅携带 `x-request-id: req-b043` 请求时回退返回 `x-idempotency-key: req-b043`，访问日志包含 `idempotency_key` 字段。
+- 覆盖的冻结文档条目：`权限设计/后端鉴权中间件规则说明.md`、`原始PRD/审计、证据链与回放设计.md`、`全集成文档/数据交易平台-全集成基线-全阶段.md`
+- 覆盖的任务清单条目：`CORE-018`, `CORE-019`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 2 个简单任务”执行并统一汇报，`CORE-020`（权限门面）作为复杂任务在下一批单独推进。
