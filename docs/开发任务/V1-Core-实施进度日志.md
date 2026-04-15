@@ -943,24 +943,6 @@
 
 ### BATCH-026
 
-- 状态：计划中
-- 当前任务编号：ENV-034
-- 当前批次目标：补充 `docker-compose.staging.example.yml` 占位文件，不部署真实生产资源，并明确后续 Helm/K8s 迁移组件映射关系。
-- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`docker-compose.staging.example.yml`、`docs/04-runbooks/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. `docker compose -f docker-compose.staging.example.yml config`；2. 映射文档一致性检查；3. `make up-local` + `scripts/check-local-stack.sh core` 基线验证。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
-- 覆盖的任务清单条目：`ENV-034`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次为“staging 示例编排 + K8s 映射占位”任务，不引入真实生产配置。
-
-### BATCH-026
-
 - 状态：待审批
 - 当前任务编号：ENV-034
 - 当前批次目标：补充 `docker-compose.staging.example.yml` 占位文件，不部署真实生产资源，并明确后续 Helm/K8s 迁移组件映射关系。
@@ -1202,8 +1184,8 @@
 - 预计涉及文件：`Cargo.toml`、`apps/platform-core/Cargo.toml`、`apps/platform-core/crates/db/**`、`apps/platform-core/crates/auth/**`、`apps/platform-core/crates/audit-kit/**`、`apps/platform-core/crates/outbox-kit/**`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
 - 已实现功能：新增 `crates/db`（连接配置结构、池抽象、迁移执行接口、只读/写事务模板与边界）；新增 `crates/auth`（JWT 解析接口、会话主体提取、权限检查门面、step-up 占位网关、Bearer 提取）；新增 `crates/audit-kit`（审计上下文、证据清单、审计事件写入接口与导出记录接口）；新增 `crates/outbox-kit`（事件 envelope、幂等键、发布状态、重试策略、统一写入接口）；主应用启动时将 DB/事务、权限、step-up、审计、outbox 的基础实现注入容器；文档补充四个 crate 职责边界说明。
 - 涉及文件：`Cargo.toml`、`Cargo.lock`、`apps/platform-core/Cargo.toml`、`apps/platform-core/src/lib.rs`、`apps/platform-core/crates/db/Cargo.toml`、`apps/platform-core/crates/db/src/lib.rs`、`apps/platform-core/crates/auth/Cargo.toml`、`apps/platform-core/crates/auth/src/lib.rs`、`apps/platform-core/crates/audit-kit/Cargo.toml`、`apps/platform-core/crates/audit-kit/src/lib.rs`、`apps/platform-core/crates/outbox-kit/Cargo.toml`、`apps/platform-core/crates/outbox-kit/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 验证步骤：1. `cargo build`；2. `cargo test`。
-- 验证结果：通过。`cargo build` 通过；`cargo test` 通过（新增 `db/auth/audit-kit/outbox-kit` 单测均通过）。
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` 并 `curl http://127.0.0.1:8080/health/ready`。
+- 验证结果：通过。`cargo build` 通过；`cargo test` 通过（新增 `db/auth/audit-kit/outbox-kit` 单测均通过）；运行态探测返回 `{"success":true,"data":"ready"}`。
 - 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`开发准备/技术选型正式版.md`
 - 覆盖的任务清单条目：`CORE-005`, `CORE-006`, `CORE-007`, `CORE-008`
 - 未覆盖项：无
