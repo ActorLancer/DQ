@@ -90,6 +90,7 @@ REDIS_PASSWORD="${REDIS_PASSWORD:-datab_redis_pass}"
 MINIO_ROOT_USER="${MINIO_ROOT_USER:-datab}"
 MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-datab_local_pass}"
 MINIO_MC_IMAGE="${MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-08-13T08-35-41Z}"
+KCAT_IMAGE="${KCAT_IMAGE:-edenhill/kcat:1.7.1}"
 
 echo "[info] Verifying local stack mode: ${MODE}"
 echo "[info] Using env file: ${ENV_FILE}"
@@ -111,8 +112,10 @@ check_docker_exec "Redis redis-cli" datab-redis sh -c "redis-cli -a '${REDIS_PAS
 
 if docker exec datab-kafka sh -c "command -v kcat >/dev/null 2>&1"; then
   check_docker_exec "Kafka kcat metadata" datab-kafka kcat -b localhost:9092 -L
+elif docker run --rm --network host "${KCAT_IMAGE}" -b "127.0.0.1:${KAFKA_EXTERNAL_PORT}" -L >/dev/null 2>&1; then
+  ok "Kafka kcat metadata probe passed (ephemeral container)"
 else
-  warn "kcat not found in kafka container; using kafka-topics metadata probe fallback"
+  warn "kcat unavailable in kafka container and ephemeral kcat probe failed; using kafka-topics metadata probe fallback"
   check_docker_exec "Kafka topic metadata fallback" datab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 fi
 

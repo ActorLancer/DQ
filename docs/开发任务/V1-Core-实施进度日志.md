@@ -858,10 +858,10 @@
 - 当前批次目标：为基础服务补充 `curl`/`nc`/`mc`/`kcat`/`psql` 级别启动后自检，收敛到 `scripts/check-local-stack.sh` 统一入口。
 - 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
 - 预计涉及文件：`scripts/verify-local-stack.sh`、`scripts/check-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：增强 `scripts/verify-local-stack.sh`，在原有 TCP/HTTP 检测基础上新增命令级探测：Postgres `psql`、Redis `redis-cli`、Kafka `kcat`（容器无 `kcat` 时自动回退 `kafka-topics.sh` 元数据探测）、MinIO `mc`、OpenSearch API 命令探测，并补充 Keycloak 容器内 TCP 命令探测；`check_tcp` 优先使用 `nc`；`check_docker_exec` 增加重试；更新 `local-startup.md` 说明命令级探测内容；新增 `fixtures/local/local-healthcheck-probes-manifest.json` 作为探测项清单。
+- 已实现功能：增强 `scripts/verify-local-stack.sh`，在原有 TCP/HTTP 检测基础上新增命令级探测：Postgres `psql`、Redis `redis-cli`、Kafka `kcat`（容器无 `kcat` 时先用临时 `kcat` 容器探测，再回退 `kafka-topics.sh` 元数据探测）、MinIO `mc`、OpenSearch API 命令探测，并补充 Keycloak 容器内 TCP 命令探测；`check_tcp` 优先使用 `nc`；`check_docker_exec` 增加重试；更新 `local-startup.md` 说明命令级探测内容；新增 `fixtures/local/local-healthcheck-probes-manifest.json` 作为探测项清单。
 - 涉及文件：`scripts/verify-local-stack.sh`、`docs/04-runbooks/local-startup.md`、`fixtures/local/local-healthcheck-probes-manifest.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
 - 验证步骤：1. `bash -n scripts/verify-local-stack.sh scripts/check-local-stack.sh`；2. `jq -e . fixtures/local/local-healthcheck-probes-manifest.json`；3. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；4. `make down-local && make up-local` 后执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；5. `COMPOSE_PROFILES=demo docker compose ... up -d` 后执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`。
-- 验证结果：通过。`core` 与 `full` 模式均通过；日志显示 `nc/psql/redis-cli/mc` 探测成功，Kafka 在缺少 `kcat` 时按预期走回退探测并通过。
+- 验证结果：通过。`core` 与 `full` 模式均通过；日志显示 `nc/psql/redis-cli/mc` 探测成功，Kafka 在缺少容器内 `kcat` 时由临时 `kcat` 容器探测通过。
 - 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`原始PRD/链上链下技术架构与能力边界稿.md`
 - 覆盖的任务清单条目：`ENV-031`
 - 未覆盖项：无
