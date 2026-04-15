@@ -9,6 +9,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!.env.local.example
+!.env.staging.example
+!.env.demo.example
 部署脚本/.env
 config/environments/*.env
 !config/environments/*.example

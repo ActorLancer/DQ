@@ -1,0 +1,19 @@
+services:
+  postgres:
+    ports:
+      - "55432:5432"
+
+  kafka:
+    ports:
+      - "19092:9092"
+      - "19094:9094"
+
+  platform-core:
+    image: rust:1.89
+    working_dir: /workspace
+    command: ["bash", "-lc", "cargo run --bin platform-core"]
+    volumes:
+      - ../../:/workspace
+    environment:
+      RUST_LOG: info
+    profiles: ["apps"]

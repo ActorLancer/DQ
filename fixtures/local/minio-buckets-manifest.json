@@ -1,0 +1,13 @@
+{
+  "buckets": [
+    "raw-data",
+    "preview-artifacts",
+    "delivery-objects",
+    "report-results",
+    "evidence-packages",
+    "model-artifacts"
+  ],
+  "testObject": "evidence-packages/_health/init.txt",
+  "previewPolicy": "anonymous-download",
+  "previewLifecycleDays": 30
+}

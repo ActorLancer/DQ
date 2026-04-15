@@ -1,0 +1,18 @@
+{
+  "topics": [
+    "outbox.events",
+    "search.sync",
+    "audit.anchor",
+    "billing.events",
+    "recommendation.behavior",
+    "dead-letter.events"
+  ],
+  "consumerGroups": [
+    "cg-platform-core-outbox",
+    "cg-search-sync-worker",
+    "cg-audit-anchor-worker",
+    "cg-billing-worker",
+    "cg-recommendation-worker",
+    "cg-dead-letter-replayer"
+  ]
+}

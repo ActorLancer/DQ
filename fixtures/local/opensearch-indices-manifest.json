@@ -1,0 +1,13 @@
+{
+  "template": "datab_catalog_v1_template",
+  "aliases": [
+    "catalog_products_v1",
+    "seller_profiles_v1",
+    "search_sync_jobs_v1"
+  ],
+  "physicalIndices": [
+    "catalog_products_v1_000001",
+    "seller_profiles_v1_000001",
+    "search_sync_jobs_v1_000001"
+  ]
+}

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMPOSE_FILE="${1:-部署脚本/docker-compose.local.yml}"
-ENV_FILE="${2:-.env}"
-ENV_TEMPLATE="${3:-.env.example}"
+COMPOSE_FILE="${1:-infra/docker/docker-compose.local.yml}"
+ENV_FILE="${2:-infra/docker/.env.local}"
+ENV_TEMPLATE="${3:-infra/docker/.env.local}"
 CHECK_MODE="${4:-runtime}"
 
 fail() {
