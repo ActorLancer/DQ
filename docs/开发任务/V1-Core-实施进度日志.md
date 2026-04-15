@@ -34,7 +34,7 @@
 - 覆盖的任务清单条目：
 - 未覆盖项：
 - 新增 TODO / 预留项：
-- 待人工审批结论：
+- 待人工审批结论：待审批
 - 备注：
 
 ---
@@ -740,7 +740,7 @@
 - 覆盖的任务清单条目：`ENV-022`, `ENV-023`, `ENV-024`, `ENV-025`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本条为先前中断后的计划补记；后续以验证结果为准。
 
 ### BATCH-020
@@ -758,5 +758,41 @@
 - 覆盖的任务清单条目：`ENV-022`, `ENV-023`, `ENV-024`, `ENV-025`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按“静态+实跑”完成验证；Docker 相关实跑在提权模式执行，避免沙箱网络/权限误报。
+
+### BATCH-021
+
+- 状态：计划中
+- 当前任务编号：ENV-026, ENV-027, ENV-028, ENV-029
+- 当前批次目标：补齐本地观测栈闭环，完成 Prometheus 抓取目标、Alertmanager 最小告警规则、Grafana 数据源与初始 dashboard，以及 Loki/Tempo 存储与保留策略配置。
+- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/monitoring/**`、`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/grafana/**`、`scripts/**`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. Prometheus/Alertmanager/Grafana/Loki/Tempo 配置语法检查；2. `docker compose ... config`；3. 观测栈容器启动与健康检查；4. Prometheus targets/alerts、Grafana datasource/dashboard、Loki/Tempo 持久化目录核验；5. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`ENV-026`, `ENV-027`, `ENV-028`, `ENV-029`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：
+- 备注：本批次继续执行“静态+实跑”双重校验并按要求提交本地 commit。
+
+### BATCH-021
+
+- 状态：待审批
+- 当前任务编号：ENV-026, ENV-027, ENV-028, ENV-029
+- 当前批次目标：补齐本地观测栈闭环，完成 Prometheus 抓取目标、Alertmanager 最小告警规则、Grafana 数据源与初始 dashboard，以及 Loki/Tempo 存储与保留策略配置。
+- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/monitoring/**`、`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/grafana/**`、`scripts/**`、`docs/04-runbooks/**`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：扩展 `prometheus.yml` 抓取目标，覆盖 `platform-core`、`mock-payment-provider`、`kafka-exporter`、`postgres-exporter`、`redis-exporter`、`minio-exporter`、`opensearch-exporter`；新增 `alert-rules.yml` 与 `alertmanager.yml`，落地服务不可用、队列积压、DB 连接失败、链适配失败、outbox 重试异常、DLQ 增长最小规则集；在 compose 增加 `alertmanager` 与四类 exporter 服务（Kafka/Postgres/Redis/OpenSearch）；新增 Grafana provisioning（Prometheus/Loki/Tempo 数据源）与 4 组 dashboard（平台总览、数据库、Kafka、应用链路追踪）；为 Loki/Tempo 增加本地持久卷挂载，配置保留周期与清理策略；新增 `scripts/check-observability-stack.sh` 与 runbook `observability-local.md`，并更新 `local-startup.md`。
+- 涉及文件：`infra/docker/monitoring/prometheus.yml`、`infra/docker/monitoring/alert-rules.yml`、`infra/docker/monitoring/alertmanager.yml`、`infra/docker/monitoring/loki-config.yml`、`infra/docker/monitoring/tempo.yml`、`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/grafana/provisioning/datasources/datasources.yml`、`infra/grafana/provisioning/dashboards/dashboards.yml`、`infra/grafana/dashboards/platform-overview.json`、`infra/grafana/dashboards/database-overview.json`、`infra/grafana/dashboards/kafka-overview.json`、`infra/grafana/dashboards/application-tracing.json`、`scripts/check-observability-stack.sh`、`scripts/verify-local-stack.sh`、`docs/04-runbooks/observability-local.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/observability-stack-manifest.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `bash -n scripts/check-observability-stack.sh scripts/verify-local-stack.sh`；2. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；3. `jq -e .` 校验新增 dashboard/fixture JSON；4. `docker compose ... --profile observability up -d`；5. `./scripts/check-observability-stack.sh`；6. `docker compose ... --profile mocks up -d mock-payment-provider`；7. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`。
+- 验证结果：通过。Prometheus 抓取目标与告警规则存在并可查询；Grafana 数据源与 4 个 dashboard 已自动导入；Loki/Tempo 存储卷挂载生效并可用；`check-observability-stack.sh` 通过；`check-local-stack.sh full` 通过（含 core+observability+mocks）。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`、`原始PRD/日志、可观测性与告警设计.md`
+- 覆盖的任务清单条目：`ENV-026`, `ENV-027`, `ENV-028`, `ENV-029`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：为避免容器冷启动瞬时 `503/302` 误判，`scripts/verify-local-stack.sh` 已补充 HTTP 重试与 mock admin 路径修正；本批次仍遵循“静态+实跑”双重验证。

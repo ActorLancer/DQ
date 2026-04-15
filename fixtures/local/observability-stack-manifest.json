@@ -1,0 +1,30 @@
+{
+  "prometheus_jobs": [
+    "platform-core",
+    "mock-payment-provider",
+    "kafka-exporter",
+    "postgres-exporter",
+    "redis-exporter",
+    "minio-exporter",
+    "opensearch-exporter"
+  ],
+  "alert_rules": [
+    "ServiceDown",
+    "KafkaConsumerLagBacklog",
+    "DBConnectionFailure",
+    "ChainAdapterFailure",
+    "OutboxRetryAnomaly",
+    "DLQGrowth"
+  ],
+  "grafana_datasources": [
+    "Prometheus",
+    "Loki",
+    "Tempo"
+  ],
+  "grafana_dashboards": [
+    "Platform Overview",
+    "Database Overview",
+    "Kafka Overview",
+    "Application Tracing"
+  ]
+}

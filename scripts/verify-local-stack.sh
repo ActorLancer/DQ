@@ -36,13 +36,16 @@ check_http() {
   local url="$2"
   local expected_regex="$3"
 
-  local code
-  code="$(curl -k -sS -o /dev/null -w '%{http_code}' "$url" || true)"
-  if [[ "$code" =~ $expected_regex ]]; then
-    ok "${name} responded at ${url} with HTTP ${code}"
-  else
-    fail "${name} check failed at ${url} with HTTP ${code}"
-  fi
+  local code=""
+  for _ in $(seq 1 15); do
+    code="$(curl -k -sS -o /dev/null -w '%{http_code}' "$url" || true)"
+    if [[ "$code" =~ $expected_regex ]]; then
+      ok "${name} responded at ${url} with HTTP ${code}"
+      return 0
+    fi
+    sleep 1
+  done
+  fail "${name} check failed at ${url} with HTTP ${code}"
 }
 
 require_cmd bash
@@ -88,14 +91,14 @@ case "${MODE}" in
     check_http "Tempo" "http://127.0.0.1:${TEMPO_PORT}/ready" '^(200)$'
     ;;
   mocks)
-    check_http "Mock payment provider" "http://127.0.0.1:${MOCK_PAYMENT_PORT}/__admin" '^(200)$'
+    check_http "Mock payment provider" "http://127.0.0.1:${MOCK_PAYMENT_PORT}/__admin/" '^(200)$'
     ;;
   full|all)
     check_http "Prometheus" "http://127.0.0.1:${PROMETHEUS_PORT}/-/healthy" '^(200)$'
     check_http "Grafana" "http://127.0.0.1:${GRAFANA_PORT}/api/health" '^(200)$'
     check_http "Loki" "http://127.0.0.1:${LOKI_PORT}/ready" '^(200)$'
     check_http "Tempo" "http://127.0.0.1:${TEMPO_PORT}/ready" '^(200)$'
-    check_http "Mock payment provider" "http://127.0.0.1:${MOCK_PAYMENT_PORT}/__admin" '^(200)$'
+    check_http "Mock payment provider" "http://127.0.0.1:${MOCK_PAYMENT_PORT}/__admin/" '^(200)$'
     ;;
   *)
     fail "Unknown mode: ${MODE}. Use one of: core, observability, obs, mocks, full"

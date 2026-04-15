@@ -13,4 +13,6 @@
 11. 生成本地通道与链码占位工件：`make fabric-channel && ./infra/fabric/deploy-chaincode-placeholder.sh`
 12. Fabric 自检：`./scripts/check-fabric-local.sh`
 13. OTel Collector 自检：`./scripts/check-otel-collector.sh`
-14. 健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+14. 按需启动观测栈：`docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml --profile observability up -d`
+15. 观测栈自检：`./scripts/check-observability-stack.sh`
+16. 健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`

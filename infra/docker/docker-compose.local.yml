@@ -168,13 +168,79 @@ services:
     profiles: ["observability"]
     image: prom/prometheus:v3.5.0
     container_name: datab-prometheus
+    depends_on:
+      - alertmanager
+      - kafka-exporter
+      - postgres-exporter
+      - redis-exporter
+      - opensearch-exporter
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-lifecycle"
       - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}"
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+
+  alertmanager:
+    <<: *service-defaults
+    profiles: ["observability"]
+    image: prom/alertmanager:v0.28.1
+    container_name: datab-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+
+  postgres-exporter:
+    <<: *service-defaults
+    profiles: ["observability"]
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: datab-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-datab}:${POSTGRES_PASSWORD:-datab_local_pass}@postgres:5432/${POSTGRES_DB:-datab}?sslmode=disable
+    ports:
+      - "${POSTGRES_EXPORTER_PORT:-9187}:9187"
+
+  redis-exporter:
+    <<: *service-defaults
+    profiles: ["observability"]
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: datab-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-datab_redis_pass}
+    ports:
+      - "${REDIS_EXPORTER_PORT:-9121}:9121"
+
+  kafka-exporter:
+    <<: *service-defaults
+    profiles: ["observability"]
+    image: danielqsj/kafka-exporter:v1.9.0
+    container_name: datab-kafka-exporter
+    command:
+      - --kafka.server=kafka:9092
+      - --web.listen-address=:9308
+    ports:
+      - "${KAFKA_EXPORTER_PORT:-9308}:9308"
+
+  opensearch-exporter:
+    <<: *service-defaults
+    profiles: ["observability"]
+    image: prometheuscommunity/elasticsearch-exporter:v1.9.0
+    container_name: datab-opensearch-exporter
+    command:
+      - "--es.uri=http://opensearch:9200"
+      - "--web.listen-address=:9114"
+      - "--es.all"
+    ports:
+      - "${OPENSEARCH_EXPORTER_PORT:-9114}:9114"
 
   grafana:
     <<: *service-defaults
@@ -188,28 +254,34 @@ services:
       - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
 
   loki:
     <<: *service-defaults
     profiles: ["observability"]
     image: grafana/loki:3.5.5
     container_name: datab-loki
+    user: "0:0"
     command: -config.file=/etc/loki/local-config.yaml
     ports:
       - "${LOKI_PORT:-3100}:3100"
     volumes:
       - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/tmp/loki
 
   tempo:
     <<: *service-defaults
     profiles: ["observability"]
     image: grafana/tempo:2.8.2
     container_name: datab-tempo
+    user: "0:0"
     command: ["-config.file=/etc/tempo/tempo.yml"]
     ports:
       - "${TEMPO_PORT:-3200}:3200"
     volumes:
       - ./monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/tmp/tempo
 
   otel-collector:
     <<: *service-defaults
@@ -257,8 +329,11 @@ networks:
     driver: bridge
 
 volumes:
+  alertmanager_data:
   postgres_data:
   redis_data:
   minio_data:
   opensearch_data:
   grafana_data:
+  loki_data:
+  tempo_data:

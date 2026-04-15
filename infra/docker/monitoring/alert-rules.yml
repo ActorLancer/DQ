@@ -1,0 +1,56 @@
+groups:
+  - name: platform-minimal-alerts
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"platform-core|mock-payment-provider|kafka-exporter|postgres-exporter|redis-exporter|minio-exporter|opensearch-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Service target down"
+          description: "Prometheus target {{ $labels.job }} / {{ $labels.instance }} is down."
+
+      - alert: KafkaConsumerLagBacklog
+        expr: kafka_consumergroup_lag_sum > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag backlog"
+          description: "Consumer group lag exceeds 1000 for more than 5 minutes."
+
+      - alert: DBConnectionFailure
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres exporter reports DB failure"
+          description: "pg_up is 0, database connectivity appears broken."
+
+      - alert: ChainAdapterFailure
+        expr: absent(up{job="fabric-adapter"}) == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fabric adapter metrics missing"
+          description: "Fabric adapter target is missing. This indicates chain adapter unavailable or not instrumented."
+
+      - alert: OutboxRetryAnomaly
+        expr: increase(kafka_consumergroup_lag_sum{consumergroup=~".*outbox.*"}[10m]) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox retry anomaly"
+          description: "Outbox-related consumer lag growth suggests retry anomaly."
+
+      - alert: DLQGrowth
+        expr: increase(kafka_topic_partition_current_offset{topic=~".*dead-letter.*"}[10m]) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ growth detected"
+          description: "Dead-letter topic offset grew rapidly in the last 10 minutes."
