@@ -12,6 +12,7 @@ x-service-defaults: &service-defaults
       max-file: "3"
 
 services:
+  # ENV-044 PostgreSQL service block
   postgres:
     <<: *service-defaults
     profiles: ["core", "demo"]
@@ -37,6 +38,7 @@ services:
       retries: 10
       start_period: 10s
 
+  # ENV-045 Redis service block
   redis:
     <<: *service-defaults
     profiles: ["core", "demo"]
@@ -45,9 +47,11 @@ services:
     command:
       - sh
       - -c
-      - redis-server /usr/local/etc/redis/redis.conf --requirepass "$${REDIS_PASSWORD}"
+      - redis-server /usr/local/etc/redis/redis.conf --requirepass "$${REDIS_PASSWORD}" --maxmemory "$${REDIS_MAXMEMORY}" --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY}"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-datab_redis_pass}
+      REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-256mb}
+      REDIS_MAXMEMORY_POLICY: ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -60,6 +64,9 @@ services:
       retries: 10
       start_period: 5s
 
+  # ENV-046 Kafka service block
+  # Topic initialization prerequisite:
+  # run ./infra/kafka/init-topics.sh after kafka is healthy.
   kafka:
     <<: *service-defaults
     profiles: ["core", "demo"]
@@ -89,6 +96,9 @@ services:
       retries: 10
       start_period: 20s
 
+  # ENV-047 MinIO service block
+  # Bucket initialization prerequisite:
+  # run ./infra/minio/init-minio.sh after minio is healthy.
   minio:
     <<: *service-defaults
     profiles: ["core", "demo"]

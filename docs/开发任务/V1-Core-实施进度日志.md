@@ -1102,3 +1102,39 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
+
+### BATCH-031
+
+- 状态：计划中
+- 当前任务编号：ENV-044, ENV-045, ENV-046, ENV-047
+- 当前批次目标：一次性完成 `docker-compose.local.yml` 的 PostgreSQL/Redis/Kafka/MinIO 服务块收敛，确保服务定义清晰且可被总 compose 聚合解析。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；2. `make up-local`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`
+- 覆盖的任务清单条目：`ENV-044`, `ENV-045`, `ENV-046`, `ENV-047`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次按“连续 4 任务”执行，统一实现和统一汇报。
+
+### BATCH-031
+
+- 状态：待审批
+- 当前任务编号：ENV-044, ENV-045, ENV-046, ENV-047
+- 当前批次目标：一次性完成 `docker-compose.local.yml` 的 PostgreSQL/Redis/Kafka/MinIO 服务块收敛，确保服务定义清晰且可被总 compose 聚合解析。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `docker-compose.local.yml` 中显式标注四个服务块（PostgreSQL/Redis/Kafka/MinIO）；Redis 服务块补充内存策略参数（`REDIS_MAXMEMORY`、`REDIS_MAXMEMORY_POLICY`）并保留持久化卷与健康检查；Kafka 与 MinIO 服务块增加 topic/bucket 初始化前置约束注释，明确与 `infra/kafka/init-topics.sh`、`infra/minio/init-minio.sh` 的衔接关系。
+- 涉及文件：`infra/docker/docker-compose.local.yml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；2. `make up-local`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：通过。compose 聚合解析成功；`up-local` 可启动；core 健康检查通过。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`ENV-044`, `ENV-045`, `ENV-046`, `ENV-047`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
