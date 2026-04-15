@@ -1046,7 +1046,7 @@
 - 覆盖的任务清单条目：`ENV-037`, `ENV-038`, `ENV-039`, `ENV-040`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：按“连续任务单批次”执行，完成后统一回报。
 
 ### BATCH-029
@@ -1058,13 +1058,13 @@
 - 预计涉及文件：`scripts/export-local-config.sh`、`scripts/smoke-local.sh`、`docs/04-runbooks/port-matrix.md`、`docs/04-runbooks/troubleshooting.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/**`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
 - 已实现功能：新增 `scripts/export-local-config.sh`，将 compose 解析结果导出为只读快照（default/core/demo 三组）；新增 `docs/04-runbooks/port-matrix.md`，维护端口、URL、默认账号口径及初始 bucket/topic 矩阵；扩展 `docs/04-runbooks/troubleshooting.md`，分别补齐 PostgreSQL/Kafka/Keycloak/MinIO/OpenSearch/Fabric 启动失败诊断步骤；新增 `scripts/smoke-local.sh` 与 `fixtures/local/local-smoke-suite-manifest.json`，覆盖“数据库可迁移、bucket 已创建、realm 已导入、topic 已存在、Grafana 可登录、Mock Payment 可回调”六项 smoke 检查；同步更新 `local-startup.md` 与 `scripts/README.md`。
 - 涉及文件：`scripts/export-local-config.sh`、`scripts/smoke-local.sh`、`docs/04-runbooks/port-matrix.md`、`docs/04-runbooks/troubleshooting.md`、`docs/04-runbooks/local-startup.md`、`scripts/README.md`、`fixtures/local/local-smoke-suite-manifest.json`、`fixtures/local/config-snapshots/.gitkeep`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 验证步骤：1. `bash -n scripts/export-local-config.sh scripts/smoke-local.sh scripts/prune-local.sh`；2. `./scripts/export-local-config.sh`；3. `make up-local`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；5. `make up-demo`；6. `./infra/kafka/init-topics.sh`；7. `./infra/minio/init-minio.sh`；8. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`；9. `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`。
+- 验证步骤：1. `bash -n scripts/export-local-config.sh scripts/smoke-local.sh scripts/prune-local.sh`；2. `./scripts/export-local-config.sh`；3. `make up-local`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；5. `make up-demo`；6. `./infra/kafka/init-topics.sh`；7. `./infra/minio/init-minio.sh`；8. `ENV_FILE=infra/docker/.en37v.local ./scripts/check-local-stack.sh full`；9. `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`。
 - 验证结果：通过。新增脚本语法检查通过；配置快照导出成功；`core`/`full` 自检均通过；smoke 套件六项检查全部通过。
 - 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`、`全集成文档/数据交易平台-全集成基线-V1.md`（环境与可观测性约束）
 - 覆盖的任务清单条目：`ENV-037`, `ENV-038`, `ENV-039`, `ENV-040`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：Docker 相关验证命令在沙箱内不可达，已在沙箱外执行并通过。
 
 ### BATCH-030
@@ -1082,7 +1082,7 @@
 - 覆盖的任务清单条目：`ENV-041`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：当前批次按“复杂单任务”执行，完成后统一进入审批。
 
 ### BATCH-030
@@ -1100,7 +1100,7 @@
 - 覆盖的任务清单条目：`ENV-041`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
 
 ### BATCH-031
@@ -1118,7 +1118,7 @@
 - 覆盖的任务清单条目：`ENV-044`, `ENV-045`, `ENV-046`, `ENV-047`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按“连续 4 任务”执行，统一实现和统一汇报。
 
 ### BATCH-031
@@ -1134,6 +1134,42 @@
 - 验证结果：通过。compose 聚合解析成功；`up-local` 可启动；core 健康检查通过。
 - 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`开发准备/平台总体架构设计草案.md`
 - 覆盖的任务清单条目：`ENV-044`, `ENV-045`, `ENV-046`, `ENV-047`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：通过
+- 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
+
+### BATCH-032
+
+- 状态：计划中
+- 当前任务编号：ENV-048, ENV-049, ENV-050, ENV-051
+- 当前批次目标：一次性完成 OpenSearch/Keycloak/OTel+Prometheus+Alertmanager/Grafana+Loki+Tempo 服务块收敛，补齐块级约束并验证可独立启动。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `docker compose ... config` 解析；2. `make up-observability` 或等价 profile 启动；3. `scripts/check-observability-stack.sh` 与 `scripts/check-local-stack.sh core`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`原始PRD/日志、可观测性与告警设计.md`
+- 覆盖的任务清单条目：`ENV-048`, `ENV-049`, `ENV-050`, `ENV-051`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次按连续 4 任务执行，完成后统一汇报。
+
+### BATCH-032
+
+- 状态：待审批
+- 当前任务编号：ENV-048, ENV-049, ENV-050, ENV-051
+- 当前批次目标：一次性完成 OpenSearch/Keycloak/OTel+Prometheus+Alertmanager/Grafana+Loki+Tempo 服务块收敛，补齐块级约束并验证可独立启动。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：OpenSearch 服务块补充索引别名环境变量、内存参数与单节点模式说明；Keycloak 服务块补充 realm/client 初始化来源约束与管理端口职责说明；OTel/Prometheus/Alertmanager 服务块补充块级注释及 Prometheus、Alertmanager 健康检查；Grafana/Loki/Tempo 服务块补充块级注释及健康检查，确保可独立启动和健康判定一致。
+- 涉及文件：`infra/docker/docker-compose.local.yml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；2. `make up-demo`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；4. `./scripts/check-observability-stack.sh`。
+- 验证结果：通过。compose 解析成功；demo profile 启动成功；core 健康检查通过；observability 栈 targets/rules/datasources/dashboards 校验通过。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`原始PRD/日志、可观测性与告警设计.md`
+- 覆盖的任务清单条目：`ENV-048`, `ENV-049`, `ENV-050`, `ENV-051`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批

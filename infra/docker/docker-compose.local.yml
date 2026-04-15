@@ -120,6 +120,7 @@ services:
       retries: 10
       start_period: 10s
 
+  # ENV-048 OpenSearch service block
   opensearch:
     <<: *service-defaults
     profiles: ["core", "demo"]
@@ -132,6 +133,9 @@ services:
       DISABLE_INSTALL_DEMO_CONFIG: "true"
       plugins.security.disabled: "true"
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}
+      INDEX_ALIAS_CATALOG_PRODUCTS: ${INDEX_ALIAS_CATALOG_PRODUCTS:-catalog_products_v1}
+      INDEX_ALIAS_SELLER_PROFILES: ${INDEX_ALIAS_SELLER_PROFILES:-seller_profiles_v1}
+      INDEX_ALIAS_SEARCH_SYNC_JOBS: ${INDEX_ALIAS_SEARCH_SYNC_JOBS:-search_sync_jobs_v1}
     ulimits:
       memlock:
         soft: -1
@@ -151,6 +155,8 @@ services:
       retries: 10
       start_period: 30s
 
+  # ENV-049 Keycloak service block
+  # Realm import and client bootstrap are sourced from infra/keycloak/realm-export/*.json.
   keycloak:
     <<: *service-defaults
     profiles: ["core", "demo"]
@@ -168,6 +174,8 @@ services:
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-datab_local_pass}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123456}
+      KEYCLOAK_REALM_IMPORT_DIR: /opt/keycloak/data/import
+      KEYCLOAK_CLIENT_INIT_MODE: realm-import
     ports:
       - "${KEYCLOAK_PORT:-8081}:8080"
     volumes:
@@ -179,6 +187,7 @@ services:
       retries: 10
       start_period: 40s
 
+  # ENV-050 OTel/Prometheus/Alertmanager service block
   prometheus:
     <<: *service-defaults
     profiles: ["observability", "demo"]
@@ -199,6 +208,12 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/healthy >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   alertmanager:
     <<: *service-defaults
@@ -213,6 +228,12 @@ services:
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9093/-/ready >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   postgres-exporter:
     <<: *service-defaults
@@ -258,6 +279,7 @@ services:
     ports:
       - "${OPENSEARCH_EXPORTER_PORT:-9114}:9114"
 
+  # ENV-051 Grafana/Loki/Tempo service block
   grafana:
     <<: *service-defaults
     profiles: ["observability", "demo"]
@@ -272,6 +294,12 @@ services:
       - grafana_data:/var/lib/grafana
       - ../grafana/provisioning:/etc/grafana/provisioning:ro
       - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   loki:
     <<: *service-defaults
@@ -285,6 +313,12 @@ services:
     volumes:
       - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/tmp/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/ready >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   tempo:
     <<: *service-defaults
@@ -298,6 +332,12 @@ services:
     volumes:
       - ./monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempo_data:/tmp/tempo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3200/ready >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   otel-collector:
     <<: *service-defaults
