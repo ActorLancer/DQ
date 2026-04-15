@@ -920,7 +920,7 @@
 - 覆盖的任务清单条目：`ENV-033`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次为文档收口任务，命令保持与仓库现有入口一致。
 
 ### BATCH-025
@@ -940,3 +940,39 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：启动顺序已显式固定为“基础设施 -> schema/migration -> seed -> 应用 -> 回执模拟”，且命令均指向仓库现有入口。
+
+### BATCH-026
+
+- 状态：计划中
+- 当前任务编号：ENV-034
+- 当前批次目标：补充 `docker-compose.staging.example.yml` 占位文件，不部署真实生产资源，并明确后续 Helm/K8s 迁移组件映射关系。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`docker-compose.staging.example.yml`、`docs/04-runbooks/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `docker compose -f docker-compose.staging.example.yml config`；2. 映射文档一致性检查；3. `make up-local` + `scripts/check-local-stack.sh core` 基线验证。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
+- 覆盖的任务清单条目：`ENV-034`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次为“staging 示例编排 + K8s 映射占位”任务，不引入真实生产配置。
+
+### BATCH-026
+
+- 状态：待审批
+- 当前任务编号：ENV-034
+- 当前批次目标：补充 `docker-compose.staging.example.yml` 占位文件，不部署真实生产资源，并明确后续 Helm/K8s 迁移组件映射关系。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`docker-compose.staging.example.yml`、`docs/04-runbooks/staging-compose-mapping.md`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `docker-compose.staging.example.yml`，提供平台核心、数据库、缓存、消息、存储、检索、鉴权、链适配、可观测与 mock 支付等服务占位；文件内全部采用示例镜像和 `REPLACE_ME` 占位值，未引入真实生产资源；新增 `docs/04-runbooks/staging-compose-mapping.md`，明确 Compose 到 Helm/K8s 资源映射与迁移边界。
+- 涉及文件：`docker-compose.staging.example.yml`、`docs/04-runbooks/staging-compose-mapping.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `docker compose -f docker-compose.staging.example.yml config`；2. `make up-local`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：通过。Compose 配置静态解析成功；本地基础栈可启动；core 模式健康检查全部通过（Postgres/Redis/Kafka/MinIO/OpenSearch/Keycloak/OTel 均通过）。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`、`全集成文档/数据交易平台-全集成基线-V1.md`（部署与环境相关约束）
+- 覆盖的任务清单条目：`ENV-034`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`make up-local` 与 `check-local-stack.sh` 在沙箱内无法访问 Docker daemon/本机端口，已在沙箱外执行并得到通过结果。
