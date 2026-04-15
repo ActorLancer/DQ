@@ -1,0 +1,287 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-local",
+  "generated_for_task": "ENV-041",
+  "version": "1.0.0",
+  "enterprises": [
+    {
+      "enterprise_id": "ent_seller_industrial_a",
+      "name": "Industrial Data Provider A",
+      "role": "seller",
+      "credit_tier": "A"
+    },
+    {
+      "enterprise_id": "ent_seller_retail_b",
+      "name": "Retail Insight Provider B",
+      "role": "seller",
+      "credit_tier": "A"
+    },
+    {
+      "enterprise_id": "ent_buyer_mfg_x",
+      "name": "Manufacturing Buyer X",
+      "role": "buyer",
+      "credit_tier": "B"
+    },
+    {
+      "enterprise_id": "ent_buyer_supply_y",
+      "name": "Supply Chain Buyer Y",
+      "role": "buyer",
+      "credit_tier": "B"
+    },
+    {
+      "enterprise_id": "ent_buyer_retail_z",
+      "name": "Retail Buyer Z",
+      "role": "buyer",
+      "credit_tier": "A"
+    }
+  ],
+  "products": [
+    {
+      "product_id": "prd_industrial_runtime_api",
+      "name": "Industrial Runtime Metrics API",
+      "seller_enterprise_id": "ent_seller_industrial_a",
+      "sku_types": [
+        "API_SUB",
+        "API_PPU"
+      ]
+    },
+    {
+      "product_id": "prd_quality_file_pack",
+      "name": "Industrial Quality File Pack",
+      "seller_enterprise_id": "ent_seller_industrial_a",
+      "sku_types": [
+        "FILE_STD",
+        "FILE_SUB"
+      ]
+    },
+    {
+      "product_id": "prd_supply_sandbox",
+      "name": "Supply Chain Sandbox",
+      "seller_enterprise_id": "ent_seller_industrial_a",
+      "sku_types": [
+        "SBX_STD",
+        "SHARE_RO"
+      ]
+    },
+    {
+      "product_id": "prd_retail_analysis_api",
+      "name": "Retail Operations Analysis API",
+      "seller_enterprise_id": "ent_seller_retail_b",
+      "sku_types": [
+        "API_SUB",
+        "RPT_STD"
+      ]
+    },
+    {
+      "product_id": "prd_location_query_service",
+      "name": "Location Query Service",
+      "seller_enterprise_id": "ent_seller_retail_b",
+      "sku_types": [
+        "QRY_LITE",
+        "RPT_STD"
+      ]
+    }
+  ],
+  "sku_catalog": [
+    {
+      "sku_id": "sku_api_sub_runtime_m1",
+      "sku_type": "API_SUB",
+      "product_id": "prd_industrial_runtime_api",
+      "billing_mode": "monthly"
+    },
+    {
+      "sku_id": "sku_api_ppu_runtime_m1",
+      "sku_type": "API_PPU",
+      "product_id": "prd_industrial_runtime_api",
+      "billing_mode": "usage"
+    },
+    {
+      "sku_id": "sku_file_std_quality_m1",
+      "sku_type": "FILE_STD",
+      "product_id": "prd_quality_file_pack",
+      "billing_mode": "one_time"
+    },
+    {
+      "sku_id": "sku_file_sub_quality_m1",
+      "sku_type": "FILE_SUB",
+      "product_id": "prd_quality_file_pack",
+      "billing_mode": "monthly"
+    },
+    {
+      "sku_id": "sku_sbx_std_supply_m1",
+      "sku_type": "SBX_STD",
+      "product_id": "prd_supply_sandbox",
+      "billing_mode": "monthly"
+    },
+    {
+      "sku_id": "sku_share_ro_supply_m1",
+      "sku_type": "SHARE_RO",
+      "product_id": "prd_supply_sandbox",
+      "billing_mode": "one_time"
+    },
+    {
+      "sku_id": "sku_qry_lite_location_m1",
+      "sku_type": "QRY_LITE",
+      "product_id": "prd_location_query_service",
+      "billing_mode": "usage"
+    },
+    {
+      "sku_id": "sku_rpt_std_retail_m1",
+      "sku_type": "RPT_STD",
+      "product_id": "prd_retail_analysis_api",
+      "billing_mode": "monthly"
+    }
+  ],
+  "templates": [
+    {
+      "template_id": "tpl_location_score_v1",
+      "name": "Location Score Query Template",
+      "product_id": "prd_location_query_service",
+      "default_params": {
+        "city": "Shanghai",
+        "radius_km": 3,
+        "poi_type": "shopping_mall"
+      }
+    },
+    {
+      "template_id": "tpl_supply_export_v1",
+      "name": "Supply Sandbox Export Template",
+      "product_id": "prd_supply_sandbox",
+      "default_params": {
+        "period": "P30D",
+        "output_format": "csv"
+      }
+    }
+  ],
+  "orders": [
+    {
+      "order_id": "ord_s1_api_sub_001",
+      "scenario": "S1",
+      "buyer_enterprise_id": "ent_buyer_mfg_x",
+      "seller_enterprise_id": "ent_seller_industrial_a",
+      "sku_id": "sku_api_sub_runtime_m1",
+      "status": "authorized",
+      "request_id": "req_s1_api_sub_001"
+    },
+    {
+      "order_id": "ord_s2_file_std_001",
+      "scenario": "S2",
+      "buyer_enterprise_id": "ent_buyer_supply_y",
+      "seller_enterprise_id": "ent_seller_industrial_a",
+      "sku_id": "sku_file_std_quality_m1",
+      "status": "delivered",
+      "request_id": "req_s2_file_std_001"
+    },
+    {
+      "order_id": "ord_s3_sbx_std_001",
+      "scenario": "S3",
+      "buyer_enterprise_id": "ent_buyer_supply_y",
+      "seller_enterprise_id": "ent_seller_industrial_a",
+      "sku_id": "sku_sbx_std_supply_m1",
+      "status": "active",
+      "request_id": "req_s3_sbx_std_001"
+    },
+    {
+      "order_id": "ord_s4_api_sub_001",
+      "scenario": "S4",
+      "buyer_enterprise_id": "ent_buyer_retail_z",
+      "seller_enterprise_id": "ent_seller_retail_b",
+      "sku_id": "sku_rpt_std_retail_m1",
+      "status": "invoiced",
+      "request_id": "req_s4_api_sub_001"
+    },
+    {
+      "order_id": "ord_s5_qry_lite_001",
+      "scenario": "S5",
+      "buyer_enterprise_id": "ent_buyer_retail_z",
+      "seller_enterprise_id": "ent_seller_retail_b",
+      "sku_id": "sku_qry_lite_location_m1",
+      "status": "accepted",
+      "request_id": "req_s5_qry_lite_001"
+    }
+  ],
+  "payments": [
+    {
+      "payment_id": "pay_s1_001",
+      "order_id": "ord_s1_api_sub_001",
+      "provider": "mock-payment-provider",
+      "status": "succeeded",
+      "amount": {
+        "value": "3000.00",
+        "currency": "CNY"
+      }
+    },
+    {
+      "payment_id": "pay_s2_001",
+      "order_id": "ord_s2_file_std_001",
+      "provider": "mock-payment-provider",
+      "status": "succeeded",
+      "amount": {
+        "value": "1200.00",
+        "currency": "CNY"
+      }
+    },
+    {
+      "payment_id": "pay_s3_001",
+      "order_id": "ord_s3_sbx_std_001",
+      "provider": "mock-payment-provider",
+      "status": "succeeded",
+      "amount": {
+        "value": "2600.00",
+        "currency": "CNY"
+      }
+    },
+    {
+      "payment_id": "pay_s4_001",
+      "order_id": "ord_s4_api_sub_001",
+      "provider": "mock-payment-provider",
+      "status": "succeeded",
+      "amount": {
+        "value": "1800.00",
+        "currency": "CNY"
+      }
+    },
+    {
+      "payment_id": "pay_s5_001",
+      "order_id": "ord_s5_qry_lite_001",
+      "provider": "mock-payment-provider",
+      "status": "succeeded",
+      "amount": {
+        "value": "500.00",
+        "currency": "CNY"
+      }
+    }
+  ],
+  "deliveries": [
+    {
+      "delivery_id": "dlv_s2_file_std_001",
+      "order_id": "ord_s2_file_std_001",
+      "delivery_type": "object_delivery",
+      "bucket": "delivery-objects",
+      "object_key": "s2/ord_s2_file_std_001/package.zip",
+      "receipt_status": "received"
+    },
+    {
+      "delivery_id": "dlv_s3_sbx_std_001",
+      "order_id": "ord_s3_sbx_std_001",
+      "delivery_type": "sandbox_access",
+      "access_scope": "supply-sandbox:read",
+      "receipt_status": "active"
+    },
+    {
+      "delivery_id": "dlv_s4_rpt_std_001",
+      "order_id": "ord_s4_api_sub_001",
+      "delivery_type": "report_delivery",
+      "bucket": "report-results",
+      "object_key": "s4/ord_s4_api_sub_001/report.pdf",
+      "receipt_status": "received"
+    },
+    {
+      "delivery_id": "dlv_s5_qry_lite_001",
+      "order_id": "ord_s5_qry_lite_001",
+      "delivery_type": "query_result_package",
+      "bucket": "evidence-packages",
+      "object_key": "s5/ord_s5_qry_lite_001/result.json",
+      "receipt_status": "accepted"
+    }
+  ]
+}

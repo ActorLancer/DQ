@@ -74,3 +74,4 @@
 - `BATCH-027`（`ENV-035`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-028`（`ENV-036`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-029`（`ENV-037`, `ENV-038`, `ENV-039`, `ENV-040`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-030`（`ENV-041`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。

@@ -1,0 +1,57 @@
+{
+  "manifest_id": "five-standard-scenarios-v1",
+  "generated_for_task": "ENV-041",
+  "scenarios": [
+    {
+      "scenario_id": "S1",
+      "name": "工业设备运行指标 API 订阅",
+      "primary_sku_type": "API_SUB",
+      "optional_sku_types": [
+        "API_PPU"
+      ],
+      "order_id": "ord_s1_api_sub_001",
+      "request_id": "req_s1_api_sub_001"
+    },
+    {
+      "scenario_id": "S2",
+      "name": "工业质量与产线日报文件包交付",
+      "primary_sku_type": "FILE_STD",
+      "optional_sku_types": [
+        "FILE_SUB"
+      ],
+      "order_id": "ord_s2_file_std_001",
+      "request_id": "req_s2_file_std_001"
+    },
+    {
+      "scenario_id": "S3",
+      "name": "供应链协同查询沙箱",
+      "primary_sku_type": "SBX_STD",
+      "optional_sku_types": [
+        "SHARE_RO"
+      ],
+      "order_id": "ord_s3_sbx_std_001",
+      "request_id": "req_s3_sbx_std_001"
+    },
+    {
+      "scenario_id": "S4",
+      "name": "零售门店经营分析 API / 报告订阅",
+      "primary_sku_type": "API_SUB",
+      "optional_sku_types": [
+        "RPT_STD"
+      ],
+      "order_id": "ord_s4_api_sub_001",
+      "request_id": "req_s4_api_sub_001"
+    },
+    {
+      "scenario_id": "S5",
+      "name": "商圈/门店选址查询服务",
+      "primary_sku_type": "QRY_LITE",
+      "optional_sku_types": [
+        "RPT_STD"
+      ],
+      "order_id": "ord_s5_qry_lite_001",
+      "request_id": "req_s5_qry_lite_001"
+    }
+  ],
+  "dataset_file": "fixtures/local/standard-scenarios-sample.json"
+}

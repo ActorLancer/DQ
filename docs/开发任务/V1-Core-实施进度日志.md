@@ -1066,3 +1066,39 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：Docker 相关验证命令在沙箱内不可达，已在沙箱外执行并通过。
+
+### BATCH-030
+
+- 状态：计划中
+- 当前任务编号：ENV-041
+- 当前批次目标：在 `fixtures/local/` 下补齐五条标准链路所需最小演示数据（企业主体、卖方、买方、产品、SKU、模板、订单、支付、交付样例）。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`fixtures/local/**`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. fixtures JSON 语法检查；2. `make up-local`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；4. smoke 至少一条链路可验证。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/测试用例矩阵正式版.md`、`全集成文档/数据交易平台-全集成基线-V1.md`
+- 覆盖的任务清单条目：`ENV-041`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：当前批次按“复杂单任务”执行，完成后统一进入审批。
+
+### BATCH-030
+
+- 状态：待审批
+- 当前任务编号：ENV-041
+- 当前批次目标：在 `fixtures/local/` 下补齐五条标准链路所需最小演示数据（企业主体、卖方、买方、产品、SKU、模板、订单、支付、交付样例）。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`fixtures/local/**`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json`，覆盖首批五条标准链路（S1~S5）最小演示数据：企业主体、卖方、买方、产品、8 个 V1 SKU、模板、订单、支付、交付样例；更新 `fixtures/local/README.md` 与 `docs/04-runbooks/local-startup.md`，明确 fixture 入口和启动阶段引用。
+- 涉及文件：`fixtures/local/standard-scenarios-manifest.json`、`fixtures/local/standard-scenarios-sample.json`、`fixtures/local/README.md`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `jq -e . fixtures/local/standard-scenarios-manifest.json`；2. `jq -e . fixtures/local/standard-scenarios-sample.json`；3. `make up-local`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`；5. `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`。
+- 验证结果：通过。新增 fixtures JSON 语法校验通过；`up-local` 成功；`core` 健康检查通过；smoke 套件通过（至少一条 smoke test 成功，且六项检查均通过）。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/测试用例矩阵正式版.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`、`全集成文档/数据交易平台-全集成基线-V1.md`
+- 覆盖的任务清单条目：`ENV-041`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
