@@ -1,19 +1,40 @@
 services:
+  # ENV-055: developer-local override examples (infrastructure only)
+  # Copy this file to docker-compose.local.override.yml and adjust as needed.
+
   postgres:
     ports:
       - "55432:5432"
+    environment:
+      POSTGRES_PASSWORD: dev_only_password
+
+  redis:
+    ports:
+      - "16379:6379"
+    environment:
+      REDIS_MAXMEMORY: 128mb
+      REDIS_MAXMEMORY_POLICY: volatile-lru
 
   kafka:
     ports:
       - "19092:9092"
       - "19094:9094"
 
-  platform-core:
-    image: rust:1.89
-    working_dir: /workspace
-    command: ["bash", "-lc", "cargo run --bin platform-core"]
-    volumes:
-      - ../../:/workspace
+  minio:
+    ports:
+      - "19000:9000"
+      - "19001:9001"
     environment:
-      RUST_LOG: info
-    profiles: ["apps"]
+      MINIO_ROOT_USER: devminio
+      MINIO_ROOT_PASSWORD: devminio_pass
+
+  keycloak:
+    ports:
+      - "18081:8080"
+    environment:
+      KEYCLOAK_ADMIN: devadmin
+      KEYCLOAK_ADMIN_PASSWORD: devadmin_pass
+
+  opensearch:
+    environment:
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m

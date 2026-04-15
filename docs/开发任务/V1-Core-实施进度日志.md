@@ -1154,7 +1154,7 @@
 - 覆盖的任务清单条目：`ENV-048`, `ENV-049`, `ENV-050`, `ENV-051`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按连续 4 任务执行，完成后统一汇报。
 
 ### BATCH-032
@@ -1172,5 +1172,41 @@
 - 覆盖的任务清单条目：`ENV-048`, `ENV-049`, `ENV-050`, `ENV-051`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
+
+### BATCH-033
+
+- 状态：计划中
+- 当前任务编号：ENV-052, ENV-053, ENV-054, ENV-055
+- 当前批次目标：一次性完成 Mock Payment/Fabric/compose 公共策略/.env+override 示例收敛，确保可复用且可验证。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/docker/docker-compose.local.override.example.yml`、`.env.local.example`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `docker compose ... config`；2. `make up-demo`；3. `check-local-stack full`；4. `check-observability-stack`；5. `check-mock-payment`；6. `check-fabric-local`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/配置项与密钥管理清单.md`、`开发准备/技术选型正式版.md`、`开发准备/服务清单与服务边界正式版.md`
+- 覆盖的任务清单条目：`ENV-052`, `ENV-053`, `ENV-054`, `ENV-055`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次按连续 4 任务执行，统一实现和统一汇报。
+
+### BATCH-033
+
+- 状态：待审批
+- 当前任务编号：ENV-052, ENV-053, ENV-054, ENV-055
+- 当前批次目标：一次性完成 Mock Payment/Fabric/compose 公共策略/.env+override 示例收敛，确保可复用且可验证。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-003; BOOT-004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/docker/docker-compose.local.override.example.yml`、`.env.local.example`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 compose 中收敛 `mock-payment-provider` 服务块并补充回调演练变量（`MOCK_PAYMENT_CALLBACK_PORT`、`MOCK_PAYMENT_CALLBACK_BASE_URL`）；收敛 Fabric 测试网络块并补充外部脚本边界说明，Fabric 端口改为可配置变量；抽取并强化 compose 公共策略（`x-service-defaults` 下统一 restart/network/logging 与本地资源限制 guidance）；补齐 `.env.local`、`.env.local.example`、`docker-compose.local.override.example.yml` 的统一变量示例（端口、初始凭证、bucket/topic/realm、索引别名相关项）。
+- 涉及文件：`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/docker/docker-compose.local.override.example.yml`、`.env.local.example`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config`；2. `make up-demo`；3. `./infra/minio/init-minio.sh`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`；5. `./scripts/check-observability-stack.sh`；6. `./scripts/check-mock-payment.sh`；7. `make fabric-channel && ./infra/fabric/deploy-chaincode-placeholder.sh && ./scripts/check-fabric-local.sh`。
+- 验证结果：通过。compose 解析成功；demo profile 启动成功；full 健康检查通过；observability/moc-payment/fabric 校验均通过。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/配置项与密钥管理清单.md`、`开发准备/技术选型正式版.md`、`开发准备/服务清单与服务边界正式版.md`、`原始PRD/日志、可观测性与告警设计.md`
+- 覆盖的任务清单条目：`ENV-052`, `ENV-053`, `ENV-054`, `ENV-055`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过；fabric 运行态产物已清理，未纳入提交。

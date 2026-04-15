@@ -1,6 +1,7 @@
 name: datab-local
 
 x-service-defaults: &service-defaults
+  # ENV-054 compose common strategy: unified restart/network/logging baseline.
   restart: unless-stopped
   init: true
   networks:
@@ -10,6 +11,12 @@ x-service-defaults: &service-defaults
     options:
       max-size: "10m"
       max-file: "3"
+  # Resource limits are soft guidance for local development.
+  deploy:
+    resources:
+      limits:
+        cpus: "2.00"
+        memory: 2g
 
 services:
   # ENV-044 PostgreSQL service block
@@ -359,6 +366,8 @@ services:
       retries: 10
       start_period: 20s
 
+  # ENV-052 Mock Payment Provider service block
+  # Callback drill endpoint is exposed on MOCK_PAYMENT_CALLBACK_PORT.
   mock-payment-provider:
     <<: *service-defaults
     profiles: ["mocks", "demo"]
@@ -369,6 +378,8 @@ services:
       - --global-response-templating
     environment:
       WIREMOCK_OPTIONS: --verbose --global-response-templating
+      MOCK_PAYMENT_CALLBACK_PORT: ${MOCK_PAYMENT_CALLBACK_PORT:-18081}
+      MOCK_PAYMENT_CALLBACK_BASE_URL: ${MOCK_PAYMENT_CALLBACK_BASE_URL:-http://host.docker.internal:${MOCK_PAYMENT_CALLBACK_PORT:-18081}}
     ports:
       - "${MOCK_PAYMENT_PORT:-8089}:8080"
     volumes:
@@ -381,6 +392,8 @@ services:
       retries: 10
       start_period: 10s
 
+  # ENV-053 Fabric test-network block (local mock boundary)
+  # Runtime chain operations are orchestrated by ./infra/fabric/*.sh scripts.
   fabric-ca:
     <<: *service-defaults
     profiles: ["fabric", "demo"]
@@ -388,7 +401,7 @@ services:
     container_name: datab-fabric-ca
     command: sh -c "mkdir -p /var/hyperledger/fabric-ca && echo 'fabric-ca local mock started' && tail -f /dev/null"
     ports:
-      - "7054:7054"
+      - "${FABRIC_CA_PORT:-7054}:7054"
     volumes:
       - ../fabric/state/ca:/var/hyperledger/fabric-ca
     healthcheck:
@@ -404,7 +417,7 @@ services:
     container_name: datab-fabric-orderer
     command: sh -c "mkdir -p /var/hyperledger/orderer && echo 'fabric-orderer local mock started' && tail -f /dev/null"
     ports:
-      - "7050:7050"
+      - "${FABRIC_ORDERER_PORT:-7050}:7050"
     volumes:
       - ../fabric/state/orderer:/var/hyperledger/orderer
     healthcheck:
@@ -420,8 +433,8 @@ services:
     container_name: datab-fabric-peer
     command: sh -c "mkdir -p /var/hyperledger/peer && echo 'fabric-peer local mock started' && tail -f /dev/null"
     ports:
-      - "7051:7051"
-      - "7053:7053"
+      - "${FABRIC_PEER_PORT:-7051}:7051"
+      - "${FABRIC_PEER_EVENT_PORT:-7053}:7053"
     volumes:
       - ../fabric/state/peer:/var/hyperledger/peer
     healthcheck:
