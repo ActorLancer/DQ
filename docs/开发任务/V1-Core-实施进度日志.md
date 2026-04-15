@@ -868,3 +868,39 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：保持 `scripts/check-local-stack.sh` 作为统一入口，命令级探测能力全部内聚于 `verify-local-stack.sh`。
+
+### BATCH-024
+
+- 状态：计划中
+- 当前任务编号：ENV-032
+- 当前批次目标：建立 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo` 组合命令，支持 local/staging/demo 三套模式切换基础。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`Makefile`、`docs/04-runbooks/compose-profiles.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `make` 命令入口静态检查；2. 依次执行 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo`；3. 执行 `scripts/check-local-stack.sh core/full` 验证。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`ENV-032`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批次按复杂任务单批执行，完成后提交本地 commit。
+
+### BATCH-024
+
+- 状态：待审批
+- 当前任务编号：ENV-032
+- 当前批次目标：建立 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo` 组合命令，支持 local/staging/demo 三套模式切换基础。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`Makefile`、`docs/04-runbooks/compose-profiles.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/**`、`开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `Makefile` 新增 `up-core`、`up-observability`、`up-fabric`、`up-demo` 四个组合命令，均复用 `scripts/up-local.sh` 并通过 `COMPOSE_PROFILES` 控制模式；更新 `compose-profiles.md` 改为以 `make` 命令为主入口；更新 `local-startup.md` 的 profile 启动步骤；新增 `fixtures/local/make-up-modes-manifest.json` 记录模式与验证矩阵。
+- 涉及文件：`Makefile`、`docs/04-runbooks/compose-profiles.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/make-up-modes-manifest.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `make -n up-core up-observability up-fabric up-demo`；2. `jq -e . fixtures/local/make-up-modes-manifest.json`；3. `docker compose ... config`；4. `make down-local` 后依次执行 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo`；5. 执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core` 与 `... full`。
+- 验证结果：通过。四个 `make up-*` 命令均可执行并按预期切换 profile；`core` 与 `full` 健康检查均通过。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
+- 覆盖的任务清单条目：`ENV-032`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`up-local` 仍保持兼容入口，默认等价于 `up-core`。

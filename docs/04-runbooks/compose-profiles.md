@@ -13,12 +13,17 @@
 # 默认核心栈
 make up-local
 
+# 显式核心栈
+make up-core
+
 # 核心 + 观测
-COMPOSE_PROFILES=core,observability docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml up -d
+make up-observability
 
 # 核心 + Fabric
-COMPOSE_PROFILES=core,fabric docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml up -d
+make up-fabric
 
 # 一键演示
-COMPOSE_PROFILES=demo docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml up -d
+make up-demo
 ```
+
+以上 `make` 命令统一调用 `scripts/up-local.sh`，仅通过 `COMPOSE_PROFILES` 切换服务组合。

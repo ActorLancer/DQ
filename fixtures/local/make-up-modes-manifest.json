@@ -1,0 +1,14 @@
+{
+  "make_targets": {
+    "up-core": "COMPOSE_PROFILES=core",
+    "up-observability": "COMPOSE_PROFILES=core,observability",
+    "up-fabric": "COMPOSE_PROFILES=core,fabric",
+    "up-demo": "COMPOSE_PROFILES=demo"
+  },
+  "validation": [
+    "make up-core && scripts/check-local-stack.sh core",
+    "make up-observability",
+    "make up-fabric",
+    "make up-demo && scripts/check-local-stack.sh full"
+  ]
+}

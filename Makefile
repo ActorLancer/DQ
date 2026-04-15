@@ -1,11 +1,23 @@
 SHELL := /bin/bash
 
-.PHONY: up-local down-local logs migrate-up migrate-down seed-local test lint fabric-up fabric-down fabric-reset fabric-channel
+.PHONY: up-local down-local up-core up-observability up-fabric up-demo logs migrate-up migrate-down seed-local test lint fabric-up fabric-down fabric-reset fabric-channel
 COMPOSE_FILE ?= infra/docker/docker-compose.local.yml
 COMPOSE_ENV_FILE ?= infra/docker/.env.local
 
 up-local:
 	COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+
+up-core:
+	COMPOSE_PROFILES="core" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+
+up-observability:
+	COMPOSE_PROFILES="core,observability" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+
+up-fabric:
+	COMPOSE_PROFILES="core,fabric" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+
+up-demo:
+	COMPOSE_PROFILES="demo" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
 
 down-local:
 	COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/down-local.sh
