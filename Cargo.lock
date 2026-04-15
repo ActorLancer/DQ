@@ -154,7 +154,9 @@ name = "db"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "audit-kit",
  "kernel",
+ "outbox-kit",
  "tokio",
 ]
 

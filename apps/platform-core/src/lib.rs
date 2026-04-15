@@ -1,7 +1,7 @@
 use audit_kit::NoopAuditWriter;
 use auth::{NoopStepUpGateway, RolePermissionChecker};
 use config::{ProviderMode, RuntimeConfig};
-use db::{DbPool, DbPoolConfig, TxTemplate};
+use db::{DbPool, DbPoolConfig, NoopBusinessMutationWriter, TxTemplate};
 use http::{ApiResponse, build_router, live_handler, serve};
 use kernel::{AppLauncher, AppResult, Module, ModuleContext, validate_error_code_document};
 use outbox_kit::NoopOutboxWriter;
@@ -38,6 +38,7 @@ impl Module for CoreModule {
 
         ctx.container.insert(pool).await;
         ctx.container.insert(TxTemplate).await;
+        ctx.container.insert(NoopBusinessMutationWriter).await;
         ctx.container.insert(RolePermissionChecker).await;
         ctx.container.insert(NoopStepUpGateway).await;
         ctx.container.insert(NoopAuditWriter).await;

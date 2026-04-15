@@ -796,3 +796,39 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：`CORE-010` 仍因依赖阻塞，后续需等 `CORE-033~051` 满足后再处理。
+
+### BATCH-041
+
+- 状态：计划中
+- 当前任务编号：CORE-014
+- 当前批次目标：实现统一 DB 事务模板，保证业务对象修改、审计事件写入、outbox 事件写入可在同一事务模板内完成（单次 begin/commit 或 begin/rollback）。
+- 前置依赖核对结果：`CORE-014` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/db/**`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl /health/ready`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`原始PRD/双层权威模型与链上链下一致性设计.md`、`data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`领域模型/全量领域模型与对象关系说明.md`
+- 覆盖的任务清单条目：`CORE-014`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批按“复杂单任务”执行。
+
+### BATCH-041
+
+- 状态：待审批
+- 当前任务编号：CORE-014
+- 当前批次目标：实现统一 DB 事务模板，保证业务对象修改、审计事件写入、outbox 事件写入可在同一事务模板内完成（单次 begin/commit 或 begin/rollback）。
+- 前置依赖核对结果：`CORE-014` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/db/**`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `crates/db` 新增 `TransactionBundle` 统一事务编排模型，收敛 `business_mutations`、`audit_events`、`outbox_events` 三类写入；新增 `execute_business_audit_outbox` 与 `execute_with_lifecycle`，以单次 begin 后统一执行并在成功时 commit、失败时 rollback；新增 `BusinessMutationWriter` 与 `TxLifecycleHook` 契约及默认实现，主应用启动注入 `NoopBusinessMutationWriter`；文档补齐统一事务模板说明。
+- 涉及文件：`Cargo.lock`、`apps/platform-core/crates/db/Cargo.toml`、`apps/platform-core/crates/db/src/lib.rs`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test -p db -p platform-core`；3. `cargo run -p platform-core` + `curl http://127.0.0.1:8080/health/ready`。
+- 验证结果：通过。`cargo build` 通过；`cargo test -p db -p platform-core` 通过（新增 `tx_bundle_commits`、`tx_bundle_rolls_back_on_failure` 单测通过）；运行态探测返回 `{"success":true,"data":"ready"}`。
+- 覆盖的冻结文档条目：`原始PRD/双层权威模型与链上链下一致性设计.md`、`data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`领域模型/全量领域模型与对象关系说明.md`
+- 覆盖的任务清单条目：`CORE-014`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：当前为事务模板骨架实现；后续模块在接入真实 DB driver 时复用该模板实现真实事务句柄绑定。

@@ -31,6 +31,11 @@
 - `AppError / ErrorCode / ErrorResponse` 在 `crates/kernel` 收口。
 - 启动时校验 `docs/01-architecture/error-codes.md` 的错误码前缀分组与运行时错误码前缀一致。
 
+统一事务模板（V1-Core）：
+
+- 在 `crates/db` 提供 `TransactionBundle` 事务编排模板。
+- 业务对象变更（`business_mutations`）、审计事件写入（`audit_events`）、outbox 事件写入（`outbox_events`）在同一事务模板内按单次 begin/commit 或 begin/rollback 执行。
+
 约束：
 
 - 业务 handler 不直接依赖外部 provider SDK，统一经内部 crate/门面隔离。
