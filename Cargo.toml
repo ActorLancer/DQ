@@ -1,6 +1,10 @@
 [workspace]
 members = [
   "apps/platform-core",
+  "apps/platform-core/bin/platform-core",
+  "apps/platform-core/crates/kernel",
+  "apps/platform-core/crates/config",
+  "apps/platform-core/crates/http",
 ]
 resolver = "2"
 

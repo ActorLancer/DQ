@@ -1190,7 +1190,7 @@
 - 覆盖的任务清单条目：`ENV-052`, `ENV-053`, `ENV-054`, `ENV-055`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按连续 4 任务执行，统一实现和统一汇报。
 
 ### BATCH-033
@@ -1208,7 +1208,7 @@
 - 覆盖的任务清单条目：`ENV-052`, `ENV-053`, `ENV-054`, `ENV-055`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过；fabric 运行态产物已清理，未纳入提交。
 
 ### BATCH-034
@@ -1226,7 +1226,7 @@
 - 覆盖的任务清单条目：`ENV-056`, `ENV-057`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：Docker 相关命令在沙箱内不可达，已在沙箱外执行并通过。
 
 ### BATCH-035
@@ -1244,7 +1244,7 @@
 - 覆盖的任务清单条目：`ENV-001`, `ENV-042`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次为“总边界收口 + 兼容说明”。
 
 ### BATCH-035
@@ -1262,7 +1262,7 @@
 - 覆盖的任务清单条目：`ENV-001`, `ENV-042`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`ENV-043` 仍受 `CORE-032` 依赖约束，不在本批闭环范围内。
 
 ### BATCH-036
@@ -1280,7 +1280,7 @@
 - 覆盖的任务清单条目：`ENV-043`
 - 未覆盖项：`CORE-032` 前置依赖未满足。
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：触发强制暂停条件“前置任务未完成”，按流程不得继续推进 `ENV-043` 实现。
 
 ### BATCH-034
@@ -1298,5 +1298,41 @@
 - 覆盖的任务清单条目：`ENV-056`, `ENV-057`
 - 未覆盖项：待实现后补充。
 - 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次按连续 2 任务执行，统一实现和统一汇报。
+
+### BATCH-037
+
+- 状态：计划中
+- 当前任务编号：CORE-001, CORE-002, CORE-003, CORE-004
+- 当前批次目标：在现有 `apps/platform-core` 骨架上完成 V1-Core 首批基础能力收敛：初始化 Rust workspace 子结构（`bin/platform-core` + `crates/kernel|config|http`）、接入统一启动流程、提供 `/health/ready` 可用入口，并保持可编译可测试。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述任务已完成且你已确认审批通过。
+- 预计涉及文件：`Cargo.toml`、`apps/platform-core/Cargo.toml`、`apps/platform-core/bin/platform-core/**`、`apps/platform-core/crates/kernel/**`、`apps/platform-core/crates/config/**`、`apps/platform-core/crates/http/**`、`apps/platform-core/src/**`、`docs/01-architecture/**`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. 运行 `platform-core` 并验证 `/health/ready`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-001`, `CORE-002`, `CORE-003`, `CORE-004`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：通过
+- 备注：本批次按“连续 4 个简单任务”执行，完成后统一给出待审批结果。
+
+### BATCH-037
+
+- 状态：待审批
+- 当前任务编号：CORE-001, CORE-002, CORE-003, CORE-004
+- 当前批次目标：在现有 `apps/platform-core` 骨架上完成 V1-Core 首批基础能力收敛：初始化 Rust workspace 子结构（`bin/platform-core` + `crates/kernel|config|http`）、接入统一启动流程、提供 `/health/ready` 可用入口，并保持可编译可测试。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述任务已完成且你已确认审批通过。
+- 预计涉及文件：`Cargo.toml`、`apps/platform-core/Cargo.toml`、`apps/platform-core/bin/platform-core/**`、`apps/platform-core/crates/kernel/**`、`apps/platform-core/crates/config/**`、`apps/platform-core/crates/http/**`、`apps/platform-core/src/**`、`docs/01-architecture/**`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `apps/platform-core/bin/platform-core` 启动入口；新增 `crates/kernel`（应用启动器、模块注册器、依赖容器、生命周期钩子、shutdown 流程）；新增 `crates/config`（`local/staging/demo` + `mock/real` provider 配置装载）；新增 `crates/http`（HTTP server 封装、统一 `ApiResponse/ErrorResponse`、分页结构、`/health/live` 与 `/health/ready`）；主应用 `platform-core` 改为统一运行入口并复用上述 crate；补充 `docs/01-architecture/platform-core-workspace.md` 说明目录与职责边界。
+- 涉及文件：`Cargo.toml`、`Cargo.lock`、`apps/platform-core/Cargo.toml`、`apps/platform-core/src/main.rs`、`apps/platform-core/src/lib.rs`、`apps/platform-core/bin/platform-core/Cargo.toml`、`apps/platform-core/bin/platform-core/src/main.rs`、`apps/platform-core/crates/kernel/Cargo.toml`、`apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core/crates/config/Cargo.toml`、`apps/platform-core/crates/config/src/lib.rs`、`apps/platform-core/crates/http/Cargo.toml`、`apps/platform-core/crates/http/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. 运行 `cargo run -p platform-core` 进行 `/health/ready` 运行态探测。
+- 验证结果：`cargo build` 通过；`cargo test` 通过；运行态探测在当前沙箱受限环境下启动报错 `bind listener failed: Operation not permitted`，无法在该环境完成本地端口绑定验证，但路由与处理器已在编译期完成接线。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-001`, `CORE-002`, `CORE-003`, `CORE-004`
+- 未覆盖项：运行态端口绑定与真实 HTTP 探活在当前沙箱受限环境未完成（非代码逻辑缺口，属环境限制）。
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：代码实现已收口；如需补跑 `/health/ready` 真实请求，请在可绑定本地端口的环境执行 `cargo run -p platform-core` 后 `curl http://127.0.0.1:8080/health/ready`。
