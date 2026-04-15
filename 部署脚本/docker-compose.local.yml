@@ -1,166 +1,204 @@
+name: dt-local
+
+x-service-defaults: &service-defaults
+    restart: unless-stopped
+    init: true
+    networks:
+        - dt-local
+    logging:
+        driver: json-file
+        options:
+            max-size: "10m"
+            max-file: "3"
+
 services:
     postgres:
-    image: postgres:18.3
-    container_name: dt-postgres
-    restart: unless-stopped
-    environment:
-        POSTGRES_DB: luna_dt
-        POSTGRES_USER: luna
-        POSTGRES_PASSWORD: 5686
-    ports:
-        - "5432:5432"
-    volumes:
-        - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U luna -d luna_dt"]
-        interval: 10s
-        timeout: 5s
-        retries: 10
+        <<: *service-defaults
+        image: postgres:18.3
+        container_name: dt-postgres
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB:-luna_dt}
+            POSTGRES_USER: ${POSTGRES_USER:-luna}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-5686}
+            TZ: ${TZ:-America/Los_Angeles}
+        ports:
+            - "${POSTGRES_PORT:-5432}:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql
+        healthcheck:
+            test:
+                ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 10s
 
     redis:
+        <<: *service-defaults
         image: redis:8-alpine
         container_name: dt-redis
-        restart: unless-stopped
         ports:
-            - "6379:6379"
-        command: ["redis-server", "--appendonly", "yes"]
+            - "${REDIS_PORT:-6379}:6379"
+        command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000"]
         volumes:
             - redis_data:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 5s
 
     kafka:
-        image: bitnami/kafka:4.0
+        <<: *service-defaults
+        image: apache/kafka:4.0.1
         container_name: dt-kafka
-        restart: unless-stopped
         ports:
-            - "9092:9092"
-            - "9094:9094"
+            - "${KAFKA_PORT:-9092}:9092"
+            - "${KAFKA_EXTERNAL_PORT:-9094}:9094"
         environment:
-        KAFKA_ENABLE_KRAFT: "yes"
-        KAFKA_CFG_PROCESS_ROLES: broker,controller
-        KAFKA_CFG_NODE_ID: 1
-        KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-        KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-        KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
-        KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
-        KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-        KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-        KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-        KAFKA_KRAFT_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-        ALLOW_PLAINTEXT_LISTENER: "yes"
-        volumes:
-            - kafka_data:/bitnami/kafka
+            KAFKA_NODE_ID: 1
+            KAFKA_PROCESS_ROLES: broker,controller
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+            KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_EXTERNAL_PORT:-9094}
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+            KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+            KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+            KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+            KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+        healthcheck:
+            test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/9092'"]
+            interval: 15s
+            timeout: 5s
+            retries: 10
+            start_period: 20s
 
     minio:
-        image: minio/minio:latest
+        <<: *service-defaults
+        image: ${MINIO_IMAGE:-minio/minio:latest}
         container_name: dt-minio
-        restart: unless-stopped
         command: server /data --console-address ":9001"
         environment:
-        MINIO_ROOT_USER: luna
-        MINIO_ROOT_PASSWORD: 56865686
+            MINIO_ROOT_USER: ${MINIO_ROOT_USER:-luna}
+            MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-56865686}
         ports:
-            - "9000:9000"
-            - "9001:9001"
+            - "${MINIO_API_PORT:-9000}:9000"
+            - "${MINIO_CONSOLE_PORT:-9001}:9001"
         volumes:
             - minio_data:/data
 
     opensearch:
-        image: opensearchproject/opensearch:3
+        <<: *service-defaults
+        image: ${OPENSEARCH_IMAGE:-opensearchproject/opensearch:3}
         container_name: dt-opensearch
-        restart: unless-stopped
         environment:
-        discovery.type: single-node
-        bootstrap.memory_lock: "true"
-        OPENSEARCH_JAVA_OPTS: -Xms1g -Xmx1g
-        OPENSEARCH_INITIAL_ADMIN_PASSWORD: Admin123!Admin123!
+            discovery.type: single-node
+            bootstrap.memory_lock: "true"
+            OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}
+            OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-Admin123!Admin123!}
         ulimits:
-        memlock:
-            soft: -1
-            hard: -1
-        nofile:
-            soft: 65536
-            hard: 65536
+            memlock:
+                soft: -1
+                hard: -1
+            nofile:
+                soft: 65536
+                hard: 65536
         ports:
-            - "9200:9200"
-            - "9600:9600"
+            - "${OPENSEARCH_HTTP_PORT:-9200}:9200"
+            - "${OPENSEARCH_PERF_PORT:-9600}:9600"
         volumes:
             - opensearch_data:/usr/share/opensearch/data
 
     keycloak:
+        <<: *service-defaults
         image: quay.io/keycloak/keycloak:26.3
         container_name: dt-keycloak
-        restart: unless-stopped
         depends_on:
-        postgres:
-            condition: service_healthy
+            postgres:
+                condition: service_healthy
         command: start-dev
         environment:
-        KC_DB: postgres
-        KC_DB_URL_HOST: postgres
-        KC_DB_URL_DATABASE: luna_dt
-        KC_DB_USERNAME: luna
-        KC_DB_PASSWORD: 5686
-        KEYCLOAK_ADMIN: admin
-        KEYCLOAK_ADMIN_PASSWORD: admin123456
+            KC_DB: postgres
+            KC_DB_URL_HOST: postgres
+            KC_DB_URL_DATABASE: ${POSTGRES_DB:-luna_dt}
+            KC_DB_USERNAME: ${POSTGRES_USER:-luna}
+            KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-5686}
+            KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+            KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123456}
         ports:
-            - "8081:8080"
+            - "${KEYCLOAK_PORT:-8081}:8080"
 
     prometheus:
+        <<: *service-defaults
+        profiles: ["observability"]
         image: prom/prometheus:v3.5.0
         container_name: dt-prometheus
-        restart: unless-stopped
         command:
             - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}"
         ports:
-            - "9090:9090"
+            - "${PROMETHEUS_PORT:-9090}:9090"
         volumes:
             - ../infra/docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
     grafana:
+        <<: *service-defaults
+        profiles: ["observability"]
         image: grafana/grafana:12.2.0
         container_name: dt-grafana
-        restart: unless-stopped
         environment:
-        GF_SECURITY_ADMIN_USER: admin
-        GF_SECURITY_ADMIN_PASSWORD: admin123456
+            GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+            GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123456}
         ports:
-            - "3000:3000"
+            - "${GRAFANA_PORT:-3000}:3000"
         volumes:
             - grafana_data:/var/lib/grafana
 
     loki:
+        <<: *service-defaults
+        profiles: ["observability"]
         image: grafana/loki:3.5.5
         container_name: dt-loki
-        restart: unless-stopped
         command: -config.file=/etc/loki/local-config.yaml
         ports:
-            - "3100:3100"
+            - "${LOKI_PORT:-3100}:3100"
         volumes:
             - ../infra/docker/monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
 
     tempo:
+        <<: *service-defaults
+        profiles: ["observability"]
         image: grafana/tempo:2.8.2
         container_name: dt-tempo
-        restart: unless-stopped
         command: ["-config.file=/etc/tempo/tempo.yml"]
         ports:
-            - "3200:3200"
-            - "4317:4317"
-            - "4318:4318"
+            - "${TEMPO_PORT:-3200}:3200"
+            - "${OTLP_GRPC_PORT:-4317}:4317"
+            - "${OTLP_HTTP_PORT:-4318}:4318"
         volumes:
             - ../infra/docker/monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
 
     mock-payment-provider:
+        <<: *service-defaults
+        profiles: ["mocks"]
         image: wiremock/wiremock:3.13.1
         container_name: dt-mock-payment-provider
-        restart: unless-stopped
         ports:
-            - "8089:8080"
+            - "${MOCK_PAYMENT_PORT:-8089}:8080"
+
+networks:
+    dt-local:
+        driver: bridge
 
 volumes:
     postgres_data:
     redis_data:
-    kafka_data:
     minio_data:
     opensearch_data:
     grafana_data:

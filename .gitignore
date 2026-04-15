@@ -1,15 +1,39 @@
 /target
+/Cargo.lock
 /.idea
 /.vscode
 .DS_Store
+Thumbs.db
+
+# Env files
 .env
 .env.*
 !.env.example
-node_modules
-.next
-dist
-coverage
-tmp
-*.log
-data
+部署脚本/.env
+config/environments/*.env
+!config/environments/*.example
 
+# Node / frontend
+node_modules/
+.next/
+dist/
+build/
+
+# Logs and temp
+*.log
+logs/
+tmp/
+temp/
+*.pid
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Test / coverage
+.coverage
+coverage/
+
+# Local data
+data/
