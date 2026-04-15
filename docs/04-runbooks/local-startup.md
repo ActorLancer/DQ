@@ -38,3 +38,8 @@
 22. 执行回执模拟（Mock Payment）：`./scripts/check-mock-payment.sh`
 23. 全量健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
     - 该检查包含端口与 HTTP 存活探测，以及命令级探测：`psql`、`redis-cli`、`kcat`（容器无 `kcat` 时优先临时 `kcat` 容器探测，再回退 `kafka-topics.sh`）、`mc`、`curl`。
+
+## 阶段 6：配置快照与 Smoke
+
+24. 导出当前本地配置快照：`./scripts/export-local-config.sh`
+25. 运行本地 smoke 套件（建议在 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`

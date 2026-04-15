@@ -1,0 +1,16 @@
+{
+  "suite": "local-smoke-v1",
+  "entrypoint": "scripts/smoke-local.sh",
+  "required_checks": [
+    "database_migration_probe",
+    "minio_buckets_exist",
+    "keycloak_realm_imported",
+    "kafka_topics_exist",
+    "grafana_login_available",
+    "mock_payment_callback_available"
+  ],
+  "prerequisites": [
+    "make up-demo",
+    "ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full"
+  ]
+}
