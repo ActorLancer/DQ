@@ -19,6 +19,18 @@
 - `/health/ready`
 - `/healthz`（兼容入口，映射到 live）
 
+当前请求级中间件链（V1-Core）：
+
+- `request_id`：优先透传 `x-request-id`，缺失时自动生成。
+- `trace`：优先透传 `x-trace-id`，缺失时复用 `request_id`。
+- `tenant`：解析 `x-tenant-id`，缺失回落到 `public`。
+- `access-log`：统一记录 method/path/status/elapsed/request_id/trace_id/tenant_id。
+
+统一错误体系：
+
+- `AppError / ErrorCode / ErrorResponse` 在 `crates/kernel` 收口。
+- 启动时校验 `docs/01-architecture/error-codes.md` 的错误码前缀分组与运行时错误码前缀一致。
+
 约束：
 
 - 业务 handler 不直接依赖外部 provider SDK，统一经内部 crate/门面隔离。

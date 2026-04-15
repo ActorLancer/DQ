@@ -79,24 +79,6 @@
 
 ### BATCH-002
 
-- 状态：计划中
-- 当前任务编号：CTX-001, CTX-002, CTX-003, CTX-004
-- 当前批次目标：冻结 V1-Core 执行上下文，完成阅读索引、V1 核心守则、V1 范围边界和架构风格文档落盘，作为后续 BOOT/ENV/CORE 的统一前置约束。
-- 前置依赖核对结果：四个任务 `depends_on` 均为空；当前仓库仅存在示例审批记录，未发现真实批次阻塞。
-- 预计涉及文件：`docs/00-context/reading-index.md`、`docs/00-context/v1-core-guardrails.md`、`docs/00-context/v1-core-scope.md`、`docs/00-context/architecture-style.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 对照 CSV 核验四个任务交付路径与完成定义；2. 校验文档内容与 `V1` 全集成基线、技术选型、服务边界一致；3. 校验文档可被后续任务引用。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`CTX-001`, `CTX-002`, `CTX-003`, `CTX-004`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：严格按单批次执行，完成后进入人工审批等待。
-
-### BATCH-002
-
 - 状态：待审批
 - 当前任务编号：CTX-001, CTX-002, CTX-003, CTX-004
 - 当前批次目标：冻结 V1-Core 执行上下文，完成阅读索引、V1 核心守则、V1 范围边界和架构风格文档落盘，作为后续 BOOT/ENV/CORE 的统一前置约束。
@@ -112,24 +94,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已按流程暂停，等待人工在 `开发任务/V1-Core-人工审批记录.md` 给出审批结论后再进入下一批。
-
-### BATCH-003
-
-- 状态：计划中
-- 当前任务编号：CTX-005, CTX-006, CTX-007, CTX-008
-- 当前批次目标：冻结生命周期主对象、V1 标准 SKU 真值、首批五条标准链路映射和运行模式边界，为后续域模型与交易编排任务提供统一约束。
-- 前置依赖核对结果：四个任务 `depends_on` 均为空；用户已明确上一批审批通过，可进入本批次。
-- 预计涉及文件：`docs/00-context/lifecycle-objects.md`、`docs/00-context/standard-sku-truth.md`、`docs/00-context/first-5-scenarios.md`、`docs/00-context/run-modes.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 校验交付文件存在；2. 对照 CSV 描述核验对象、SKU、链路、运行模式四个维度是否完整覆盖；3. 对照冻结文档条目核验术语一致性。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`领域模型/全量领域模型与对象关系说明.md`、`业务流程/业务流程图-V1-完整版.md`、`开发准备/技术选型正式版.md`
-- 覆盖的任务清单条目：`CTX-005`, `CTX-006`, `CTX-007`, `CTX-008`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次仅做文档冻结，不引入 V2/V3 正式实现。
 
 ### BATCH-003
 
@@ -151,24 +115,6 @@
 
 ### BATCH-004
 
-- 状态：计划中
-- 当前任务编号：CTX-009, CTX-010, CTX-011, CTX-012
-- 当前批次目标：冻结外部 Provider 适配边界、上链异步链路、搜索推荐边界与安全审计最低基线，确保后续实现不越界且具备可审计性。
-- 前置依赖核对结果：四个任务 `depends_on` 均为空；用户确认上一批审批通过，可继续执行。
-- 预计涉及文件：`docs/00-context/provider-boundary.md`、`docs/00-context/async-chain-write.md`、`docs/00-context/search-and-recommend-boundary.md`、`docs/00-context/security-and-audit-floor.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 校验交付文件存在；2. 对照 CSV 任务描述核验四类边界约束是否齐全；3. 对照冻结文档核验术语和职责边界一致性。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`权限设计/接口权限校验清单.md`
-- 覆盖的任务清单条目：`CTX-009`, `CTX-010`, `CTX-011`, `CTX-012`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次仅做边界冻结文档，不引入实现代码变更。
-
-### BATCH-004
-
 - 状态：待审批
 - 当前任务编号：CTX-009, CTX-010, CTX-011, CTX-012
 - 当前批次目标：冻结外部 Provider 适配边界、上链异步链路、搜索推荐边界与安全审计最低基线，确保后续实现不越界且具备可审计性。
@@ -184,24 +130,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已完成本批次并暂停，等待人工审批后进入下一批。
-
-### BATCH-013
-
-- 状态：计划中
-- 当前任务编号：BOOT-003, BOOT-004, BOOT-005, BOOT-006, BOOT-007, BOOT-008, BOOT-009, BOOT-010, BOOT-011
-- 当前批次目标：一次性完成 BOOT-003~011 的仓库基础能力收口，包括根 Makefile、统一脚本入口、多语言工作区规范、共享配置与 OpenAPI 骨架、DB 迁移目录规则、runbook 模板、fixtures 样例、CI workflow 占位。
-- 前置依赖核对结果：上述 9 个任务依赖 `CTX-001/004/008/013/014`，均已完成且审批通过。
-- 预计涉及文件：`Makefile`、`scripts/*.sh`、`docs/01-architecture/multi-language-workspace.md`、`packages/shared-config/**`、`packages/openapi/**`、`db/migrations/v1/**`、`docs/04-runbooks/**`、`fixtures/**`、`.github/workflows/*.yml`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 文件存在性与可执行性检查；2. 对照 CSV 的 9 个任务逐条核验交付路径与内容；3. 基本命令自检（Makefile target 可解析、workflow YAML 语法可读）。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/配置项与密钥管理清单.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/测试用例矩阵正式版.md`
-- 覆盖的任务清单条目：`BOOT-003`, `BOOT-004`, `BOOT-005`, `BOOT-006`, `BOOT-007`, `BOOT-008`, `BOOT-009`, `BOOT-010`, `BOOT-011`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
-- 备注：按用户要求将 BOOT-001~036 改为 9 个任务一组推进。
 
 ### BATCH-013
 
@@ -223,24 +151,6 @@
 
 ### BATCH-014
 
-- 状态：计划中
-- 当前任务编号：BOOT-012, BOOT-013, BOOT-014, BOOT-015, BOOT-016, BOOT-017, BOOT-018, BOOT-019, BOOT-020
-- 当前批次目标：一次性完成 BOOT-012~020 的工程治理文档收口：错误码映射、日志字段、模块依赖规则、Issue/PR 模板、ownership 矩阵、顶层目录 README、命名规范、版本策略、发布策略。
-- 前置依赖核对结果：上述 9 个任务依赖 `CTX-001/004/008/013/014`，均已完成且审批通过。
-- 预计涉及文件：`docs/01-architecture/error-codes.md`、`docs/01-architecture/logging-fields.md`、`docs/01-architecture/module-dependency-rules.md`、`docs/01-architecture/issue-template.md`、`docs/01-architecture/pr-template.md`、`docs/01-architecture/ownership-matrix.md`、`docs/01-architecture/naming-conventions.md`、`docs/01-architecture/versioning-policy.md`、`docs/01-architecture/release-policy.md`、顶层目录 `README.md` 补齐文件、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 文件存在性检查；2. 对照 CSV `BOOT-012~020` 检查每项交付覆盖；3. 顶层目录 README 覆盖检查。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/测试用例矩阵正式版.md`、`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`BOOT-012`, `BOOT-013`, `BOOT-014`, `BOOT-015`, `BOOT-016`, `BOOT-017`, `BOOT-018`, `BOOT-019`, `BOOT-020`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
-- 备注：按 BOOT 分组规则一次性推进，不在组内拆分审批。
-
-### BATCH-014
-
 - 状态：待审批
 - 当前任务编号：BOOT-012, BOOT-013, BOOT-014, BOOT-015, BOOT-016, BOOT-017, BOOT-018, BOOT-019, BOOT-020
 - 当前批次目标：一次性完成 BOOT-012~020 的工程治理文档收口：错误码映射、日志字段、模块依赖规则、Issue/PR 模板、ownership 矩阵、顶层目录 README、命名规范、版本策略、发布策略。
@@ -256,24 +166,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：按 BOOT-001~036 的“每 9 个一组”规则执行；本组完成后暂停，等待人工审批。
-
-### BATCH-005
-
-- 状态：计划中
-- 当前任务编号：CTX-022, CTX-023, CTX-024
-- 当前批次目标：盘点当前仓库资产、本地部署与运维资产、任务与冻结文档基线差异，形成 `exists / partial / missing` 与“可复用/迁移/重写/去重”清单，为 `CTX-014` 提供前置输入。
-- 前置依赖核对结果：三项任务共同依赖 `CTX-001`，已完成并通过审批；用户确认上一批审批通过，可继续执行。
-- 预计涉及文件：`docs/00-context/current-repo-assets.md`、`docs/00-context/current-local-stack-assets.md`、`docs/00-context/current-task-baseline-gap.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 盘点实际目录与关键文件；2. 按任务要求输出分级清单；3. 对照 CSV `CTX-022~CTX-024` 检查交付覆盖完整性。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/仓库拆分与目录结构建议.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/平台总体架构设计草案.md`、`开发任务/README.md`、`开发前设计文档/README.md`
-- 覆盖的任务清单条目：`CTX-022`, `CTX-023`, `CTX-024`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次仅输出资产盘点与差异清单，不推进业务实现代码。
 
 ### BATCH-005
 
@@ -295,24 +187,6 @@
 
 ### BATCH-006
 
-- 状态：计划中
-- 当前任务编号：CTX-013, CTX-014, CTX-015
-- 当前批次目标：冻结任务 ownership 策略、输出当前仓库与目标基线差距分析、冻结 V1 退出标准，形成后续 BOOT/ENV/CORE 的执行与验收门槛。
-- 前置依赖核对结果：`CTX-013`/`CTX-015` 无依赖；`CTX-014` 依赖 `CTX-022; CTX-023; CTX-024`，已完成且用户确认审批通过。
-- 预计涉及文件：`docs/00-context/ownership-strategy.md`、`docs/00-context/current-gap-analysis.md`、`docs/00-context/v1-exit-criteria.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 对照 CSV 描述逐项核验三份文档内容；2. 校验 `CTX-014` 是否引用前序盘点结论；3. 核验退出标准是否覆盖闭环、指标和审计检查要求。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`全集成文档/数据交易平台-全集成基线-V1.md`、`领域模型/全量领域模型与对象关系说明.md`、`开发准备/测试用例矩阵正式版.md`
-- 覆盖的任务清单条目：`CTX-013`, `CTX-014`, `CTX-015`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次仅做上下文与验收边界冻结，不推进业务代码实现。
-
-### BATCH-006
-
 - 状态：待审批
 - 当前任务编号：CTX-013, CTX-014, CTX-015
 - 当前批次目标：冻结任务 ownership 策略、输出当前仓库与目标基线差距分析、冻结 V1 退出标准，形成后续 BOOT/ENV/CORE 的执行与验收门槛。
@@ -328,24 +202,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已完成本批次并暂停，等待人工审批通过后再进入下一批。
-
-### BATCH-007
-
-- 状态：计划中
-- 当前任务编号：CTX-016, CTX-017, CTX-018
-- 当前批次目标：补齐术语统一、专题文档到模块映射、V1 非目标清单，降低后续实现阶段命名漂移和范围外开发风险。
-- 前置依赖核对结果：三项任务在 CSV 中 `depends_on` 为空；用户确认上一批审批通过，可继续执行。
-- 预计涉及文件：`docs/00-context/term-glossary.md`、`docs/00-context/doc-to-module-map.md`、`docs/00-context/non-goals.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 校验三份交付文件存在；2. 检查术语覆盖与命名一致性；3. 检查 PRD 到模块/migration/OpenAPI/测试域映射完整性；4. 检查非目标清单与 V1 边界一致。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成映射索引.md`、`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/测试用例矩阵正式版.md`
-- 覆盖的任务清单条目：`CTX-016`, `CTX-017`, `CTX-018`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次为文档补齐，不引入实现代码改动。
 
 ### BATCH-007
 
@@ -367,24 +223,6 @@
 
 ### BATCH-008
 
-- 状态：计划中
-- 当前任务编号：CTX-021
-- 当前批次目标：输出 V1-Core 闭环矩阵（8 SKU × 5 标准链路 × 合同/授权/交付/验收/计费/退款/争议/审计），明确每个交叉点的主触发点、状态推进点、证据对象、测试入口。
-- 前置依赖核对结果：`CTX-021` 依赖 `CTX-006; CTX-007; CTX-015`，均已完成且获审批通过；`CTX-019/CTX-020` 依赖 `BOOT-002/ENV-001` 未完成，当前不可执行，先执行可落地任务。
-- 预计涉及文件：`docs/00-context/v1-closed-loop-matrix.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 校验矩阵覆盖 5 条链路与 8 SKU；2. 校验每个交叉点均含“主触发点/状态推进点/证据对象/测试入口”；3. 对照 CSV 与 V1 冻结文档核验一致性。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`业务流程/业务流程图-V1-完整版.md`、`开发准备/测试用例矩阵正式版.md`
-- 覆盖的任务清单条目：`CTX-021`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：当前批次为单任务文档冻结，完成后等待人工审批。
-
-### BATCH-008
-
 - 状态：待审批
 - 当前任务编号：CTX-021
 - 当前批次目标：输出 V1-Core 闭环矩阵（8 SKU × 5 标准链路 × 合同/授权/交付/验收/计费/退款/争议/审计），明确每个交叉点的主触发点、状态推进点、证据对象、测试入口。
@@ -400,24 +238,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已完成本批次并暂停；下一可执行任务将优先等待 `CTX-019/CTX-020` 依赖解除或按 CSV 选择其他已满足依赖任务。
-
-### BATCH-009
-
-- 状态：计划中
-- 当前任务编号：BOOT-021, BOOT-022, BOOT-023, BOOT-024
-- 当前批次目标：完成仓库基础初始化收口：根 README、仓库元文件（ignore/editorconfig/gitattributes）、环境样例文件、增量初始化说明文档。
-- 前置依赖核对结果：四项任务共同依赖 `CTX-014`，已完成并审批通过。
-- 预计涉及文件：`README.md`、`.gitignore`、`.editorconfig`、`.gitattributes`、`.env.example`、`.env.local.example`、`.env.staging.example`、`.env.demo.example`、`docs/01-architecture/repo-init-notes.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 对照 CSV 核验交付路径文件存在；2. 检查命名与技术选型/目录边界一致；3. 校验环境样例不含真实密钥且与本地部署变量口径一致。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/仓库拆分与目录结构建议.md`、`开发准备/技术选型正式版.md`、`开发准备/配置项与密钥管理清单.md`、`开发准备/本地开发环境与中间件部署清单.md`
-- 覆盖的任务清单条目：`BOOT-021`, `BOOT-022`, `BOOT-023`, `BOOT-024`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次优先复用现有资产，以增量修改为主。
 
 ### BATCH-009
 
@@ -439,24 +259,6 @@
 
 ### BATCH-010
 
-- 状态：计划中
-- 当前任务编号：BOOT-029, BOOT-030, BOOT-031, BOOT-032
-- 当前批次目标：校准 `apps/`、`services/`、`workers/`、`packages/` 的目录边界与命名落位，形成可引用的目录约束基础。
-- 前置依赖核对结果：四项任务共同依赖 `CTX-014`，已完成且审批通过。
-- 预计涉及文件：`apps/`、`services/`、`workers/`、`packages/`、`docs/01-architecture/service-worker-package-layout.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 检查目标目录存在；2. 校验目录内边界说明覆盖任务要求的服务/worker/package 列表；3. 对照 CSV `BOOT-029~032` 核验交付。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/技术选型正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`
-- 覆盖的任务清单条目：`BOOT-029`, `BOOT-030`, `BOOT-031`, `BOOT-032`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批以增量校准为主，不迁移既有业务代码。
-
-### BATCH-010
-
 - 状态：待审批
 - 当前任务编号：BOOT-029, BOOT-030, BOOT-031, BOOT-032
 - 当前批次目标：校准 `apps/`、`services/`、`workers/`、`packages/` 的目录边界与命名落位，形成可引用的目录约束基础。
@@ -472,24 +274,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已完成本批次并暂停，等待人工审批后再进入下一批。
-
-### BATCH-011
-
-- 状态：计划中
-- 当前任务编号：BOOT-033, BOOT-034, BOOT-035, BOOT-036
-- 当前批次目标：收敛 `db/`、`infra/`、`docs/`、`fixtures/` 与 `.github/workflows` 目录边界，为后续迁移、runbook、CI 与测试资产提供统一落位。
-- 前置依赖核对结果：四项任务共同依赖 `CTX-014`，已完成且审批通过。
-- 预计涉及文件：`db/`、`infra/`、`docs/`、`fixtures/`、`.github/workflows/`、`docs/01-architecture/repo-layout.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 检查目标目录存在与命名；2. 校验目录说明文件覆盖任务要求；3. 对照 CSV `BOOT-033~036` 逐条核验。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/仓库拆分与目录结构建议.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/测试用例矩阵正式版.md`
-- 覆盖的任务清单条目：`BOOT-033`, `BOOT-034`, `BOOT-035`, `BOOT-036`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批仅做目录收敛与文档说明，不迁移已有业务实现。
 
 ### BATCH-011
 
@@ -511,24 +295,6 @@
 
 ### BATCH-012
 
-- 状态：计划中
-- 当前任务编号：BOOT-001, BOOT-002
-- 当前批次目标：完成 BOOT 父任务收口，校验根目录基础文件与目录骨架完整性，并产出 `docs/01-architecture/repo-layout.md` 作为后续唯一目录参考。
-- 前置依赖核对结果：`BOOT-001` 依赖 `BOOT-021~024` 已完成；`BOOT-002` 依赖 `BOOT-029~036` 已完成；用户确认前批已审批通过。
-- 预计涉及文件：`README.md`、`.gitignore`、`.editorconfig`、`.gitattributes`、`.env.example`、`.env.local.example`、`.env.staging.example`、`.env.demo.example`、`docs/01-architecture/repo-layout.md`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 核验 BOOT-001 交付文件齐备且内容有效；2. 核验 BOOT-002 目录树与当前仓库一致；3. 校验 `repo-layout.md` 可作为后续任务唯一路径参考。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/仓库拆分与目录结构建议.md`、`开发准备/技术选型正式版.md`、`开发准备/平台总体架构设计草案.md`
-- 覆盖的任务清单条目：`BOOT-001`, `BOOT-002`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次以收口校验与目录文档固化为主，不新增业务实现。
-
-### BATCH-012
-
 - 状态：待审批
 - 当前任务编号：BOOT-001, BOOT-002
 - 当前批次目标：完成 BOOT 父任务收口，校验根目录基础文件与目录骨架完整性，并产出 `docs/01-architecture/repo-layout.md` 作为后续唯一目录参考。
@@ -547,24 +313,6 @@
 
 ### BATCH-015
 
-- 状态：计划中
-- 当前任务编号：ENV-002, ENV-003, ENV-004, ENV-005
-- 当前批次目标：完成本地 compose 正式落位与 PostgreSQL 初始化目录收口，建立统一 network/volume/healthcheck 策略、override 示例、环境变量样例以及 initdb 脚本目录。
-- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/docker/docker-compose.local.yml`、`infra/docker/docker-compose.local.override.example.yml`、`infra/docker/.env.local`、`infra/postgres/initdb/`、`scripts/check-local-env.sh`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 校验四项交付路径文件存在；2. `docker compose -f infra/docker/docker-compose.local.yml config` 语法校验；3. 校验 `infra/postgres/initdb` 脚本可执行并包含 schema/role/init 逻辑。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/配置项与密钥管理清单.md`、`开发准备/仓库拆分与目录结构建议.md`
-- 覆盖的任务清单条目：`ENV-002`, `ENV-003`, `ENV-004`, `ENV-005`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批仅推进 `ENV-002~005`，其他 ENV 任务不提前实现。
-
-### BATCH-015
-
 - 状态：待审批
 - 当前任务编号：ENV-002, ENV-003, ENV-004, ENV-005
 - 当前批次目标：完成本地 compose 正式落位与 PostgreSQL 初始化目录收口，建立统一 network/volume/healthcheck 策略、override 示例、环境变量样例以及 initdb 脚本目录。
@@ -580,24 +328,6 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：已按“先写记录后实现”执行；本批完成后暂停等待审批。
-
-### BATCH-016
-
-- 状态：计划中
-- 当前任务编号：ENV-006, ENV-007, ENV-008, ENV-009
-- 当前批次目标：完成 PostgreSQL 扩展启用与配置收口、DB 就绪检查脚本、Kafka KRaft 片段与 topic 初始化脚本，确保本地中间件链路可自检。
-- 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`infra/postgres/postgresql.conf`、`infra/postgres/pg_hba.conf`、`db/scripts/check-db-ready.sh`、`infra/kafka/docker-compose*.yml`、`infra/kafka/*.sh`、`scripts/**`、`docs/04-runbooks/**`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. 交付路径文件存在性检查；2. compose 语法检查；3. 脚本可执行与静态检查；4. 核验扩展/schema 初始化与 topic 初始化脚本内容。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/事件模型与Topic清单正式版.md`、`数据库设计/数据库设计总说明.md`
-- 覆盖的任务清单条目：`ENV-006`, `ENV-007`, `ENV-008`, `ENV-009`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：通过
-- 备注：本批次仅推进 `ENV-006~009`，其余 ENV 条目保持未执行。
 
 ### BATCH-016
 
@@ -1015,24 +745,6 @@
 
 ### BATCH-039
 
-- 状态：计划中
-- 当前任务编号：CORE-009
-- 当前批次目标：创建 `crates/provider-kit`，收敛 KYC/签章/支付/通知/Fabric 写入 Provider trait，并为每类 Provider 提供 `mock` 与 `real` 实现入口。
-- 前置依赖核对结果：`CORE-009` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过；`CORE-010` 依赖 `CORE-033~051` 未满足，本批不越过阻塞项。
-- 预计涉及文件：`Cargo.toml`、`apps/platform-core/Cargo.toml`、`apps/platform-core/crates/provider-kit/**`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl /health/ready`。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/技术选型正式版.md`
-- 覆盖的任务清单条目：`CORE-009`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
-- 备注：本批按“复杂单任务”执行（接口契约与跨模块 Provider 抽象收敛）。
-
-### BATCH-039
-
 - 状态：待审批
 - 当前任务编号：CORE-009
 - 当前批次目标：创建 `crates/provider-kit`，收敛 KYC/签章/支付/通知/Fabric 写入 Provider trait，并为每类 Provider 提供 `mock` 与 `real` 实现入口。
@@ -1046,5 +758,41 @@
 - 覆盖的任务清单条目：`CORE-009`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：后续 `CORE-010` 仍受 `CORE-033~051` 前置约束，需按依赖顺序推进。
+
+### BATCH-040
+
+- 状态：计划中
+- 当前任务编号：CORE-011, CORE-012, CORE-013
+- 当前批次目标：在不越过 `CORE-010` 阻塞的前提下，连续完成模块统一子目录模板、统一错误体系（含错误码文档校验）和请求级中间件链路收敛。
+- 前置依赖核对结果：`CORE-011~013` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过；`CORE-010` 依赖 `CORE-033~051` 未满足，本批次跳过阻塞项按“首个可执行连续任务”推进。
+- 预计涉及文件：`apps/platform-core/src/modules/**`、`apps/platform-core/crates/kernel/**`、`apps/platform-core/crates/http/**`、`docs/01-architecture/error-codes.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl http://127.0.0.1:8080/health/ready`；4. `curl` 带 `x-request-id/x-tenant-id` 校验响应头与日志链路。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/统一错误码字典正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-011`, `CORE-012`, `CORE-013`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：本批按“连续 3 个简单任务”执行并统一汇报。
+
+### BATCH-040
+
+- 状态：待审批
+- 当前任务编号：CORE-011, CORE-012, CORE-013
+- 当前批次目标：在不越过 `CORE-010` 阻塞的前提下，连续完成模块统一子目录模板、统一错误体系（含错误码文档校验）和请求级中间件链路收敛。
+- 前置依赖核对结果：`CORE-011~013` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过；`CORE-010` 依赖 `CORE-033~051` 未满足，本批次跳过阻塞项按“首个可执行连续任务”推进。
+- 预计涉及文件：`apps/platform-core/src/modules/**`、`apps/platform-core/crates/kernel/**`、`apps/platform-core/crates/http/**`、`docs/01-architecture/error-codes.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：为现有全部模块补齐 `api/application/domain/repo/dto/events/tests` 统一子目录模板；在 `crates/kernel` 收敛 `AppError/ErrorCode/ErrorResponse` 并新增 `error-codes.md` 前缀校验；在 `crates/http` 收敛请求级中间件（`request_id` 生成/透传、`trace` 注入、租户上下文解析、访问日志），并回写 `x-request-id/x-trace-id/x-tenant-id` 响应头。
+- 涉及文件：`Cargo.toml`、`Cargo.lock`、`apps/platform-core/src/modules/**/.gitkeep`、`apps/platform-core/src/lib.rs`、`apps/platform-core/crates/kernel/Cargo.toml`、`apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core/crates/http/Cargo.toml`、`apps/platform-core/crates/http/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. 模块模板完整性检查（逐模块逐子目录）；2. `cargo build`；3. `cargo test`；4. `cargo run -p platform-core` + `curl http://127.0.0.1:8080/health/ready`；5. 带 `x-request-id/x-tenant-id` 请求 `curl -D - http://127.0.0.1:8080/health/live` 校验中间件响应头。
+- 验证结果：通过。模块模板检查返回 `module-template-ok`；`cargo build` 通过；`cargo test` 通过（新增 kernel 错误码文档校验测试通过）；`/health/ready` 返回 `{"success":true,"data":"ready"}`；带头请求返回 `x-request-id=req-b040`、`x-trace-id=req-b040`、`x-tenant-id=tenant-b040`，访问日志包含 request_id/trace_id/tenant_id/method/path/status/elapsed。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/统一错误码字典正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-011`, `CORE-012`, `CORE-013`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`CORE-010` 仍因依赖阻塞，后续需等 `CORE-033~051` 满足后再处理。

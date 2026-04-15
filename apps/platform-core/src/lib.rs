@@ -3,7 +3,7 @@ use auth::{NoopStepUpGateway, RolePermissionChecker};
 use config::{ProviderMode, RuntimeConfig};
 use db::{DbPool, DbPoolConfig, TxTemplate};
 use http::{ApiResponse, build_router, live_handler, serve};
-use kernel::{AppLauncher, AppResult, Module, ModuleContext};
+use kernel::{AppLauncher, AppResult, Module, ModuleContext, validate_error_code_document};
 use outbox_kit::NoopOutboxWriter;
 use provider_kit::{
     FabricWriterProvider, KycProvider, NotificationProvider, PaymentProvider, ProviderBackend,
@@ -71,6 +71,8 @@ pub async fn run() -> AppResult<()> {
         .without_time()
         .try_init()
         .ok();
+
+    validate_error_code_document(include_str!("../../../docs/01-architecture/error-codes.md"))?;
 
     let cfg = RuntimeConfig::from_env()?;
     let addr = SocketAddr::new(

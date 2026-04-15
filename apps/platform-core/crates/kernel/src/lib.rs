@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::future::Future;
@@ -6,6 +7,44 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub type AppResult<T> = Result<T, AppError>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ErrorCode {
+    IamUnauthorized,
+    CatValidationFailed,
+    TrdStateConflict,
+    DlvAccessDenied,
+    BilProviderFailed,
+    AudEvidenceInvalid,
+    OpsCoreConfig,
+    OpsCoreStartup,
+    OpsCoreShutdown,
+    OpsInternal,
+}
+
+impl ErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ErrorCode::IamUnauthorized => "IAM_UNAUTHORIZED",
+            ErrorCode::CatValidationFailed => "CAT_VALIDATION_FAILED",
+            ErrorCode::TrdStateConflict => "TRD_STATE_CONFLICT",
+            ErrorCode::DlvAccessDenied => "DLV_ACCESS_DENIED",
+            ErrorCode::BilProviderFailed => "BIL_PROVIDER_FAILED",
+            ErrorCode::AudEvidenceInvalid => "AUD_EVIDENCE_INVALID",
+            ErrorCode::OpsCoreConfig => "OPS_CORE_CONFIG",
+            ErrorCode::OpsCoreStartup => "OPS_CORE_STARTUP",
+            ErrorCode::OpsCoreShutdown => "OPS_CORE_SHUTDOWN",
+            ErrorCode::OpsInternal => "OPS_INTERNAL",
+        }
+    }
+
+    pub fn prefix(self) -> &'static str {
+        self.as_str()
+            .split('_')
+            .next()
+            .expect("error code must have prefix")
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -15,6 +54,70 @@ pub enum AppError {
     Startup(String),
     #[error("shutdown error: {0}")]
     Shutdown(String),
+}
+
+impl AppError {
+    pub fn code(&self) -> ErrorCode {
+        match self {
+            AppError::Config(_) => ErrorCode::OpsCoreConfig,
+            AppError::Startup(_) => ErrorCode::OpsCoreStartup,
+            AppError::Shutdown(_) => ErrorCode::OpsCoreShutdown,
+        }
+    }
+
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ErrorResponse {
+    pub code: String,
+    pub message: String,
+    pub request_id: Option<String>,
+}
+
+impl ErrorResponse {
+    pub fn from_error(error: &AppError, request_id: Option<String>) -> Self {
+        Self {
+            code: error.code().as_str().to_string(),
+            message: error.message(),
+            request_id,
+        }
+    }
+}
+
+pub fn validate_error_code_document(doc: &str) -> AppResult<()> {
+    let required_prefixes = ["IAM_", "CAT_", "TRD_", "DLV_", "BIL_", "AUD_", "OPS_"];
+    for prefix in required_prefixes {
+        if !doc.contains(prefix) {
+            return Err(AppError::Config(format!(
+                "error-codes.md missing prefix section: {prefix}"
+            )));
+        }
+    }
+
+    for code in [
+        ErrorCode::IamUnauthorized,
+        ErrorCode::CatValidationFailed,
+        ErrorCode::TrdStateConflict,
+        ErrorCode::DlvAccessDenied,
+        ErrorCode::BilProviderFailed,
+        ErrorCode::AudEvidenceInvalid,
+        ErrorCode::OpsCoreConfig,
+        ErrorCode::OpsCoreStartup,
+        ErrorCode::OpsCoreShutdown,
+        ErrorCode::OpsInternal,
+    ] {
+        let prefix = format!("{}_", code.prefix());
+        if !doc.contains(&prefix) {
+            return Err(AppError::Config(format!(
+                "error-codes.md missing prefix for code {}",
+                code.as_str()
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Default)]
@@ -170,5 +273,11 @@ mod tests {
         c.insert::<String>("abc".to_string()).await;
         let value = c.get::<String>().await.expect("value should exist");
         assert_eq!(value.as_str(), "abc");
+    }
+
+    #[test]
+    fn error_code_document_is_compatible() {
+        let doc = include_str!("../../../../../docs/01-architecture/error-codes.md");
+        validate_error_code_document(doc).expect("error codes doc should include required prefixes");
     }
 }
