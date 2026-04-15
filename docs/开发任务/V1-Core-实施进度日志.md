@@ -763,24 +763,6 @@
 
 ### BATCH-040
 
-- 状态：计划中
-- 当前任务编号：CORE-011, CORE-012, CORE-013
-- 当前批次目标：在不越过 `CORE-010` 阻塞的前提下，连续完成模块统一子目录模板、统一错误体系（含错误码文档校验）和请求级中间件链路收敛。
-- 前置依赖核对结果：`CORE-011~013` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过；`CORE-010` 依赖 `CORE-033~051` 未满足，本批次跳过阻塞项按“首个可执行连续任务”推进。
-- 预计涉及文件：`apps/platform-core/src/modules/**`、`apps/platform-core/crates/kernel/**`、`apps/platform-core/crates/http/**`、`docs/01-architecture/error-codes.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl http://127.0.0.1:8080/health/ready`；4. `curl` 带 `x-request-id/x-tenant-id` 校验响应头与日志链路。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/统一错误码字典正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/技术选型正式版.md`
-- 覆盖的任务清单条目：`CORE-011`, `CORE-012`, `CORE-013`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
-- 备注：本批按“连续 3 个简单任务”执行并统一汇报。
-
-### BATCH-040
-
 - 状态：待审批
 - 当前任务编号：CORE-011, CORE-012, CORE-013
 - 当前批次目标：在不越过 `CORE-010` 阻塞的前提下，连续完成模块统一子目录模板、统一错误体系（含错误码文档校验）和请求级中间件链路收敛。
@@ -794,26 +776,8 @@
 - 覆盖的任务清单条目：`CORE-011`, `CORE-012`, `CORE-013`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`CORE-010` 仍因依赖阻塞，后续需等 `CORE-033~051` 满足后再处理。
-
-### BATCH-041
-
-- 状态：计划中
-- 当前任务编号：CORE-014
-- 当前批次目标：实现统一 DB 事务模板，保证业务对象修改、审计事件写入、outbox 事件写入可在同一事务模板内完成（单次 begin/commit 或 begin/rollback）。
-- 前置依赖核对结果：`CORE-014` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
-- 预计涉及文件：`apps/platform-core/crates/db/**`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl /health/ready`。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`原始PRD/双层权威模型与链上链下一致性设计.md`、`data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`领域模型/全量领域模型与对象关系说明.md`
-- 覆盖的任务清单条目：`CORE-014`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
-- 备注：本批按“复杂单任务”执行。
 
 ### BATCH-041
 
@@ -830,5 +794,23 @@
 - 覆盖的任务清单条目：`CORE-014`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：当前为事务模板骨架实现；后续模块在接入真实 DB driver 时复用该模板实现真实事务句柄绑定。
+
+### BATCH-042
+
+- 状态：待审批
+- 当前任务编号：CORE-015, CORE-016, CORE-017
+- 当前批次目标：一次性完成统一分页筛选组件、统一健康检查补齐（`/health/deps`）和统一运行时模式页增强（版本/Git SHA/迁移版本）。
+- 前置依赖核对结果：3 个任务均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/http/**`、`apps/platform-core/crates/config/**`、`apps/platform-core/src/**`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `crates/http` 新增统一分页与筛选模型 `Pagination`、`FilterQuery`、`ListQuery` 并补充边界测试；新增 `/health/deps` 端点，覆盖 `DB/Redis/Kafka/MinIO/Keycloak/Fabric Adapter` 可达性探测；在 `crates/config` 扩展 `RuntimeConfig` 字段 `service_version/git_sha/migration_version` 并从环境变量加载，`/internal/runtime` 返回增强字段；补齐架构文档关于分页组件、健康检查与 runtime 字段说明。
+- 涉及文件：`apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/crates/config/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl /health/ready`；4. `curl /health/deps`；5. `curl /internal/runtime`。
+- 验证结果：通过。`cargo build` 通过；`cargo test` 通过（新增 `http` 分页与筛选单测通过）；运行态探测通过：`/health/ready` 返回成功，`/health/deps` 返回结构化依赖可达性（当前本地 `fabric-adapter` 未启动时 `reachable=false`，其余依赖为 `true`），`/internal/runtime` 正确返回 `mode/provider/service_version/git_sha/migration_version`。
+- 覆盖的冻结文档条目：`原始PRD/审计、证据链与回放设计.md`、`原始PRD/日志、可观测性与告警设计.md`、`领域模型/全量领域模型与对象关系说明.md`
+- 覆盖的任务清单条目：`CORE-015`, `CORE-016`, `CORE-017`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 3 个简单任务”执行并统一汇报。

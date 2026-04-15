@@ -17,6 +17,7 @@
 
 - `/health/live`
 - `/health/ready`
+- `/health/deps`（依赖可达性：DB/Redis/Kafka/MinIO/Keycloak/Fabric Adapter）
 - `/healthz`（兼容入口，映射到 live）
 
 当前请求级中间件链（V1-Core）：
@@ -35,6 +36,15 @@
 
 - 在 `crates/db` 提供 `TransactionBundle` 事务编排模板。
 - 业务对象变更（`business_mutations`）、审计事件写入（`audit_events`）、outbox 事件写入（`outbox_events`）在同一事务模板内按单次 begin/commit 或 begin/rollback 执行。
+
+统一分页与筛选组件（V1-Core）：
+
+- 在 `crates/http` 提供 `Pagination`、`FilterQuery`、`ListQuery`，供目录搜索、订单列表、审计列表、ops 列表复用。
+- 分页默认值：`page=1`、`page_size=20`，并对 `page_size` 做 `1..=200` 的边界收敛。
+
+统一运行时模式页（V1-Core）：
+
+- `/internal/runtime` 返回 `mode`、`provider`、`service_version`、`git_sha`、`migration_version`，用于环境自检与联调排障。
 
 约束：
 

@@ -92,3 +92,4 @@
 - `BATCH-039`（`CORE-009`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-040`（`CORE-011`, `CORE-012`, `CORE-013`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-041`（`CORE-014`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-042`（`CORE-015`, `CORE-016`, `CORE-017`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。

@@ -8,8 +8,10 @@ use axum::{
 };
 use kernel::{AppError, AppResult, ErrorResponse};
 use serde::{Deserialize, Serialize};
-use std::{future::Future, time::Instant};
 use std::net::SocketAddr;
+use std::{future::Future, time::Duration, time::Instant};
+use tokio::net::TcpStream;
+use tokio::time::timeout;
 use tracing::info;
 use uuid::Uuid;
 
@@ -40,11 +42,69 @@ pub struct PaginationQuery {
     pub page_size: Option<u32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Pagination {
+    pub page: u32,
+    pub page_size: u32,
+}
+
+impl Pagination {
+    pub fn from_query(query: Option<PaginationQuery>) -> Self {
+        let page = query.as_ref().and_then(|q| q.page).unwrap_or(1).max(1);
+        let page_size = query
+            .as_ref()
+            .and_then(|q| q.page_size)
+            .unwrap_or(20)
+            .clamp(1, 200);
+        Self { page, page_size }
+    }
+
+    pub fn offset(&self) -> u64 {
+        ((self.page - 1) as u64) * self.page_size as u64
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+pub struct FilterQuery {
+    pub keyword: Option<String>,
+    pub status: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListQuery {
+    pub pagination: Pagination,
+    pub filter: FilterQuery,
+}
+
+impl ListQuery {
+    pub fn new(pagination: Option<PaginationQuery>, filter: Option<FilterQuery>) -> Self {
+        Self {
+            pagination: Pagination::from_query(pagination),
+            filter: filter.unwrap_or_default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PaginationMeta {
     pub page: u32,
     pub page_size: u32,
     pub total: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DependencyStatus {
+    pub name: String,
+    pub endpoint: String,
+    pub reachable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DependenciesReport {
+    pub ready: bool,
+    pub checks: Vec<DependencyStatus>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +118,7 @@ pub fn build_router() -> Router {
     Router::new()
         .route("/health/live", get(live_handler))
         .route("/health/ready", get(ready_handler))
+        .route("/health/deps", get(deps_handler))
         .layer(middleware::from_fn(request_context_middleware))
 }
 
@@ -67,6 +128,61 @@ pub async fn live_handler() -> Json<ApiResponse<&'static str>> {
 
 pub async fn ready_handler() -> Result<Json<ApiResponse<&'static str>>, (StatusCode, Json<ErrorResponse>)> {
     Ok(ApiResponse::ok("ready"))
+}
+
+pub async fn deps_handler() -> Json<ApiResponse<DependenciesReport>> {
+    let checks = check_dependencies().await;
+    let ready = checks.iter().all(|c| c.reachable);
+    ApiResponse::ok(DependenciesReport { ready, checks })
+}
+
+async fn check_dependencies() -> Vec<DependencyStatus> {
+    let targets = vec![
+        dep_target("db", "DB_HOST", "localhost", "DB_PORT", "5432"),
+        dep_target("redis", "REDIS_HOST", "localhost", "REDIS_PORT", "6379"),
+        dep_target("kafka", "KAFKA_HOST", "localhost", "KAFKA_PORT", "9092"),
+        dep_target("minio", "MINIO_HOST", "localhost", "MINIO_PORT", "9000"),
+        dep_target(
+            "keycloak",
+            "KEYCLOAK_HOST",
+            "localhost",
+            "KEYCLOAK_PORT",
+            "8081",
+        ),
+        dep_target(
+            "fabric-adapter",
+            "FABRIC_ADAPTER_HOST",
+            "localhost",
+            "FABRIC_ADAPTER_PORT",
+            "10080",
+        ),
+    ];
+
+    let mut results = Vec::with_capacity(targets.len());
+    for (name, endpoint) in targets {
+        let reachable = timeout(Duration::from_millis(500), TcpStream::connect(endpoint.clone()))
+            .await
+            .map(|r| r.is_ok())
+            .unwrap_or(false);
+        results.push(DependencyStatus {
+            name: name.to_string(),
+            endpoint,
+            reachable,
+        });
+    }
+    results
+}
+
+fn dep_target(
+    name: &'static str,
+    host_env: &'static str,
+    default_host: &'static str,
+    port_env: &'static str,
+    default_port: &'static str,
+) -> (&'static str, String) {
+    let host = std::env::var(host_env).unwrap_or_else(|_| default_host.to_string());
+    let port = std::env::var(port_env).unwrap_or_else(|_| default_port.to_string());
+    (name, format!("{host}:{port}"))
 }
 
 async fn request_context_middleware(mut req: Request, next: Next) -> Response {
@@ -121,6 +237,40 @@ fn set_header(response: &mut Response, name: &str, value: &str) {
         (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(value))
     {
         response.headers_mut().insert(header_name, header_value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pagination_has_default_and_clamp() {
+        let p = Pagination::from_query(Some(PaginationQuery {
+            page: Some(0),
+            page_size: Some(9999),
+        }));
+        assert_eq!(p.page, 1);
+        assert_eq!(p.page_size, 200);
+        assert_eq!(p.offset(), 0);
+    }
+
+    #[test]
+    fn list_query_builds_from_parts() {
+        let q = ListQuery::new(
+            Some(PaginationQuery {
+                page: Some(2),
+                page_size: Some(25),
+            }),
+            Some(FilterQuery {
+                keyword: Some("order".to_string()),
+                status: Some("open".to_string()),
+                sort_by: Some("created_at".to_string()),
+                sort_order: Some("desc".to_string()),
+            }),
+        );
+        assert_eq!(q.pagination.offset(), 25);
+        assert_eq!(q.filter.status.as_deref(), Some("open"));
     }
 }
 
