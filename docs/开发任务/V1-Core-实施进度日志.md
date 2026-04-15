@@ -979,24 +979,6 @@
 
 ### BATCH-027
 
-- 状态：计划中
-- 当前任务编号：ENV-035
-- 当前批次目标：补充 `docs/04-runbooks/secrets-policy.md`，并明确 `.env.local` 可存放与禁止存放的变量边界。
-- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
-- 预计涉及文件：`docs/04-runbooks/secrets-policy.md`、`infra/docker/.env.local`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：1. secrets policy 文档结构与规则核对；2. `make up-local`；3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`开发准备/配置项与密钥管理清单.md`、`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`
-- 覆盖的任务清单条目：`ENV-035`
-- 未覆盖项：待实现后补充。
-- 新增 TODO / 预留项：待实现后补充。
-- 待人工审批结论：待审批
-- 备注：本批次只做 V1 本地 secrets 管理规则，不引入生产密钥方案实现。
-
-### BATCH-027
-
 - 状态：待审批
 - 当前任务编号：ENV-035
 - 当前批次目标：补充 `docs/04-runbooks/secrets-policy.md`，并明确 `.env.local` 可存放与禁止存放的变量边界。
@@ -1010,5 +992,41 @@
 - 覆盖的任务清单条目：`ENV-035`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`make up-local` 与 `check-local-stack.sh` 在沙箱内无法访问 Docker daemon/本机端口，已在沙箱外执行并得到通过结果。
+
+### BATCH-028
+
+- 状态：计划中
+- 当前任务编号：ENV-036
+- 当前批次目标：新增 `scripts/prune-local.sh`，用于安全清理本地卷、网络、链状态与演示数据，避免误删其他开发项目容器。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`scripts/prune-local.sh`、`docs/04-runbooks/troubleshooting.md`、`scripts/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：1. `bash -n scripts/prune-local.sh`；2. `./scripts/prune-local.sh --dry-run`；3. `make up-local`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`全集成文档/数据交易平台-全集成基线-V1.md`
+- 覆盖的任务清单条目：`ENV-036`
+- 未覆盖项：待实现后补充。
+- 新增 TODO / 预留项：待实现后补充。
+- 待人工审批结论：待审批
+- 备注：脚本默认 dry-run，只有显式 `--force` 才执行删除动作。
+
+### BATCH-028
+
+- 状态：待审批
+- 当前任务编号：ENV-036
+- 当前批次目标：新增 `scripts/prune-local.sh`，用于安全清理本地卷、网络、链状态与演示数据，避免误删其他开发项目容器。
+- 前置依赖核对结果：任务依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
+- 预计涉及文件：`scripts/prune-local.sh`、`docs/04-runbooks/troubleshooting.md`、`scripts/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `scripts/prune-local.sh`，默认 `--dry-run` 列出将被清理的当前 compose project 资源（卷/网络）与 Fabric 状态目录；仅在 `--force` 时执行 `docker compose down -v --remove-orphans`、Fabric compose 清理与 `infra/fabric/state` 重建；脚本先校验 Docker daemon 可达并限定 project 作用域，避免误删其他项目容器。更新 `docs/04-runbooks/troubleshooting.md` 与 `scripts/README.md` 的使用说明。
+- 涉及文件：`scripts/prune-local.sh`、`docs/04-runbooks/troubleshooting.md`、`scripts/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `bash -n scripts/prune-local.sh`；2. `./scripts/prune-local.sh --dry-run`；3. `make up-local`；4. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
+- 验证结果：通过。脚本语法检查通过；`--dry-run` 能列出 `datab-local` 作用域资源；`make up-local` 启动成功；`check-local-stack.sh core` 全部探测通过。
+- 覆盖的冻结文档条目：`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`、`全集成文档/数据交易平台-全集成基线-V1.md`
+- 覆盖的任务清单条目：`ENV-036`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`prune-local`、`make up-local`、`check-local-stack` 在沙箱内均无法访问 Docker daemon，验证已在沙箱外执行并通过。

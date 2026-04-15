@@ -12,6 +12,12 @@
 
 - 依赖 `部署脚本/` 的 compose 文件和根 `Makefile` 目标。
 
+## 常用脚本
+
+- `up-local.sh` / `down-local.sh`：本地基础栈启停。
+- `check-local-stack.sh`：本地依赖健康检查。
+- `prune-local.sh`：安全清理当前仓库本地卷、网络、Fabric 状态（默认 `--dry-run`）。
+
 ## 禁止事项
 
 - 禁止在脚本中写死环境专属参数。
