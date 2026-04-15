@@ -30,6 +30,12 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TODO-001 | TASK-ID | V1-gap / V2-reserved / V3-reserved / tech-debt | module-name | path/to/file | open | 简述原因 | 简述补齐条件 | yes / no |
 
+## 当前阻塞记录
+
+| 编号 | 对应任务编号 | 类型 | 模块 | 文件路径 | 当前状态 | 原因 | 后续补齐条件 | 是否阻塞继续开发 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| TODO-ENV-043-001 | ENV-043 | V1-gap | env-compose | `infra/docker/docker-compose.apps.local.example.yml` | blocked | `ENV-043` 依赖 `CORE-032`；当前仓库缺少 `docs/01-architecture/service-runtime-map.md`，无法在运行时拓扑未冻结的前提下落盘 apps compose 占位文件。 | 完成 `CORE-032`（补齐并审批通过 `docs/01-architecture/service-runtime-map.md`），明确 `platform-core/fabric-adapter/notification-service/outbox-publisher/search-indexer` 的运行时边界后，补齐 `infra/docker/docker-compose.apps.local.example.yml` 并通过 `docker compose config` 与本地自检。 | yes |
+
 ## 示例记录
 
 | 编号 | 对应任务编号 | 类型 | 模块 | 文件路径 | 当前状态 | 原因 | 后续补齐条件 | 是否阻塞继续开发 |
@@ -80,3 +86,4 @@
 - `BATCH-033`（`ENV-052`, `ENV-053`, `ENV-054`, `ENV-055`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-034`（`ENV-056`, `ENV-057`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-035`（`ENV-001`, `ENV-042`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-036`（`ENV-043`）：新增 `V1-gap` 阻塞项 `TODO-ENV-043-001`（`CORE-032` 前置未完成）。
