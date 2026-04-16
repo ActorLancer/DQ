@@ -1187,5 +1187,39 @@
 - 覆盖的任务清单条目：`DB-001`
 - 未覆盖项：`seed-demo.sh` 的业务演示数据导入逻辑尚未在本任务范围内实现（后续由 DB seeds 任务补齐）。
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证使用的数据库容器为 `luna-postgres-test`（`部署脚本/docker-compose.postgres-test.yml`）。
+
+### BATCH-060
+
+- 状态：计划中
+- 当前任务编号：DB-002
+- 当前批次目标：完成 `001_extensions_and_schemas.sql` 的落地验收，确保“基础扩展 + 业务 schema + 公共函数 + 更新时间 trigger 基座”满足 V1 迁移基线要求，并形成可重复执行的自动校验脚本。
+- 前置依赖核对结果：`DB-002` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/README.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/001_extensions_and_schemas.sql`
+- 预计涉及文件：`db/scripts/**`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 仓库现状差异说明：`001_extensions_and_schemas.sql` 已存在于冻结目录，需补充“可执行验收”以避免仅做文件存在性通过。
+
+### BATCH-060（实施完成）
+
+- 状态：待审批
+- 当前任务编号：DB-002
+- 当前批次目标：完成 `001_extensions_and_schemas.sql` 的落地验收，确保“基础扩展 + 业务 schema + 公共函数 + 更新时间 trigger 基座”满足 V1 迁移基线要求，并形成可重复执行的自动校验脚本。
+- 前置依赖核对结果：`DB-002` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/README.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/001_extensions_and_schemas.sql`
+- 已实现功能：
+  - 新增 `db/scripts/verify-migration-001.sh`，对 `001` 迁移结果做可执行校验：基础扩展、业务 schema、`common` schema 下 trigger 函数完整性。
+  - 修复 `db/scripts/migrate-reset.sh`：重建前先终止目标库活动连接，避免 `DROP DATABASE ... is being accessed by other users` 导致验证链路不稳定。
+  - 复核 `docs/数据库设计/V1/upgrade/001_extensions_and_schemas.sql` 与任务要求一致（扩展、schema、公共函数、更新时间 trigger 基座已覆盖）。
+- 涉及文件：`db/scripts/verify-migration-001.sh`、`db/scripts/migrate-reset.sh`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `docker ps --filter name=luna-postgres-test`
+  2. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/migrate-reset.sh`
+  3. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/verify-migration-001.sh`
+- 验证结果：通过。`migrate-reset.sh` 可稳定重建并完成全量迁移；`verify-migration-001.sh` 返回 `[ok] migration 001 baseline verified`。
+- 覆盖的冻结文档条目：`数据库设计/README.md`（迁移策略）、`数据库设计/数据库设计总说明.md`（设计原则）、`数据库设计/V1/upgrade/001_extensions_and_schemas.sql`
+- 覆盖的任务清单条目：`DB-002`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`）。

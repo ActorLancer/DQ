@@ -118,3 +118,4 @@
 - `BATCH-057`（`ENV-043`）：关闭阻塞项 `TODO-ENV-043-001`（已补齐 compose 占位文件并通过 compose config + 本地自检 + smoke 验证）。
 - `BATCH-058`（`CORE-022`, `CORE-028`）：关闭 `TODO-CORE-028-001`（已补齐 PostgreSQL 仓储实现与运行时 DI 切换），并完成启动自检对 topic/bucket/alias 的存在性探测增强。
 - `BATCH-059`（`DB-001`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-060`（`DB-002`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
