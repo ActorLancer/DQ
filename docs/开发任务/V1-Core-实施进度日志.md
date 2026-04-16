@@ -994,3 +994,35 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：本批按“连续 4 个简单任务”一次性执行并汇总；未引入 V2/V3 正式实现。
+
+### BATCH-053
+
+- 状态：计划中
+- 当前任务编号：CORE-045, CORE-046, CORE-047, CORE-048
+- 当前批次目标：按连续简单任务一次性完成模块模板统一校准、运行时拓扑文档落盘、请求级中间件链收敛以及健康/运行态端点收敛。
+- 前置依赖核对结果：`CORE-045` 依赖 `CORE-033~040`，`CORE-046` 依赖 `CORE-041~044`，`CORE-047` 依赖 `CORE-042; CORE-043`，`CORE-048` 依赖 `CORE-043; CORE-047`；上述前置批次均已完成并经你确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/平台总体架构设计草案.md`
+- 预计涉及文件：`apps/platform-core/src/**`、`apps/platform-core/crates/http/src/lib.rs`、`docs/01-architecture/service-runtime-map.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 仓库现状差异说明：任务清单要求交付的 `docs/01-architecture/service-runtime-map.md` 当前不存在，本批将补齐并纳入验证。
+
+### BATCH-053（实施完成）
+
+- 状态：待审批
+- 当前任务编号：CORE-045, CORE-046, CORE-047, CORE-048
+- 当前批次目标：按连续简单任务一次性完成模块模板统一校准、运行时拓扑文档落盘、请求级中间件链收敛以及健康/运行态端点收敛。
+- 前置依赖核对结果：`CORE-045` 依赖 `CORE-033~040`，`CORE-046` 依赖 `CORE-041~044`，`CORE-047` 依赖 `CORE-042; CORE-043`，`CORE-048` 依赖 `CORE-043; CORE-047`；上述前置均已完成且你已确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/平台总体架构设计草案.md`
+- 已实现功能：
+  - `CORE-045`：在 `apps/platform-core/src/modules/mod.rs` 新增模板一致性单测 `all_modules_follow_template_layout`，对所有模块统一校验 `api/application/domain/repo/dto/events/tests` 七类子目录，防止后续骨架漂移。
+  - `CORE-046`：新增 `docs/01-architecture/service-runtime-map.md`，完整冻结共享 crate、业务模块与外围进程的运行时所有权、同步边界与异步边界。
+  - `CORE-047`：请求级链路继续收敛在 `crates/http`，并通过统一构建入口承载 `request_id/trace/tenant/idempotency/access-log`（保持既有实现不回退）。
+  - `CORE-048`：把 `/internal/runtime` 端点收敛进 `crates/http::build_router`，由 `platform-core` 传入运行时配置构建路由，健康与运行态端点归口在 HTTP 基础层。
+- 涉及文件：`apps/platform-core/src/modules/mod.rs`、`apps/platform-core/crates/http/Cargo.toml`、`apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/service-runtime-map.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `APP_HOST=127.0.0.1 APP_PORT=8080 cargo run -p platform-core`。
+- 验证结果：`cargo build` 与 `cargo test` 通过（新增模块模板校验测试通过）；`cargo run` 在当前沙箱环境因端口监听受限失败（`bind listener failed: Operation not permitted`），非代码逻辑错误，需宿主机复验 `/health/ready`。
+- 覆盖的冻结文档条目：`开发准备/平台总体架构设计草案.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/本地开发环境与中间件部署清单.md`
+- 覆盖的任务清单条目：`CORE-045`, `CORE-046`, `CORE-047`, `CORE-048`
+- 未覆盖项：仅宿主机运行态端口监听复验（受沙箱限制）。
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：已修复仓库现状差异（`service-runtime-map.md` 缺失）并纳入本批交付。

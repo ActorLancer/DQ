@@ -7,6 +7,7 @@ use axum::{
     response::Response,
     routing::get,
 };
+use config::RuntimeConfig;
 use kernel::{AppError, AppResult, ErrorResponse, new_uuid_string};
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -112,11 +113,21 @@ pub struct RequestContext {
     pub idempotency_key: String,
 }
 
-pub fn build_router() -> Router {
+pub fn build_router(runtime: RuntimeConfig) -> Router {
     Router::new()
         .route("/health/live", get(live_handler))
         .route("/health/ready", get(ready_handler))
         .route("/health/deps", get(deps_handler))
+        .route(
+            "/internal/runtime",
+            get({
+                let runtime = runtime.clone();
+                move || {
+                    let runtime = runtime.clone();
+                    async move { ApiResponse::ok(runtime) }
+                }
+            }),
+        )
         .route("/internal/dev/trace-links", get(trace_links_handler))
         .route("/internal/dev/overview", get(dev_overview_handler))
         .layer(middleware::from_fn(request_context_middleware))

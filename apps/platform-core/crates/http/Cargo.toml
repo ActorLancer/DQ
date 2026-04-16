@@ -8,6 +8,7 @@ authors.workspace = true
 [dependencies]
 audit-kit = { path = "../audit-kit" }
 axum = { version = "0.8", features = ["macros"] }
+config = { path = "../config" }
 kernel = { path = "../kernel" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["net"] }

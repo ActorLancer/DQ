@@ -5,9 +5,7 @@ use auth::{
 };
 use config::{ProviderMode, RuntimeConfig};
 use db::{DbPool, DbPoolConfig, NoopBusinessMutationWriter, TxTemplate};
-use http::{
-    ApiResponse, build_router, live_handler, record_chain_receipt, record_outbox_event, serve,
-};
+use http::{build_router, live_handler, record_chain_receipt, record_outbox_event, serve};
 use kernel::{
     AppError, AppLauncher, AppResult, DomainEventEnvelope, InProcessEventBus, Module,
     ModuleContext, UtcTimestampMs, new_external_readable_id, validate_error_code_document,
@@ -237,18 +235,7 @@ pub async fn run() -> AppResult<()> {
         cfg.bind_port,
     );
 
-    let router = build_router()
-        .route("/healthz", axum::routing::get(live_handler))
-        .route(
-            "/internal/runtime",
-            axum::routing::get({
-                let runtime = cfg.clone();
-                move || {
-                    let runtime = runtime.clone();
-                    async move { ApiResponse::ok(runtime) }
-                }
-            }),
-        );
+    let router = build_router(cfg.clone()).route("/healthz", axum::routing::get(live_handler));
 
     let mut launcher = AppLauncher::new("platform-core");
     let provider_backend = match cfg.provider {

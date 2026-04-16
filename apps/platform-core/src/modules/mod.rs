@@ -21,3 +21,50 @@ pub mod provider_ops;
 pub mod recommendation;
 pub mod review;
 pub mod search;
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    const MODULES: &[&str] = &[
+        "access",
+        "audit",
+        "authorization",
+        "billing",
+        "catalog",
+        "consistency",
+        "contract",
+        "contract_meta",
+        "delivery",
+        "developer",
+        "dispute",
+        "fairness",
+        "iam",
+        "inquiry",
+        "integration",
+        "listing",
+        "ops",
+        "order",
+        "party",
+        "provider_ops",
+        "recommendation",
+        "review",
+        "search",
+    ];
+    const TEMPLATE_DIRS: &[&str] = &["api", "application", "domain", "repo", "dto", "events", "tests"];
+
+    #[test]
+    fn all_modules_follow_template_layout() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/modules");
+        for module in MODULES {
+            for dir in TEMPLATE_DIRS {
+                let path = root.join(module).join(dir);
+                assert!(
+                    path.is_dir(),
+                    "module template missing: {}",
+                    path.display()
+                );
+            }
+        }
+    }
+}
