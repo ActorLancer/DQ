@@ -44,6 +44,26 @@ pub struct RuntimeConfig {
     pub service_version: String,
     pub git_sha: String,
     pub migration_version: String,
+    pub feature_flags: FeatureFlags,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct FeatureFlags {
+    pub enable_demo_features: bool,
+    pub enable_chain_anchoring: bool,
+    pub enable_real_provider: bool,
+    pub enable_sensitive_experiments: bool,
+}
+
+impl FeatureFlags {
+    pub fn from_env() -> AppResult<Self> {
+        Ok(Self {
+            enable_demo_features: parse_bool_env("FF_DEMO_FEATURES", true)?,
+            enable_chain_anchoring: parse_bool_env("FF_CHAIN_ANCHORING", false)?,
+            enable_real_provider: parse_bool_env("FF_REAL_PROVIDER", false)?,
+            enable_sensitive_experiments: parse_bool_env("FF_SENSITIVE_EXPERIMENTS", false)?,
+        })
+    }
 }
 
 impl RuntimeConfig {
@@ -85,6 +105,7 @@ impl RuntimeConfig {
         let git_sha = std::env::var("GIT_SHA").unwrap_or_else(|_| "unknown".to_string());
         let migration_version =
             std::env::var("MIGRATION_VERSION").unwrap_or_else(|_| "unapplied".to_string());
+        let feature_flags = FeatureFlags::from_env()?;
 
         Ok(Self {
             mode,
@@ -94,21 +115,58 @@ impl RuntimeConfig {
             service_version,
             git_sha,
             migration_version,
+            feature_flags,
         })
+    }
+}
+
+fn parse_bool_env(key: &str, default_value: bool) -> AppResult<bool> {
+    let raw = std::env::var(key).unwrap_or_else(|_| {
+        if default_value {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }
+    });
+    match raw.to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        other => Err(AppError::Config(format!(
+            "{key} must be boolean (true/false/1/0/yes/no/on/off), got {other}"
+        ))),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn default_mode_is_local() {
+        let _guard = ENV_TEST_LOCK.lock().expect("lock env test");
         let cfg = RuntimeConfig::from_env().expect("default config should load");
         assert_eq!(cfg.mode, RuntimeMode::Local);
         assert_eq!(cfg.provider, ProviderMode::Mock);
         assert_eq!(cfg.service_version, "0.1.0-dev");
         assert_eq!(cfg.git_sha, "unknown");
         assert_eq!(cfg.migration_version, "unapplied");
+        assert!(cfg.feature_flags.enable_demo_features);
+        assert!(!cfg.feature_flags.enable_chain_anchoring);
+        assert!(!cfg.feature_flags.enable_real_provider);
+        assert!(!cfg.feature_flags.enable_sensitive_experiments);
+    }
+
+    #[test]
+    fn invalid_feature_flag_value_fails() {
+        let _guard = ENV_TEST_LOCK.lock().expect("lock env test");
+        // SAFETY: protected by global test mutex; we restore env var before returning.
+        unsafe { std::env::set_var("FF_REAL_PROVIDER", "not-bool") };
+        let err = RuntimeConfig::from_env().expect_err("invalid flag should fail");
+        // SAFETY: protected by global test mutex; cleanup paired with the mutation above.
+        unsafe { std::env::remove_var("FF_REAL_PROVIDER") };
+        assert!(err.to_string().contains("FF_REAL_PROVIDER"));
     }
 }

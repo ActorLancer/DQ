@@ -7,7 +7,8 @@ use config::{ProviderMode, RuntimeConfig};
 use db::{DbPool, DbPoolConfig, NoopBusinessMutationWriter, TxTemplate};
 use http::{ApiResponse, build_router, live_handler, serve};
 use kernel::{
-    AppError, AppLauncher, AppResult, Module, ModuleContext, UtcTimestampMs,
+    AppError, AppLauncher, AppResult, DomainEventEnvelope, InProcessEventBus, Module,
+    ModuleContext, UtcTimestampMs,
     new_external_readable_id, validate_error_code_document,
 };
 use outbox_kit::NoopOutboxWriter;
@@ -76,6 +77,17 @@ impl Module for CoreModule {
                 self.provider_backend,
             ))
             .await;
+        let event_bus = Arc::new(InProcessEventBus::new(128));
+        ctx.container
+            .insert::<Arc<InProcessEventBus>>(event_bus.clone())
+            .await;
+        event_bus.publish(DomainEventEnvelope {
+            event_name: "platform_core.module.started".to_string(),
+            aggregate_type: "platform_core".to_string(),
+            aggregate_id: "core-module".to_string(),
+            payload_json: "{\"module\":\"platform-core\"}".to_string(),
+            occurred_at_utc_ms: UtcTimestampMs::now().0,
+        })?;
         verify_provider_bindings(ctx).await?;
         Ok(())
     }
@@ -136,6 +148,11 @@ fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
             "bind_port must be greater than zero".to_string(),
         ));
     }
+    if matches!(cfg.provider, ProviderMode::Real) && !cfg.feature_flags.enable_real_provider {
+        return Err(AppError::Startup(
+            "provider mode is real but FF_REAL_PROVIDER is disabled".to_string(),
+        ));
+    }
 
     let _check_id = new_external_readable_id("boot");
     let _checked_at = UtcTimestampMs::now();
@@ -175,6 +192,10 @@ fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
         checked_at_utc_ms = UtcTimestampMs::now().0,
         mode = %cfg.mode.as_str(),
         provider = %cfg.provider.as_str(),
+        ff_demo_features = %cfg.feature_flags.enable_demo_features,
+        ff_chain_anchoring = %cfg.feature_flags.enable_chain_anchoring,
+        ff_real_provider = %cfg.feature_flags.enable_real_provider,
+        ff_sensitive_experiments = %cfg.feature_flags.enable_sensitive_experiments,
         "startup self-check passed"
     );
     Ok(())

@@ -14,6 +14,7 @@ async-trait = "0.1"
 audit-kit = { path = "../audit-kit" }
 kernel = { path = "../kernel" }
 outbox-kit = { path = "../outbox-kit" }
+tokio = { version = "1", features = ["sync"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

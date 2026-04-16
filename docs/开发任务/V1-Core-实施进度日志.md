@@ -884,5 +884,23 @@
 - 覆盖的任务清单条目：`CORE-023`, `CORE-024`, `CORE-025`, `CORE-026`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 4 个简单任务”执行并统一汇报。
+
+### BATCH-047
+
+- 状态：待审批
+- 当前任务编号：CORE-027, CORE-028, CORE-029
+- 当前批次目标：一次性补齐 feature flags 机制、基于 trait 的仓储接口与内存假实现、进程内统一领域事件总线。
+- 前置依赖核对结果：3 个任务均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/config/**`、`apps/platform-core/crates/db/**`、`apps/platform-core/crates/kernel/**`、`apps/platform-core/src/**`、`infra/docker/.env.local`、`.env.local.example`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `crates/config` 新增 `FeatureFlags`（`FF_DEMO_FEATURES`、`FF_CHAIN_ANCHORING`、`FF_REAL_PROVIDER`、`FF_SENSITIVE_EXPERIMENTS`）统一装载并纳入 `RuntimeConfig` 输出；`startup_self_check` 增加 `provider=real` 与 `FF_REAL_PROVIDER` 的一致性约束；在 `crates/db` 新增 `OrderRepository` trait 与 `InMemoryOrderRepository`，供业务规则测试脱离基础设施联调；在 `crates/kernel` 新增 `InProcessEventBus` 与 `DomainEventEnvelope`，并在 `CoreModule` 启动时注册事件总线并发布模块启动事件（进程内总线，不替代 outbox+Kafka）。
+- 涉及文件：`apps/platform-core/crates/config/src/lib.rs`、`apps/platform-core/crates/db/Cargo.toml`、`apps/platform-core/crates/db/src/lib.rs`、`apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core/src/lib.rs`、`infra/docker/.env.local`、`.env.local.example`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `./scripts/check-query-compile.sh`；4. `./scripts/check-openapi-schema.sh`；5. `APP_PORT=18080 cargo run -p platform-core`；6. `curl http://127.0.0.1:18080/internal/runtime`；7. `curl http://127.0.0.1:18080/health/ready`。
+- 验证结果：通过。`cargo build` 与 `cargo test` 通过（新增 config/db/kernel 单测通过）；查询编译检查与 OpenAPI 校验脚本通过；运行态 `/internal/runtime` 返回 `feature_flags` 字段，`/health/ready` 返回成功。
+- 覆盖的冻结文档条目：`原始PRD/日志、可观测性与告警设计.md`、`data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
+- 覆盖的任务清单条目：`CORE-027`, `CORE-028`, `CORE-029`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 3 个简单任务”执行并统一汇报；运行态校验因本机 `8080` 已被占用，改用 `APP_PORT=18080` 验证。

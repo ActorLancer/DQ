@@ -47,6 +47,7 @@
 统一运行时模式页（V1-Core）：
 
 - `/internal/runtime` 返回 `mode`、`provider`、`service_version`、`git_sha`、`migration_version`，用于环境自检与联调排障。
+- `/internal/runtime` 同时返回 `feature_flags`，用于演示功能、公链锚定、真实 Provider、敏感实验开关可观测。
 
 统一审计注解机制（V1-Core）：
 
@@ -74,6 +75,20 @@
 - `crates/db` 提供 `TestDbFixture` 与 `run_transaction_rollback_fixture`，用于基础单元测试、测试数据库连接配置与事务回滚夹具。
 - 提供 `query-compile-check` 特性和 `scripts/check-query-compile.sh`，把查询编译检查前置到 CI/本地。
 - 提供 `scripts/check-openapi-schema.sh` 与 `Makefile` 目标 `openapi-check`，校验 `packages/openapi/*.yaml` 结构与 ops 路径骨架不漂移。
+
+Feature Flags 机制（V1-Core）：
+
+- 在 `crates/config` 提供 `FeatureFlags`，由环境变量 `FF_DEMO_FEATURES`、`FF_CHAIN_ANCHORING`、`FF_REAL_PROVIDER`、`FF_SENSITIVE_EXPERIMENTS` 统一装载。
+- 启动自检阶段执行安全约束：`provider=real` 必须显式开启 `FF_REAL_PROVIDER`。
+
+仓储接口与内存假实现（V1-Core）：
+
+- 在 `crates/db` 提供 `OrderRepository` trait 与 `InMemoryOrderRepository`，用于业务规则测试先于基础设施联调。
+
+进程内领域事件总线（V1-Core）：
+
+- 在 `crates/kernel` 提供 `InProcessEventBus` 与 `DomainEventEnvelope`，用于模块内解耦事件分发。
+- 该总线只覆盖进程内通信；跨进程副作用仍以 DB outbox + Kafka 为准。
 
 约束：
 

@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use audit_kit::{AuditEvent, AuditWriter};
 use kernel::{AppError, AppResult};
 use outbox_kit::{EventEnvelope, OutboxWriter};
+use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct DbPoolConfig {
@@ -14,6 +16,51 @@ pub struct DbPoolConfig {
 pub struct DbPool {
     pub dsn: String,
     pub max_connections: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderRecord {
+    pub order_id: String,
+    pub tenant_id: String,
+    pub status: String,
+    pub amount_minor: i64,
+}
+
+#[async_trait]
+pub trait OrderRepository: Send + Sync {
+    async fn upsert(&self, order: OrderRecord) -> AppResult<()>;
+    async fn find_by_id(&self, order_id: &str) -> AppResult<Option<OrderRecord>>;
+    async fn list_by_tenant(&self, tenant_id: &str) -> AppResult<Vec<OrderRecord>>;
+}
+
+#[derive(Default)]
+pub struct InMemoryOrderRepository {
+    data: RwLock<HashMap<String, OrderRecord>>,
+}
+
+#[async_trait]
+impl OrderRepository for InMemoryOrderRepository {
+    async fn upsert(&self, order: OrderRecord) -> AppResult<()> {
+        self.data.write().await.insert(order.order_id.clone(), order);
+        Ok(())
+    }
+
+    async fn find_by_id(&self, order_id: &str) -> AppResult<Option<OrderRecord>> {
+        Ok(self.data.read().await.get(order_id).cloned())
+    }
+
+    async fn list_by_tenant(&self, tenant_id: &str) -> AppResult<Vec<OrderRecord>> {
+        let mut list = self
+            .data
+            .read()
+            .await
+            .values()
+            .filter(|o| o.tenant_id == tenant_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        list.sort_by(|a, b| a.order_id.cmp(&b.order_id));
+        Ok(list)
+    }
 }
 
 impl DbPool {
@@ -406,6 +453,35 @@ mod tests {
         let fixture = TestDbFixture::from_env().expect("fixture should build");
         assert!(!fixture.pool.dsn.is_empty());
         assert!(fixture.pool.max_connections >= 1);
+    }
+
+    #[tokio::test]
+    async fn in_memory_order_repository_supports_rule_tests() {
+        let repo = InMemoryOrderRepository::default();
+        repo.upsert(OrderRecord {
+            order_id: "ord-2".to_string(),
+            tenant_id: "t-1".to_string(),
+            status: "draft".to_string(),
+            amount_minor: 100,
+        })
+        .await
+        .expect("insert ord-2");
+        repo.upsert(OrderRecord {
+            order_id: "ord-1".to_string(),
+            tenant_id: "t-1".to_string(),
+            status: "paid".to_string(),
+            amount_minor: 200,
+        })
+        .await
+        .expect("insert ord-1");
+
+        let found = repo.find_by_id("ord-1").await.expect("find by id");
+        assert_eq!(found.expect("order exists").status, "paid");
+
+        let tenant_orders = repo.list_by_tenant("t-1").await.expect("list by tenant");
+        assert_eq!(tenant_orders.len(), 2);
+        assert_eq!(tenant_orders[0].order_id, "ord-1");
+        assert_eq!(tenant_orders[1].order_id, "ord-2");
     }
 
     fn sample_bundle() -> TransactionBundle {

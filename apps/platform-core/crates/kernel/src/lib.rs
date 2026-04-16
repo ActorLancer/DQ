@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -183,6 +183,42 @@ pub fn new_external_readable_id(prefix: &str) -> String {
         .as_secs();
     let suffix = &Uuid::new_v4().simple().to_string()[..8];
     format!("{safe_prefix}-{ts_seconds}-{suffix}")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DomainEventEnvelope {
+    pub event_name: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub payload_json: String,
+    pub occurred_at_utc_ms: i64,
+}
+
+#[derive(Clone)]
+pub struct InProcessEventBus {
+    sender: broadcast::Sender<DomainEventEnvelope>,
+}
+
+impl InProcessEventBus {
+    pub fn new(capacity: usize) -> Self {
+        let (sender, _) = broadcast::channel(capacity.max(1));
+        Self { sender }
+    }
+
+    pub fn publish(&self, event: DomainEventEnvelope) -> AppResult<()> {
+        let _ = self.sender.send(event);
+        Ok(())
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<DomainEventEnvelope> {
+        self.sender.subscribe()
+    }
+}
+
+impl Default for InProcessEventBus {
+    fn default() -> Self {
+        Self::new(128)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -367,5 +403,21 @@ mod tests {
         let id = new_external_readable_id("ord");
         assert!(id.starts_with("ORD-"));
         assert_eq!(id.split('-').count(), 3);
+    }
+
+    #[test]
+    fn in_process_event_bus_roundtrip() {
+        let bus = InProcessEventBus::new(8);
+        let mut rx = bus.subscribe();
+        let event = DomainEventEnvelope {
+            event_name: "order.created".to_string(),
+            aggregate_type: "order".to_string(),
+            aggregate_id: "ord-1".to_string(),
+            payload_json: "{\"order_id\":\"ord-1\"}".to_string(),
+            occurred_at_utc_ms: UtcTimestampMs::now().0,
+        };
+        bus.publish(event.clone()).expect("publish event");
+        let got = rx.try_recv().expect("receive event");
+        assert_eq!(got, event);
     }
 }
