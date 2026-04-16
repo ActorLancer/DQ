@@ -1405,14 +1405,6 @@
 - 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）。
 
-### BATCH-068（计划中）
-
-- 状态：计划中
-- 当前任务编号：DB-030, DB-031, DB-032, DB-033
-- 当前批次目标：按连续 4 个简单任务一次性完成 `docs/03-db` 表字典与状态机映射、迁移兼容性回归脚本、索引审查基线与高频路径索引补强，并完成全链路可执行验证。
-- 前置依赖核对结果：`DB-030~DB-033` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库表字典正式版.md`、`docs/数据库设计/表关系总图-ER文本图.md`、`docs/领域模型/全量领域模型与对象关系说明.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
-
 ### BATCH-068（实施完成）
 
 - 状态：通过
@@ -1443,5 +1435,44 @@
 - 覆盖的任务清单条目：`DB-030`, `DB-031`, `DB-032`, `DB-033`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响验收。
+
+### BATCH-069（计划中）
+
+- 状态：计划中
+- 当前任务编号：DB-035
+- 当前批次目标：完成 `db/seeds/032_five_scenarios.sql`，把五条标准链路与主/补充 SKU、合同模板、验收模板、退款模板映射固化为可查询演示数据，并接入 seed 执行与校验链路。
+- 前置依赖核对结果：`DB-035` 依赖 `DB-028; CTX-007; CTX-021`，上述依赖均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/00-context/first-5-scenarios.md`、`docs/00-context/v1-closed-loop-matrix.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-069（实施完成）
+
+- 状态：通过
+- 当前任务编号：DB-035
+- 当前批次目标：完成 `db/seeds/032_five_scenarios.sql`，把五条标准链路与主/补充 SKU、合同模板、验收模板、退款模板映射固化为可查询演示数据，并接入 seed 执行与校验链路。
+- 前置依赖核对结果：`DB-035` 依赖 `DB-028; CTX-007; CTX-021`，上述依赖均已完成且审批通过；`DB-034` 依赖 `BIL-023` 未完成，按强制暂停规则登记阻塞项 `TODO-DB-034-001`。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/00-context/first-5-scenarios.md`、`docs/00-context/v1-closed-loop-matrix.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - 新增 `db/seeds/032_five_scenarios.sql`，将五条标准链路官方场景名（S1~S5）固化到 `developer.test_application`，并在 `metadata` 中写入主/补充 SKU、合同模板、验收模板、退款模板及场景样例订单映射。
+  - 更新 `db/seeds/manifest.csv`，接入 `032` 种子执行顺序。
+  - 新增 `db/scripts/verify-seed-032.sh`，校验五条场景映射、主 SKU 口径和模板映射完整性。
+  - 更新 `db/migrations/v1/README.md`，补充 `032` 种子与校验脚本入口说明。
+- 涉及文件：`db/seeds/032_five_scenarios.sql`、`db/seeds/manifest.csv`、`db/scripts/verify-seed-032.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `./db/scripts/migrate-reset.sh`
+  2. `./db/scripts/seed-up.sh`
+  3. `./db/scripts/verify-seed-001.sh`
+  4. `./db/scripts/verify-seed-010-030.sh`
+  5. `./db/scripts/verify-seed-032.sh`
+  6. `./db/scripts/verify-db-compatibility.sh`
+  7. `./db/scripts/migrate-status.sh`
+  8. `sha256sum -c db/migrations/v1/checksums.sha256`
+  9. `psql -h 127.0.0.1 -p 55432 -U luna -d luna_data_trading -tAc "SELECT version, name FROM public.seed_history ORDER BY version;"`
+- 验证结果：通过。`seed-up` 成功执行 `001/010/020/030/032`；`verify-seed-001.sh`、`verify-seed-010-030.sh`、`verify-seed-032.sh` 均返回 `[ok]`；`verify-db-compatibility.sh` 返回 `[ok] db compatibility baseline verified`；`migrate-status.sh` 无 pending；`seed_history` 已记录 `032`；migration checksum 全量通过。
+- 覆盖的冻结文档条目：`first-5-scenarios.md`（五条标准链路官方命名）、`v1-closed-loop-matrix.md`（主挂点/补充挂点 SKU 口径）、`全集成基线-V1`（首批标准场景到 SKU/模板映射）
+- 覆盖的任务清单条目：`DB-035`
+- 未覆盖项：`DB-034`（前置依赖 `BIL-023` 未完成，已登记阻塞）
+- 新增 TODO / 预留项：`TODO-DB-034-001`（`blocked`）
+- 待人工审批结论：待审批
+- 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响本批验收。

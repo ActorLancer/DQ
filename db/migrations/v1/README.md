@@ -13,7 +13,7 @@
 - checksum 锁文件：`db/migrations/v1/checksums.sha256`
 - SQL 基线来源：`docs/数据库设计/V1/{upgrade,downgrade}/*.sql`
 - 种子清单：`db/seeds/manifest.csv`
-- 种子脚本：`db/seeds/001_base_lookup.sql`、`db/seeds/010_test_tenants.sql`、`db/seeds/020_test_products.sql`、`db/seeds/030_test_orders.sql`
+- 种子脚本：`db/seeds/001_base_lookup.sql`、`db/seeds/010_test_tenants.sql`、`db/seeds/020_test_products.sql`、`db/seeds/030_test_orders.sql`、`db/seeds/032_five_scenarios.sql`
 
 ## Runner 规则
 
@@ -43,6 +43,7 @@
 - `db/scripts/verify-migration-roundtrip.sh`：执行“全量升级 -> 全量降级 -> 全量升级”的回滚演练，校验本地重建自洽性。
 - `db/scripts/verify-seed-001.sh`：验证 `db/seeds/001_base_lookup.sql` 的基础枚举/类目/标签种子落地。
 - `db/scripts/verify-seed-010-030.sh`：验证 `010/020/030` 的演示租户用户、8 个标准 SKU 商品与模板绑定、13 条订单样例（含 5 条标准链路场景订单）基线。
+- `db/scripts/verify-seed-032.sh`：验证 `032` 的五条标准链路官方场景名与主/补充 SKU、合同模板、验收模板、退款模板映射基线。
 - `db/scripts/verify-db-compatibility.sh`：执行 migration/seed 兼容性回归（重建、种子、回滚重放、再种子、状态校验）。
 - `db/scripts/review-index-baseline.sh`：执行高频路径索引基线审查。
 - `db/scripts/export-table-catalog.sh`：从数据库元数据导出 `docs/03-db/table-catalog.md`。

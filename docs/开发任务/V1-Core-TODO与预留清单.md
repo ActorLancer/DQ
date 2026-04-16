@@ -37,6 +37,7 @@
 | TODO-ENV-043-001 | ENV-043 | V1-gap | env-compose | `infra/docker/docker-compose.apps.local.example.yml` | closed | 已在 `BATCH-057` 补齐应用层 compose 占位文件，并完成 `docker compose config` 与本地自检/烟雾验证。 | 无；后续如进入应用容器化联调阶段，按该示例替换占位镜像为真实服务镜像。 | no |
 | TODO-CTX-019-001 | CTX-019 | V1-gap | context | `docs/00-context/service-to-module-map.md` | closed | 任务清单要求的交付文件在仓库中缺失，导致 `CORE-032` 依赖文档基线不完整。 | 已在 `BATCH-050` 补齐 `docs/00-context/service-to-module-map.md` 并纳入审批。 | no |
 | TODO-CTX-020-001 | CTX-020 | V1-gap | context | `docs/00-context/local-deployment-boundary.md` | closed | 任务清单要求的交付文件在仓库中缺失，导致本地部署边界冻结依据不完整。 | 已在 `BATCH-050` 补齐 `docs/00-context/local-deployment-boundary.md` 并纳入审批。 | no |
+| TODO-DB-034-001 | DB-034 | V1-gap | db-seed | `db/seeds/031_sku_trigger_matrix.sql` | blocked | `DB-034` 前置依赖 `BIL-023` 未完成，且 `docs/03-db/sku-billing-trigger-matrix.md` 目前缺失，无法按冻结口径固化 8 SKU 触发矩阵种子。 | 先完成并审批 `BIL-023`（交付 `docs/03-db/sku-billing-trigger-matrix.md`），再落地 `031_sku_trigger_matrix.sql` 与对应校验脚本后关闭。 | yes |
 
 ## 当前非阻塞记录
 
@@ -127,3 +128,4 @@
 - `BATCH-066`（`DB-023`, `DB-024`, `DB-025`, `DB-026`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-067`（`DB-027`, `DB-028`, `DB-029`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-068`（`DB-030`, `DB-031`, `DB-032`, `DB-033`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-069`（`DB-035`）：新增阻塞项 `TODO-DB-034-001`（`DB-034` 依赖 `BIL-023` 未完成，触发强制暂停）。
