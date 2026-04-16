@@ -119,3 +119,4 @@
 - `BATCH-058`（`CORE-022`, `CORE-028`）：关闭 `TODO-CORE-028-001`（已补齐 PostgreSQL 仓储实现与运行时 DI 切换），并完成启动自检对 topic/bucket/alias 的存在性探测增强。
 - `BATCH-059`（`DB-001`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-060`（`DB-002`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-061`（`DB-003`, `DB-004`, `DB-005`, `DB-006`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。

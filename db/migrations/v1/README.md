@@ -24,3 +24,8 @@
 - 执行记录表：`public.schema_migration_history`
   - 记录字段：`version`、`name`、`direction`、`checksum_sha256`、`executed_at`
   - 用于检测同版本 checksum 漂移
+
+## 验证脚本
+
+- `db/scripts/verify-migration-001.sh`：验证 `001_extensions_and_schemas.sql` 的扩展、schema 与公共 trigger 函数基座。
+- `db/scripts/verify-migration-010-030.sh`：验证 `010/020/025/030` 的关键表、索引、触发器与外键约束基线。

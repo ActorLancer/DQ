@@ -1086,7 +1086,7 @@
 
 ### BATCH-057（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：ENV-043
 - 当前批次目标：补齐 `infra/docker/docker-compose.apps.local.example.yml` 占位文件，固定业务应用容器化联调参考编排，并完成 compose 配置校验与本地自检闭环。
 - 前置依赖核对结果：`ENV-043` 依赖 `ENV-042; CORE-032`，对应任务均已完成且审批通过。
@@ -1111,18 +1111,9 @@
 - 待人工审批结论：通过
 - 备注：本批仅新增应用层 compose 占位编排与 runbook 步骤，不改变 V1 默认“基础设施容器 + 业务本机进程”主流程。
 
-### BATCH-058
-
-- 状态：计划中
-- 当前任务编号：CORE-022, CORE-028
-- 当前批次目标：补齐两个已识别缺口：`CORE-022` 资源存在性自检从“仅配置值校验”提升到“实际存在性探测”；`CORE-028` 补齐 PostgreSQL 仓储实现并接入运行时 DI 切换。
-- 前置依赖核对结果：`CORE-022` 与 `CORE-028` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述依赖任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/服务清单与服务边界正式版.md`
-- 预计涉及文件：`apps/platform-core/src/lib.rs`、`apps/platform-core/crates/db/src/lib.rs`、`apps/platform-core/crates/db/Cargo.toml`、`apps/platform-core/Cargo.toml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-058（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CORE-022, CORE-028
 - 当前批次目标：补齐两个已识别缺口：`CORE-022` 资源存在性自检从“仅配置值校验”提升到“实际存在性探测”；`CORE-028` 补齐 PostgreSQL 仓储实现并接入运行时 DI 切换。
 - 前置依赖核对结果：`CORE-022` 与 `CORE-028` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述依赖任务均已完成且审批通过。
@@ -1145,19 +1136,9 @@
 - 待人工审批结论：通过
 - 备注：运行态验证阶段若未显式设置 `KAFKA_BROKERS`，默认 `localhost:9092` 可能与本地映射端口不一致，已在验证命令中固定为 `127.0.0.1:9094`。
 
-### BATCH-059
-
-- 状态：计划中
-- 当前任务编号：DB-001
-- 当前批次目标：在 `db/migrations/v1/` 落地可执行迁移基线（命名规则、执行清单、checksum 锁文件），并实现支持数字顺序执行、checksum 记录、dry-run 的 migration runner。
-- 前置依赖核对结果：`DB-001` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，以上任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/README.md`、`docs/数据库设计/数据库设计总说明.md`
-- 预计涉及文件：`db/migrations/v1/**`、`db/scripts/**`、`scripts/validate_database_migrations.sh`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 仓库现状差异说明：`db/migrations/v1/` 当前仅有 README，缺少可执行迁移清单与 runner，且 `db/scripts/` 仅有 `check-db-ready.sh`。
-
 ### BATCH-059（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：DB-001
 - 当前批次目标：在 `db/migrations/v1/` 落地可执行迁移基线（命名规则、执行清单、checksum 锁文件），并实现支持数字顺序执行、checksum 记录、dry-run 的 migration runner。
 - 前置依赖核对结果：`DB-001` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，以上任务均已完成且审批通过。
@@ -1190,19 +1171,9 @@
 - 待人工审批结论：通过
 - 备注：验证使用的数据库容器为 `luna-postgres-test`（`部署脚本/docker-compose.postgres-test.yml`）。
 
-### BATCH-060
-
-- 状态：计划中
-- 当前任务编号：DB-002
-- 当前批次目标：完成 `001_extensions_and_schemas.sql` 的落地验收，确保“基础扩展 + 业务 schema + 公共函数 + 更新时间 trigger 基座”满足 V1 迁移基线要求，并形成可重复执行的自动校验脚本。
-- 前置依赖核对结果：`DB-002` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/README.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/001_extensions_and_schemas.sql`
-- 预计涉及文件：`db/scripts/**`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 仓库现状差异说明：`001_extensions_and_schemas.sql` 已存在于冻结目录，需补充“可执行验收”以避免仅做文件存在性通过。
-
 ### BATCH-060（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：DB-002
 - 当前批次目标：完成 `001_extensions_and_schemas.sql` 的落地验收，确保“基础扩展 + 业务 schema + 公共函数 + 更新时间 trigger 基座”满足 V1 迁移基线要求，并形成可重复执行的自动校验脚本。
 - 前置依赖核对结果：`DB-002` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
@@ -1221,5 +1192,41 @@
 - 覆盖的任务清单条目：`DB-002`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`）。
+
+### BATCH-061
+
+- 状态：计划中
+- 当前任务编号：DB-003, DB-004, DB-005, DB-006
+- 当前批次目标：按连续 4 个简单任务一次性完成 `010/020/025/030` 迁移落地验收，补齐“表结构 + 关键索引 + 关键触发器”自动校验脚本，并通过空库重建链路验证可复现性。
+- 前置依赖核对结果：`DB-003~DB-006` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/数据库设计/V1/upgrade/020_catalog_contract.sql`、`docs/数据库设计/V1/upgrade/025_review_workflow.sql`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`
+- 预计涉及文件：`db/scripts/verify-migration-010-030.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-061（实施完成）
+
+- 状态：待审批
+- 当前任务编号：DB-003, DB-004, DB-005, DB-006
+- 当前批次目标：按连续 4 个简单任务一次性完成 `010/020/025/030` 迁移落地验收，补齐“表结构 + 关键索引 + 关键触发器”自动校验脚本，并通过空库重建链路验证可复现性。
+- 前置依赖核对结果：`DB-003~DB-006` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/数据库设计/V1/upgrade/020_catalog_contract.sql`、`docs/数据库设计/V1/upgrade/025_review_workflow.sql`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`
+- 已实现功能：
+  - 新增 `db/scripts/verify-migration-010-030.sh`，对 `010/020/025/030` 迁移结果执行自动校验，覆盖关键业务表、关键索引、关键触发器与关键外键约束。
+  - 将 DB-003~DB-006 的“落地验收”标准固化为可复用脚本，避免仅依赖人工抽查。
+  - 更新 `db/migrations/v1/README.md`，补充 `001` 与 `010~030` 基线验证脚本说明。
+- 涉及文件：`db/scripts/verify-migration-010-030.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `docker ps --filter name=luna-postgres-test`
+  2. `./db/scripts/migrate-reset.sh`
+  3. `./db/scripts/verify-migration-001.sh`
+  4. `./db/scripts/verify-migration-010-030.sh`
+  5. `./db/scripts/migrate-status.sh`
+  6. `sha256sum -c db/migrations/v1/checksums.sha256`
+- 验证结果：通过。空库重建与全量迁移成功；`verify-migration-001.sh` 返回 `[ok] migration 001 baseline verified`；`verify-migration-010-030.sh` 返回 `[ok] migrations 010/020/025/030 baseline verified`；`migrate-status.sh` 显示 `001~070` 全量 `up` 记录且无 pending；checksum 全量校验通过。
+- 覆盖的冻结文档条目：`数据库设计/数据库设计总说明.md`（设计范围、迁移顺序）、`数据库设计/V1/upgrade/010_identity_and_access.sql`、`数据库设计/V1/upgrade/020_catalog_contract.sql`、`数据库设计/V1/upgrade/025_review_workflow.sql`、`数据库设计/V1/upgrade/030_trade_delivery.sql`
+- 覆盖的任务清单条目：`DB-003`, `DB-004`, `DB-005`, `DB-006`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）。
