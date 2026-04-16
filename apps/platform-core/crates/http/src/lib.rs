@@ -8,7 +8,7 @@ use axum::{
     routing::get,
 };
 use kernel::{AppError, AppResult, ErrorResponse, new_uuid_string};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::{Mutex, OnceLock};
@@ -36,64 +36,6 @@ where
             data,
         })
     }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct PaginationQuery {
-    pub page: Option<u32>,
-    pub page_size: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Pagination {
-    pub page: u32,
-    pub page_size: u32,
-}
-
-impl Pagination {
-    pub fn from_query(query: Option<PaginationQuery>) -> Self {
-        let page = query.as_ref().and_then(|q| q.page).unwrap_or(1).max(1);
-        let page_size = query
-            .as_ref()
-            .and_then(|q| q.page_size)
-            .unwrap_or(20)
-            .clamp(1, 200);
-        Self { page, page_size }
-    }
-
-    pub fn offset(&self) -> u64 {
-        ((self.page - 1) as u64) * self.page_size as u64
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub struct FilterQuery {
-    pub keyword: Option<String>,
-    pub status: Option<String>,
-    pub sort_by: Option<String>,
-    pub sort_order: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ListQuery {
-    pub pagination: Pagination,
-    pub filter: FilterQuery,
-}
-
-impl ListQuery {
-    pub fn new(pagination: Option<PaginationQuery>, filter: Option<FilterQuery>) -> Self {
-        Self {
-            pagination: Pagination::from_query(pagination),
-            filter: filter.unwrap_or_default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct PaginationMeta {
-    pub page: u32,
-    pub page_size: u32,
-    pub total: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -447,7 +389,7 @@ mod tests {
 
     #[test]
     fn pagination_has_default_and_clamp() {
-        let p = Pagination::from_query(Some(PaginationQuery {
+        let p = kernel::Pagination::from_query(Some(kernel::PaginationQuery {
             page: Some(0),
             page_size: Some(9999),
         }));
@@ -458,12 +400,12 @@ mod tests {
 
     #[test]
     fn list_query_builds_from_parts() {
-        let q = ListQuery::new(
-            Some(PaginationQuery {
+        let q = kernel::ListQuery::new(
+            Some(kernel::PaginationQuery {
                 page: Some(2),
                 page_size: Some(25),
             }),
-            Some(FilterQuery {
+            Some(kernel::FilterQuery {
                 keyword: Some("order".to_string()),
                 status: Some("open".to_string()),
                 sort_by: Some("created_at".to_string()),

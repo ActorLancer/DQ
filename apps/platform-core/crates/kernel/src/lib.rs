@@ -185,6 +185,64 @@ pub fn new_external_readable_id(prefix: &str) -> String {
     format!("{safe_prefix}-{ts_seconds}-{suffix}")
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PaginationQuery {
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Pagination {
+    pub page: u32,
+    pub page_size: u32,
+}
+
+impl Pagination {
+    pub fn from_query(query: Option<PaginationQuery>) -> Self {
+        let page = query.as_ref().and_then(|q| q.page).unwrap_or(1).max(1);
+        let page_size = query
+            .as_ref()
+            .and_then(|q| q.page_size)
+            .unwrap_or(20)
+            .clamp(1, 200);
+        Self { page, page_size }
+    }
+
+    pub fn offset(&self) -> u64 {
+        ((self.page - 1) as u64) * self.page_size as u64
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+pub struct FilterQuery {
+    pub keyword: Option<String>,
+    pub status: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListQuery {
+    pub pagination: Pagination,
+    pub filter: FilterQuery,
+}
+
+impl ListQuery {
+    pub fn new(pagination: Option<PaginationQuery>, filter: Option<FilterQuery>) -> Self {
+        Self {
+            pagination: Pagination::from_query(pagination),
+            filter: filter.unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PaginationMeta {
+    pub page: u32,
+    pub page_size: u32,
+    pub total: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DomainEventEnvelope {
     pub event_name: String,
@@ -419,5 +477,34 @@ mod tests {
         bus.publish(event.clone()).expect("publish event");
         let got = rx.try_recv().expect("receive event");
         assert_eq!(got, event);
+    }
+
+    #[test]
+    fn pagination_has_default_and_clamp() {
+        let p = Pagination::from_query(Some(PaginationQuery {
+            page: Some(0),
+            page_size: Some(9999),
+        }));
+        assert_eq!(p.page, 1);
+        assert_eq!(p.page_size, 200);
+        assert_eq!(p.offset(), 0);
+    }
+
+    #[test]
+    fn list_query_builds_from_parts() {
+        let q = ListQuery::new(
+            Some(PaginationQuery {
+                page: Some(2),
+                page_size: Some(25),
+            }),
+            Some(FilterQuery {
+                keyword: Some("order".to_string()),
+                status: Some("open".to_string()),
+                sort_by: Some("created_at".to_string()),
+                sort_order: Some("desc".to_string()),
+            }),
+        );
+        assert_eq!(q.pagination.offset(), 25);
+        assert_eq!(q.filter.status.as_deref(), Some("open"));
     }
 }

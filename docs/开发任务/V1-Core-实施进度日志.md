@@ -961,7 +961,7 @@
 
 ### BATCH-051（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CORE-037, CORE-038, CORE-039, CORE-040
 - 当前批次目标：按连续简单任务一次性校准并冻结 `billing/dispute`、`audit/consistency`、`search/recommendation`、`developer/ops` 模块骨架，确保目录模板与模块命名与任务清单一致。
 - 前置依赖核对结果：4 个任务均依赖 `BOOT-002; ENV-001`，依赖已完成且你已确认审批通过。
@@ -974,5 +974,23 @@
 - 覆盖的任务清单条目：`CORE-037`, `CORE-038`, `CORE-039`, `CORE-040`
 - 未覆盖项：运行态 `/health/ready` 在当前沙箱因端口绑定限制未完成复验，需在宿主机环境补验。
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 4 个简单任务”执行并统一汇报；未变更既有骨架主轴，仅做模块命名与模板一致性校准。
+
+### BATCH-052（实施完成）
+
+- 状态：待审批
+- 当前任务编号：CORE-041, CORE-042, CORE-043, CORE-044
+- 当前批次目标：按连续简单任务一次性校准共享 crates 边界，确保 `kernel/config/http/db/auth/audit-kit/outbox-kit/provider-kit` 的能力分层与任务定义一致。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-002; ENV-001`，依赖已完成且你已确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/仓库拆分与目录结构建议.md`、`docs/开发准备/服务清单与服务边界正式版.md`
+- 已实现功能：将分页/筛选共享模型从 `crates/http` 收口到 `crates/kernel`（`PaginationQuery`、`Pagination`、`FilterQuery`、`ListQuery`、`PaginationMeta`），并新增 kernel 侧单测；`crates/http` 改为复用 `kernel` 模型，去除重复定义；同步更新 `platform-core-workspace` 对“分页与筛选组件”的归属描述，明确由 `kernel` 收口、`http` 与业务模块复用。其余 `config/db/auth/audit-kit/outbox-kit/provider-kit` 维持既有已落盘实现并通过编译测试复验。
+- 涉及文件：`apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core/crates/http/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `APP_HOST=127.0.0.1 APP_PORT=18080 cargo run -p platform-core`。
+- 验证结果：通过（编译与测试）。`cargo build`、`cargo test` 均通过；运行态启动到 self-check 成功，但沙箱环境禁止端口监听，报 `bind listener failed: Operation not permitted (os error 1)`，需在宿主机复验 `/health/ready`。
+- 覆盖的冻结文档条目：`开发准备/仓库拆分与目录结构建议.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/接口清单与OpenAPI-Schema冻结表.md`、`开发准备/事件模型与Topic清单正式版.md`
+- 覆盖的任务清单条目：`CORE-041`, `CORE-042`, `CORE-043`, `CORE-044`
+- 未覆盖项：运行态 `/health/ready` 在当前沙箱环境未完成端口监听复验（非实现缺陷，受执行环境限制）。
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 4 个简单任务”一次性执行并汇总；未引入 V2/V3 正式实现。

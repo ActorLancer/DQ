@@ -47,7 +47,7 @@
 
 统一分页与筛选组件（V1-Core）：
 
-- 在 `crates/http` 提供 `Pagination`、`FilterQuery`、`ListQuery`，供目录搜索、订单列表、审计列表、ops 列表复用。
+- 在 `crates/kernel` 收口 `Pagination`、`FilterQuery`、`ListQuery`、`PaginationMeta`，由 `crates/http` 与业务模块复用。
 - 分页默认值：`page=1`、`page_size=20`，并对 `page_size` 做 `1..=200` 的边界收敛。
 
 统一运行时模式页（V1-Core）：
