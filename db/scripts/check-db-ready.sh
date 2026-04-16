@@ -32,7 +32,7 @@ for schema in "${required_schemas[@]}"; do
   fi
 done
 
-required_extensions=(pgcrypto uuid-ossp)
+required_extensions=(pgcrypto citext pg_trgm btree_gist vector)
 for ext in "${required_extensions[@]}"; do
   exists="$(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -Atqc "select exists(select 1 from pg_extension where extname='${ext}');")"
   if [[ "${exists}" != "t" ]]; then

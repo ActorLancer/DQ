@@ -1142,5 +1142,50 @@
 - 覆盖的任务清单条目：`CORE-022`, `CORE-028`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无（已关闭 `TODO-CORE-028-001`）
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：运行态验证阶段若未显式设置 `KAFKA_BROKERS`，默认 `localhost:9092` 可能与本地映射端口不一致，已在验证命令中固定为 `127.0.0.1:9094`。
+
+### BATCH-059
+
+- 状态：计划中
+- 当前任务编号：DB-001
+- 当前批次目标：在 `db/migrations/v1/` 落地可执行迁移基线（命名规则、执行清单、checksum 锁文件），并实现支持数字顺序执行、checksum 记录、dry-run 的 migration runner。
+- 前置依赖核对结果：`DB-001` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，以上任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/README.md`、`docs/数据库设计/数据库设计总说明.md`
+- 预计涉及文件：`db/migrations/v1/**`、`db/scripts/**`、`scripts/validate_database_migrations.sh`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 仓库现状差异说明：`db/migrations/v1/` 当前仅有 README，缺少可执行迁移清单与 runner，且 `db/scripts/` 仅有 `check-db-ready.sh`。
+
+### BATCH-059（实施完成）
+
+- 状态：待审批
+- 当前任务编号：DB-001
+- 当前批次目标：在 `db/migrations/v1/` 落地可执行迁移基线（命名规则、执行清单、checksum 锁文件），并实现支持数字顺序执行、checksum 记录、dry-run 的 migration runner。
+- 前置依赖核对结果：`DB-001` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，以上任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/README.md`、`docs/数据库设计/数据库设计总说明.md`
+- 已实现功能：
+  - 新增 `db/migrations/v1/manifest.csv`，按版本号维护 `upgrade/downgrade` 对应关系。
+  - 新增 `db/migrations/v1/checksums.sha256`，锁定所有迁移 SQL 的 checksum。
+  - 新增 `db/scripts/migration-runner.sh`，支持 `up/down/status`、`--dry-run`、按版本顺序执行与 `schema_migration_history` 记录。
+  - 新增包装脚本 `migrate-up.sh`、`migrate-down.sh`、`migrate-status.sh`、`migrate-reset.sh`。
+  - 修正 `db/scripts/check-db-ready.sh` 扩展检查项，与当前迁移基线保持一致（`pgcrypto/citext/pg_trgm/btree_gist/vector`）。
+  - 更新 `db/migrations/v1/README.md`，补充执行规则、清单与校验说明。
+- 涉及文件：`db/migrations/v1/README.md`、`db/migrations/v1/manifest.csv`、`db/migrations/v1/checksums.sha256`、`db/scripts/migration-runner.sh`、`db/scripts/migrate-up.sh`、`db/scripts/migrate-down.sh`、`db/scripts/migrate-status.sh`、`db/scripts/migrate-reset.sh`、`db/scripts/check-db-ready.sh`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `docker compose -p luna_db_test -f 部署脚本/docker-compose.postgres-test.yml down -v`
+  2. `docker compose -p luna_db_test -f 部署脚本/docker-compose.postgres-test.yml up -d`
+  3. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/migrate-up.sh --dry-run`
+  4. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/migrate-up.sh`
+  5. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/migrate-status.sh`
+  6. `./scripts/seed-demo.sh`
+  7. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/migrate-reset.sh`
+  8. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/migrate-up.sh`
+  9. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/migrate-down.sh --dry-run`
+  10. `sha256sum -c db/migrations/v1/checksums.sha256`
+  11. `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/check-db-ready.sh`
+- 验证结果：通过。空库升级、状态查询、重建再升级、降级 dry-run、checksum 校验均通过；`check-db-ready.sh` 修正后通过。`seed-demo.sh` 当前为可执行占位实现，已成功执行但未写入业务演示数据。
+- 覆盖的冻结文档条目：`数据库设计/README.md`（迁移策略）、`数据库设计/数据库设计总说明.md`（迁移顺序、设计原则）
+- 覆盖的任务清单条目：`DB-001`
+- 未覆盖项：`seed-demo.sh` 的业务演示数据导入逻辑尚未在本任务范围内实现（后续由 DB seeds 任务补齐）。
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：验证使用的数据库容器为 `luna-postgres-test`（`部署脚本/docker-compose.postgres-test.yml`）。
