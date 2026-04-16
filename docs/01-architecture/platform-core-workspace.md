@@ -13,6 +13,11 @@
 - `apps/platform-core/crates/outbox-kit`：`outbox_event` 写入接口、事件 envelope、幂等键、发布状态与重试策略。
 - `apps/platform-core/crates/provider-kit`：KYC、签章、支付、通知、Fabric 写入等 Provider trait 与 `mock/real` 实现入口工厂。
 
+模块模板基线（V1-Core）：
+
+- 统一模块目录模板：`api/`、`application/`、`domain/`、`dto/`、`events/`、`repo/`、`tests/`。
+- 当前已按模板落盘的主链路模块（含本批）：`iam`、`party`、`access`、`catalog`、`contract_meta`、`listing`、`review`、`order`、`contract`、`authorization`、`delivery`。
+
 当前 V1-Core 基线健康检查路由：
 
 - `/health/live`

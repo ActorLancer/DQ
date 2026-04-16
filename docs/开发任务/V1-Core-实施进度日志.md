@@ -55,7 +55,7 @@
 - 覆盖的冻结文档条目：`开发准备/仓库拆分与目录结构建议.md`
 - 覆盖的任务清单条目：`BOOT-001`, `BOOT-002`
 - 未覆盖项：无
-- 新增 TODO / 预留项：无
+- 新增 TODO / 预留项：`TODO-CTX-019-001`、`TODO-CTX-020-001`（`V1-gap`，阻塞；用于跟踪历史前置任务交付文件缺失）。
 - 待人工审批结论：待审批
 - 备注：开始编码前记录。
 
@@ -907,7 +907,7 @@
 
 ### BATCH-048
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CORE-030, CORE-031
 - 当前批次目标：一次性补齐开发者总览端点 `/internal/dev/overview` 与一键工程校验入口（`cargo xtask` 或等价工具），并保持现有骨架、脚本与目录结构可复用。
 - 前置依赖核对结果：`CORE-030`, `CORE-031` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述前置均已完成并经人工审批通过。
@@ -920,5 +920,23 @@
 - 覆盖的任务清单条目：`CORE-030`, `CORE-031`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 2 个简单任务”执行并统一汇报；运行态端口绑定与 Docker migration 校验在本环境需提升权限执行，结果均已通过。
+
+### BATCH-049
+
+- 状态：计划中
+- 当前任务编号：CORE-033, CORE-034, CORE-035, CORE-036
+- 当前批次目标：按连续简单任务一次性补齐并校准身份/供给/交易前半段/授权交付模块骨架，统一模块目录模板并接入 `modules/mod.rs`。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-002; ENV-001`，均已完成且审批通过；`CORE-032` 依赖 `CORE-010`（而 `CORE-010` 依赖 `CORE-033~051`）当前不满足，已按 CSV 依赖顺序后置处理。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/平台总体架构设计草案.md`
+- 已实现功能：完成 `CORE-033~036` 模块骨架校准：确认 `iam/party/access`、`catalog/contract_meta/listing`、`order/contract`、`authorization/delivery` 目录模板均已落盘；新增缺失的 `review` 模块目录模板（`api/application/domain/dto/events/repo/tests`）并接入 `modules/mod.rs`，确保供给侧模块骨架满足任务约束。
+- 涉及文件：`apps/platform-core/src/modules/mod.rs`、`apps/platform-core/src/modules/review/mod.rs`、`apps/platform-core/src/modules/review/api/.gitkeep`、`apps/platform-core/src/modules/review/application/.gitkeep`、`apps/platform-core/src/modules/review/domain/.gitkeep`、`apps/platform-core/src/modules/review/dto/.gitkeep`、`apps/platform-core/src/modules/review/events/.gitkeep`、`apps/platform-core/src/modules/review/repo/.gitkeep`、`apps/platform-core/src/modules/review/tests/.gitkeep`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `APP_PORT=18083 cargo run -p platform-core`；4. `curl http://127.0.0.1:18083/health/ready`。
+- 验证结果：通过。`cargo build` 和 `cargo test` 通过；运行态 `/health/ready` 返回 `{"success":true,"data":"ready"}`。
+- 覆盖的冻结文档条目：`开发准备/服务清单与服务边界正式版.md`、`领域模型/全量领域模型与对象关系说明.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`CORE-033`, `CORE-034`, `CORE-035`, `CORE-036`
+- 未覆盖项：`CORE-032` 仍未执行（依赖 `CORE-010`，且 `CORE-010` 依赖 `CORE-033~051`）；此外发现 `CTX-019` 交付文件 `docs/00-context/service-to-module-map.md` 在仓库缺失，已记录为依赖对齐风险，待后续依赖批次处理时一并修正。
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 4 个简单任务”执行并统一汇报；未越过 `CORE-032` 依赖顺序。

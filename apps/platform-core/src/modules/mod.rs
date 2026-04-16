@@ -19,5 +19,5 @@ pub mod order;
 pub mod party;
 pub mod provider_ops;
 pub mod recommend;
+pub mod review;
 pub mod search;
-
