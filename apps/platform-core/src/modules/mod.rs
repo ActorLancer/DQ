@@ -18,6 +18,6 @@ pub mod ops;
 pub mod order;
 pub mod party;
 pub mod provider_ops;
-pub mod recommend;
+pub mod recommendation;
 pub mod review;
 pub mod search;

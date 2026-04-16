@@ -943,7 +943,7 @@
 
 ### BATCH-050
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CTX-019, CTX-020
 - 当前批次目标：补齐历史阻塞缺口文档 `service-to-module-map.md` 与 `local-deployment-boundary.md`，恢复 `CORE-032` 前置文档完整性。
 - 前置依赖核对结果：`CTX-019` 依赖 `CTX-004; BOOT-002`，`CTX-020` 依赖 `CTX-008; ENV-001`，上述依赖均已完成并审批通过。
@@ -956,5 +956,23 @@
 - 覆盖的任务清单条目：`CTX-019`, `CTX-020`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无新增；已关闭 `TODO-CTX-019-001`、`TODO-CTX-020-001`。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批用于修复历史前置缺口；完成后可按顺序继续后续 CORE 批次。
+
+### BATCH-051（实施完成）
+
+- 状态：待审批
+- 当前任务编号：CORE-037, CORE-038, CORE-039, CORE-040
+- 当前批次目标：按连续简单任务一次性校准并冻结 `billing/dispute`、`audit/consistency`、`search/recommendation`、`developer/ops` 模块骨架，确保目录模板与模块命名与任务清单一致。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-002; ENV-001`，依赖已完成且你已确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/平台总体架构设计草案.md`
+- 已实现功能：确认并固化 `billing/dispute`、`audit/consistency`、`developer/ops` 目录模板齐备（`api/application/domain/dto/events/repo/tests`）；将 `CORE-039` 模块命名从 `recommend` 收敛为 `recommendation`，完成模块导出与目录模板迁移；同步更新服务映射文档与 workspace 架构说明中的模块命名，消除 `recommend`/`recommendation` 术语漂移。
+- 涉及文件：`apps/platform-core/src/modules/mod.rs`、`apps/platform-core/src/modules/recommendation/mod.rs`、`apps/platform-core/src/modules/recommendation/api/.gitkeep`、`apps/platform-core/src/modules/recommendation/application/.gitkeep`、`apps/platform-core/src/modules/recommendation/domain/.gitkeep`、`apps/platform-core/src/modules/recommendation/dto/.gitkeep`、`apps/platform-core/src/modules/recommendation/events/.gitkeep`、`apps/platform-core/src/modules/recommendation/repo/.gitkeep`、`apps/platform-core/src/modules/recommendation/tests/.gitkeep`、`docs/00-context/service-to-module-map.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `APP_PORT=18084 cargo run -p platform-core`（运行态探活前置）。
+- 验证结果：通过（编译与测试）。`cargo build`、`cargo test` 均通过；运行态启动完成到 `startup self-check passed`，但当前沙箱限制导致监听端口失败（`bind listener failed: Operation not permitted`），故本批以编译/测试通过作为交付验证，端口探活待宿主机环境复验。
+- 覆盖的冻结文档条目：`开发准备/服务清单与服务边界正式版.md`、`领域模型/全量领域模型与对象关系说明.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`CORE-037`, `CORE-038`, `CORE-039`, `CORE-040`
+- 未覆盖项：运行态 `/health/ready` 在当前沙箱因端口绑定限制未完成复验，需在宿主机环境补验。
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 4 个简单任务”执行并统一汇报；未变更既有骨架主轴，仅做模块命名与模板一致性校准。

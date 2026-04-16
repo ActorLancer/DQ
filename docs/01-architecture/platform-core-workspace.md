@@ -16,7 +16,7 @@
 模块模板基线（V1-Core）：
 
 - 统一模块目录模板：`api/`、`application/`、`domain/`、`dto/`、`events/`、`repo/`、`tests/`。
-- 当前已按模板落盘的主链路模块（含本批）：`iam`、`party`、`access`、`catalog`、`contract_meta`、`listing`、`review`、`order`、`contract`、`authorization`、`delivery`。
+- 当前已按模板落盘的主链路模块（含本批）：`iam`、`party`、`access`、`catalog`、`contract_meta`、`listing`、`review`、`order`、`contract`、`authorization`、`delivery`、`billing`、`dispute`、`audit`、`consistency`、`search`、`recommendation`、`developer`、`ops`。
 
 当前 V1-Core 基线健康检查路由：
 
