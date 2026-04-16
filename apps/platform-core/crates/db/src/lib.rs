@@ -5,6 +5,7 @@ use outbox_kit::{EventEnvelope, OutboxWriter};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio_postgres::NoTls;
 
 #[derive(Debug, Clone)]
 pub struct DbPoolConfig {
@@ -38,10 +39,6 @@ pub struct InMemoryOrderRepository {
     data: RwLock<HashMap<String, OrderRecord>>,
 }
 
-// TODO(V1-gap, CORE-028): 当前仅提供内存仓储用于业务规则测试先于基础设施联调，
-// 尚未提供 PostgreSQL 持久化实现并接入运行时依赖注入。
-// 补齐条件：在后续领域任务中提供 `OrderRepository` 的 PostgreSQL 实现并完成运行时装配。
-// 验收方式：真实 DB 环境下通过仓储集成测试，且启动链路中可切换到持久化实现。
 #[async_trait]
 impl OrderRepository for InMemoryOrderRepository {
     async fn upsert(&self, order: OrderRecord) -> AppResult<()> {
@@ -64,6 +61,128 @@ impl OrderRepository for InMemoryOrderRepository {
             .collect::<Vec<_>>();
         list.sort_by(|a, b| a.order_id.cmp(&b.order_id));
         Ok(list)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderRepositoryBackend {
+    InMemory,
+    Postgres,
+}
+
+impl OrderRepositoryBackend {
+    pub fn from_env() -> AppResult<Self> {
+        let raw = std::env::var("ORDER_REPOSITORY_BACKEND")
+            .unwrap_or_else(|_| "in_memory".to_string())
+            .to_ascii_lowercase();
+        match raw.as_str() {
+            "in_memory" | "memory" => Ok(Self::InMemory),
+            "postgres" | "postgresql" => Ok(Self::Postgres),
+            other => Err(AppError::Config(format!(
+                "ORDER_REPOSITORY_BACKEND must be in_memory|postgres, got {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PostgresOrderRepository {
+    dsn: String,
+}
+
+impl PostgresOrderRepository {
+    pub fn new(dsn: impl Into<String>) -> Self {
+        Self { dsn: dsn.into() }
+    }
+}
+
+#[async_trait]
+impl OrderRepository for PostgresOrderRepository {
+    async fn upsert(&self, order: OrderRecord) -> AppResult<()> {
+        let (client, connection) = tokio_postgres::connect(&self.dsn, NoTls)
+            .await
+            .map_err(|e| AppError::Config(format!("postgres connect failed: {e}")))?;
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+
+        client
+            .execute(
+                "INSERT INTO trade_order (order_id, tenant_id, status, amount_minor)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (order_id)
+                 DO UPDATE SET tenant_id = EXCLUDED.tenant_id,
+                               status = EXCLUDED.status,
+                               amount_minor = EXCLUDED.amount_minor",
+                &[&order.order_id, &order.tenant_id, &order.status, &order.amount_minor],
+            )
+            .await
+            .map_err(|e| AppError::Config(format!("postgres upsert order failed: {e}")))?;
+        Ok(())
+    }
+
+    async fn find_by_id(&self, order_id: &str) -> AppResult<Option<OrderRecord>> {
+        let (client, connection) = tokio_postgres::connect(&self.dsn, NoTls)
+            .await
+            .map_err(|e| AppError::Config(format!("postgres connect failed: {e}")))?;
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+
+        let row = client
+            .query_opt(
+                "SELECT order_id, tenant_id, status, amount_minor FROM trade_order WHERE order_id = $1",
+                &[&order_id],
+            )
+            .await
+            .map_err(|e| AppError::Config(format!("postgres find order failed: {e}")))?;
+
+        Ok(row.map(|r| OrderRecord {
+            order_id: r.get::<_, String>(0),
+            tenant_id: r.get::<_, String>(1),
+            status: r.get::<_, String>(2),
+            amount_minor: r.get::<_, i64>(3),
+        }))
+    }
+
+    async fn list_by_tenant(&self, tenant_id: &str) -> AppResult<Vec<OrderRecord>> {
+        let (client, connection) = tokio_postgres::connect(&self.dsn, NoTls)
+            .await
+            .map_err(|e| AppError::Config(format!("postgres connect failed: {e}")))?;
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+
+        let rows = client
+            .query(
+                "SELECT order_id, tenant_id, status, amount_minor
+                 FROM trade_order
+                 WHERE tenant_id = $1
+                 ORDER BY order_id ASC",
+                &[&tenant_id],
+            )
+            .await
+            .map_err(|e| AppError::Config(format!("postgres list orders failed: {e}")))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| OrderRecord {
+                order_id: r.get::<_, String>(0),
+                tenant_id: r.get::<_, String>(1),
+                status: r.get::<_, String>(2),
+                amount_minor: r.get::<_, i64>(3),
+            })
+            .collect())
+    }
+}
+
+pub fn build_order_repository(
+    pool: &DbPool,
+    backend: OrderRepositoryBackend,
+) -> Arc<dyn OrderRepository> {
+    match backend {
+        OrderRepositoryBackend::InMemory => Arc::new(InMemoryOrderRepository::default()),
+        OrderRepositoryBackend::Postgres => Arc::new(PostgresOrderRepository::new(pool.dsn.clone())),
     }
 }
 
@@ -486,6 +605,24 @@ mod tests {
         assert_eq!(tenant_orders.len(), 2);
         assert_eq!(tenant_orders[0].order_id, "ord-1");
         assert_eq!(tenant_orders[1].order_id, "ord-2");
+    }
+
+    #[test]
+    fn repository_backend_defaults_to_in_memory() {
+        // SAFETY: test mutation and cleanup are paired in this scope.
+        unsafe { std::env::remove_var("ORDER_REPOSITORY_BACKEND") };
+        let backend = OrderRepositoryBackend::from_env().expect("backend from env");
+        assert_eq!(backend, OrderRepositoryBackend::InMemory);
+    }
+
+    #[test]
+    fn repository_backend_parses_postgres() {
+        // SAFETY: test mutation and cleanup are paired in this scope.
+        unsafe { std::env::set_var("ORDER_REPOSITORY_BACKEND", "postgres") };
+        let backend = OrderRepositoryBackend::from_env().expect("backend from env");
+        // SAFETY: cleanup paired with set_var above.
+        unsafe { std::env::remove_var("ORDER_REPOSITORY_BACKEND") };
+        assert_eq!(backend, OrderRepositoryBackend::Postgres);
     }
 
     fn sample_bundle() -> TransactionBundle {

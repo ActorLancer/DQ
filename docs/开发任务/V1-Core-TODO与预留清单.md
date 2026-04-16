@@ -42,7 +42,7 @@
 
 | 编号 | 对应任务编号 | 类型 | 模块 | 文件路径 | 当前状态 | 原因 | 后续补齐条件 | 是否阻塞继续开发 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TODO-CORE-028-001 | CORE-028 | V1-gap | db | `apps/platform-core/crates/db/src/lib.rs` | accepted | `CORE-028` 已按清单实现 trait 与内存假实现，用于业务规则测试前置；但运行时持久化仓储实现尚未接入。 | 在后续领域任务中补齐 `OrderRepository` 的 PostgreSQL 实现并接入运行时 DI，补充真实 DB 集成测试并通过。 | no |
+| TODO-CORE-028-001 | CORE-028 | V1-gap | db | `apps/platform-core/crates/db/src/lib.rs` | closed | 已补齐 `OrderRepository` 的 PostgreSQL 实现与 `ORDER_REPOSITORY_BACKEND` 运行时切换装配。 | 无；后续仅需在真实业务表结构联调时补充更细粒度 SQL 回归样例。 | no |
 
 ## 示例记录
 
@@ -116,3 +116,4 @@
 - `BATCH-055`（`CORE-010`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-056`（`CORE-032`）：更新阻塞项 `TODO-ENV-043-001` 的阻塞原因与补齐条件，保持状态 `blocked`（待 `CORE-032` 审批通过后解除）。
 - `BATCH-057`（`ENV-043`）：关闭阻塞项 `TODO-ENV-043-001`（已补齐 compose 占位文件并通过 compose config + 本地自检 + smoke 验证）。
+- `BATCH-058`（`CORE-022`, `CORE-028`）：关闭 `TODO-CORE-028-001`（已补齐 PostgreSQL 仓储实现与运行时 DI 切换），并完成启动自检对 topic/bucket/alias 的存在性探测增强。

@@ -1084,16 +1084,6 @@
 - 待人工审批结论：通过
 - 备注：本批未变更业务代码与目录骨架，仅对运行时拓扑冻结文档与阻塞链追踪文档做一致性校准。
 
-### BATCH-057
-
-- 状态：计划中
-- 当前任务编号：ENV-043
-- 当前批次目标：补齐 `infra/docker/docker-compose.apps.local.example.yml` 占位文件，固定业务应用容器化联调参考编排，并完成 compose 配置校验与本地自检闭环。
-- 前置依赖核对结果：`ENV-043` 依赖 `ENV-042; CORE-032`，对应任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/服务清单与服务边界正式版.md`
-- 预计涉及文件：`infra/docker/docker-compose.apps.local.example.yml`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 仓库现状差异说明：任务清单要求的 `docker-compose.apps.local.example.yml` 当前缺失，需在本批补齐。
-
 ### BATCH-057（实施完成）
 
 - 状态：待审批
@@ -1118,5 +1108,39 @@
 - 覆盖的任务清单条目：`ENV-043`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无（已关闭 `TODO-ENV-043-001`）
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批仅新增应用层 compose 占位编排与 runbook 步骤，不改变 V1 默认“基础设施容器 + 业务本机进程”主流程。
+
+### BATCH-058
+
+- 状态：计划中
+- 当前任务编号：CORE-022, CORE-028
+- 当前批次目标：补齐两个已识别缺口：`CORE-022` 资源存在性自检从“仅配置值校验”提升到“实际存在性探测”；`CORE-028` 补齐 PostgreSQL 仓储实现并接入运行时 DI 切换。
+- 前置依赖核对结果：`CORE-022` 与 `CORE-028` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/服务清单与服务边界正式版.md`
+- 预计涉及文件：`apps/platform-core/src/lib.rs`、`apps/platform-core/crates/db/src/lib.rs`、`apps/platform-core/crates/db/Cargo.toml`、`apps/platform-core/Cargo.toml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-058（实施完成）
+
+- 状态：待审批
+- 当前任务编号：CORE-022, CORE-028
+- 当前批次目标：补齐两个已识别缺口：`CORE-022` 资源存在性自检从“仅配置值校验”提升到“实际存在性探测”；`CORE-028` 补齐 PostgreSQL 仓储实现并接入运行时 DI 切换。
+- 前置依赖核对结果：`CORE-022` 与 `CORE-028` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/服务清单与服务边界正式版.md`
+- 已实现功能：
+  - `CORE-022`：`startup_self_check` 升级为异步探测，新增三类实际存在性校验：Kafka metadata 校验 required topics；MinIO bucket HEAD 校验（200/403 视为存在）；OpenSearch alias 校验（`/_alias/{name}` 返回 200）。
+  - `CORE-028`：在 `crates/db` 新增 `PostgresOrderRepository`（`upsert/find_by_id/list_by_tenant`），新增 `OrderRepositoryBackend` 与 `ORDER_REPOSITORY_BACKEND` 解析，新增 `build_order_repository` 工厂；在 `platform-core` 启动链路中完成 `Arc<dyn OrderRepository>` DI 绑定。
+  - 新增 `CORE-028` 相关单测：后端选择默认值与 postgres 解析校验。
+- 涉及文件：`apps/platform-core/src/lib.rs`、`apps/platform-core/crates/db/src/lib.rs`、`apps/platform-core/crates/db/Cargo.toml`、`apps/platform-core/Cargo.toml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo build`
+  2. `cargo test`
+  3. `APP_HOST=127.0.0.1 APP_PORT=18080 KAFKA_BROKERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core`
+  4. `curl -fsS http://127.0.0.1:18080/health/ready`
+- 验证结果：通过。`cargo build`、`cargo test` 全通过；运行态启动日志显示 `startup self-check passed`；`/health/ready` 返回 `{"success":true,"data":"ready"}`（HTTP 200）。
+- 覆盖的冻结文档条目：`开发准备/事件模型与Topic清单正式版.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`CORE-022`, `CORE-028`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无（已关闭 `TODO-CORE-028-001`）
+- 待人工审批结论：待审批
+- 备注：运行态验证阶段若未显式设置 `KAFKA_BROKERS`，默认 `localhost:9092` 可能与本地映射端口不一致，已在验证命令中固定为 `127.0.0.1:9094`。

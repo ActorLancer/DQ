@@ -15,6 +15,7 @@ audit-kit = { path = "../audit-kit" }
 kernel = { path = "../kernel" }
 outbox-kit = { path = "../outbox-kit" }
 tokio = { version = "1", features = ["sync"] }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

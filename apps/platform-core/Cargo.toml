@@ -16,6 +16,8 @@ http = { path = "crates/http" }
 kernel = { path = "crates/kernel" }
 outbox-kit = { path = "crates/outbox-kit" }
 provider-kit = { path = "crates/provider-kit" }
+rdkafka = { version = "0.36", features = ["cmake-build", "tokio"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
