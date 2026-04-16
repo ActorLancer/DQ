@@ -1195,18 +1195,9 @@
 - 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`）。
 
-### BATCH-061
-
-- 状态：计划中
-- 当前任务编号：DB-003, DB-004, DB-005, DB-006
-- 当前批次目标：按连续 4 个简单任务一次性完成 `010/020/025/030` 迁移落地验收，补齐“表结构 + 关键索引 + 关键触发器”自动校验脚本，并通过空库重建链路验证可复现性。
-- 前置依赖核对结果：`DB-003~DB-006` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/数据库设计/V1/upgrade/020_catalog_contract.sql`、`docs/数据库设计/V1/upgrade/025_review_workflow.sql`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`
-- 预计涉及文件：`db/scripts/verify-migration-010-030.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-061（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：DB-003, DB-004, DB-005, DB-006
 - 当前批次目标：按连续 4 个简单任务一次性完成 `010/020/025/030` 迁移落地验收，补齐“表结构 + 关键索引 + 关键触发器”自动校验脚本，并通过空库重建链路验证可复现性。
 - 前置依赖核对结果：`DB-003~DB-006` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
@@ -1228,5 +1219,41 @@
 - 覆盖的任务清单条目：`DB-003`, `DB-004`, `DB-005`, `DB-006`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）。
+
+### BATCH-062
+
+- 状态：计划中
+- 当前任务编号：DB-007, DB-008, DB-009, DB-010
+- 当前批次目标：按连续 4 个简单任务一次性完成 `040/050/055/056` 迁移落地验收，补齐“关键表 + 关键索引 + 关键触发器 + 关键约束”自动校验脚本，并通过空库重建链路验证可复现性。
+- 前置依赖核对结果：`DB-007~DB-010` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/数据库设计/V1/upgrade/050_audit_search_dev_ops.sql`、`docs/数据库设计/V1/upgrade/055_audit_hardening.sql`、`docs/数据库设计/V1/upgrade/056_dual_authority_consistency.sql`
+- 预计涉及文件：`db/scripts/verify-migration-040-056.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-062（实施完成）
+
+- 状态：待审批
+- 当前任务编号：DB-007, DB-008, DB-009, DB-010
+- 当前批次目标：按连续 4 个简单任务一次性完成 `040/050/055/056` 迁移落地验收，补齐“关键表 + 关键索引 + 关键触发器 + 关键约束”自动校验脚本，并通过空库重建链路验证可复现性。
+- 前置依赖核对结果：`DB-007~DB-010` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/数据库设计/V1/upgrade/050_audit_search_dev_ops.sql`、`docs/数据库设计/V1/upgrade/055_audit_hardening.sql`、`docs/数据库设计/V1/upgrade/056_dual_authority_consistency.sql`
+- 已实现功能：
+  - 新增 `db/scripts/verify-migration-040-056.sh`，对 `040/050/055/056` 迁移结果执行自动校验，覆盖关键业务表、关键索引、关键触发器与关键约束。
+  - 更新 `db/migrations/v1/README.md`，补充 `040~056` 基线验证脚本说明，形成分段可审计验证入口。
+  - 修复本批验证脚本中的触发器 schema 错配（`trg_product_search_refresh` 从 `search` 更正为 `catalog`），并完成复验通过。
+- 涉及文件：`db/scripts/verify-migration-040-056.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `./db/scripts/migrate-reset.sh`
+  2. `./db/scripts/verify-migration-001.sh`
+  3. `./db/scripts/verify-migration-010-030.sh`
+  4. `./db/scripts/verify-migration-040-056.sh`
+  5. `./db/scripts/migrate-status.sh`
+  6. `sha256sum -c db/migrations/v1/checksums.sha256`
+- 验证结果：通过。空库重建与全量迁移成功；`verify-migration-001.sh`、`verify-migration-010-030.sh`、`verify-migration-040-056.sh` 均返回 `[ok]`；`migrate-status.sh` 显示 `001~070` 全量 `up` 且无 pending；checksum 全量校验通过。
+- 覆盖的冻结文档条目：`数据库设计/数据库设计总说明.md`（设计范围、迁移顺序）、`数据库设计/V1/upgrade/040_billing_support_risk.sql`、`数据库设计/V1/upgrade/050_audit_search_dev_ops.sql`、`数据库设计/V1/upgrade/055_audit_hardening.sql`、`数据库设计/V1/upgrade/056_dual_authority_consistency.sql`
+- 覆盖的任务清单条目：`DB-007`, `DB-008`, `DB-009`, `DB-010`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`），`ivfflat` 少量数据提示为 PostgreSQL notice，不影响本批验收。
