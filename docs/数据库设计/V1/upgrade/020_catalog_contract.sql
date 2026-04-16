@@ -233,6 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_product_asset_version_id ON catalog.product(asset
 CREATE INDEX IF NOT EXISTS idx_product_seller_org_id ON catalog.product(seller_org_id);
 CREATE INDEX IF NOT EXISTS idx_product_status_type ON catalog.product(status, product_type);
 CREATE INDEX IF NOT EXISTS idx_product_sku_product_id ON catalog.product_sku(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_tag_tag_id ON catalog.product_tag(tag_id);
 
 CREATE TRIGGER trg_data_asset_updated_at BEFORE UPDATE ON catalog.data_asset
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();

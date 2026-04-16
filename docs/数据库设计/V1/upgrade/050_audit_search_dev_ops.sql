@@ -178,6 +178,15 @@ CREATE TABLE IF NOT EXISTS chain.chain_anchor (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS idx_job_run_status_started
+  ON ops.job_run (status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chain_anchor_status_created
+  ON chain.chain_anchor (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contract_event_projection_ref
+  ON chain.contract_event_projection (ref_type, ref_id, projected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mock_payment_case_status
+  ON developer.mock_payment_case (status, created_at DESC);
+
 CREATE OR REPLACE FUNCTION search.tg_refresh_product_search_document()
 RETURNS trigger
 LANGUAGE plpgsql

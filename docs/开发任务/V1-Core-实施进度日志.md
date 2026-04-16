@@ -1375,14 +1375,6 @@
 - 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响本批验收。
 
-### BATCH-067（计划中）
-
-- 状态：计划中
-- 当前任务编号：DB-027, DB-028, DB-029
-- 当前批次目标：按连续 3 个简单任务一次性完成本地演示租户/用户种子、8 个标准 SKU 商品与模板绑定种子、全量订单样例与五条标准链路场景订单种子，并纳入可执行验证链路。
-- 前置依赖核对结果：`DB-027~DB-029` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/数据库设计/V1/upgrade/020_catalog_contract.sql`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`、`docs/数据库设计/V1/upgrade/061_data_object_trade_modes.sql`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
-
 ### BATCH-067（实施完成）
 
 - 状态：通过
@@ -1410,5 +1402,46 @@
 - 覆盖的任务清单条目：`DB-027`, `DB-028`, `DB-029`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）。
+
+### BATCH-068（计划中）
+
+- 状态：计划中
+- 当前任务编号：DB-030, DB-031, DB-032, DB-033
+- 当前批次目标：按连续 4 个简单任务一次性完成 `docs/03-db` 表字典与状态机映射、迁移兼容性回归脚本、索引审查基线与高频路径索引补强，并完成全链路可执行验证。
+- 前置依赖核对结果：`DB-030~DB-033` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库表字典正式版.md`、`docs/数据库设计/表关系总图-ER文本图.md`、`docs/领域模型/全量领域模型与对象关系说明.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-068（实施完成）
+
+- 状态：通过
+- 当前任务编号：DB-030, DB-031, DB-032, DB-033
+- 当前批次目标：按连续 4 个简单任务一次性完成 `docs/03-db` 表字典与状态机映射、迁移兼容性回归脚本、索引审查基线与高频路径索引补强，并完成全链路可执行验证。
+- 前置依赖核对结果：`DB-030~DB-033` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库表字典正式版.md`、`docs/数据库设计/表关系总图-ER文本图.md`、`docs/领域模型/全量领域模型与对象关系说明.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - `DB-030`：新增 `db/scripts/export-table-catalog.sh` 并导出 `docs/03-db/table-catalog.md`（按 schema 输出表、主键、唯一键、外键、索引、职责）。
+  - `DB-031`：新增 `docs/03-db/state-machine-to-table-map.md`，完成订单/授权/交付/结算/争议状态机到字段与索引的映射。
+  - `DB-032`：新增 `db/scripts/verify-db-compatibility.sh` 与 `docs/03-db/migration-compatibility.md`，建立 migration+seed 兼容性回归链路（重建、种子、回滚重放、再种子、状态检查）。
+  - `DB-033`：新增 `db/scripts/review-index-baseline.sh` 与 `docs/03-db/index-review-baseline.md`；补充高频路径索引基线（搜索回查、订单详情、审计联查、ops 列表）并落入升级 SQL：
+    - `020_catalog_contract.sql`：`idx_product_tag_tag_id`
+    - `030_trade_delivery.sql`：`idx_order_line_order_id`、`idx_authorization_grant_order_id`、`idx_delivery_ticket_order_id`、`idx_sandbox_workspace_order_id`、`idx_report_artifact_order_id`
+    - `050_audit_search_dev_ops.sql`：`idx_job_run_status_started`、`idx_chain_anchor_status_created`、`idx_contract_event_projection_ref`、`idx_mock_payment_case_status`
+  - 更新 `docs/03-db/README.md` 与 `db/migrations/v1/README.md` 索引，补充新文档与脚本入口。
+  - 更新 `db/migrations/v1/checksums.sha256` 与新增索引后的 migration checksum。
+- 涉及文件：`db/scripts/export-table-catalog.sh`、`db/scripts/verify-db-compatibility.sh`、`db/scripts/review-index-baseline.sh`、`docs/03-db/table-catalog.md`、`docs/03-db/state-machine-to-table-map.md`、`docs/03-db/migration-compatibility.md`、`docs/03-db/index-review-baseline.md`、`docs/03-db/README.md`、`docs/数据库设计/V1/upgrade/020_catalog_contract.sql`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`、`docs/数据库设计/V1/upgrade/050_audit_search_dev_ops.sql`、`db/migrations/v1/README.md`、`db/migrations/v1/checksums.sha256`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `./db/scripts/migrate-reset.sh`
+  2. `./db/scripts/export-table-catalog.sh`
+  3. `./db/scripts/verify-db-compatibility.sh`
+  4. `./db/scripts/review-index-baseline.sh`
+  5. `./db/scripts/migrate-status.sh`
+  6. `sha256sum -c db/migrations/v1/checksums.sha256`
+- 验证结果：通过。兼容性回归脚本返回 `[ok] db compatibility baseline verified`；索引审查脚本返回 `[ok] index baseline review passed`；`migrate-status.sh` 无 pending；checksum 全量通过。
+- 覆盖的冻结文档条目：`数据库表字典正式版`（表字典结构映射）、`领域模型生命周期总表`（状态机映射）、`数据库设计总说明`（迁移顺序/重建原则）、`全集成基线-V1`（搜索与链路一致性要求）
+- 覆盖的任务清单条目：`DB-030`, `DB-031`, `DB-032`, `DB-033`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响验收。

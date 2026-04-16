@@ -253,8 +253,13 @@ CREATE TABLE IF NOT EXISTS delivery.report_artifact (
 CREATE INDEX IF NOT EXISTS idx_order_main_buyer_org_id ON trade.order_main(buyer_org_id);
 CREATE INDEX IF NOT EXISTS idx_order_main_seller_org_id ON trade.order_main(seller_org_id);
 CREATE INDEX IF NOT EXISTS idx_order_main_status_created_at ON trade.order_main(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_order_line_order_id ON trade.order_line(order_id);
+CREATE INDEX IF NOT EXISTS idx_authorization_grant_order_id ON trade.authorization_grant(order_id, status);
 CREATE INDEX IF NOT EXISTS idx_delivery_record_order_id ON delivery.delivery_record(order_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_ticket_order_id ON delivery.delivery_ticket(order_id, status);
 CREATE INDEX IF NOT EXISTS idx_api_usage_log_order_id ON delivery.api_usage_log(order_id);
+CREATE INDEX IF NOT EXISTS idx_sandbox_workspace_order_id ON delivery.sandbox_workspace(order_id, status);
+CREATE INDEX IF NOT EXISTS idx_report_artifact_order_id ON delivery.report_artifact(order_id, status);
 
 CREATE TRIGGER trg_inquiry_updated_at BEFORE UPDATE ON trade.inquiry
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
