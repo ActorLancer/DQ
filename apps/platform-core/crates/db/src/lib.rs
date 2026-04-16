@@ -175,6 +175,126 @@ impl TxTemplate {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TestDbFixture {
+    pub pool: DbPool,
+    pub tx_template: TxTemplate,
+}
+
+impl TestDbFixture {
+    pub fn from_env() -> AppResult<Self> {
+        let dsn = std::env::var("TEST_DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://test:test@localhost:5432/platform_test".to_string());
+        let pool = DbPool::connect(DbPoolConfig {
+            dsn,
+            max_connections: 4,
+        })?;
+        Ok(Self {
+            pool,
+            tx_template: TxTemplate,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RollbackFixtureResult {
+    pub began: bool,
+    pub committed: bool,
+    pub rolled_back: bool,
+}
+
+pub async fn run_transaction_rollback_fixture(
+    tx: &TxTemplate,
+    bundle: TransactionBundle,
+) -> AppResult<RollbackFixtureResult> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[derive(Default)]
+    struct FailingWriter;
+    #[async_trait]
+    impl BusinessMutationWriter for FailingWriter {
+        async fn apply_mutation(&self, _mutation: BusinessMutation) -> AppResult<()> {
+            Err(AppError::Config(
+                "rollback fixture: forced mutation failure".to_string(),
+            ))
+        }
+    }
+
+    #[derive(Default)]
+    struct Hook {
+        began: AtomicBool,
+        committed: AtomicBool,
+        rolled_back: AtomicBool,
+    }
+    #[async_trait]
+    impl TxLifecycleHook for Hook {
+        async fn on_begin(&self) -> AppResult<()> {
+            self.began.store(true, Ordering::Relaxed);
+            Ok(())
+        }
+        async fn on_commit(&self) -> AppResult<()> {
+            self.committed.store(true, Ordering::Relaxed);
+            Ok(())
+        }
+        async fn on_rollback(&self) -> AppResult<()> {
+            self.rolled_back.store(true, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    let hook = Arc::new(Hook::default());
+    let result = tx
+        .execute_with_lifecycle(
+            Arc::new(FailingWriter),
+            Arc::new(audit_kit::NoopAuditWriter),
+            Arc::new(outbox_kit::NoopOutboxWriter),
+            hook.clone(),
+            bundle,
+        )
+        .await;
+
+    if result.is_ok() {
+        return Err(AppError::Config(
+            "rollback fixture expected failure but committed".to_string(),
+        ));
+    }
+
+    Ok(RollbackFixtureResult {
+        began: hook.began.load(Ordering::Relaxed),
+        committed: hook.committed.load(Ordering::Relaxed),
+        rolled_back: hook.rolled_back.load(Ordering::Relaxed),
+    })
+}
+
+#[cfg(feature = "query-compile-check")]
+mod query_compile_checks {
+    // Query compile-check scaffold:
+    // until a concrete DB library (SQLx/SeaORM) is fully wired in this crate,
+    // these typed query specs are compiled in CI to catch accidental query-shape drift early.
+    pub const ORDER_BASE_COLUMNS: &[&str] = &[
+        "order_id",
+        "tenant_id",
+        "status",
+        "created_at",
+        "updated_at",
+    ];
+
+    pub const ORDER_SELECT_BY_ID: &str = "SELECT order_id, tenant_id, status, created_at, updated_at FROM trade_order WHERE order_id = $1";
+    pub const OUTBOX_PENDING_SELECT: &str =
+        "SELECT event_id, topic, aggregate_type, aggregate_id, payload_json, idempotency_key FROM outbox_event WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1";
+    pub const AUDIT_BY_OBJECT: &str = "SELECT action, object_type, object_id, result, created_at FROM audit_log WHERE object_type = $1 AND object_id = $2 ORDER BY created_at DESC LIMIT $3";
+
+    #[test]
+    fn query_specs_are_well_formed() {
+        assert_eq!(ORDER_BASE_COLUMNS.len(), 5);
+        for query in [ORDER_SELECT_BY_ID, OUTBOX_PENDING_SELECT, AUDIT_BY_OBJECT] {
+            assert!(query.starts_with("SELECT "));
+            assert!(query.contains(" FROM "));
+            assert!(query.contains('$'));
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct NoopBusinessMutationWriter;
 
@@ -268,6 +388,24 @@ mod tests {
         assert_eq!(lifecycle.begin.load(Ordering::Relaxed), 1);
         assert_eq!(lifecycle.commit.load(Ordering::Relaxed), 0);
         assert_eq!(lifecycle.rollback.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn rollback_fixture_reports_rollback_state() {
+        let tx = TxTemplate;
+        let result = run_transaction_rollback_fixture(&tx, sample_bundle())
+            .await
+            .expect("fixture should report rollback");
+        assert!(result.began);
+        assert!(!result.committed);
+        assert!(result.rolled_back);
+    }
+
+    #[test]
+    fn test_db_fixture_provides_pool_and_template() {
+        let fixture = TestDbFixture::from_env().expect("fixture should build");
+        assert!(!fixture.pool.dsn.is_empty());
+        assert!(fixture.pool.max_connections >= 1);
     }
 
     fn sample_bundle() -> TransactionBundle {

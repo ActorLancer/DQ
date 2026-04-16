@@ -2,5 +2,34 @@ openapi: 3.1.0
 info:
   title: Ops API
   version: v1
-paths: {}
-
+paths:
+  /health/live:
+    get:
+      summary: liveness probe
+      responses:
+        "200":
+          description: ok
+  /health/ready:
+    get:
+      summary: readiness probe
+      responses:
+        "200":
+          description: ready
+  /health/deps:
+    get:
+      summary: dependency connectivity
+      responses:
+        "200":
+          description: dependency checks
+  /internal/runtime:
+    get:
+      summary: runtime mode and build metadata
+      responses:
+        "200":
+          description: runtime config
+  /internal/dev/trace-links:
+    get:
+      summary: local observability and dependency links
+      responses:
+        "200":
+          description: trace links

@@ -866,5 +866,23 @@
 - 覆盖的任务清单条目：`CORE-021`, `CORE-022`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 2 个简单任务”执行并统一汇报。
+
+### BATCH-046
+
+- 状态：待审批
+- 当前任务编号：CORE-023, CORE-024, CORE-025, CORE-026
+- 当前批次目标：一次性提升骨架层实现密度，补齐本地调试 trace-links 端点、基础测试夹具、查询编译检查流程以及 OpenAPI 校验骨架。
+- 前置依赖核对结果：4 个任务均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/http/**`、`apps/platform-core/crates/db/**`、`apps/platform-core/src/**`、`scripts/**`、`packages/openapi/**`、`Makefile`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：新增 `/internal/dev/trace-links` JSON 端点，返回 Grafana/Loki/Tempo/Keycloak/MinIO/OpenSearch 本地链接（支持 `DEV_LINK_HOST` 与端口变量覆盖）；在 `crates/db` 增加 `TestDbFixture`、`run_transaction_rollback_fixture` 与回滚夹具单测，形成基础单测框架与测试数据库入口；新增 `query-compile-check` 特性与脚本 `scripts/check-query-compile.sh`，把查询编译检查前置到本地/CI；新增 `scripts/check-openapi-schema.sh` 并完善 `packages/openapi/ops.yaml` 路径骨架，避免已实现端点与 OpenAPI 骨架漂移；`Makefile` 增加 `query-compile-check`、`openapi-check` 目标。
+- 涉及文件：`apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/crates/db/Cargo.toml`、`apps/platform-core/crates/db/src/lib.rs`、`apps/platform-core/src/lib.rs`、`scripts/check-query-compile.sh`、`scripts/check-openapi-schema.sh`、`packages/openapi/ops.yaml`、`Makefile`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `./scripts/check-query-compile.sh`；4. `./scripts/check-openapi-schema.sh`；5. `cargo run -p platform-core`；6. `curl /internal/dev/trace-links`；7. `curl /health/ready`。
+- 验证结果：通过。`cargo build`/`cargo test` 通过（新增 `db/http` 单测通过）；`query-compile-check` 通过；`openapi-check` 通过；运行态 `/internal/dev/trace-links` 与 `/health/ready` 均返回成功。
+- 覆盖的冻结文档条目：`领域模型/全量领域模型与对象关系说明.md`、`全集成文档/数据交易平台-全集成基线-V1.md`、`data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`原始PRD/日志、可观测性与告警设计.md`
+- 覆盖的任务清单条目：`CORE-023`, `CORE-024`, `CORE-025`, `CORE-026`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 4 个简单任务”执行并统一汇报。

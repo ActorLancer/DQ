@@ -19,6 +19,7 @@
 - `/health/ready`
 - `/health/deps`（依赖可达性：DB/Redis/Kafka/MinIO/Keycloak/Fabric Adapter）
 - `/healthz`（兼容入口，映射到 live）
+- `/internal/dev/trace-links`（本地 Grafana/Loki/Tempo/Keycloak/MinIO/OpenSearch 快速跳转）
 
 当前请求级中间件链（V1-Core）：
 
@@ -67,6 +68,12 @@
 
 - `platform-core` 启动时执行 `startup_self_check`，校验关键配置（topic/bucket/index alias）可用。
 - `CoreModule` 启动后校验 Provider trait 绑定完整（KYC、签章、支付、通知、Fabric 写入）。
+
+测试与校验骨架（V1-Core）：
+
+- `crates/db` 提供 `TestDbFixture` 与 `run_transaction_rollback_fixture`，用于基础单元测试、测试数据库连接配置与事务回滚夹具。
+- 提供 `query-compile-check` 特性和 `scripts/check-query-compile.sh`，把查询编译检查前置到 CI/本地。
+- 提供 `scripts/check-openapi-schema.sh` 与 `Makefile` 目标 `openapi-check`，校验 `packages/openapi/*.yaml` 结构与 ops 路径骨架不漂移。
 
 约束：
 

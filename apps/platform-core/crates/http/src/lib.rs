@@ -107,6 +107,16 @@ pub struct DependenciesReport {
     pub checks: Vec<DependencyStatus>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TraceLinks {
+    pub grafana: String,
+    pub loki: String,
+    pub tempo: String,
+    pub keycloak: String,
+    pub minio_console: String,
+    pub opensearch: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct RequestContext {
     pub request_id: String,
@@ -120,6 +130,7 @@ pub fn build_router() -> Router {
         .route("/health/live", get(live_handler))
         .route("/health/ready", get(ready_handler))
         .route("/health/deps", get(deps_handler))
+        .route("/internal/dev/trace-links", get(trace_links_handler))
         .layer(middleware::from_fn(request_context_middleware))
 }
 
@@ -135,6 +146,10 @@ pub async fn deps_handler() -> Json<ApiResponse<DependenciesReport>> {
     let checks = check_dependencies().await;
     let ready = checks.iter().all(|c| c.reachable);
     ApiResponse::ok(DependenciesReport { ready, checks })
+}
+
+pub async fn trace_links_handler() -> Json<ApiResponse<TraceLinks>> {
+    ApiResponse::ok(build_trace_links())
 }
 
 async fn check_dependencies() -> Vec<DependencyStatus> {
@@ -184,6 +199,26 @@ fn dep_target(
     let host = std::env::var(host_env).unwrap_or_else(|_| default_host.to_string());
     let port = std::env::var(port_env).unwrap_or_else(|_| default_port.to_string());
     (name, format!("{host}:{port}"))
+}
+
+fn build_trace_links() -> TraceLinks {
+    let host = std::env::var("DEV_LINK_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let grafana = std::env::var("GRAFANA_PORT").unwrap_or_else(|_| "3000".to_string());
+    let loki = std::env::var("LOKI_PORT").unwrap_or_else(|_| "3100".to_string());
+    let tempo = std::env::var("TEMPO_PORT").unwrap_or_else(|_| "3200".to_string());
+    let keycloak = std::env::var("KEYCLOAK_PORT").unwrap_or_else(|_| "8081".to_string());
+    let minio_console =
+        std::env::var("MINIO_CONSOLE_PORT").unwrap_or_else(|_| "9001".to_string());
+    let opensearch = std::env::var("OPENSEARCH_HTTP_PORT").unwrap_or_else(|_| "9200".to_string());
+
+    TraceLinks {
+        grafana: format!("http://{host}:{grafana}"),
+        loki: format!("http://{host}:{loki}"),
+        tempo: format!("http://{host}:{tempo}"),
+        keycloak: format!("http://{host}:{keycloak}"),
+        minio_console: format!("http://{host}:{minio_console}"),
+        opensearch: format!("http://{host}:{opensearch}"),
+    }
 }
 
 async fn request_context_middleware(mut req: Request, next: Next) -> Response {
@@ -315,6 +350,17 @@ mod tests {
             resolve_idempotency_key(&headers, "req-007"),
             "req-007".to_string()
         );
+    }
+
+    #[test]
+    fn trace_links_use_default_ports() {
+        let links = build_trace_links();
+        assert_eq!(links.grafana, "http://localhost:3000");
+        assert_eq!(links.loki, "http://localhost:3100");
+        assert_eq!(links.tempo, "http://localhost:3200");
+        assert_eq!(links.keycloak, "http://localhost:8081");
+        assert_eq!(links.minio_console, "http://localhost:9001");
+        assert_eq!(links.opensearch, "http://localhost:9200");
     }
 }
 

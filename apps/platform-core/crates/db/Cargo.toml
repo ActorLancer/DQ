@@ -5,6 +5,10 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+query-compile-check = []
+
 [dependencies]
 async-trait = "0.1"
 audit-kit = { path = "../audit-kit" }

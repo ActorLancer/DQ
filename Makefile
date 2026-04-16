@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up-local down-local up-core up-observability up-fabric up-demo logs migrate-up migrate-down seed-local test lint fabric-up fabric-down fabric-reset fabric-channel
+.PHONY: up-local down-local up-core up-observability up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check fabric-up fabric-down fabric-reset fabric-channel
 COMPOSE_FILE ?= infra/docker/docker-compose.local.yml
 COMPOSE_ENV_FILE ?= infra/docker/.env.local
 
@@ -39,6 +39,12 @@ test:
 
 lint:
 	cargo check
+
+query-compile-check:
+	./scripts/check-query-compile.sh
+
+openapi-check:
+	./scripts/check-openapi-schema.sh
 
 fabric-up:
 	./infra/fabric/fabric-up.sh
