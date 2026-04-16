@@ -1,6 +1,7 @@
-# Service Runtime Map（CORE-046）
+# Service Runtime Map（CORE-032 / CORE-046）
 
 本文件冻结 `V1-Core` 运行时拓扑，明确共享 crate、业务模块与外围进程的所有权及同步/异步边界。
+同时按 `CORE-032` 口径显式区分三类能力：`platform-core` 模块内能力、外围独立进程能力、仅 trait/接口占位能力。
 
 ## 运行时总览
 
@@ -11,6 +12,14 @@
   - `apps/search-indexer`（搜索索引构建）
   - `services/notification-service`（通知下发）
 - 中间件：PostgreSQL、Redis、Kafka、MinIO、OpenSearch、Keycloak
+
+## CORE-032 三分边界冻结
+
+| 能力类型 | 归属 | 当前实现形态 | 所有权 |
+| --- | --- | --- | --- |
+| 模块内能力 | `apps/platform-core/src/modules/*` | 正式实现并接入主应用路由/应用层/仓储层 | `platform-core` |
+| 外围独立进程 | `apps/fabric-adapter`、`workers/outbox-publisher`、`apps/search-indexer`、`services/notification-service` | 独立进程，按事件/回执链路与主应用解耦运行 | 各进程自身 |
+| trait/接口占位 | `crates/provider-kit`、`crates/db` 等抽象层 | 仅定义契约与注入边界，不在该层直接承载跨进程副作用 | `platform-core`（契约）+ 具体实现方 |
 
 ## 共享 Crate 所有权与边界
 

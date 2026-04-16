@@ -1084,3 +1084,31 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：`CORE-010` 完成后，`CORE-032` 依赖已满足，可在下一批执行并联动解除 `TODO-ENV-043-001` 阻塞链。
+
+### BATCH-056
+
+- 状态：计划中
+- 当前任务编号：CORE-032
+- 当前批次目标：固化 `service-runtime-map` 运行时拓扑边界，明确 `platform-core` 模块内能力、外围独立进程能力与 trait 占位能力，并完成编译/测试/运行态探活验证。
+- 前置依赖核对结果：`CORE-032` 依赖 `CTX-019; CTX-020; CORE-010`，对应任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/开发准备/服务清单与服务边界正式版.md`
+- 预计涉及文件：`docs/01-architecture/service-runtime-map.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 仓库现状差异说明：`service-runtime-map.md` 已在 `BATCH-053` 补齐，但当前仍需以 `CORE-032` 任务口径完成正式校准与闭环记录。
+
+### BATCH-056（实施完成）
+
+- 状态：待审批
+- 当前任务编号：CORE-032
+- 当前批次目标：固化 `service-runtime-map` 运行时拓扑边界，明确 `platform-core` 模块内能力、外围独立进程能力与 trait 占位能力，并完成编译/测试/运行态探活验证。
+- 前置依赖核对结果：`CORE-032` 依赖 `CTX-019; CTX-020; CORE-010`，对应任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/开发准备/服务清单与服务边界正式版.md`
+- 已实现功能：对 `docs/01-architecture/service-runtime-map.md` 按 `CORE-032` 做正式校准，新增“CORE-032 三分边界冻结”章节，显式冻结 `platform-core` 模块内能力、外围独立进程能力、trait/接口占位能力三类职责边界；标题同步为 `CORE-032 / CORE-046`，避免任务追溯歧义。
+- 涉及文件：`docs/01-architecture/service-runtime-map.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `APP_HOST=127.0.0.1 APP_PORT=18080 cargo run -p platform-core`；4. `curl -fsS http://127.0.0.1:18080/health/ready`。
+- 验证结果：通过。`cargo build`、`cargo test` 均通过；服务启动日志显示 `startup self-check passed`；`/health/ready` 返回 `{"success":true,"data":"ready"}`（HTTP 200）。
+- 覆盖的冻结文档条目：`开发准备/服务清单与服务边界正式版.md`、`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/平台总体架构设计草案.md`
+- 覆盖的任务清单条目：`CORE-032`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无（仅更新既有阻塞项 `TODO-ENV-043-001` 的阻塞原因与补齐条件，状态保持 `blocked`，等待本批审批通过后解除）
+- 待人工审批结论：待审批
+- 备注：本批未变更业务代码与目录骨架，仅对运行时拓扑冻结文档与阻塞链追踪文档做一致性校准。

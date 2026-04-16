@@ -34,7 +34,7 @@
 
 | 编号 | 对应任务编号 | 类型 | 模块 | 文件路径 | 当前状态 | 原因 | 后续补齐条件 | 是否阻塞继续开发 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TODO-ENV-043-001 | ENV-043 | V1-gap | env-compose | `infra/docker/docker-compose.apps.local.example.yml` | blocked | `ENV-043` 依赖 `CORE-032`；当前仓库缺少 `docs/01-architecture/service-runtime-map.md`，无法在运行时拓扑未冻结的前提下落盘 apps compose 占位文件。 | 完成 `CORE-032`（补齐并审批通过 `docs/01-architecture/service-runtime-map.md`），明确 `platform-core/fabric-adapter/notification-service/outbox-publisher/search-indexer` 的运行时边界后，补齐 `infra/docker/docker-compose.apps.local.example.yml` 并通过 `docker compose config` 与本地自检。 | yes |
+| TODO-ENV-043-001 | ENV-043 | V1-gap | env-compose | `infra/docker/docker-compose.apps.local.example.yml` | blocked | `ENV-043` 依赖 `CORE-032` 的审批闭环；`service-runtime-map` 已补齐并进入 `BATCH-056` 待审批，当前仍不能越过流程直接执行 compose 占位文件落盘。 | `BATCH-056`（`CORE-032`）审批通过后，按 `ENV-043` 补齐 `infra/docker/docker-compose.apps.local.example.yml` 并通过 `docker compose config` 与本地自检。 | yes |
 | TODO-CTX-019-001 | CTX-019 | V1-gap | context | `docs/00-context/service-to-module-map.md` | closed | 任务清单要求的交付文件在仓库中缺失，导致 `CORE-032` 依赖文档基线不完整。 | 已在 `BATCH-050` 补齐 `docs/00-context/service-to-module-map.md` 并纳入审批。 | no |
 | TODO-CTX-020-001 | CTX-020 | V1-gap | context | `docs/00-context/local-deployment-boundary.md` | closed | 任务清单要求的交付文件在仓库中缺失，导致本地部署边界冻结依据不完整。 | 已在 `BATCH-050` 补齐 `docs/00-context/local-deployment-boundary.md` 并纳入审批。 | no |
 
@@ -109,3 +109,9 @@
 - `BATCH-048`（`CORE-030`, `CORE-031`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-049`（`CORE-033`, `CORE-034`, `CORE-035`, `CORE-036`）：新增阻塞项 `TODO-CTX-019-001`、`TODO-CTX-020-001`（历史前置任务交付文件缺失，影响后续依赖链）。
 - `BATCH-050`（`CTX-019`, `CTX-020`）：补齐阻塞缺口并关闭 `TODO-CTX-019-001`、`TODO-CTX-020-001`。
+- `BATCH-051`（`CORE-037`, `CORE-038`, `CORE-039`, `CORE-040`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-052`（`CORE-041`, `CORE-042`, `CORE-043`, `CORE-044`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-053`（`CORE-045`, `CORE-046`, `CORE-047`, `CORE-048`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-054`（`CORE-049`, `CORE-050`, `CORE-051`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-055`（`CORE-010`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-056`（`CORE-032`）：更新阻塞项 `TODO-ENV-043-001` 的阻塞原因与补齐条件，保持状态 `blocked`（待 `CORE-032` 审批通过后解除）。
