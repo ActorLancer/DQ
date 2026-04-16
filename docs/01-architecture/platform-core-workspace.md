@@ -81,7 +81,8 @@
 - `crates/db` 提供 `TestDbFixture` 与 `run_transaction_rollback_fixture`，用于基础单元测试、测试数据库连接配置与事务回滚夹具。
 - 提供 `query-compile-check` 特性和 `scripts/check-query-compile.sh`，把查询编译检查前置到 CI/本地。
 - 提供 `scripts/check-openapi-schema.sh` 与 `Makefile` 目标 `openapi-check`，校验 `packages/openapi/*.yaml` 结构与 ops 路径骨架不漂移。
-- 提供 `xtask` 工作流与 `cargo xtask all`（别名已配置），一键执行 `fmt`、`lint`、OpenAPI 校验、migration 检查、seed 导入。
+- 提供 `xtask` 工作流与 `cargo xtask all`（别名已配置），一键执行 `fmt`、`lint`、`test`、query compile 检查、OpenAPI 校验、migration 检查、seed 导入。
+- `Makefile` 提供 `core-verify` 目标，统一调用上述一键校验入口。
 
 Feature Flags 机制（V1-Core）：
 

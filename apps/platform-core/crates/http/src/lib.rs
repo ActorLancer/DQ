@@ -128,9 +128,14 @@ pub fn build_router(runtime: RuntimeConfig) -> Router {
                 }
             }),
         )
+        .merge(build_internal_dev_router())
+        .layer(middleware::from_fn(request_context_middleware))
+}
+
+fn build_internal_dev_router() -> Router {
+    Router::new()
         .route("/internal/dev/trace-links", get(trace_links_handler))
         .route("/internal/dev/overview", get(dev_overview_handler))
-        .layer(middleware::from_fn(request_context_middleware))
 }
 
 pub async fn live_handler() -> Json<ApiResponse<&'static str>> {

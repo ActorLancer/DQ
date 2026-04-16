@@ -89,8 +89,22 @@ macro_rules! define_provider_impl {
     };
 }
 
-define_provider_impl!(MockKycProvider, KycProvider, verify, KycCheckRequest, "mock-kyc", "mock");
-define_provider_impl!(RealKycProvider, KycProvider, verify, KycCheckRequest, "real-kyc", "real");
+define_provider_impl!(
+    MockKycProvider,
+    KycProvider,
+    verify,
+    KycCheckRequest,
+    "mock-kyc",
+    "mock"
+);
+define_provider_impl!(
+    RealKycProvider,
+    KycProvider,
+    verify,
+    KycCheckRequest,
+    "real-kyc",
+    "real"
+);
 define_provider_impl!(
     MockSigningProvider,
     SigningProvider,
@@ -206,7 +220,106 @@ mod tests {
             party_id: "pty-1".to_string(),
             jurisdiction: "CN".to_string(),
         };
-        assert_eq!(mock_kyc.verify(request.clone()).await.unwrap(), "mock-kyc-ok");
+        assert_eq!(
+            mock_kyc.verify(request.clone()).await.unwrap(),
+            "mock-kyc-ok"
+        );
         assert_eq!(real_kyc.verify(request).await.unwrap(), "real-kyc-ok");
+
+        let mock_sign = build_signing_provider(ProviderBackend::Mock);
+        let real_sign = build_signing_provider(ProviderBackend::Real);
+        assert_eq!(
+            mock_sign
+                .sign(SignatureRequest {
+                    document_id: "doc-1".to_string(),
+                    signer_party_id: "pty-1".to_string(),
+                })
+                .await
+                .unwrap(),
+            "mock-signing-ok"
+        );
+        assert_eq!(
+            real_sign
+                .sign(SignatureRequest {
+                    document_id: "doc-2".to_string(),
+                    signer_party_id: "pty-2".to_string(),
+                })
+                .await
+                .unwrap(),
+            "real-signing-ok"
+        );
+
+        let mock_pay = build_payment_provider(ProviderBackend::Mock);
+        let real_pay = build_payment_provider(ProviderBackend::Real);
+        assert_eq!(
+            mock_pay
+                .create_intent(PaymentRequest {
+                    order_id: "ord-1".to_string(),
+                    amount_minor: 100,
+                    currency: "CNY".to_string(),
+                })
+                .await
+                .unwrap(),
+            "mock-payment-ok"
+        );
+        assert_eq!(
+            real_pay
+                .create_intent(PaymentRequest {
+                    order_id: "ord-2".to_string(),
+                    amount_minor: 200,
+                    currency: "USD".to_string(),
+                })
+                .await
+                .unwrap(),
+            "real-payment-ok"
+        );
+
+        let mock_notify = build_notification_provider(ProviderBackend::Mock);
+        let real_notify = build_notification_provider(ProviderBackend::Real);
+        assert_eq!(
+            mock_notify
+                .send(NotificationRequest {
+                    template_code: "TPL_A".to_string(),
+                    receiver: "u1@example.com".to_string(),
+                })
+                .await
+                .unwrap(),
+            "mock-notify-ok"
+        );
+        assert_eq!(
+            real_notify
+                .send(NotificationRequest {
+                    template_code: "TPL_B".to_string(),
+                    receiver: "u2@example.com".to_string(),
+                })
+                .await
+                .unwrap(),
+            "real-notify-ok"
+        );
+
+        let mock_fabric = build_fabric_writer_provider(ProviderBackend::Mock);
+        let real_fabric = build_fabric_writer_provider(ProviderBackend::Real);
+        assert_eq!(
+            mock_fabric
+                .write(FabricWriteRequest {
+                    channel: "ch1".to_string(),
+                    key: "k1".to_string(),
+                    value_json: "{}".to_string(),
+                })
+                .await
+                .unwrap(),
+            "mock-fabric-ok"
+        );
+        assert_eq!(
+            real_fabric
+                .write(FabricWriteRequest {
+                    channel: "ch2".to_string(),
+                    key: "k2".to_string(),
+                    value_json: "{\"ok\":true}".to_string(),
+                })
+                .await
+                .unwrap(),
+            "real-fabric-ok"
+        );
     }
 }

@@ -1026,3 +1026,34 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：已修复仓库现状差异（`service-runtime-map.md` 缺失）并纳入本批交付。
+
+### BATCH-054
+
+- 状态：计划中
+- 当前任务编号：CORE-049, CORE-050, CORE-051
+- 当前批次目标：按连续 3 个简单任务完成 Provider trait 收敛校准、内部调试端点收敛拆分、一键验证入口补齐（编译/测试/OpenAPI/迁移检查）。
+- 前置依赖核对结果：`CORE-049` 依赖 `CORE-044`，`CORE-050` 依赖 `CORE-038; CORE-047; CORE-048`，`CORE-051` 依赖 `CORE-041; CORE-042; CORE-043; CORE-044`；上述前置均已完成且你已确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`
+- 预计涉及文件：`apps/platform-core/crates/provider-kit/src/lib.rs`、`apps/platform-core/crates/http/src/lib.rs`、`xtask/src/main.rs`、`Makefile`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-054（实施完成）
+
+- 状态：待审批
+- 当前任务编号：CORE-049, CORE-050, CORE-051
+- 当前批次目标：按连续 3 个简单任务完成 Provider trait 收敛校准、内部调试端点收敛拆分、一键验证入口补齐（编译/测试/OpenAPI/迁移检查）。
+- 前置依赖核对结果：`CORE-049` 依赖 `CORE-044`，`CORE-050` 依赖 `CORE-038; CORE-047; CORE-048`，`CORE-051` 依赖 `CORE-041; CORE-042; CORE-043; CORE-044`；上述前置均已完成且你已确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`
+- 已实现功能：
+  - `CORE-049`：强化 `crates/provider-kit` 的收敛验证，扩展单测覆盖 KYC、签章、支付、通知、Fabric 五类 provider 的 `mock/real` 入口与调用返回，确保 trait 分层与入口完整。
+  - `CORE-050`：在 `crates/http` 中新增 `build_internal_dev_router()`，将 `/internal/dev/trace-links` 与 `/internal/dev/overview` 显式收敛到内部调试子路由后再并入主路由。
+  - `CORE-051`：增强 `xtask all`，纳入 `cargo test --workspace` 与 `query-compile-check`；`Makefile` 新增 `core-verify` 统一入口并指向 `cargo xtask all`。
+  - 同步更新 `docs/01-architecture/platform-core-workspace.md`，对一键校验入口与校验项进行对齐说明。
+- 涉及文件：`apps/platform-core/crates/provider-kit/src/lib.rs`、`apps/platform-core/crates/http/src/lib.rs`、`xtask/src/main.rs`、`Makefile`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo xtask all`。
+- 验证结果：通过。`cargo build`、`cargo test` 通过；`cargo xtask all` 在格式化修正后复跑通过，含 `fmt/check/test/query-compile/openapi-check/migrate-check/seed` 全链路。`migrate-check` 需 Docker 权限，已在沙箱外执行成功。
+- 覆盖的冻结文档条目：`开发准备/服务清单与服务边界正式版.md`、`开发准备/技术选型正式版.md`、`开发准备/本地开发环境与中间件部署清单.md`
+- 覆盖的任务清单条目：`CORE-049`, `CORE-050`, `CORE-051`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`CORE-010` 与 `CORE-032` 前置依赖已在本批补齐，可在下一批按顺序处理并关闭历史阻塞链。

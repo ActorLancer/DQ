@@ -17,6 +17,8 @@ fn run() -> Result<(), String> {
         "all" => {
             exec(&root, "cargo", &["fmt", "--all", "--", "--check"])?;
             exec(&root, "cargo", &["check", "--workspace"])?;
+            exec(&root, "cargo", &["test", "--workspace"])?;
+            exec(&root, "./scripts/check-query-compile.sh", &[])?;
             exec(&root, "./scripts/check-openapi-schema.sh", &[])?;
             exec(&root, "./scripts/validate_database_migrations.sh", &[])?;
             exec(&root, "./scripts/seed-demo.sh", &[])?;
@@ -25,11 +27,13 @@ fn run() -> Result<(), String> {
         }
         "fmt" => exec(&root, "cargo", &["fmt", "--all", "--", "--check"]),
         "lint" => exec(&root, "cargo", &["check", "--workspace"]),
+        "test" => exec(&root, "cargo", &["test", "--workspace"]),
+        "query-compile-check" => exec(&root, "./scripts/check-query-compile.sh", &[]),
         "openapi-check" => exec(&root, "./scripts/check-openapi-schema.sh", &[]),
         "migrate-check" => exec(&root, "./scripts/validate_database_migrations.sh", &[]),
         "seed" => exec(&root, "./scripts/seed-demo.sh", &[]),
         other => Err(format!(
-            "unknown xtask command: {other}. expected one of: all, fmt, lint, openapi-check, migrate-check, seed"
+            "unknown xtask command: {other}. expected one of: all, fmt, lint, test, query-compile-check, openapi-check, migrate-check, seed"
         )),
     }
 }
