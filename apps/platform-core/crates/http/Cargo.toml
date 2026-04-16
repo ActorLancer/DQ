@@ -12,4 +12,3 @@ kernel = { path = "../kernel" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["net"] }
 tracing = "0.1"
-uuid = { version = "1", features = ["v4"] }

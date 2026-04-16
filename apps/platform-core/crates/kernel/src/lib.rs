@@ -4,7 +4,9 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 pub type AppResult<T> = Result<T, AppError>;
 
@@ -118,6 +120,69 @@ pub fn validate_error_code_document(doc: &str) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UtcTimestampMs(pub i64);
+
+impl UtcTimestampMs {
+    pub fn now() -> Self {
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        Self(ms)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EntityId(pub Uuid);
+
+impl EntityId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    pub fn parse(raw: &str) -> AppResult<Self> {
+        Uuid::parse_str(raw)
+            .map(Self)
+            .map_err(|e| AppError::Config(format!("invalid uuid entity id: {e}")))
+    }
+
+    pub fn as_uuid(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl Default for EntityId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for EntityId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+pub fn new_uuid_string() -> String {
+    Uuid::new_v4().to_string()
+}
+
+pub fn new_external_readable_id(prefix: &str) -> String {
+    let safe_prefix = prefix.trim().to_ascii_uppercase();
+    let safe_prefix = if safe_prefix.is_empty() {
+        "OBJ".to_string()
+    } else {
+        safe_prefix
+    };
+    let ts_seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let suffix = &Uuid::new_v4().simple().to_string()[..8];
+    format!("{safe_prefix}-{ts_seconds}-{suffix}")
 }
 
 #[derive(Clone, Default)]
@@ -279,5 +344,28 @@ mod tests {
     fn error_code_document_is_compatible() {
         let doc = include_str!("../../../../../docs/01-architecture/error-codes.md");
         validate_error_code_document(doc).expect("error codes doc should include required prefixes");
+    }
+
+    #[test]
+    fn utc_timestamp_is_monotonic_non_negative() {
+        let t1 = UtcTimestampMs::now();
+        let t2 = UtcTimestampMs::now();
+        assert!(t1.0 >= 0);
+        assert!(t2.0 >= t1.0);
+    }
+
+    #[test]
+    fn entity_id_parse_roundtrip() {
+        let id = EntityId::new();
+        let raw = id.to_string();
+        let parsed = EntityId::parse(&raw).expect("parse entity id");
+        assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn external_readable_id_has_prefix() {
+        let id = new_external_readable_id("ord");
+        assert!(id.starts_with("ORD-"));
+        assert_eq!(id.split('-').count(), 3);
     }
 }

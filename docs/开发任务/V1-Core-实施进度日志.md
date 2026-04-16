@@ -848,5 +848,23 @@
 - 覆盖的任务清单条目：`CORE-020`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“复杂单任务”执行。
+
+### BATCH-045
+
+- 状态：待审批
+- 当前任务编号：CORE-021, CORE-022
+- 当前批次目标：一次性完成统一时间与 ID 策略（UTC + UUID 主键 + 外部可读编号生成）以及启动自检（必要配置、Provider 绑定、关键 topic/bucket/索引别名）。
+- 前置依赖核对结果：`CORE-021`, `CORE-022` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/kernel/**`、`apps/platform-core/crates/http/**`、`apps/platform-core/src/**`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `crates/kernel` 收敛统一时间与 ID 策略，新增 `UtcTimestampMs`（UTC 存储基准）、`EntityId`（UUID 主键封装）、`new_external_readable_id(prefix)`（外部可读编号生成）；在 `crates/http` 改为复用 `kernel::new_uuid_string` 生成请求 ID，统一 ID 生成入口；在 `platform-core` 启动流程加入 `startup_self_check`，校验关键 `topic/bucket/index alias` 配置，并在 `CoreModule` 启动后校验 KYC/签章/支付/通知/Fabric Provider 绑定完整性。
+- 涉及文件：`apps/platform-core/crates/kernel/Cargo.toml`、`apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core/crates/http/Cargo.toml`、`apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo run -p platform-core` + `curl /health/ready`。
+- 验证结果：通过。`cargo build` 通过；`cargo test` 通过（新增 kernel 时间与 ID 策略单测通过）；运行态 `cargo run -p platform-core` 启动成功并输出 `startup self-check passed` 日志，`/health/ready` 返回 `{"success":true,"data":"ready"}`。
+- 覆盖的冻结文档条目：`领域模型/全量领域模型与对象关系说明.md`、`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-021`, `CORE-022`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 2 个简单任务”执行并统一汇报。

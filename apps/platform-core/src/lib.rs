@@ -6,7 +6,10 @@ use auth::{
 use config::{ProviderMode, RuntimeConfig};
 use db::{DbPool, DbPoolConfig, NoopBusinessMutationWriter, TxTemplate};
 use http::{ApiResponse, build_router, live_handler, serve};
-use kernel::{AppLauncher, AppResult, Module, ModuleContext, validate_error_code_document};
+use kernel::{
+    AppError, AppLauncher, AppResult, Module, ModuleContext, UtcTimestampMs,
+    new_external_readable_id, validate_error_code_document,
+};
 use outbox_kit::NoopOutboxWriter;
 use provider_kit::{
     FabricWriterProvider, KycProvider, NotificationProvider, PaymentProvider, ProviderBackend,
@@ -73,8 +76,108 @@ impl Module for CoreModule {
                 self.provider_backend,
             ))
             .await;
+        verify_provider_bindings(ctx).await?;
         Ok(())
     }
+}
+
+async fn verify_provider_bindings(ctx: &ModuleContext) -> AppResult<()> {
+    if ctx.container.get::<Arc<dyn KycProvider>>().await.is_none() {
+        return Err(AppError::Startup("KYC provider not bound".to_string()));
+    }
+    if ctx
+        .container
+        .get::<Arc<dyn SigningProvider>>()
+        .await
+        .is_none()
+    {
+        return Err(AppError::Startup("Signing provider not bound".to_string()));
+    }
+    if ctx
+        .container
+        .get::<Arc<dyn PaymentProvider>>()
+        .await
+        .is_none()
+    {
+        return Err(AppError::Startup("Payment provider not bound".to_string()));
+    }
+    if ctx
+        .container
+        .get::<Arc<dyn NotificationProvider>>()
+        .await
+        .is_none()
+    {
+        return Err(AppError::Startup("Notification provider not bound".to_string()));
+    }
+    if ctx
+        .container
+        .get::<Arc<dyn FabricWriterProvider>>()
+        .await
+        .is_none()
+    {
+        return Err(AppError::Startup("Fabric writer provider not bound".to_string()));
+    }
+    Ok(())
+}
+
+fn read_required_with_default(env_key: &str, default_value: &str) -> AppResult<String> {
+    let value = std::env::var(env_key).unwrap_or_else(|_| default_value.to_string());
+    if value.trim().is_empty() {
+        return Err(AppError::Startup(format!(
+            "required startup config is empty: {env_key}"
+        )));
+    }
+    Ok(value)
+}
+
+fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
+    if cfg.bind_port == 0 {
+        return Err(AppError::Startup(
+            "bind_port must be greater than zero".to_string(),
+        ));
+    }
+
+    let _check_id = new_external_readable_id("boot");
+    let _checked_at = UtcTimestampMs::now();
+
+    for (key, default_value) in [
+        ("TOPIC_OUTBOX_EVENTS", "outbox.events"),
+        ("TOPIC_SEARCH_SYNC", "search.sync"),
+        ("TOPIC_AUDIT_ANCHOR", "audit.anchor"),
+        ("TOPIC_BILLING_EVENTS", "billing.events"),
+        ("TOPIC_RECOMMENDATION_BEHAVIOR", "recommendation.behavior"),
+        ("TOPIC_DEAD_LETTER_EVENTS", "dead-letter.events"),
+    ] {
+        let _ = read_required_with_default(key, default_value)?;
+    }
+
+    for (key, default_value) in [
+        ("BUCKET_RAW_DATA", "raw-data"),
+        ("BUCKET_PREVIEW_ARTIFACTS", "preview-artifacts"),
+        ("BUCKET_DELIVERY_OBJECTS", "delivery-objects"),
+        ("BUCKET_REPORT_RESULTS", "report-results"),
+        ("BUCKET_EVIDENCE_PACKAGES", "evidence-packages"),
+        ("BUCKET_MODEL_ARTIFACTS", "model-artifacts"),
+    ] {
+        let _ = read_required_with_default(key, default_value)?;
+    }
+
+    for (key, default_value) in [
+        ("INDEX_ALIAS_CATALOG_PRODUCTS", "catalog_products_v1"),
+        ("INDEX_ALIAS_SELLER_PROFILES", "seller_profiles_v1"),
+        ("INDEX_ALIAS_SEARCH_SYNC_JOBS", "search_sync_jobs_v1"),
+    ] {
+        let _ = read_required_with_default(key, default_value)?;
+    }
+
+    info!(
+        check_id = %new_external_readable_id("boot"),
+        checked_at_utc_ms = UtcTimestampMs::now().0,
+        mode = %cfg.mode.as_str(),
+        provider = %cfg.provider.as_str(),
+        "startup self-check passed"
+    );
+    Ok(())
 }
 
 pub async fn run() -> AppResult<()> {
@@ -87,6 +190,7 @@ pub async fn run() -> AppResult<()> {
     validate_error_code_document(include_str!("../../../docs/01-architecture/error-codes.md"))?;
 
     let cfg = RuntimeConfig::from_env()?;
+    startup_self_check(&cfg)?;
     let addr = SocketAddr::new(
         cfg.bind_host
             .parse::<IpAddr>()

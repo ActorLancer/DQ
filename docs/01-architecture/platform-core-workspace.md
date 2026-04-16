@@ -58,6 +58,16 @@
 - 权限门面只返回 `AuthorizationDecision`，不直接执行业务放行；真正放行仍在应用层/访问控制层执行。
 - `platform-core` 启动时把统一门面注册进容器，业务 handler 避免直接调用 Keycloak/外部 IAM SDK。
 
+统一时间与 ID 策略（V1-Core）：
+
+- 在 `crates/kernel` 提供 `UtcTimestampMs`（统一 UTC 时间戳存储）与 `EntityId`（UUID 主键封装）。
+- 对外可读编号通过 `new_external_readable_id(prefix)` 统一生成，避免把内部 UUID 直接暴露为业务编号。
+
+启动自检（V1-Core）：
+
+- `platform-core` 启动时执行 `startup_self_check`，校验关键配置（topic/bucket/index alias）可用。
+- `CoreModule` 启动后校验 Provider trait 绑定完整（KYC、签章、支付、通知、Fabric 写入）。
+
 约束：
 
 - 业务 handler 不直接依赖外部 provider SDK，统一经内部 crate/门面隔离。

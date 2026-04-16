@@ -7,14 +7,13 @@ use axum::{
     routing::get,
 };
 use audit_kit::AuditAnnotation;
-use kernel::{AppError, AppResult, ErrorResponse};
+use kernel::{AppError, AppResult, ErrorResponse, new_uuid_string};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::{future::Future, time::Duration, time::Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tracing::info;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ApiResponse<T>
@@ -194,7 +193,7 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+        .unwrap_or_else(new_uuid_string);
     let trace_id = req
         .headers()
         .get("x-trace-id")
