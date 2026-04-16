@@ -1306,18 +1306,9 @@
 - 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；并行触发时序导致的一次瞬时误报已通过串行复跑消除，最终结果以复跑通过为准。
 
-### BATCH-065
-
-- 状态：计划中
-- 当前任务编号：DB-019, DB-020, DB-021, DB-022
-- 当前批次目标：按连续 4 个简单任务一次性完成 `065/066/067/068` 迁移落地验收，补齐“关键表 + 关键索引 + 关键触发器 + 关键新增字段 + 权限种子映射”自动校验脚本，并通过空库重建链路验证可复现性。
-- 前置依赖核对结果：`DB-019~DB-022` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/065_query_execution_plane.sql`、`docs/数据库设计/V1/upgrade/066_sensitive_data_controlled_delivery.sql`、`docs/数据库设计/V1/upgrade/067_trade_chain_monitoring.sql`、`docs/数据库设计/V1/upgrade/068_trade_chain_monitoring_authz.sql`
-- 预计涉及文件：`db/scripts/verify-migration-065-068.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-065（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：DB-019, DB-020, DB-021, DB-022
 - 当前批次目标：按连续 4 个简单任务一次性完成 `065/066/067/068` 迁移落地验收，补齐“关键表 + 关键索引 + 关键触发器 + 关键新增字段 + 权限种子映射”自动校验脚本，并通过空库重建链路验证可复现性。
 - 前置依赖核对结果：`DB-019~DB-022` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
@@ -1343,5 +1334,51 @@
 - 覆盖的任务清单条目：`DB-019`, `DB-020`, `DB-021`, `DB-022`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；曾出现一次并行时序导致的瞬时误报，已通过串行重跑确认最终结果。
+
+### BATCH-066（计划中）
+
+- 状态：计划中
+- 当前任务编号：DB-023, DB-024, DB-025, DB-026
+- 当前批次目标：按连续 4 个简单任务一次性完成 `070` 权限种子迁移校验、downgrade 自洽演练、迁移脚本能力复核与基础 lookup 种子落地，形成可重放的 migration/seed 基线。
+- 前置依赖核对结果：`DB-023~DB-026` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql`、`docs/数据库设计/V1/downgrade/*.sql`、`docs/权限设计/角色权限矩阵正式版.md`
+
+### BATCH-066（实施完成）
+
+- 状态：通过
+- 当前任务编号：DB-023, DB-024, DB-025, DB-026
+- 当前批次目标：按连续 4 个简单任务一次性完成 `070` 权限种子迁移校验、downgrade 自洽演练、迁移脚本能力复核与基础 lookup 种子落地，形成可重放的 migration/seed 基线。
+- 前置依赖核对结果：`DB-023~DB-026` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql`、`docs/数据库设计/V1/downgrade/*.sql`、`docs/权限设计/角色权限矩阵正式版.md`
+- 已实现功能：
+  - `DB-023`：在 `070_seed_role_permissions_v1.sql` 末尾新增内置校验 SQL（角色数量、权限数量、角色权限映射数量门槛），把“最终 V1 角色权限种子固化 + 校验 SQL”落地到同一迁移脚本。
+  - `DB-024`：新增 `db/scripts/verify-migration-roundtrip.sh`，执行“全量升级 -> 全量降级 -> 全量升级”回滚演练；并修复 `db/scripts/migration-runner.sh` 的方向判定逻辑（按每版本最新方向判定 up/down），确保本地回滚后可再次升级。
+  - `DB-025`：基于现有 `migrate-up/down/status/reset` 脚本完成能力复核，补齐 runner 对 repeated up/down 的正确行为；脚本链路在回滚演练中完成可执行验证。
+  - `DB-026`：新增 `db/seeds/001_base_lookup.sql` 与 `db/seeds/manifest.csv`，落地枚举值、状态字典、产品类目、行业标签、风险等级、交付模式等基础 lookup 种子；新增 `db/scripts/seed-runner.sh`、`db/scripts/seed-up.sh`、`db/scripts/verify-seed-001.sh`。
+  - 新增 `db/scripts/verify-migration-070.sh`，用于独立校验 `070` 的关键权限与映射基线。
+  - 更新 `db/migrations/v1/README.md`，补充 `070` 校验、回滚演练与 seed 执行/校验入口说明。
+- 涉及文件：`docs/数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql`、`db/scripts/migration-runner.sh`、`db/scripts/verify-migration-roundtrip.sh`、`db/scripts/verify-migration-070.sh`、`db/seeds/manifest.csv`、`db/seeds/001_base_lookup.sql`、`db/scripts/seed-runner.sh`、`db/scripts/seed-up.sh`、`db/scripts/verify-seed-001.sh`、`db/migrations/v1/README.md`、`db/migrations/v1/checksums.sha256`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `docker ps --filter name=luna-postgres-test`
+  2. `./db/scripts/migrate-reset.sh`
+  3. `./db/scripts/verify-migration-001.sh`
+  4. `./db/scripts/verify-migration-010-030.sh`
+  5. `./db/scripts/verify-migration-040-056.sh`
+  6. `./db/scripts/verify-migration-057-060.sh`
+  7. `./db/scripts/verify-migration-061-064.sh`
+  8. `./db/scripts/verify-migration-065-068.sh`
+  9. `./db/scripts/verify-migration-070.sh`
+  10. `./db/scripts/verify-migration-roundtrip.sh`
+  11. `./db/scripts/seed-up.sh`
+  12. `./db/scripts/verify-seed-001.sh`
+  13. `./db/scripts/migrate-status.sh`
+  14. `sha256sum -c db/migrations/v1/checksums.sha256`
+- 验证结果：通过。`070` 校验通过；回滚演练通过（全量 downgrade 后可全量 re-upgrade）；seed 执行与 `001` 校验通过；`migrate-status.sh` 显示 pending 为空；checksum 全量通过。
+- 覆盖的冻结文档条目：`数据库设计/数据库设计总说明.md`（迁移顺序与本地可重建原则）、`数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql`（V1 角色权限最终固化）、`权限设计/角色权限矩阵正式版.md`（关键角色权限映射）
+- 覆盖的任务清单条目：`DB-023`, `DB-024`, `DB-025`, `DB-026`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响本批验收。

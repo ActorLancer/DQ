@@ -302,3 +302,41 @@ INSERT INTO authz.role_permission (role_key, permission_code) VALUES
 ('tenant_developer','developer.test_asset.read'),
 ('tenant_developer','developer.trace.read')
 ON CONFLICT DO NOTHING;
+
+DO $$
+DECLARE
+  v_role_count bigint;
+  v_permission_count bigint;
+  v_mapping_count bigint;
+BEGIN
+  SELECT COUNT(*) INTO v_role_count
+  FROM authz.role_definition
+  WHERE role_key IN (
+    'platform_admin','platform_reviewer','platform_risk_settlement','platform_audit_security',
+    'tenant_admin','seller_operator','buyer_operator','tenant_developer','tenant_audit_readonly',
+    'tenant_app_identity','platform_service_identity','regulator_readonly'
+  );
+
+  IF v_role_count < 12 THEN
+    RAISE EXCEPTION '070 seed validation failed: role_definition count too small (%)', v_role_count;
+  END IF;
+
+  SELECT COUNT(*) INTO v_permission_count
+  FROM authz.permission_definition;
+  IF v_permission_count < 220 THEN
+    RAISE EXCEPTION '070 seed validation failed: permission_definition count too small (%)', v_permission_count;
+  END IF;
+
+  SELECT COUNT(*) INTO v_mapping_count
+  FROM authz.role_permission
+  WHERE role_key IN (
+    'platform_admin','platform_reviewer','platform_risk_settlement','platform_audit_security',
+    'tenant_admin','seller_operator','buyer_operator','tenant_developer','tenant_audit_readonly',
+    'tenant_app_identity','platform_service_identity','regulator_readonly'
+  );
+
+  IF v_mapping_count < 240 THEN
+    RAISE EXCEPTION '070 seed validation failed: role_permission mapping count too small (%)', v_mapping_count;
+  END IF;
+END
+$$;

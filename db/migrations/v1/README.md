@@ -24,6 +24,10 @@
 - 执行记录表：`public.schema_migration_history`
   - 记录字段：`version`、`name`、`direction`、`checksum_sha256`、`executed_at`
   - 用于检测同版本 checksum 漂移
+- 种子执行入口：`db/scripts/seed-runner.sh`
+  - 支持命令：`up`
+  - 支持 `--manifest`、`--dry-run`
+  - 执行记录表：`public.seed_history`（记录 `version`、`name`、`checksum_sha256`、`executed_at`）
 
 ## 验证脚本
 
@@ -33,3 +37,6 @@
 - `db/scripts/verify-migration-057-060.sh`：验证 `057/058/059/060` 的搜索/推荐/观测核心对象与鉴权种子数据基线。
 - `db/scripts/verify-migration-061-064.sh`：验证 `061/062/063/064` 的对象家族与交易方式、元信息契约、原样加工流水线、分层存储对象与关键字段基线。
 - `db/scripts/verify-migration-065-068.sh`：验证 `065/066/067/068` 的查询执行面、敏感受控交付、交易链监控对象与监控权限映射基线。
+- `db/scripts/verify-migration-070.sh`：验证 `070` 角色权限最终种子与关键映射基线。
+- `db/scripts/verify-migration-roundtrip.sh`：执行“全量升级 -> 全量降级 -> 全量升级”的回滚演练，校验本地重建自洽性。
+- `db/scripts/verify-seed-001.sh`：验证 `db/seeds/001_base_lookup.sql` 的基础枚举/类目/标签种子落地。

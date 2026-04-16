@@ -76,6 +76,16 @@ query_single() {
   "${PSQL[@]}" -tAc "$sql"
 }
 
+latest_direction() {
+  local version="$1"
+  query_single "SELECT direction FROM public.schema_migration_history WHERE version = '$version' ORDER BY executed_at DESC, id DESC LIMIT 1;"
+}
+
+latest_up_checksum() {
+  local version="$1"
+  query_single "SELECT checksum_sha256 FROM public.schema_migration_history WHERE version = '$version' AND direction = 'up' ORDER BY executed_at DESC, id DESC LIMIT 1;"
+}
+
 run_file() {
   local file="$1"
   if [[ "$DRY_RUN" == "true" ]]; then
@@ -108,12 +118,14 @@ run_up() {
     fi
 
     checksum="$(calc_sha256 "$up_sql")"
-    existing_checksum="$(query_single "SELECT checksum_sha256 FROM public.schema_migration_history WHERE version = '$version' AND direction = 'up' LIMIT 1;")"
+    existing_checksum="$(latest_up_checksum "$version")"
     if [[ -n "$existing_checksum" && "$existing_checksum" != "$checksum" ]]; then
       echo "[error] checksum drift detected for version=$version (recorded=$existing_checksum current=$checksum)" >&2
       exit 1
     fi
-    if [[ -n "$existing_checksum" ]]; then
+
+    current_direction="$(latest_direction "$version")"
+    if [[ "$current_direction" == "up" ]]; then
       echo "[skip] version=$version already applied"
       continue
     fi
@@ -132,8 +144,8 @@ run_down() {
       exit 1
     fi
 
-    up_applied="$(query_single "SELECT 1 FROM public.schema_migration_history WHERE version = '$version' AND direction = 'up' LIMIT 1;")"
-    if [[ -z "$up_applied" ]]; then
+    current_direction="$(latest_direction "$version")"
+    if [[ "$current_direction" != "up" ]]; then
       echo "[skip] version=$version not applied, skip downgrade"
       continue
     fi
@@ -150,8 +162,8 @@ show_status() {
   "${PSQL[@]}" -c "SELECT version, direction, checksum_sha256, executed_at FROM public.schema_migration_history ORDER BY version, direction;"
   echo "== pending up versions =="
   tail -n +2 "$MANIFEST_PATH" | while IFS=, read -r version up_sql down_sql; do
-    applied="$(query_single "SELECT 1 FROM public.schema_migration_history WHERE version = '$version' AND direction = 'up' LIMIT 1;")"
-    if [[ -z "$applied" ]]; then
+    current_direction="$(latest_direction "$version")"
+    if [[ "$current_direction" != "up" ]]; then
       echo "$version $(basename "$up_sql")"
     fi
   done

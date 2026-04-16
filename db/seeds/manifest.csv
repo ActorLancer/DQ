@@ -1,0 +1,2 @@
+version,seed_sql
+001,db/seeds/001_base_lookup.sql
