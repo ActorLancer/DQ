@@ -125,3 +125,4 @@
 - `BATCH-064`（`DB-015`, `DB-016`, `DB-017`, `DB-018`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-065`（`DB-019`, `DB-020`, `DB-021`, `DB-022`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-066`（`DB-023`, `DB-024`, `DB-025`, `DB-026`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-067`（`DB-027`, `DB-028`, `DB-029`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。

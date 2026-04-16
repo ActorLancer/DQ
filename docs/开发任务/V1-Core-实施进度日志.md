@@ -1337,14 +1337,6 @@
 - 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；曾出现一次并行时序导致的瞬时误报，已通过串行重跑确认最终结果。
 
-### BATCH-066（计划中）
-
-- 状态：计划中
-- 当前任务编号：DB-023, DB-024, DB-025, DB-026
-- 当前批次目标：按连续 4 个简单任务一次性完成 `070` 权限种子迁移校验、downgrade 自洽演练、迁移脚本能力复核与基础 lookup 种子落地，形成可重放的 migration/seed 基线。
-- 前置依赖核对结果：`DB-023~DB-026` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql`、`docs/数据库设计/V1/downgrade/*.sql`、`docs/权限设计/角色权限矩阵正式版.md`
-
 ### BATCH-066（实施完成）
 
 - 状态：通过
@@ -1380,5 +1372,43 @@
 - 覆盖的任务清单条目：`DB-023`, `DB-024`, `DB-025`, `DB-026`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响本批验收。
+
+### BATCH-067（计划中）
+
+- 状态：计划中
+- 当前任务编号：DB-027, DB-028, DB-029
+- 当前批次目标：按连续 3 个简单任务一次性完成本地演示租户/用户种子、8 个标准 SKU 商品与模板绑定种子、全量订单样例与五条标准链路场景订单种子，并纳入可执行验证链路。
+- 前置依赖核对结果：`DB-027~DB-029` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/数据库设计/V1/upgrade/020_catalog_contract.sql`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`、`docs/数据库设计/V1/upgrade/061_data_object_trade_modes.sql`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-067（实施完成）
+
+- 状态：通过
+- 当前任务编号：DB-027, DB-028, DB-029
+- 当前批次目标：按连续 3 个简单任务一次性完成本地演示租户/用户种子、8 个标准 SKU 商品与模板绑定种子、全量订单样例与五条标准链路场景订单种子，并纳入可执行验证链路。
+- 前置依赖核对结果：`DB-027~DB-029` 依赖 `BOOT-008; ENV-005; ENV-006; CORE-005`，上述依赖任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/数据库设计/V1/upgrade/020_catalog_contract.sql`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`、`docs/数据库设计/V1/upgrade/061_data_object_trade_modes.sql`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - `DB-027`：新增 `db/seeds/010_test_tenants.sql`，落地本地演示租户、卖方、买方、运营、审计、开发与管理员用户，并写入 `authz.subject_role_binding`。
+  - `DB-028`：新增 `db/seeds/020_test_products.sql`，落地 8 个标准 SKU（`FILE_STD/FILE_SUB/SHARE_RO/API_SUB/API_PPU/QRY_LITE/SBX_STD/RPT_STD`）对应资产、版本、商品、SKU 与模板绑定示例。
+  - `DB-029`：新增 `db/seeds/030_test_orders.sql`，落地 13 条订单样例（8 条 SKU 全量订单 + 5 条标准链路场景订单），并补充授权、API 凭证、沙箱与报告示例对象。
+  - 更新 `db/seeds/manifest.csv`，接入 `010/020/030` 种子顺序。
+  - 新增 `db/scripts/verify-seed-010-030.sh` 并更新 `db/migrations/v1/README.md`，将本批种子基线纳入可执行校验。
+- 涉及文件：`db/seeds/manifest.csv`、`db/seeds/010_test_tenants.sql`、`db/seeds/020_test_products.sql`、`db/seeds/030_test_orders.sql`、`db/scripts/verify-seed-010-030.sh`、`db/migrations/v1/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `./db/scripts/migrate-reset.sh`
+  2. `./db/scripts/seed-up.sh`
+  3. `./db/scripts/verify-seed-001.sh`
+  4. `./db/scripts/verify-seed-010-030.sh`
+  5. `./db/scripts/migrate-status.sh`
+  6. `psql -h 127.0.0.1 -p 55432 -U luna -d luna_data_trading -tAc "SELECT version, checksum_sha256 FROM public.seed_history ORDER BY version;"`
+  7. `sha256sum -c db/migrations/v1/checksums.sha256`
+- 验证结果：通过。`seed-up` 成功执行 `001/010/020/030`；`verify-seed-001.sh` 与 `verify-seed-010-030.sh` 均返回 `[ok]`；`seed_history` 已记录 `001/010/020/030`；`migrate-status.sh` 显示无 pending；migration checksum 全量通过。
+- 覆盖的冻结文档条目：`数据库设计/V1/upgrade/010_identity_and_access.sql`（身份主体基础结构）、`数据库设计/V1/upgrade/020_catalog_contract.sql`（商品/模板/SKU 结构）、`数据库设计/V1/upgrade/030_trade_delivery.sql`（订单主链路结构）、`数据库设计/V1/upgrade/061_data_object_trade_modes.sql`（交易方式/交付模式扩展）、`全集成文档/数据交易平台-全集成基线-V1.md`（首批标准链路与 SKU 映射）
+- 覆盖的任务清单条目：`DB-027`, `DB-028`, `DB-029`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）。

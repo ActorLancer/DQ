@@ -12,6 +12,8 @@
 - 执行清单：`db/migrations/v1/manifest.csv`
 - checksum 锁文件：`db/migrations/v1/checksums.sha256`
 - SQL 基线来源：`docs/数据库设计/V1/{upgrade,downgrade}/*.sql`
+- 种子清单：`db/seeds/manifest.csv`
+- 种子脚本：`db/seeds/001_base_lookup.sql`、`db/seeds/010_test_tenants.sql`、`db/seeds/020_test_products.sql`、`db/seeds/030_test_orders.sql`
 
 ## Runner 规则
 
@@ -40,3 +42,4 @@
 - `db/scripts/verify-migration-070.sh`：验证 `070` 角色权限最终种子与关键映射基线。
 - `db/scripts/verify-migration-roundtrip.sh`：执行“全量升级 -> 全量降级 -> 全量升级”的回滚演练，校验本地重建自洽性。
 - `db/scripts/verify-seed-001.sh`：验证 `db/seeds/001_base_lookup.sql` 的基础枚举/类目/标签种子落地。
+- `db/scripts/verify-seed-010-030.sh`：验证 `010/020/030` 的演示租户用户、8 个标准 SKU 商品与模板绑定、13 条订单样例（含 5 条标准链路场景订单）基线。
