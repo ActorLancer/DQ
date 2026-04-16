@@ -925,7 +925,7 @@
 
 ### BATCH-049
 
-- 状态：计划中
+- 状态：通过
 - 当前任务编号：CORE-033, CORE-034, CORE-035, CORE-036
 - 当前批次目标：按连续简单任务一次性补齐并校准身份/供给/交易前半段/授权交付模块骨架，统一模块目录模板并接入 `modules/mod.rs`。
 - 前置依赖核对结果：4 个任务均依赖 `BOOT-002; ENV-001`，均已完成且审批通过；`CORE-032` 依赖 `CORE-010`（而 `CORE-010` 依赖 `CORE-033~051`）当前不满足，已按 CSV 依赖顺序后置处理。
@@ -936,7 +936,25 @@
 - 验证结果：通过。`cargo build` 和 `cargo test` 通过；运行态 `/health/ready` 返回 `{"success":true,"data":"ready"}`。
 - 覆盖的冻结文档条目：`开发准备/服务清单与服务边界正式版.md`、`领域模型/全量领域模型与对象关系说明.md`、`开发准备/平台总体架构设计草案.md`
 - 覆盖的任务清单条目：`CORE-033`, `CORE-034`, `CORE-035`, `CORE-036`
-- 未覆盖项：`CORE-032` 仍未执行（依赖 `CORE-010`，且 `CORE-010` 依赖 `CORE-033~051`）；此外发现 `CTX-019` 交付文件 `docs/00-context/service-to-module-map.md` 在仓库缺失，已记录为依赖对齐风险，待后续依赖批次处理时一并修正。
-- 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 未覆盖项：`CORE-032` 仍未执行（依赖 `CORE-010`，且 `CORE-010` 依赖 `CORE-033~051`），已按顺序后置。
+- 新增 TODO / 预留项：`TODO-CTX-019-001`、`TODO-CTX-020-001`（后续在 `BATCH-050` 已关闭）。
+- 待人工审批结论：通过
 - 备注：本批按“连续 4 个简单任务”执行并统一汇报；未越过 `CORE-032` 依赖顺序。
+
+### BATCH-050
+
+- 状态：待审批
+- 当前任务编号：CTX-019, CTX-020
+- 当前批次目标：补齐历史阻塞缺口文档 `service-to-module-map.md` 与 `local-deployment-boundary.md`，恢复 `CORE-032` 前置文档完整性。
+- 前置依赖核对结果：`CTX-019` 依赖 `CTX-004; BOOT-002`，`CTX-020` 依赖 `CTX-008; ENV-001`，上述依赖均已完成并审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/技术选型正式版.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：新增 `docs/00-context/service-to-module-map.md`，冻结设计服务名到 `platform-core` 模块/外围独立进程映射，并标注同步边界、异步边界、所有权；新增 `docs/00-context/local-deployment-boundary.md`，冻结本地部署边界（`docker-compose.local.yml` 只负责中间件与基础依赖，业务应用默认本机进程运行，应用容器联调使用独立 `docker-compose.apps.local.yml`）。
+- 涉及文件：`docs/00-context/service-to-module-map.md`、`docs/00-context/local-deployment-boundary.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `test -f docs/00-context/service-to-module-map.md`；2. `test -f docs/00-context/local-deployment-boundary.md`；3. `rg -n \"iam-service|trade-service|notification-service|docker-compose.local.yml|docker-compose.apps.local.yml\" docs/00-context/service-to-module-map.md docs/00-context/local-deployment-boundary.md`；4. `cargo build`；5. `cargo test`。
+- 验证结果：通过。两份缺失文档已落盘且关键约束条目可检索；`cargo build` 与 `cargo test` 通过。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/技术选型正式版.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
+- 覆盖的任务清单条目：`CTX-019`, `CTX-020`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增；已关闭 `TODO-CTX-019-001`、`TODO-CTX-020-001`。
+- 待人工审批结论：待审批
+- 备注：本批用于修复历史前置缺口；完成后可按顺序继续后续 CORE 批次。
