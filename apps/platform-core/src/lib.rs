@@ -5,17 +5,18 @@ use auth::{
 };
 use config::{ProviderMode, RuntimeConfig};
 use db::{DbPool, DbPoolConfig, NoopBusinessMutationWriter, TxTemplate};
-use http::{ApiResponse, build_router, live_handler, serve};
+use http::{
+    ApiResponse, build_router, live_handler, record_chain_receipt, record_outbox_event, serve,
+};
 use kernel::{
     AppError, AppLauncher, AppResult, DomainEventEnvelope, InProcessEventBus, Module,
-    ModuleContext, UtcTimestampMs,
-    new_external_readable_id, validate_error_code_document,
+    ModuleContext, UtcTimestampMs, new_external_readable_id, validate_error_code_document,
 };
 use outbox_kit::NoopOutboxWriter;
 use provider_kit::{
     FabricWriterProvider, KycProvider, NotificationProvider, PaymentProvider, ProviderBackend,
-    SigningProvider, build_fabric_writer_provider, build_kyc_provider,
-    build_notification_provider, build_payment_provider, build_signing_provider,
+    SigningProvider, build_fabric_writer_provider, build_kyc_provider, build_notification_provider,
+    build_payment_provider, build_signing_provider,
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -88,6 +89,19 @@ impl Module for CoreModule {
             payload_json: "{\"module\":\"platform-core\"}".to_string(),
             occurred_at_utc_ms: UtcTimestampMs::now().0,
         })?;
+        let outbox_topic =
+            std::env::var("TOPIC_OUTBOX_EVENTS").unwrap_or_else(|_| "outbox.events".to_string());
+        record_outbox_event(new_external_readable_id("evt"), outbox_topic, "queued");
+        if std::env::var("FF_CHAIN_ANCHORING")
+            .unwrap_or_else(|_| "false".to_string())
+            .eq_ignore_ascii_case("true")
+        {
+            record_chain_receipt(
+                new_external_readable_id("receipt"),
+                "bootstrap-anchor",
+                "pending",
+            );
+        }
         verify_provider_bindings(ctx).await?;
         Ok(())
     }
@@ -119,7 +133,9 @@ async fn verify_provider_bindings(ctx: &ModuleContext) -> AppResult<()> {
         .await
         .is_none()
     {
-        return Err(AppError::Startup("Notification provider not bound".to_string()));
+        return Err(AppError::Startup(
+            "Notification provider not bound".to_string(),
+        ));
     }
     if ctx
         .container
@@ -127,7 +143,9 @@ async fn verify_provider_bindings(ctx: &ModuleContext) -> AppResult<()> {
         .await
         .is_none()
     {
-        return Err(AppError::Startup("Fabric writer provider not bound".to_string()));
+        return Err(AppError::Startup(
+            "Fabric writer provider not bound".to_string(),
+        ));
     }
     Ok(())
 }

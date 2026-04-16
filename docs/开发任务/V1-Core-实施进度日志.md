@@ -889,7 +889,7 @@
 
 ### BATCH-047
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CORE-027, CORE-028, CORE-029
 - 当前批次目标：一次性补齐 feature flags 机制、基于 trait 的仓储接口与内存假实现、进程内统一领域事件总线。
 - 前置依赖核对结果：3 个任务均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
@@ -902,5 +902,23 @@
 - 覆盖的任务清单条目：`CORE-027`, `CORE-028`, `CORE-029`
 - 未覆盖项：无
 - 新增 TODO / 预留项：`TODO-CORE-028-001`（`V1-gap`，非阻塞）已补记。内容为：`OrderRepository` 当前仅完成内存假实现用于规则测试前置，运行时持久化仓储接入待后续领域任务补齐。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 3 个简单任务”执行并统一汇报；运行态校验因本机 `8080` 已被占用，改用 `APP_PORT=18080` 验证。根据人工复核意见补充了 `CORE-028` 的显式 `V1-gap` 标注与 TODO 汇总登记，避免“假实现”被误读为已完成持久化接入。
+
+### BATCH-048
+
+- 状态：待审批
+- 当前任务编号：CORE-030, CORE-031
+- 当前批次目标：一次性补齐开发者总览端点 `/internal/dev/overview` 与一键工程校验入口（`cargo xtask` 或等价工具），并保持现有骨架、脚本与目录结构可复用。
+- 前置依赖核对结果：`CORE-030`, `CORE-031` 均依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，上述前置均已完成并经人工审批通过。
+- 预计涉及文件：`apps/platform-core/crates/http/**`、`apps/platform-core/src/**`、`packages/openapi/ops.yaml`、`scripts/check-openapi-schema.sh`、`xtask/**`、`.cargo/config.toml`、`Makefile`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `crates/http` 新增 `/internal/dev/overview`，返回 `run_mode/provider_mode` 与最近 `outbox/dead-letter/chain-receipt` 快照；新增进程内 ring buffer 与 `record_outbox_event/record_dead_letter_event/record_chain_receipt` 记录函数，默认保留最近 10 条；在 `platform-core` 启动时登记 bootstrap outbox 快照（并在 `FF_CHAIN_ANCHORING=true` 时登记链回执占位快照）；补齐 OpenAPI `ops.yaml` 的 `/internal/dev/overview` 路径与校验脚本守护；新增 `xtask` crate、`.cargo` alias 与 `make xtask` 入口，实现 `cargo xtask all` 一键执行 `fmt/lint/openapi-check/migrate-check/seed`。
+- 涉及文件：`apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/src/lib.rs`、`packages/openapi/ops.yaml`、`scripts/check-openapi-schema.sh`、`xtask/Cargo.toml`、`xtask/src/main.rs`、`.cargo/config.toml`、`Cargo.toml`、`Makefile`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo fmt --all`；2. `cargo build`；3. `cargo test`；4. `./scripts/check-openapi-schema.sh`；5. `cargo xtask all`；6. `APP_PORT=18082 cargo run -p platform-core`；7. `curl http://127.0.0.1:18082/internal/dev/overview`；8. `curl http://127.0.0.1:18082/health/ready`。
+- 验证结果：通过。`cargo build`/`cargo test` 通过（新增 `http` 单测 `dev_overview_feed_is_capped` 通过）；OpenAPI 校验通过；`cargo xtask all` 全链路执行完成（包含 `validate_database_migrations.sh` 与 `seed-demo.sh`）；运行态 `/internal/dev/overview` 返回 `run_mode/provider_mode` 与最近 outbox 快照，`/health/ready` 返回成功。备注：`migrate-check` 阶段因仓库暂无 `数据库设计/V1|V2|V3/downgrade/*.sql` 文件，脚本输出 `ls` 提示但不影响当前脚本退出码。
+- 覆盖的冻结文档条目：`原始PRD/日志、可观测性与告警设计.md`、`data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
+- 覆盖的任务清单条目：`CORE-030`, `CORE-031`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“连续 2 个简单任务”执行并统一汇报；运行态端口绑定与 Docker migration 校验在本环境需提升权限执行，结果均已通过。

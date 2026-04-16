@@ -104,3 +104,4 @@
 - `BATCH-045`（`CORE-021`, `CORE-022`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-046`（`CORE-023`, `CORE-024`, `CORE-025`, `CORE-026`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-047`（`CORE-027`, `CORE-028`, `CORE-029`）：补记 `V1-gap` 项 `TODO-CORE-028-001`（非阻塞，追踪运行时持久化仓储接入）。
+- `BATCH-048`（`CORE-030`, `CORE-031`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。

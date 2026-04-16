@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "xtask",
   "apps/platform-core",
   "apps/platform-core/bin/platform-core",
   "apps/platform-core/crates/kernel",

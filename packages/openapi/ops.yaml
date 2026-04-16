@@ -33,3 +33,9 @@ paths:
       responses:
         "200":
           description: trace links
+  /internal/dev/overview:
+    get:
+      summary: developer overview including mode and recent event snapshots
+      responses:
+        "200":
+          description: developer overview

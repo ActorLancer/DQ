@@ -38,7 +38,7 @@ done
 
 # V1 skeleton drift guard for currently implemented internal/ops endpoints.
 ops_file="$OPENAPI_DIR/ops.yaml"
-for path in "/health/live" "/health/ready" "/health/deps" "/internal/runtime" "/internal/dev/trace-links"; do
+for path in "/health/live" "/health/ready" "/health/deps" "/internal/runtime" "/internal/dev/trace-links" "/internal/dev/overview"; do
   grep -q "$path" "$ops_file" || {
     echo "[error] $ops_file missing path: $path" >&2
     exit 1

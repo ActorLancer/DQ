@@ -1,3 +1,4 @@
+use audit_kit::AuditAnnotation;
 use axum::{
     Json, Router,
     extract::Request,
@@ -6,11 +7,12 @@ use axum::{
     response::Response,
     routing::get,
 };
-use audit_kit::AuditAnnotation;
 use kernel::{AppError, AppResult, ErrorResponse, new_uuid_string};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::net::SocketAddr;
-use std::{future::Future, time::Duration, time::Instant};
+use std::sync::{Mutex, OnceLock};
+use std::{future::Future, time::Duration, time::Instant, time::SystemTime, time::UNIX_EPOCH};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tracing::info;
@@ -117,6 +119,49 @@ pub struct TraceLinks {
     pub opensearch: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DevOverviewOutboxItem {
+    pub event_id: String,
+    pub topic: String,
+    pub status: String,
+    pub observed_at_utc_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DevOverviewDeadLetterItem {
+    pub event_id: String,
+    pub topic: String,
+    pub reason: String,
+    pub observed_at_utc_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DevOverviewChainReceiptItem {
+    pub receipt_id: String,
+    pub tx_id: String,
+    pub status: String,
+    pub observed_at_utc_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DevOverview {
+    pub run_mode: String,
+    pub provider_mode: String,
+    pub recent_outbox: Vec<DevOverviewOutboxItem>,
+    pub recent_dead_letters: Vec<DevOverviewDeadLetterItem>,
+    pub recent_chain_receipts: Vec<DevOverviewChainReceiptItem>,
+}
+
+#[derive(Debug, Default)]
+struct DevOverviewFeed {
+    outbox: VecDeque<DevOverviewOutboxItem>,
+    dead_letters: VecDeque<DevOverviewDeadLetterItem>,
+    chain_receipts: VecDeque<DevOverviewChainReceiptItem>,
+}
+
+const DEV_OVERVIEW_WINDOW: usize = 10;
+static DEV_OVERVIEW_FEED: OnceLock<Mutex<DevOverviewFeed>> = OnceLock::new();
+
 #[derive(Debug, Clone)]
 pub struct RequestContext {
     pub request_id: String,
@@ -131,6 +176,7 @@ pub fn build_router() -> Router {
         .route("/health/ready", get(ready_handler))
         .route("/health/deps", get(deps_handler))
         .route("/internal/dev/trace-links", get(trace_links_handler))
+        .route("/internal/dev/overview", get(dev_overview_handler))
         .layer(middleware::from_fn(request_context_middleware))
 }
 
@@ -138,7 +184,8 @@ pub async fn live_handler() -> Json<ApiResponse<&'static str>> {
     ApiResponse::ok("ok")
 }
 
-pub async fn ready_handler() -> Result<Json<ApiResponse<&'static str>>, (StatusCode, Json<ErrorResponse>)> {
+pub async fn ready_handler()
+-> Result<Json<ApiResponse<&'static str>>, (StatusCode, Json<ErrorResponse>)> {
     Ok(ApiResponse::ok("ready"))
 }
 
@@ -150,6 +197,10 @@ pub async fn deps_handler() -> Json<ApiResponse<DependenciesReport>> {
 
 pub async fn trace_links_handler() -> Json<ApiResponse<TraceLinks>> {
     ApiResponse::ok(build_trace_links())
+}
+
+pub async fn dev_overview_handler() -> Json<ApiResponse<DevOverview>> {
+    ApiResponse::ok(build_dev_overview())
 }
 
 async fn check_dependencies() -> Vec<DependencyStatus> {
@@ -176,10 +227,13 @@ async fn check_dependencies() -> Vec<DependencyStatus> {
 
     let mut results = Vec::with_capacity(targets.len());
     for (name, endpoint) in targets {
-        let reachable = timeout(Duration::from_millis(500), TcpStream::connect(endpoint.clone()))
-            .await
-            .map(|r| r.is_ok())
-            .unwrap_or(false);
+        let reachable = timeout(
+            Duration::from_millis(500),
+            TcpStream::connect(endpoint.clone()),
+        )
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false);
         results.push(DependencyStatus {
             name: name.to_string(),
             endpoint,
@@ -207,8 +261,7 @@ fn build_trace_links() -> TraceLinks {
     let loki = std::env::var("LOKI_PORT").unwrap_or_else(|_| "3100".to_string());
     let tempo = std::env::var("TEMPO_PORT").unwrap_or_else(|_| "3200".to_string());
     let keycloak = std::env::var("KEYCLOAK_PORT").unwrap_or_else(|_| "8081".to_string());
-    let minio_console =
-        std::env::var("MINIO_CONSOLE_PORT").unwrap_or_else(|_| "9001".to_string());
+    let minio_console = std::env::var("MINIO_CONSOLE_PORT").unwrap_or_else(|_| "9001".to_string());
     let opensearch = std::env::var("OPENSEARCH_HTTP_PORT").unwrap_or_else(|_| "9200".to_string());
 
     TraceLinks {
@@ -219,6 +272,94 @@ fn build_trace_links() -> TraceLinks {
         minio_console: format!("http://{host}:{minio_console}"),
         opensearch: format!("http://{host}:{opensearch}"),
     }
+}
+
+pub fn record_outbox_event(
+    event_id: impl Into<String>,
+    topic: impl Into<String>,
+    status: impl Into<String>,
+) {
+    let mut feed = dev_overview_feed()
+        .lock()
+        .expect("dev overview feed lock poisoned");
+    push_capped(
+        &mut feed.outbox,
+        DevOverviewOutboxItem {
+            event_id: event_id.into(),
+            topic: topic.into(),
+            status: status.into(),
+            observed_at_utc_ms: now_utc_ms(),
+        },
+    );
+}
+
+pub fn record_dead_letter_event(
+    event_id: impl Into<String>,
+    topic: impl Into<String>,
+    reason: impl Into<String>,
+) {
+    let mut feed = dev_overview_feed()
+        .lock()
+        .expect("dev overview feed lock poisoned");
+    push_capped(
+        &mut feed.dead_letters,
+        DevOverviewDeadLetterItem {
+            event_id: event_id.into(),
+            topic: topic.into(),
+            reason: reason.into(),
+            observed_at_utc_ms: now_utc_ms(),
+        },
+    );
+}
+
+pub fn record_chain_receipt(
+    receipt_id: impl Into<String>,
+    tx_id: impl Into<String>,
+    status: impl Into<String>,
+) {
+    let mut feed = dev_overview_feed()
+        .lock()
+        .expect("dev overview feed lock poisoned");
+    push_capped(
+        &mut feed.chain_receipts,
+        DevOverviewChainReceiptItem {
+            receipt_id: receipt_id.into(),
+            tx_id: tx_id.into(),
+            status: status.into(),
+            observed_at_utc_ms: now_utc_ms(),
+        },
+    );
+}
+
+fn build_dev_overview() -> DevOverview {
+    let feed = dev_overview_feed()
+        .lock()
+        .expect("dev overview feed lock poisoned");
+    DevOverview {
+        run_mode: std::env::var("APP_MODE").unwrap_or_else(|_| "local".to_string()),
+        provider_mode: std::env::var("PROVIDER_MODE").unwrap_or_else(|_| "mock".to_string()),
+        recent_outbox: feed.outbox.iter().cloned().collect(),
+        recent_dead_letters: feed.dead_letters.iter().cloned().collect(),
+        recent_chain_receipts: feed.chain_receipts.iter().cloned().collect(),
+    }
+}
+
+fn dev_overview_feed() -> &'static Mutex<DevOverviewFeed> {
+    DEV_OVERVIEW_FEED.get_or_init(|| Mutex::new(DevOverviewFeed::default()))
+}
+
+fn push_capped<T>(items: &mut VecDeque<T>, item: T) {
+    items.push_front(item);
+    while items.len() > DEV_OVERVIEW_WINDOW {
+        let _ = items.pop_back();
+    }
+}
+
+fn now_utc_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 async fn request_context_middleware(mut req: Request, next: Next) -> Response {
@@ -292,9 +433,10 @@ fn resolve_idempotency_key(headers: &HeaderMap, request_id: &str) -> String {
 }
 
 fn set_header(response: &mut Response, name: &str, value: &str) {
-    if let (Ok(header_name), Ok(header_value)) =
-        (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(value))
-    {
+    if let (Ok(header_name), Ok(header_value)) = (
+        HeaderName::from_bytes(name.as_bytes()),
+        HeaderValue::from_str(value),
+    ) {
         response.headers_mut().insert(header_name, header_value);
     }
 }
@@ -361,6 +503,22 @@ mod tests {
         assert_eq!(links.keycloak, "http://localhost:8081");
         assert_eq!(links.minio_console, "http://localhost:9001");
         assert_eq!(links.opensearch, "http://localhost:9200");
+    }
+
+    #[test]
+    fn dev_overview_feed_is_capped() {
+        for i in 0..(DEV_OVERVIEW_WINDOW + 3) {
+            record_outbox_event(format!("evt-{i}"), "outbox.events", "pending");
+        }
+        let overview = build_dev_overview();
+        assert_eq!(overview.recent_outbox.len(), DEV_OVERVIEW_WINDOW);
+        assert_eq!(
+            overview
+                .recent_outbox
+                .first()
+                .map(|it| it.event_id.as_str()),
+            Some("evt-12")
+        );
     }
 }
 
