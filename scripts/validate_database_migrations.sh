@@ -3,13 +3,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE_FILE="$ROOT_DIR/部署脚本/docker-compose.postgres-test.yml"
+cd "$ROOT_DIR"
+
+COMPOSE_FILE="./部署脚本/docker-compose.postgres-test.yml"
 COMPOSE_PROJECT="luna_db_test"
 DB_HOST="127.0.0.1"
 DB_PORT="55432"
 DB_NAME="luna_data_trading"
 DB_USER="luna"
 DB_PASSWORD="5686"
+MIGRATIONS_BASE="./docs/数据库设计"
 
 export PGPASSWORD="$DB_PASSWORD"
 
@@ -30,10 +33,33 @@ reset_db() {
   psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $DB_NAME;"
 }
 
-run_dir() {
+run_upgrade_dir() {
   local dir="$1"
-  for file in "$dir"/*.sql; do
-    [ -f "$file" ] || continue
+  shopt -s nullglob
+  local files=("$dir"/*.sql)
+  shopt -u nullglob
+  if (( ${#files[@]} == 0 )); then
+    echo "[error] no sql files found in upgrade dir: $dir" >&2
+    exit 1
+  fi
+  for file in "${files[@]}"; do
+    echo "==> running $file"
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
+  done
+}
+
+run_downgrade_dir() {
+  local dir="$1"
+  if [[ ! -d "$dir" ]]; then
+    echo "[error] downgrade dir not found: $dir" >&2
+    exit 1
+  fi
+  mapfile -t files < <(find "$dir" -maxdepth 1 -type f -name '*.sql' | sort -r)
+  if (( ${#files[@]} == 0 )); then
+    echo "[error] no sql files found in downgrade dir: $dir" >&2
+    exit 1
+  fi
+  for file in "${files[@]}"; do
     echo "==> running $file"
     psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
   done
@@ -50,57 +76,39 @@ echo "==> reset database"
 reset_db
 
 echo "==> run V1 upgrade"
-run_dir "$ROOT_DIR/数据库设计/V1/upgrade"
+run_upgrade_dir "$MIGRATIONS_BASE/V1/upgrade"
 
 echo "==> run V1 downgrade"
-for file in $(ls "$ROOT_DIR/数据库设计/V1/downgrade"/*.sql | sort -r); do
-  echo "==> running $file"
-  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
-done
+run_downgrade_dir "$MIGRATIONS_BASE/V1/downgrade"
 
 echo "==> reset database"
 reset_db
 
 echo "==> run V1+V2 upgrade"
-run_dir "$ROOT_DIR/数据库设计/V1/upgrade"
-run_dir "$ROOT_DIR/数据库设计/V2/upgrade"
+run_upgrade_dir "$MIGRATIONS_BASE/V1/upgrade"
+run_upgrade_dir "$MIGRATIONS_BASE/V2/upgrade"
 
 echo "==> run V2 downgrade"
-for file in $(ls "$ROOT_DIR/数据库设计/V2/downgrade"/*.sql | sort -r); do
-  echo "==> running $file"
-  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
-done
+run_downgrade_dir "$MIGRATIONS_BASE/V2/downgrade"
 
 echo "==> run V1 downgrade"
-for file in $(ls "$ROOT_DIR/数据库设计/V1/downgrade"/*.sql | sort -r); do
-  echo "==> running $file"
-  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
-done
+run_downgrade_dir "$MIGRATIONS_BASE/V1/downgrade"
 
 echo "==> reset database"
 reset_db
 
 echo "==> run V1+V2+V3 upgrade"
-run_dir "$ROOT_DIR/数据库设计/V1/upgrade"
-run_dir "$ROOT_DIR/数据库设计/V2/upgrade"
-run_dir "$ROOT_DIR/数据库设计/V3/upgrade"
+run_upgrade_dir "$MIGRATIONS_BASE/V1/upgrade"
+run_upgrade_dir "$MIGRATIONS_BASE/V2/upgrade"
+run_upgrade_dir "$MIGRATIONS_BASE/V3/upgrade"
 
 echo "==> run V3 downgrade"
-for file in $(ls "$ROOT_DIR/数据库设计/V3/downgrade"/*.sql | sort -r); do
-  echo "==> running $file"
-  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
-done
+run_downgrade_dir "$MIGRATIONS_BASE/V3/downgrade"
 
 echo "==> run V2 downgrade"
-for file in $(ls "$ROOT_DIR/数据库设计/V2/downgrade"/*.sql | sort -r); do
-  echo "==> running $file"
-  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
-done
+run_downgrade_dir "$MIGRATIONS_BASE/V2/downgrade"
 
 echo "==> run V1 downgrade"
-for file in $(ls "$ROOT_DIR/数据库设计/V1/downgrade"/*.sql | sort -r); do
-  echo "==> running $file"
-  psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$file"
-done
+run_downgrade_dir "$MIGRATIONS_BASE/V1/downgrade"
 
 echo "==> migration validation completed"
