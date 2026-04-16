@@ -36,6 +36,12 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TODO-ENV-043-001 | ENV-043 | V1-gap | env-compose | `infra/docker/docker-compose.apps.local.example.yml` | blocked | `ENV-043` 依赖 `CORE-032`；当前仓库缺少 `docs/01-architecture/service-runtime-map.md`，无法在运行时拓扑未冻结的前提下落盘 apps compose 占位文件。 | 完成 `CORE-032`（补齐并审批通过 `docs/01-architecture/service-runtime-map.md`），明确 `platform-core/fabric-adapter/notification-service/outbox-publisher/search-indexer` 的运行时边界后，补齐 `infra/docker/docker-compose.apps.local.example.yml` 并通过 `docker compose config` 与本地自检。 | yes |
 
+## 当前非阻塞记录
+
+| 编号 | 对应任务编号 | 类型 | 模块 | 文件路径 | 当前状态 | 原因 | 后续补齐条件 | 是否阻塞继续开发 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| TODO-CORE-028-001 | CORE-028 | V1-gap | db | `apps/platform-core/crates/db/src/lib.rs` | accepted | `CORE-028` 已按清单实现 trait 与内存假实现，用于业务规则测试前置；但运行时持久化仓储实现尚未接入。 | 在后续领域任务中补齐 `OrderRepository` 的 PostgreSQL 实现并接入运行时 DI，补充真实 DB 集成测试并通过。 | no |
+
 ## 示例记录
 
 | 编号 | 对应任务编号 | 类型 | 模块 | 文件路径 | 当前状态 | 原因 | 后续补齐条件 | 是否阻塞继续开发 |
@@ -97,4 +103,4 @@
 - `BATCH-044`（`CORE-020`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-045`（`CORE-021`, `CORE-022`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-046`（`CORE-023`, `CORE-024`, `CORE-025`, `CORE-026`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
-- `BATCH-047`（`CORE-027`, `CORE-028`, `CORE-029`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-047`（`CORE-027`, `CORE-028`, `CORE-029`）：补记 `V1-gap` 项 `TODO-CORE-028-001`（非阻塞，追踪运行时持久化仓储接入）。

@@ -38,6 +38,10 @@ pub struct InMemoryOrderRepository {
     data: RwLock<HashMap<String, OrderRecord>>,
 }
 
+// TODO(V1-gap, CORE-028): 当前仅提供内存仓储用于业务规则测试先于基础设施联调，
+// 尚未提供 PostgreSQL 持久化实现并接入运行时依赖注入。
+// 补齐条件：在后续领域任务中提供 `OrderRepository` 的 PostgreSQL 实现并完成运行时装配。
+// 验收方式：真实 DB 环境下通过仓储集成测试，且启动链路中可切换到持久化实现。
 #[async_trait]
 impl OrderRepository for InMemoryOrderRepository {
     async fn upsert(&self, order: OrderRecord) -> AppResult<()> {
