@@ -30,3 +30,4 @@
 - `db/scripts/verify-migration-001.sh`：验证 `001_extensions_and_schemas.sql` 的扩展、schema 与公共 trigger 函数基座。
 - `db/scripts/verify-migration-010-030.sh`：验证 `010/020/025/030` 的关键表、索引、触发器与外键约束基线。
 - `db/scripts/verify-migration-040-056.sh`：验证 `040/050/055/056` 的关键表、索引、触发器与关键约束基线。
+- `db/scripts/verify-migration-057-060.sh`：验证 `057/058/059/060` 的搜索/推荐/观测核心对象与鉴权种子数据基线。
