@@ -992,18 +992,8 @@
 - 覆盖的任务清单条目：`CORE-041`, `CORE-042`, `CORE-043`, `CORE-044`
 - 未覆盖项：运行态 `/health/ready` 在当前沙箱环境未完成端口监听复验（非实现缺陷，受执行环境限制）。
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 4 个简单任务”一次性执行并汇总；未引入 V2/V3 正式实现。
-
-### BATCH-053
-
-- 状态：计划中
-- 当前任务编号：CORE-045, CORE-046, CORE-047, CORE-048
-- 当前批次目标：按连续简单任务一次性完成模块模板统一校准、运行时拓扑文档落盘、请求级中间件链收敛以及健康/运行态端点收敛。
-- 前置依赖核对结果：`CORE-045` 依赖 `CORE-033~040`，`CORE-046` 依赖 `CORE-041~044`，`CORE-047` 依赖 `CORE-042; CORE-043`，`CORE-048` 依赖 `CORE-043; CORE-047`；上述前置批次均已完成并经你确认审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/平台总体架构设计草案.md`
-- 预计涉及文件：`apps/platform-core/src/**`、`apps/platform-core/crates/http/src/lib.rs`、`docs/01-architecture/service-runtime-map.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 仓库现状差异说明：任务清单要求交付的 `docs/01-architecture/service-runtime-map.md` 当前不存在，本批将补齐并纳入验证。
 
 ### BATCH-053（实施完成）
 
@@ -1027,15 +1017,6 @@
 - 待人工审批结论：通过
 - 备注：已修复仓库现状差异（`service-runtime-map.md` 缺失）并纳入本批交付。
 
-### BATCH-054
-
-- 状态：计划中
-- 当前任务编号：CORE-049, CORE-050, CORE-051
-- 当前批次目标：按连续 3 个简单任务完成 Provider trait 收敛校准、内部调试端点收敛拆分、一键验证入口补齐（编译/测试/OpenAPI/迁移检查）。
-- 前置依赖核对结果：`CORE-049` 依赖 `CORE-044`，`CORE-050` 依赖 `CORE-038; CORE-047; CORE-048`，`CORE-051` 依赖 `CORE-041; CORE-042; CORE-043; CORE-044`；上述前置均已完成且你已确认审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`
-- 预计涉及文件：`apps/platform-core/crates/provider-kit/src/lib.rs`、`apps/platform-core/crates/http/src/lib.rs`、`xtask/src/main.rs`、`Makefile`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-054（实施完成）
 
 - 状态：待审批
@@ -1055,7 +1036,7 @@
 - 覆盖的任务清单条目：`CORE-049`, `CORE-050`, `CORE-051`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`CORE-010` 与 `CORE-032` 前置依赖已在本批补齐，可在下一批按顺序处理并关闭历史阻塞链。
 
 ### BATCH-055
@@ -1082,18 +1063,8 @@
 - 覆盖的任务清单条目：`CORE-010`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`CORE-010` 完成后，`CORE-032` 依赖已满足，可在下一批执行并联动解除 `TODO-ENV-043-001` 阻塞链。
-
-### BATCH-056
-
-- 状态：计划中
-- 当前任务编号：CORE-032
-- 当前批次目标：固化 `service-runtime-map` 运行时拓扑边界，明确 `platform-core` 模块内能力、外围独立进程能力与 trait 占位能力，并完成编译/测试/运行态探活验证。
-- 前置依赖核对结果：`CORE-032` 依赖 `CTX-019; CTX-020; CORE-010`，对应任务均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/开发准备/服务清单与服务边界正式版.md`
-- 预计涉及文件：`docs/01-architecture/service-runtime-map.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 仓库现状差异说明：`service-runtime-map.md` 已在 `BATCH-053` 补齐，但当前仍需以 `CORE-032` 任务口径完成正式校准与闭环记录。
 
 ### BATCH-056（实施完成）
 
@@ -1110,5 +1081,42 @@
 - 覆盖的任务清单条目：`CORE-032`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无（仅更新既有阻塞项 `TODO-ENV-043-001` 的阻塞原因与补齐条件，状态保持 `blocked`，等待本批审批通过后解除）
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批未变更业务代码与目录骨架，仅对运行时拓扑冻结文档与阻塞链追踪文档做一致性校准。
+
+### BATCH-057
+
+- 状态：计划中
+- 当前任务编号：ENV-043
+- 当前批次目标：补齐 `infra/docker/docker-compose.apps.local.example.yml` 占位文件，固定业务应用容器化联调参考编排，并完成 compose 配置校验与本地自检闭环。
+- 前置依赖核对结果：`ENV-043` 依赖 `ENV-042; CORE-032`，对应任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/服务清单与服务边界正式版.md`
+- 预计涉及文件：`infra/docker/docker-compose.apps.local.example.yml`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 仓库现状差异说明：任务清单要求的 `docker-compose.apps.local.example.yml` 当前缺失，需在本批补齐。
+
+### BATCH-057（实施完成）
+
+- 状态：待审批
+- 当前任务编号：ENV-043
+- 当前批次目标：补齐 `infra/docker/docker-compose.apps.local.example.yml` 占位文件，固定业务应用容器化联调参考编排，并完成 compose 配置校验与本地自检闭环。
+- 前置依赖核对结果：`ENV-043` 依赖 `ENV-042; CORE-032`，对应任务均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/服务清单与服务边界正式版.md`
+- 已实现功能：
+  - 新增 `infra/docker/docker-compose.apps.local.example.yml`，为 `platform-core`、`fabric-adapter`、`notification-service`、`outbox-publisher`、`search-indexer` 提供容器化联调占位编排（`apps` profile，依赖 core 中间件健康状态）。
+  - 更新 runbook `docs/04-runbooks/local-startup.md`，新增“应用层占位编排”可选校验与叠加启动步骤，保持默认 V1 流程仍以本机进程启动为主。
+  - 关闭阻塞项 `TODO-ENV-043-001`，解除 `ENV-043` 阻塞链。
+- 涉及文件：`infra/docker/docker-compose.apps.local.example.yml`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml -f infra/docker/docker-compose.apps.local.example.yml config >/tmp/datab-compose-apps-config.yaml`
+  2. `make up-local`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  4. `make up-demo`
+  5. `./infra/kafka/init-topics.sh`
+  6. `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+- 验证结果：通过。compose config 校验通过；`check-local-stack.sh core` 全项通过；`smoke-local.sh` 首次因 topic 未初始化失败（`topic missing: outbox.events`），补跑 `init-topics.sh` 后再次执行 smoke 全通过。
+- 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/服务清单与服务边界正式版.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`ENV-043`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无（已关闭 `TODO-ENV-043-001`）
+- 待人工审批结论：待审批
+- 备注：本批仅新增应用层 compose 占位编排与 runbook 步骤，不改变 V1 默认“基础设施容器 + 业务本机进程”主流程。
