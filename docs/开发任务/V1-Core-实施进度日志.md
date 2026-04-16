@@ -812,7 +812,7 @@
 - 覆盖的任务清单条目：`CORE-015`, `CORE-016`, `CORE-017`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 3 个简单任务”执行并统一汇报。
 
 ### BATCH-043
@@ -830,5 +830,23 @@
 - 覆盖的任务清单条目：`CORE-018`, `CORE-019`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批按“连续 2 个简单任务”执行并统一汇报，`CORE-020`（权限门面）作为复杂任务在下一批单独推进。
+
+### BATCH-044
+
+- 状态：待审批
+- 当前任务编号：CORE-020
+- 当前批次目标：实现统一权限门面，收敛会话解析与权限评估入口，避免业务 handler 直接调用 Keycloak；业务放行仍由应用层/访问控制层执行。
+- 前置依赖核对结果：`CORE-020` 依赖 `BOOT-001; BOOT-002; BOOT-005; BOOT-006; ENV-001`，均已完成且你已确认审批通过。
+- 预计涉及文件：`apps/platform-core/crates/auth/**`、`apps/platform-core/src/**`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：在 `crates/auth` 新增统一权限门面 `AuthorizationFacade` 与默认实现 `UnifiedAuthorizationFacade`，收敛 `Bearer -> SessionSubject` 解析与权限评估入口；新增 `AuthorizationRequest/AuthorizationDecision` 统一输入输出模型，门面仅返回评估结果，不直接放行业务动作；在 `platform-core` 启动阶段将 `Arc<dyn AuthorizationFacade>` 注入容器，形成业务层可复用的单一权限入口，避免 handler 直接面向外部 IAM SDK。
+- 涉及文件：`apps/platform-core/crates/auth/src/lib.rs`、`apps/platform-core/src/lib.rs`、`docs/01-architecture/platform-core-workspace.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. 运行 `platform-core` 完成基础探活，校验权限门面接入不破坏启动链路。
+- 验证结果：通过。`cargo build` 通过；`cargo test` 通过（新增 `auth` 门面单测：会话解析+权限放行、无权限拒绝）；运行态 `cargo run -p platform-core` 启动成功，`/health/ready` 返回 `{"success":true,"data":"ready"}`。
+- 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`原始PRD/链上链下技术架构与能力边界稿.md`、`开发准备/技术选型正式版.md`
+- 覆盖的任务清单条目：`CORE-020`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批按“复杂单任务”执行。

@@ -52,6 +52,12 @@
 - 在 `crates/audit-kit` 提供 `AuditAnnotation`，支持在 handler 层声明 `action`、`risk_level`、`object_type`、`object_id`、`result`。
 - 在 `crates/http` 提供 `set_audit_annotation/get_audit_annotation`，将注解挂载到请求上下文，供应用层审计写入统一消费。
 
+统一权限门面（V1-Core）：
+
+- 在 `crates/auth` 提供 `AuthorizationFacade` 统一入口，收敛 `Bearer -> SessionSubject` 解析与权限评估流程。
+- 权限门面只返回 `AuthorizationDecision`，不直接执行业务放行；真正放行仍在应用层/访问控制层执行。
+- `platform-core` 启动时把统一门面注册进容器，业务 handler 避免直接调用 Keycloak/外部 IAM SDK。
+
 约束：
 
 - 业务 handler 不直接依赖外部 provider SDK，统一经内部 crate/门面隔离。

@@ -1,5 +1,8 @@
 use audit_kit::NoopAuditWriter;
-use auth::{NoopStepUpGateway, RolePermissionChecker};
+use auth::{
+    AuthorizationFacade, MockJwtParser, NoopStepUpGateway, RolePermissionChecker,
+    UnifiedAuthorizationFacade,
+};
 use config::{ProviderMode, RuntimeConfig};
 use db::{DbPool, DbPoolConfig, NoopBusinessMutationWriter, TxTemplate};
 use http::{ApiResponse, build_router, live_handler, serve};
@@ -41,6 +44,14 @@ impl Module for CoreModule {
         ctx.container.insert(NoopBusinessMutationWriter).await;
         ctx.container.insert(RolePermissionChecker).await;
         ctx.container.insert(NoopStepUpGateway).await;
+        ctx.container.insert(MockJwtParser).await;
+        ctx.container
+            .insert::<Arc<dyn AuthorizationFacade>>(Arc::new(UnifiedAuthorizationFacade::new(
+                Box::new(MockJwtParser),
+                Box::new(RolePermissionChecker),
+                Box::new(NoopStepUpGateway),
+            )))
+            .await;
         ctx.container.insert(NoopAuditWriter).await;
         ctx.container.insert(NoopOutboxWriter).await;
         ctx.container
