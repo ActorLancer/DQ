@@ -26,7 +26,7 @@ pub mod search;
 mod tests {
     use std::path::Path;
 
-    const MODULES: &[&str] = &[
+    const CORE010_REQUIRED_MODULES: &[&str] = &[
         "access",
         "audit",
         "authorization",
@@ -38,25 +38,29 @@ mod tests {
         "delivery",
         "developer",
         "dispute",
-        "fairness",
         "iam",
-        "inquiry",
-        "integration",
         "listing",
         "ops",
         "order",
         "party",
-        "provider_ops",
         "recommendation",
         "review",
         "search",
     ];
-    const TEMPLATE_DIRS: &[&str] = &["api", "application", "domain", "repo", "dto", "events", "tests"];
+    const TEMPLATE_DIRS: &[&str] = &[
+        "api",
+        "application",
+        "domain",
+        "repo",
+        "dto",
+        "events",
+        "tests",
+    ];
 
     #[test]
-    fn all_modules_follow_template_layout() {
+    fn core010_required_modules_follow_template_layout() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/modules");
-        for module in MODULES {
+        for module in CORE010_REQUIRED_MODULES {
             for dir in TEMPLATE_DIRS {
                 let path = root.join(module).join(dir);
                 assert!(
@@ -66,5 +70,15 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn legacy_recommend_module_directory_is_absent() {
+        let legacy = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/modules/recommend");
+        assert!(
+            !legacy.exists(),
+            "legacy module directory should be removed: {}",
+            legacy.display()
+        );
     }
 }

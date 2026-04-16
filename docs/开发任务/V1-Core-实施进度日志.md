@@ -1024,7 +1024,7 @@
 - 覆盖的任务清单条目：`CORE-045`, `CORE-046`, `CORE-047`, `CORE-048`
 - 未覆盖项：仅宿主机运行态端口监听复验（受沙箱限制）。
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：已修复仓库现状差异（`service-runtime-map.md` 缺失）并纳入本批交付。
 
 ### BATCH-054
@@ -1057,3 +1057,30 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：`CORE-010` 与 `CORE-032` 前置依赖已在本批补齐，可在下一批按顺序处理并关闭历史阻塞链。
+
+### BATCH-055
+
+- 状态：计划中
+- 当前任务编号：CORE-010
+- 当前批次目标：在既有骨架基础上完成 `src/modules` 目录与模板校准，确保 `CORE-010` 指定模块集合模板齐备并清理历史遗留目录漂移。
+- 前置依赖核对结果：`CORE-010` 依赖 `CORE-033~051`，相关任务均已完成且你已确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/01-architecture/service-runtime-map.md`
+- 预计涉及文件：`apps/platform-core/src/modules/mod.rs`、`apps/platform-core/src/modules/**`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-055（实施完成）
+
+- 状态：待审批
+- 当前任务编号：CORE-010
+- 当前批次目标：在既有骨架基础上完成 `src/modules` 目录与模板校准，确保 `CORE-010` 指定模块集合模板齐备并清理历史遗留目录漂移。
+- 前置依赖核对结果：`CORE-010` 依赖 `CORE-033~051`，相关任务均已完成且你已确认审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/01-architecture/platform-core-workspace.md`、`docs/01-architecture/service-runtime-map.md`
+- 已实现功能：将模块模板校验用例改为按 `CORE-010` 指定 19 个模块集合进行精确校验（`iam/party/access/catalog/contract_meta/listing/review/order/contract/authorization/delivery/billing/dispute/audit/consistency/search/recommendation/developer/ops`）；新增 `legacy_recommend_module_directory_is_absent` 回归用例；移除历史遗留的空目录 `src/modules/recommend`，避免 `recommend`/`recommendation` 双轨并存漂移。
+- 涉及文件：`apps/platform-core/src/modules/mod.rs`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：1. `cargo build`；2. `cargo test`；3. `cargo xtask all`。
+- 验证结果：通过。`cargo build` 与 `cargo test` 通过（新增 `core010_required_modules_follow_template_layout` 与 `legacy_recommend_module_directory_is_absent` 通过）；`cargo xtask all` 通过（含 fmt/check/test/query-compile/openapi-check/migrate-check/seed，migrate-check 在沙箱外 Docker 权限下通过）。
+- 覆盖的冻结文档条目：`开发准备/平台总体架构设计草案.md`、`开发准备/服务清单与服务边界正式版.md`、`全集成文档/数据交易平台-全集成基线-V1.md`
+- 覆盖的任务清单条目：`CORE-010`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`CORE-010` 完成后，`CORE-032` 依赖已满足，可在下一批执行并联动解除 `TODO-ENV-043-001` 阻塞链。
