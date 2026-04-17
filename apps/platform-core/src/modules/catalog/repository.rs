@@ -1,10 +1,10 @@
 use crate::modules::catalog::domain::{
     AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
     CreateDataResourceRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
-    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
-    DataProductView, DataResourceView, ExtractionJobView, FormatDetectionResultView,
-    PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView, RawIngestBatchView,
-    RawObjectManifestView,
+    CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
+    CreateRawObjectManifestRequest, DataProductView, DataResourceView, ExtractionJobView,
+    FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
+    PreviewArtifactView, ProductSkuView, RawIngestBatchView, RawObjectManifestView,
 };
 use tokio_postgres::{GenericClient, Row};
 
@@ -232,6 +232,49 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(parse_extraction_job_row(&row))
+    }
+
+    pub async fn create_preview_artifact(
+        client: &impl GenericClient,
+        asset_version_id: &str,
+        payload: &CreatePreviewArtifactRequest,
+    ) -> Result<PreviewArtifactView, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.preview_artifact (
+                   asset_version_id, raw_object_manifest_id, preview_type, preview_uri, preview_hash,
+                   preview_payload, preview_policy_json, status
+                 ) VALUES (
+                   $1::text::uuid, $2::text::uuid, $3, $4, $5, $6::jsonb, $7::jsonb, $8
+                 )
+                 RETURNING
+                   preview_artifact_id::text,
+                   asset_version_id::text,
+                   raw_object_manifest_id::text,
+                   preview_type,
+                   preview_uri,
+                   preview_hash,
+                   preview_payload,
+                   preview_policy_json,
+                   status,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &asset_version_id,
+                    &payload.raw_object_manifest_id,
+                    &payload.preview_type,
+                    &payload.preview_uri,
+                    &payload.preview_hash,
+                    &payload.preview_payload,
+                    &payload.preview_policy_json,
+                    &payload
+                        .status
+                        .clone()
+                        .unwrap_or_else(|| "active".to_string()),
+                ],
+            )
+            .await?;
+        Ok(parse_preview_artifact_row(&row))
     }
 
     pub async fn create_data_resource(
@@ -818,5 +861,21 @@ fn parse_extraction_job_row(row: &Row) -> ExtractionJobView {
         completed_at: row.get(10),
         created_at: row.get(11),
         updated_at: row.get(12),
+    }
+}
+
+fn parse_preview_artifact_row(row: &Row) -> PreviewArtifactView {
+    PreviewArtifactView {
+        preview_artifact_id: row.get(0),
+        asset_version_id: row.get(1),
+        raw_object_manifest_id: row.get(2),
+        preview_type: row.get(3),
+        preview_uri: row.get(4),
+        preview_hash: row.get(5),
+        preview_payload: row.get(6),
+        preview_policy_json: row.get(7),
+        status: row.get(8),
+        created_at: row.get(9),
+        updated_at: row.get(10),
     }
 }

@@ -329,3 +329,32 @@ pub struct ExtractionJobView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreatePreviewArtifactRequest {
+    pub asset_version_id: Option<String>,
+    pub raw_object_manifest_id: Option<String>,
+    pub preview_type: String,
+    pub preview_uri: Option<String>,
+    pub preview_hash: Option<String>,
+    #[serde(default)]
+    pub preview_payload: Value,
+    #[serde(default)]
+    pub preview_policy_json: Value,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PreviewArtifactView {
+    pub preview_artifact_id: String,
+    pub asset_version_id: String,
+    pub raw_object_manifest_id: Option<String>,
+    pub preview_type: String,
+    pub preview_uri: Option<String>,
+    pub preview_hash: Option<String>,
+    pub preview_payload: Value,
+    pub preview_policy_json: Value,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}

@@ -188,6 +188,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExtractionJob"
+  /api/v1/assets/{versionId}/preview-artifacts:
+    post:
+      summary: Create preview artifact for asset version
+      operationId: createPreviewArtifact
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePreviewArtifactRequest"
+      responses:
+        "200":
+          description: Preview artifact created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewArtifact"
 components:
   schemas:
     CreateDataProductRequest:
@@ -664,6 +688,79 @@ components:
         - job_type
         - job_config_json
         - result_summary_json
+        - status
+        - created_at
+        - updated_at
+    CreatePreviewArtifactRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        preview_type:
+          type: string
+        preview_uri:
+          type: string
+          nullable: true
+        preview_hash:
+          type: string
+          nullable: true
+        preview_payload:
+          type: object
+          additionalProperties: true
+        preview_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+      required:
+        - preview_type
+    PreviewArtifact:
+      type: object
+      properties:
+        preview_artifact_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        preview_type:
+          type: string
+        preview_uri:
+          type: string
+          nullable: true
+        preview_hash:
+          type: string
+          nullable: true
+        preview_payload:
+          type: object
+          additionalProperties: true
+        preview_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - preview_artifact_id
+        - asset_version_id
+        - preview_type
+        - preview_policy_json
         - status
         - created_at
         - updated_at

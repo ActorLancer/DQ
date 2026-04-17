@@ -184,4 +184,24 @@ mod tests {
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
+
+    #[tokio::test]
+    async fn rejects_create_preview_artifact_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/preview-artifacts")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "preview_type":"schema_preview",
+                  "preview_uri":"s3://preview/schema.json",
+                  "preview_policy_json":{"mask":"pii_only"}
+                }"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
 }

@@ -2239,7 +2239,7 @@
 
 ### BATCH-091
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-007
 - 当前批次目标：实现 `POST /api/v1/raw-object-manifests/{id}/extraction-jobs`，先落地任务记录与状态机占位，不强耦合真实计算引擎。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-090` 已获人工审批通过，允许执行。
@@ -2287,5 +2287,67 @@
 - 覆盖的任务清单条目：`CAT-007`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批继续沿用你调整后的测试拆分结构，避免将新增逻辑与测试回堆到单一超大文件。
+
+### BATCH-092
+
+- 状态：计划中
+- 当前任务编号：CAT-008
+- 当前批次目标：实现 `POST /api/v1/assets/{versionId}/preview-artifacts`，支持样例文件、schema 预览、预览掩码策略，并补齐权限、审计、OpenAPI 与最小验证。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-091` 已获人工审批通过，允许执行。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-008` 描述、DoD、acceptance 与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-008` 顺序与 `CAT-009` 边界。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：计划中 -> 编码 -> 验证 -> 待审批固定流程。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与不可越阶段。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用批次记录格式并先记“计划中”。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：`TODO-PROC-BIL-001` 追溯约束保持。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：`BATCH-091` 已补录通过。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：保持 V1 范围，不引入 V2/V3 正式能力。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：`catalog` 子域实现边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/assets/{versionId}/preview-artifacts`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批维持审计闭环，不新增业务 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + 审计回查闭环。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：沿用功能分层，避免实现/测试堆积到单文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 作为业务主状态权威。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚实现。
+- technical_reference 约束映射：
+  - `docs/原始PRD/数据原样处理与产品化加工流程设计.md:L189`：产品包装阶段需产出 `sample / preview` 及 `schema` 相关工件。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L157`：4.2A 产品包装区明确“生成 preview_artifact / sample / manifest”。
+  - `docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql:L1`：`catalog.preview_artifact` 字段、默认状态、索引与触发器约束。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-092（待审批）
+
+- 状态：待审批
+- 当前任务编号：CAT-008
+- 当前批次目标：实现 `POST /api/v1/assets/{versionId}/preview-artifacts`，支持样例文件、schema 预览、预览掩码策略。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-091` 已获人工审批通过。
+- 已实现功能：
+  1. 新增预览工件模型：`CreatePreviewArtifactRequest`、`PreviewArtifactView`。
+  2. 新增仓储方法：`create_preview_artifact`，写入 `catalog.preview_artifact`。
+  3. 新增接口：`POST /api/v1/assets/{versionId}/preview-artifacts`，包含路径/请求一致性校验、资产版本存在性校验、可选原始清单存在性校验、事务审计。
+  4. 新增权限拒绝测试：无权限角色访问 preview-artifacts 接口返回 `403`。
+  5. 更新 OpenAPI：新增 preview-artifacts 路径与 `CreatePreviewArtifactRequest/PreviewArtifact` schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-人工审批记录.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 本地数据库连通性核验：`psql postgres://datab@127.0.0.1:5432/datab -c 'select 1'`
+  4. 端到端联调（`APP_PORT=18087`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`KAFKA_BROKERS=127.0.0.1:9094`）：
+     - 预置数据：`core.organization` + `catalog.data_asset` + `catalog.asset_version` + `catalog.raw_ingest_batch` + `catalog.raw_object_manifest`
+     - 调用 `POST /api/v1/assets/{versionId}/preview-artifacts`
+     - 回查 `catalog.preview_artifact` 与 `audit.audit_event`
+     - 清理测试数据（`preview_artifact/raw_object_manifest/raw_ingest_batch/asset_version/data_asset/organization`）
+  5. 数据残留核对：验证业务表残留均为 `0`；审计表按 append-only 保留请求记录。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `51 passed, 0 failed, 1 ignored`；API 返回 `success=true` 且 `status=active`；审计命中 `catalog.preview_artifact.create|preview_artifact|success|req-cat008-preview-001`；业务表清理后残留 `0|0|0|0|0|0`，审计残留 `1`。
+- 覆盖的冻结文档条目：`docs/原始PRD/数据原样处理与产品化加工流程设计.md`（产品包装区 `sample/preview`）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2A 生成 `preview_artifact / sample / manifest`）、`docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql`（`catalog.preview_artifact` 字段与默认状态）、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（5.5 preview-artifacts 接口项）。
+- 覆盖的任务清单条目：`CAT-008`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：联调首轮因测试插入的 `asset_version.allowed_region` 为 `NULL` 触发存在性查询反序列化错误；已按表约束改为 `ARRAY[]::text[]` 后复测通过。

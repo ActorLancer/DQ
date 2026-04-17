@@ -1,9 +1,10 @@
 use crate::modules::catalog::domain::{
     CreateDataProductRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
-    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
-    DataProductView, ExtractionJobView, FormatDetectionResultView, PatchDataProductRequest,
-    PatchProductSkuRequest, ProductSkuView, RawIngestBatchView, RawObjectManifestView,
-    default_trade_mode_for_sku_type, is_standard_sku_type,
+    CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
+    CreateRawObjectManifestRequest, DataProductView, ExtractionJobView, FormatDetectionResultView,
+    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView, ProductSkuView,
+    RawIngestBatchView, RawObjectManifestView, default_trade_mode_for_sku_type,
+    is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
@@ -39,6 +40,10 @@ pub fn router() -> Router {
         .route(
             "/api/v1/raw-object-manifests/{id}/extraction-jobs",
             post(create_extraction_job),
+        )
+        .route(
+            "/api/v1/assets/{versionId}/preview-artifacts",
+            post(create_preview_artifact),
         )
 }
 
@@ -581,6 +586,79 @@ async fn create_extraction_job(
     Ok(ApiResponse::ok(view))
 }
 
+async fn create_preview_artifact(
+    headers: HeaderMap,
+    Path(asset_version_id): Path<String>,
+    Json(payload): Json<CreatePreviewArtifactRequest>,
+) -> Result<Json<ApiResponse<PreviewArtifactView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::RawIngestWrite,
+        "catalog preview artifact create",
+    )?;
+    validate_create_preview_artifact_payload(&asset_version_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
+        .await
+        .map_err(map_db_error)?;
+    if existing_version.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset version does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    if let Some(raw_object_manifest_id) = payload.raw_object_manifest_id.as_deref() {
+        let existing_manifest =
+            PostgresCatalogRepository::get_raw_object_manifest(&client, raw_object_manifest_id)
+                .await
+                .map_err(map_db_error)?;
+        if existing_manifest.is_none() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "raw object manifest does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            ));
+        }
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::create_preview_artifact(&tx, &asset_version_id, &payload)
+        .await
+        .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "preview_artifact",
+        &view.preview_artifact_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.preview_artifact.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.preview_artifact.create",
+        preview_artifact_id = %view.preview_artifact_id,
+        asset_version_id = %asset_version_id,
+        "catalog preview artifact created"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 fn validate_create_product_payload(
     payload: &CreateDataProductRequest,
     headers: &HeaderMap,
@@ -869,6 +947,36 @@ fn validate_create_extraction_job_payload(
             Json(ErrorResponse {
                 code: ErrorCode::CatValidationFailed.as_str().to_string(),
                 message: "job_type is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_create_preview_artifact_payload(
+    asset_version_id_from_path: &str,
+    payload: &CreatePreviewArtifactRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(asset_version_id_from_body) = payload.asset_version_id.as_deref()
+        && asset_version_id_from_body != asset_version_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset_version_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.preview_type.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "preview_type is required".to_string(),
                 request_id: header(headers, "x-request-id"),
             }),
         ));
