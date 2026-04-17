@@ -1810,17 +1810,9 @@
 - 待人工审批结论：通过
 - 备注：`TODO-PROC-BIL-001` 仍保持冻结状态，本批未扩展其它 BIL 任务。
 
-### BATCH-080（计划中）
-
-- 状态：计划中
-- 当前任务编号：IAM-005, IAM-006, IAM-007, IAM-008
-- 当前批次目标：在 `iam` 模块补齐成员邀请、会话/设备最小管理、应用接口闭环与应用密钥轮换/吊销能力，并同步审计、权限、OpenAPI 与最小测试。
-- 前置依赖核对结果：`IAM-005~008` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，上述任务均已完成并审批通过；本批无阻塞。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
-
 ### BATCH-080（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：IAM-005, IAM-006, IAM-007, IAM-008
 - 当前批次目标：在 `iam` 模块补齐成员邀请、会话/设备最小管理、应用接口闭环与应用密钥轮换/吊销能力，并同步审计、权限、OpenAPI 与最小测试。
 - 前置依赖核对结果：`IAM-005~008` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
@@ -1850,5 +1842,47 @@
 - 覆盖的任务清单条目：`IAM-005`, `IAM-006`, `IAM-007`, `IAM-008`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`TODO-PROC-BIL-001` 持续保持冻结状态；本批未扩展 BIL 线。
+
+### BATCH-081（计划中）
+
+- 状态：计划中
+- 当前任务编号：IAM-009, IAM-010, IAM-011, IAM-012
+- 当前批次目标：在 IAM/Access 模块补齐角色-权限-作用域放行规则、RBAC 种子加载与统一权限校验中间件，并实现 step-up 占位与 MFA 占位接口。
+- 前置依赖核对结果：`IAM-009~012` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/权限设计/接口权限校验清单.md`、`docs/权限设计/权限点清单.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`
+
+### BATCH-081（待审批）
+
+- 状态：待审批
+- 当前任务编号：IAM-009, IAM-010, IAM-011, IAM-012
+- 当前批次目标：在 IAM/Access 模块补齐角色-权限-作用域放行规则、RBAC 种子加载与统一权限校验中间件，并实现 step-up 占位与 MFA 占位接口。
+- 前置依赖核对结果：`IAM-009~012` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/权限设计/接口权限校验清单.md`、`docs/权限设计/权限点清单.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`
+- 已实现功能：
+  - `IAM-009`：在 `access` 模块新增放行规则模型 `AccessRule` 与规则集 `ACCESS_RULES`，覆盖权限点、作用域、按钮与 API 放行模式；新增 IAM 接口 `GET /api/v1/iam/access/rules` 与 `POST /api/v1/iam/access/check`。
+  - `IAM-010`：在 `iam/service` 新增 RBAC 种子加载机制（`OnceLock`）与角色域分层（tenant/platform/audit/developer）；`is_allowed` 统一走种子权限映射，不再硬编码散落判断；新增 `GET /api/v1/iam/rbac/seeds`。
+  - `IAM-011`：实现高风险 step-up 占位链路：`POST /api/v1/iam/step-up/check` 创建挑战并统一判定冻结/赔付/证据导出/回放/权限变更；`POST /api/v1/iam/step-up/challenges/{id}/verify` 完成简化验码与状态推进。
+  - `IAM-012`：实现 MFA 占位接口：`GET/POST /api/v1/iam/mfa/authenticators`、`DELETE /api/v1/iam/mfa/authenticators/{id}`；local 模式支持 `IAM_MFA_MODE=mock|disabled`，并冻结接口形态用于后续真实接入。
+  - 审计补齐：新增 `iam.step_up.check`、`iam.step_up.verify`、`iam.mfa.authenticator.create`、`iam.mfa.authenticator.delete` 审计事件。
+  - OpenAPI 同步：`packages/openapi/iam.yaml` 新增 access/rbac/step-up/mfa 路径并对齐实现。
+- 涉及文件：`apps/platform-core/src/modules/access/mod.rs`、`apps/platform-core/src/modules/iam/service.rs`、`apps/platform-core/src/modules/iam/domain.rs`、`apps/platform-core/src/modules/iam/api.rs`、`packages/openapi/iam.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务并手工 API 验证（`APP_PORT=18080`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`IAM_MFA_MODE=mock`，`IAM_STEP_UP_MODE=mock`）：
+     - `GET /api/v1/iam/access/rules`
+     - `POST /api/v1/iam/access/check`
+     - `POST /api/v1/iam/step-up/check`
+     - `POST /api/v1/iam/step-up/challenges/{id}/verify`
+     - `POST /api/v1/iam/mfa/authenticators`
+     - `DELETE /api/v1/iam/mfa/authenticators/{id}`
+  4. 审计回查：`SELECT action_name, ref_type, result_code FROM audit.audit_event WHERE action_name IN ('iam.step_up.check','iam.step_up.verify','iam.mfa.authenticator.create','iam.mfa.authenticator.delete') ORDER BY event_time DESC LIMIT 12;`
+- 验证结果：通过。`platform-core` 单测 `27/27` 通过；手工 API 返回 `success=true`；step-up 挑战从 `challenge_required` 到 `verified`；MFA 从 `active` 到 `revoked`；审计表查询到上述四类动作记录。
+- 覆盖的冻结文档条目：权限点与接口放行基线（角色/作用域/按钮/API 放行规则）、身份与会话协议中的 `step-up` 与 `mfa` 接口形态、IAM 技术接入本地 mock 占位策略。
+- 覆盖的任务清单条目：`IAM-009`, `IAM-010`, `IAM-011`, `IAM-012`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批在不重建骨架前提下复用既有 IAM API 结构扩展；`TODO-PROC-BIL-001` 持续保持冻结状态。

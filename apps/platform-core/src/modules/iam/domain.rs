@@ -169,6 +169,65 @@ pub struct DeviceView {
     pub last_seen_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AccessPermissionRuleView {
+    pub permission_code: String,
+    pub scopes: Vec<String>,
+    pub api_patterns: Vec<String>,
+    pub button_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccessCheckRequest {
+    pub permission_code: String,
+    pub scope: Option<String>,
+    pub api: Option<String>,
+    pub button_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AccessCheckView {
+    pub allowed: bool,
+    pub permission_code: String,
+    pub matched_role: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StepUpCheckRequest {
+    pub action_name: String,
+    pub target_ref_type: Option<String>,
+    pub target_ref_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct StepUpCheckView {
+    pub challenge_id: String,
+    pub action_name: String,
+    pub requires_step_up: bool,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StepUpVerifyRequest {
+    pub verification_code: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct MfaAuthenticatorView {
+    pub authenticator_id: String,
+    pub user_id: String,
+    pub authenticator_type: String,
+    pub device_label: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateMfaAuthenticatorRequest {
+    pub user_id: String,
+    pub authenticator_type: String,
+    pub device_label: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateConnectorRequest {
     pub org_id: Option<String>,

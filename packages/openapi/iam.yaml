@@ -226,6 +226,79 @@ paths:
           description: Device revoked
         "404":
           description: Not found
+  /api/v1/iam/access/rules:
+    get:
+      summary: List IAM access permission rules
+      operationId: listIamAccessRules
+      responses:
+        "200":
+          description: Access rules
+  /api/v1/iam/access/check:
+    post:
+      summary: Evaluate role/scope/api/button access
+      operationId: checkIamAccessRule
+      responses:
+        "200":
+          description: Access check result
+  /api/v1/iam/rbac/seeds:
+    get:
+      summary: Inspect RBAC seed roles
+      operationId: getIamRbacSeeds
+      responses:
+        "200":
+          description: RBAC seed list
+  /api/v1/iam/step-up/check:
+    post:
+      summary: Create/check step-up challenge for high-risk action
+      operationId: checkStepUp
+      responses:
+        "200":
+          description: Step-up challenge status
+  /api/v1/iam/step-up/challenges/{id}/verify:
+    post:
+      summary: Verify step-up challenge
+      operationId: verifyStepUpChallenge
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Step-up verification result
+        "404":
+          description: Not found
+  /api/v1/iam/mfa/authenticators:
+    get:
+      summary: List MFA authenticators
+      operationId: listMfaAuthenticators
+      responses:
+        "200":
+          description: MFA authenticators
+    post:
+      summary: Create MFA authenticator (mock/local)
+      operationId: createMfaAuthenticator
+      responses:
+        "200":
+          description: MFA authenticator created
+  /api/v1/iam/mfa/authenticators/{id}:
+    delete:
+      summary: Revoke MFA authenticator
+      operationId: deleteMfaAuthenticator
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: MFA authenticator revoked
+        "404":
+          description: Not found
   /api/v1/iam/connectors:
     post:
       summary: Create connector

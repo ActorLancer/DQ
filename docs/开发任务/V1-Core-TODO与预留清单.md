@@ -141,3 +141,4 @@
 - `BATCH-078`（`BIL-023`, `DB-034`）：关闭阻塞项 `TODO-DB-034-001`（已补齐 SKU 计费触发矩阵文档、`031` 种子与校验脚本并通过验证）；`TODO-PROC-BIL-001` 保持冻结，仅执行本次依赖解锁所需最小范围补齐。
 - `BATCH-079`（`IAM-001`, `IAM-002`, `IAM-003`, `IAM-004`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
 - `BATCH-080`（`IAM-005`, `IAM-006`, `IAM-007`, `IAM-008`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
+- `BATCH-081`（`IAM-009`, `IAM-010`, `IAM-011`, `IAM-012`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
