@@ -494,3 +494,67 @@ pub struct AssetQualityReportView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateAssetProcessingJobInputSource {
+    pub input_asset_version_id: String,
+    pub input_role: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateAssetProcessingJobRequest {
+    pub asset_version_id: Option<String>,
+    pub processing_mode: String,
+    pub processor_org_id: Option<String>,
+    pub executor_type: Option<String>,
+    pub job_name: Option<String>,
+    pub transform_spec_version: Option<String>,
+    pub desensitization_profile: Option<String>,
+    pub standardization_profile: Option<String>,
+    pub labeling_profile: Option<String>,
+    pub model_artifact_ref: Option<String>,
+    pub evidence_uri: Option<String>,
+    pub evidence_hash: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    #[serde(default)]
+    pub input_sources: Vec<CreateAssetProcessingJobInputSource>,
+    #[serde(default)]
+    pub processing_summary_json: Value,
+    pub status: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AssetProcessingInputView {
+    pub processing_input_id: String,
+    pub input_asset_version_id: String,
+    pub input_role: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct AssetProcessingJobView {
+    pub processing_job_id: String,
+    pub output_asset_version_id: String,
+    pub processing_mode: String,
+    pub processor_org_id: Option<String>,
+    pub executor_type: String,
+    pub job_name: Option<String>,
+    pub transform_spec_version: Option<String>,
+    pub desensitization_profile: Option<String>,
+    pub standardization_profile: Option<String>,
+    pub labeling_profile: Option<String>,
+    pub model_artifact_ref: Option<String>,
+    pub evidence_uri: Option<String>,
+    pub evidence_hash: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub input_sources: Vec<AssetProcessingInputView>,
+    pub processing_summary_json: Value,
+    pub status: String,
+    pub metadata: Value,
+    pub created_at: String,
+    pub updated_at: String,
+}

@@ -1,6 +1,7 @@
 use crate::modules::catalog::domain::{
-    AssetFieldDefinitionView, AssetQualityReportView, AssetVersionView,
-    CreateAssetFieldDefinitionRequest, CreateAssetQualityReportRequest, CreateAssetVersionRequest,
+    AssetFieldDefinitionView, AssetProcessingInputView, AssetProcessingJobView,
+    AssetQualityReportView, AssetVersionView, CreateAssetFieldDefinitionRequest,
+    CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest, CreateAssetVersionRequest,
     CreateDataProductRequest, CreateDataResourceRequest, CreateExtractionJobRequest,
     CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
     CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView, DataResourceView,
@@ -771,6 +772,107 @@ impl PostgresCatalogRepository {
         Ok(parse_asset_quality_report_row(&row))
     }
 
+    pub async fn create_asset_processing_job(
+        client: &impl GenericClient,
+        output_asset_version_id: &str,
+        payload: &CreateAssetProcessingJobRequest,
+    ) -> Result<AssetProcessingJobView, tokio_postgres::Error> {
+        let mut metadata = normalize_object_json(&payload.metadata);
+        let processing_summary_json = normalize_object_json(&payload.processing_summary_json);
+        if let Value::Object(ref mut metadata_map) = metadata {
+            metadata_map.insert(
+                "processing_summary_json".to_string(),
+                processing_summary_json.clone(),
+            );
+        }
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.asset_processing_job (
+                   output_asset_version_id, processing_mode, processor_org_id, executor_type, job_name,
+                   transform_spec_version, desensitization_profile, standardization_profile, labeling_profile,
+                   model_artifact_ref, evidence_uri, evidence_hash, started_at, completed_at, status, metadata
+                 ) VALUES (
+                   $1::text::uuid, $2, $3::text::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                   $13::text::timestamptz, $14::text::timestamptz, $15, $16::jsonb
+                 )
+                 RETURNING
+                   processing_job_id::text,
+                   output_asset_version_id::text,
+                   processing_mode,
+                   processor_org_id::text,
+                   executor_type,
+                   job_name,
+                   transform_spec_version,
+                   desensitization_profile,
+                   standardization_profile,
+                   labeling_profile,
+                   model_artifact_ref,
+                   evidence_uri,
+                   evidence_hash,
+                   to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   status,
+                   metadata,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &output_asset_version_id,
+                    &payload.processing_mode,
+                    &payload.processor_org_id,
+                    &payload
+                        .executor_type
+                        .clone()
+                        .unwrap_or_else(|| "seller".to_string()),
+                    &payload.job_name,
+                    &payload.transform_spec_version,
+                    &payload.desensitization_profile,
+                    &payload.standardization_profile,
+                    &payload.labeling_profile,
+                    &payload.model_artifact_ref,
+                    &payload.evidence_uri,
+                    &payload.evidence_hash,
+                    &payload.started_at,
+                    &payload.completed_at,
+                    &payload
+                        .status
+                        .clone()
+                        .unwrap_or_else(|| "draft".to_string()),
+                    &metadata,
+                ],
+            )
+            .await?;
+
+        let processing_job_id: String = row.get(0);
+        let mut input_sources = Vec::with_capacity(payload.input_sources.len());
+        for source in &payload.input_sources {
+            let input_row = client
+                .query_one(
+                    "INSERT INTO catalog.asset_processing_input (
+                       processing_job_id, input_asset_version_id, input_role
+                     ) VALUES (
+                       $1::text::uuid, $2::text::uuid, $3
+                     )
+                     RETURNING
+                       processing_input_id::text,
+                       input_asset_version_id::text,
+                       input_role,
+                       to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                    &[
+                        &processing_job_id,
+                        &source.input_asset_version_id,
+                        &source
+                            .input_role
+                            .clone()
+                            .unwrap_or_else(|| "primary_input".to_string()),
+                    ],
+                )
+                .await?;
+            input_sources.push(parse_asset_processing_input_row(&input_row));
+        }
+
+        Ok(parse_asset_processing_job_row(&row, input_sources))
+    }
+
     pub async fn create_product_sku(
         client: &impl GenericClient,
         product_id: &str,
@@ -1157,6 +1259,13 @@ fn parse_asset_field_definition_row(row: &Row) -> AssetFieldDefinitionView {
     }
 }
 
+fn normalize_object_json(value: &Value) -> Value {
+    if value.is_object() {
+        return value.clone();
+    }
+    json!({})
+}
+
 fn parse_asset_quality_report_row(row: &Row) -> AssetQualityReportView {
     AssetQualityReportView {
         quality_report_id: row.get(0),
@@ -1176,6 +1285,49 @@ fn parse_asset_quality_report_row(row: &Row) -> AssetQualityReportView {
         metrics_json: row.get(14),
         status: row.get(15),
         metadata: row.get(16),
+        created_at: row.get(17),
+        updated_at: row.get(18),
+    }
+}
+
+fn parse_asset_processing_input_row(row: &Row) -> AssetProcessingInputView {
+    AssetProcessingInputView {
+        processing_input_id: row.get(0),
+        input_asset_version_id: row.get(1),
+        input_role: row.get(2),
+        created_at: row.get(3),
+    }
+}
+
+fn parse_asset_processing_job_row(
+    row: &Row,
+    input_sources: Vec<AssetProcessingInputView>,
+) -> AssetProcessingJobView {
+    let metadata: Value = row.get(16);
+    let processing_summary_json = metadata
+        .get("processing_summary_json")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    AssetProcessingJobView {
+        processing_job_id: row.get(0),
+        output_asset_version_id: row.get(1),
+        processing_mode: row.get(2),
+        processor_org_id: row.get(3),
+        executor_type: row.get(4),
+        job_name: row.get(5),
+        transform_spec_version: row.get(6),
+        desensitization_profile: row.get(7),
+        standardization_profile: row.get(8),
+        labeling_profile: row.get(9),
+        model_artifact_ref: row.get(10),
+        evidence_uri: row.get(11),
+        evidence_hash: row.get(12),
+        started_at: row.get(13),
+        completed_at: row.get(14),
+        input_sources,
+        processing_summary_json,
+        status: row.get(15),
+        metadata,
         created_at: row.get(17),
         updated_at: row.get(18),
     }

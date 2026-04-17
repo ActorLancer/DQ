@@ -284,6 +284,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssetQualityReport"
+  /api/v1/assets/{versionId}/processing-jobs:
+    post:
+      summary: Create processing job for asset version
+      operationId: createAssetProcessingJob
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetProcessingJobRequest"
+      responses:
+        "200":
+          description: Asset processing job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetProcessingJob"
 components:
   schemas:
     CreateDataProductRequest:
@@ -1184,6 +1208,178 @@ components:
         - coverage_range_json
         - freshness_json
         - metrics_json
+        - status
+        - metadata
+        - created_at
+        - updated_at
+    CreateAssetProcessingJobInputSource:
+      type: object
+      properties:
+        input_asset_version_id:
+          type: string
+          format: uuid
+        input_role:
+          type: string
+          nullable: true
+      required:
+        - input_asset_version_id
+    AssetProcessingInput:
+      type: object
+      properties:
+        processing_input_id:
+          type: string
+          format: uuid
+        input_asset_version_id:
+          type: string
+          format: uuid
+        input_role:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - processing_input_id
+        - input_asset_version_id
+        - input_role
+        - created_at
+    CreateAssetProcessingJobRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        processing_mode:
+          type: string
+        processor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        executor_type:
+          type: string
+          nullable: true
+        job_name:
+          type: string
+          nullable: true
+        transform_spec_version:
+          type: string
+          nullable: true
+        desensitization_profile:
+          type: string
+          nullable: true
+        standardization_profile:
+          type: string
+          nullable: true
+        labeling_profile:
+          type: string
+          nullable: true
+        model_artifact_ref:
+          type: string
+          nullable: true
+        evidence_uri:
+          type: string
+          nullable: true
+        evidence_hash:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        input_sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateAssetProcessingJobInputSource"
+        processing_summary_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - processing_mode
+        - input_sources
+    AssetProcessingJob:
+      type: object
+      properties:
+        processing_job_id:
+          type: string
+          format: uuid
+        output_asset_version_id:
+          type: string
+          format: uuid
+        processing_mode:
+          type: string
+        processor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        executor_type:
+          type: string
+        job_name:
+          type: string
+          nullable: true
+        transform_spec_version:
+          type: string
+          nullable: true
+        desensitization_profile:
+          type: string
+          nullable: true
+        standardization_profile:
+          type: string
+          nullable: true
+        labeling_profile:
+          type: string
+          nullable: true
+        model_artifact_ref:
+          type: string
+          nullable: true
+        evidence_uri:
+          type: string
+          nullable: true
+        evidence_hash:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        input_sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetProcessingInput"
+        processing_summary_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - processing_job_id
+        - output_asset_version_id
+        - processing_mode
+        - executor_type
+        - input_sources
+        - processing_summary_json
         - status
         - metadata
         - created_at

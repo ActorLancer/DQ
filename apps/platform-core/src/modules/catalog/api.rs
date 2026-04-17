@@ -1,5 +1,6 @@
 use crate::modules::catalog::domain::{
-    AssetFieldDefinitionView, AssetQualityReportView, CreateAssetFieldDefinitionRequest,
+    AssetFieldDefinitionView, AssetProcessingJobView, AssetQualityReportView,
+    CreateAssetFieldDefinitionRequest, CreateAssetProcessingJobRequest,
     CreateAssetQualityReportRequest, CreateDataProductRequest, CreateExtractionJobRequest,
     CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
     CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView,
@@ -58,6 +59,10 @@ pub fn router() -> Router {
         .route(
             "/api/v1/assets/{versionId}/quality-reports",
             post(create_asset_quality_report),
+        )
+        .route(
+            "/api/v1/assets/{versionId}/processing-jobs",
+            post(create_asset_processing_job),
         )
 }
 
@@ -858,6 +863,81 @@ async fn create_asset_quality_report(
     Ok(ApiResponse::ok(view))
 }
 
+async fn create_asset_processing_job(
+    headers: HeaderMap,
+    Path(asset_version_id): Path<String>,
+    Json(payload): Json<CreateAssetProcessingJobRequest>,
+) -> Result<Json<ApiResponse<AssetProcessingJobView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ProductDraftWrite,
+        "catalog asset processing job create",
+    )?;
+    validate_create_asset_processing_job_payload(&asset_version_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
+        .await
+        .map_err(map_db_error)?;
+    if existing_version.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset version does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+    for input_source in &payload.input_sources {
+        let input_asset_version = PostgresCatalogRepository::get_asset_version(
+            &client,
+            &input_source.input_asset_version_id,
+        )
+        .await
+        .map_err(map_db_error)?;
+        if input_asset_version.is_none() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "input asset version does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            ));
+        }
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view =
+        PostgresCatalogRepository::create_asset_processing_job(&tx, &asset_version_id, &payload)
+            .await
+            .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "asset_processing_job",
+        &view.processing_job_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.asset_processing_job.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.asset_processing_job.create",
+        processing_job_id = %view.processing_job_id,
+        output_asset_version_id = %asset_version_id,
+        "catalog asset processing job created"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 fn validate_create_product_payload(
     payload: &CreateDataProductRequest,
     headers: &HeaderMap,
@@ -1307,6 +1387,86 @@ fn validate_create_asset_quality_report_payload(
         .status
         .as_deref()
         .is_some_and(|v| v.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "status must not be empty".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_create_asset_processing_job_payload(
+    asset_version_id_from_path: &str,
+    payload: &CreateAssetProcessingJobRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(asset_version_id_from_body) = payload.asset_version_id.as_deref()
+        && asset_version_id_from_body != asset_version_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset_version_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.processing_mode.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "processing_mode is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.input_sources.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "at least one input source is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    for source in &payload.input_sources {
+        if source.input_asset_version_id.trim().is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "input_asset_version_id must not be empty".to_string(),
+                    request_id: header(headers, "x-request-id"),
+                }),
+            ));
+        }
+        if source
+            .input_role
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "input_role must not be empty".to_string(),
+                    request_id: header(headers, "x-request-id"),
+                }),
+            ));
+        }
+    }
+    if payload
+        .status
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
     {
         return Err((
             StatusCode::BAD_REQUEST,

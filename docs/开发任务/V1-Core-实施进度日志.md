@@ -2414,40 +2414,9 @@
 - 待人工审批结论：通过
 - 备注：沿用按功能拆分实现策略，接口、模型、仓储和测试分别维护，避免单文件过大。
 
-### BATCH-095
-
-- 状态：计划中
-- 当前任务编号：CAT-011
-- 当前批次目标：实现 `POST /api/v1/assets/{versionId}/quality-reports`，保存质量指标、采样方式、报告 URI/hash，并补齐权限、审计、OpenAPI 与最小验证。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-094` 已获人工审批通过，允许执行。
-- 已阅读证据（文件 + 本批关注要点）：
-  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-011` 描述、DoD、acceptance 与 technical_reference。
-  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-011` 顺序与 `CAT-012` 边界。
-  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：计划中 -> 编码 -> 验证 -> 待审批固定流程。
-  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与不可越阶段。
-  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用批次记录格式并先记“计划中”。
-  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：`TODO-PROC-BIL-001` 追溯约束保持。
-  7. `docs/开发任务/V1-Core-人工审批记录.md`：`BATCH-094` 已补录通过。
-  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：保持 V1 范围，不引入 V2/V3 正式能力。
-  9. `docs/开发准备/服务清单与服务边界正式版.md`：`catalog/contract_meta` 子域边界。
-  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/assets/{versionId}/quality-reports`。
-  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批继续以审计闭环为主，不新增业务 topic。
-  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
-  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + 审计回查闭环。
-  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按功能逻辑拆分实现，避免单文件过大。
-  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
-  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
-  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 作为业务主状态权威。
-  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚实现。
-- technical_reference 约束映射：
-  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L112`：十大元信息域中质量元信息需对象化承载。
-  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L86`：质量报告独立于契约实体建模。
-  - `docs/数据库设计/V1/upgrade/062_data_product_metadata_contract.sql:L1`：`catalog.asset_quality_report` 字段与唯一约束（`asset_version_id, report_no`）。
-- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-人工审批记录.md`
-
 ### BATCH-095（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-011
 - 当前批次目标：实现 `POST /api/v1/assets/{versionId}/quality-reports`，保存指标、采样方式、报告 URI/hash。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-094` 已获人工审批通过。
@@ -2473,5 +2442,68 @@
 - 覆盖的任务清单条目：`CAT-011`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：联调首轮报错 `database operation failed: error serializing parameter 9`（`assessed_at` 参数类型）；已将 SQL 显式改为 `$10::text::timestamptz` 后复测通过。
+
+### BATCH-096
+
+- 状态：计划中
+- 当前任务编号：CAT-012
+- 当前批次目标：实现 `POST /api/v1/assets/{versionId}/processing-jobs`，记录输入来源、责任主体、处理摘要。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-095` 已获人工审批通过，允许执行。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-012` 描述、DoD、acceptance 与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-012` 顺序、范围与 `CAT-013` 边界。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先记录“计划中”，再编码与完整验证。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：严格遵守冻结范围与 V1 约束。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用批次结构与审计留痕格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：维持 `TODO-PROC-BIL-001` 追溯状态。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：`BATCH-095` 已补录审批通过。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：V1 处理链路输出需落 PostgreSQL 主状态。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog` 服务边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/assets/{versionId}/processing-jobs`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批仅补审计，不新增事件 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + DB 回查闭环。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按功能拆分实现与测试，避免单文件过大。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调优先 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
+  17. `docs/开发准备/技术选型正式版.md`：处理状态与审计以 PostgreSQL 为准。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚扩展 `catalog` 子模块。
+- technical_reference 约束映射：
+  - `docs/原始PRD/数据原样处理与产品化加工流程设计.md:L189`：交易前流程含“加工处理执行”，需形成加工责任链。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L157`：4.2A 加工处理区要求写入 `AssetProcessingJob / Input / evidence`。
+  - `docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql:L1`：加工链路归属 V1 处理流程迁移；本仓库落表结构由 `062_data_product_metadata_contract.sql` 定义 `catalog.asset_processing_job/input`。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/processing_jobs.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-096（待审批）
+
+- 状态：通过
+- 当前任务编号：CAT-012
+- 当前批次目标：实现 `POST /api/v1/assets/{versionId}/processing-jobs`，记录输入来源、责任主体、处理摘要。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-095` 已获人工审批通过。
+- 已实现功能：
+  1. 新增加工任务模型：`CreateAssetProcessingJobRequest`、`CreateAssetProcessingJobInputSource`、`AssetProcessingJobView`、`AssetProcessingInputView`。
+  2. 新增仓储方法：`create_asset_processing_job`，写入 `catalog.asset_processing_job` 并批量写入 `catalog.asset_processing_input`。
+  3. 新增接口：`POST /api/v1/assets/{versionId}/processing-jobs`，包含路径/请求一致性校验、`processing_mode` 必填校验、`input_sources` 非空校验、输出/输入版本存在性校验、事务审计。
+  4. 新增处理摘要归一化：`processing_summary_json` 非对象值归一化为 `{}`，并按 V1 存储口径落入 `metadata.processing_summary_json`。
+  5. 新增测试拆分：新增 `tests/processing_jobs.rs`，独立覆盖 `input_sources` 校验；原权限拒绝用例保留在 `tests/mod.rs`。
+  6. 更新 OpenAPI：新增 processing-jobs 路径与 `CreateAssetProcessingJobRequest/AssetProcessingJob` schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/processing_jobs.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 本地数据库连通性核验：`psql postgres://datab:datab_local_pass@127.0.0.1:5432/datab -c 'select 1 as ok;'`
+  4. 端到端联调（`APP_PORT=18091`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`KAFKA_BROKERS=127.0.0.1:9094`）：
+     - 预置数据：`core.organization` + `catalog.data_asset` + `catalog.asset_version`（输出版本 + 输入版本）
+     - 调用 `POST /api/v1/assets/{versionId}/processing-jobs`
+     - 回查 `catalog.asset_processing_job`、`catalog.asset_processing_input` 与 `audit.audit_event`
+     - 清理测试数据（`asset_processing_input/asset_processing_job/asset_version/data_asset/organization`）
+  5. 数据残留核对：验证业务表残留均为 `0`；审计表按 append-only 保留请求记录。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `56 passed, 0 failed, 1 ignored`；API 返回 `success=true` 且 `processing_job_id=52692fb3-909a-41d1-b910-5003109002a5`；`catalog.asset_processing_job` 命中 `processing_mode=platform_managed`、`metadata.processing_summary_json` 回写成功；`catalog.asset_processing_input` 命中 `input_role=primary_input`；审计命中 `catalog.asset_processing_job.create|asset_processing_job|success|req-cat012-proc-002`；业务表清理后残留 `0|0`，审计残留 `1`。
+- 覆盖的冻结文档条目：`docs/原始PRD/数据原样处理与产品化加工流程设计.md`（交易前 12 步中的加工处理执行 + 基础加工责任链）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2A 加工处理区 `AssetProcessingJob / Input / evidence`）、`docs/数据库设计/V1/upgrade/062_data_product_metadata_contract.sql`（`catalog.asset_processing_job` 与 `catalog.asset_processing_input` 字段约束）、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（`POST /api/v1/assets/{versionId}/processing-jobs` 冻结接口）。
+- 覆盖的任务清单条目：`CAT-012`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：通过
+- 备注：联调首轮因测试 SQL 使用历史字段 `org_code` 导致组织插入失败，已改按当前库结构（`org_name/org_type/status`）重跑并通过。

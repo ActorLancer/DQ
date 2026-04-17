@@ -1,3 +1,5 @@
+mod processing_jobs;
+
 #[cfg(test)]
 mod tests {
     use super::super::api::router;
@@ -266,6 +268,28 @@ mod tests {
                   "sampling_method":"random_sample",
                   "report_uri":"s3://quality/report.json",
                   "report_hash":"sha256:quality-report"
+                }"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_create_asset_processing_job_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/processing-jobs")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "processing_mode":"platform_managed",
+                  "input_sources":[
+                    {"input_asset_version_id":"00000000-0000-0000-0000-000000000002"}
+                  ],
+                  "processing_summary_json":{"strategy":"baseline_v1"}
                 }"#,
             ))
             .expect("request");
