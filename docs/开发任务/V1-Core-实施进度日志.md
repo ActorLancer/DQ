@@ -2047,25 +2047,7 @@
 
 ### BATCH-087
 
-- 状态：计划中
-- 当前任务编号：CAT-003
-- 当前批次目标：实现 `POST /api/v1/products/{id}/skus` 与 `PATCH /api/v1/skus/{id}`，并完成标准 SKU 真值、trade_mode 合法性、模板兼容性校验。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-086` 已审批通过，允许进入本批。
-- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：实现后执行 `cargo fmt --all`、`cargo test -p platform-core`，并执行数据库/API联调验证（创建 SKU + 编辑 SKU + 审计记录查询 + 清理）。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5.2 SKU 接口）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）。
-- 覆盖的任务清单条目：`CAT-003`
-- 未覆盖项：无
-- 新增 TODO / 预留项：待实现后评估；保持 `TODO-PROC-BIL-001` 追溯约束不变。
-- 待人工审批结论：待审批
-- 备注：按“单复杂任务”批次执行。
-
-### BATCH-087
-
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-003
 - 当前批次目标：实现 `POST /api/v1/products/{id}/skus` 与 `PATCH /api/v1/skus/{id}`，并完成标准 SKU 真值、trade_mode 合法性、模板兼容性校验。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-086` 已审批通过，允许执行。
@@ -2092,5 +2074,58 @@
 - 覆盖的任务清单条目：`CAT-003`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：首次联调因服务未就绪导致连接失败，改为 health-check 等待后复测通过。
+
+### BATCH-088
+
+- 状态：待审批
+- 当前任务编号：CAT-004
+- 当前批次目标：实现 `POST /api/v1/assets/{assetId}/raw-ingest-batches`，落地原始接入批次创建能力，并补齐权限校验、事务审计、错误码、OpenAPI 与最小验证。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-087` 已获人工审批通过，允许执行。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-004` 描述、`depends_on`、DoD 与 technical_reference 锚点。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-004` 可读说明与 `CAT-005/006` 顺序边界。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先登记计划中、后编码、验证、待审批的强制顺序。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：严格冻结口径、不得越阶段扩展。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用批次记录格式与审批门禁。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：已补录 `BATCH-087` 审批通过，可进入下一批。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：保持 V1 范围，不混入 V2/V3 正式能力。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：`catalog` 领域接口归属与边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/assets/{assetId}/raw-ingest-batches`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批先做审计事件，不新增跨服务业务 Topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL` 映射。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：保留单测 + 手工 API + 审计回查最小闭环。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：继续在 `platform-core/modules/catalog` 内增量实现。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调 DB 走 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL` 配置注入方式。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 为业务主状态权威。
+  18. `docs/开发准备/平台总体架构设计草案.md`：维持模块化单体内聚实现方式。
+- technical_reference 约束映射：
+  - `docs/原始PRD/数据原样处理与产品化加工流程设计.md:L189`：原始接入登记必须产生 `raw_ingest_batch`，并包含来源与权利声明语义。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L157`：4.2A 主流程要求“记录批次、对象、来源、权利链、hash”，本批先完成批次入口。
+  - `docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql:L1`：`catalog.raw_ingest_batch` 字段与默认状态（`draft`）作为持久化真值约束。
+- 已实现功能：
+  1. 新增 `RawIngestBatch` 领域模型：`CreateRawIngestBatchRequest/RawIngestBatchView`。
+  2. 新增仓储方法 `PostgresCatalogRepository::create_raw_ingest_batch`，按 `063_raw_processing_pipeline.sql` 写入 `catalog.raw_ingest_batch`。
+  3. 新增接口 `POST /api/v1/assets/{assetId}/raw-ingest-batches`，含路径/请求校验、权限校验、事务审计与成功响应。
+  4. 新增权限 `CatalogPermission::RawIngestWrite` 及角色矩阵测试。
+  5. 更新 `packages/openapi/catalog.yaml`：新增 raw-ingest-batches 路径与 `CreateRawIngestBatchRequest/RawIngestBatch` schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-人工审批记录.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 端到端联调（`APP_PORT=18083`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`）：
+     - 预置数据：`core.organization` + `catalog.data_asset`
+     - 调用 `POST /api/v1/assets/{assetId}/raw-ingest-batches`
+     - 查询 `catalog.raw_ingest_batch` 与 `audit.audit_event`
+     - 清理测试数据（`raw_ingest_batch/data_asset/organization`）
+  4. 数据库残留核对：验证 `raw_ingest_batch/data_asset/organization` 均为 `0`；审计表因 append-only 保留 1 条测试请求记录。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `40 passed, 0 failed, 1 ignored`；API 返回 `success=true` 且批次状态为 `draft`；`audit.audit_event` 命中 `catalog.raw_ingest_batch.create|raw_ingest_batch|success`。
+- 覆盖的冻结文档条目：`docs/原始PRD/数据原样处理与产品化加工流程设计.md`（4.2 原始接入登记输出）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2A 原始接入区）、`docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql`（`catalog.raw_ingest_batch` 字段与默认状态）、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（5.5 raw ingest 接口项）。
+- 覆盖的任务清单条目：`CAT-004`
+- 未覆盖项：`CAT-004` 描述中的“清单维护接口”细项在冻结清单中对应 `CAT-005` (`POST /api/v1/raw-ingest-batches/{id}/manifests`)，本批未越任务实现。
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：联调首轮携带不存在的 `x-user-id` 触发外键约束失败，已调整为不传 `x-user-id` 后复测通过。

@@ -3,11 +3,15 @@ use crate::modules::catalog::domain::{is_supported_trade_mode, is_trade_mode_com
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogPermission {
     ProductDraftWrite,
+    RawIngestWrite,
 }
 
 pub fn is_allowed(role: &str, permission: CatalogPermission) -> bool {
     match permission {
         CatalogPermission::ProductDraftWrite => {
+            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+        }
+        CatalogPermission::RawIngestWrite => {
             matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
         }
     }
@@ -47,5 +51,22 @@ mod tests {
         assert!(is_valid_sku_trade_mode_pair("API_PPU", "api_pay_per_use"));
         assert!(!is_valid_sku_trade_mode_pair("API_PPU", "api_subscription"));
         assert!(!is_valid_sku_trade_mode_pair("FILE_STD", "unknown_mode"));
+    }
+
+    #[test]
+    fn raw_ingest_write_role_matrix() {
+        assert!(is_allowed(
+            "platform_admin",
+            CatalogPermission::RawIngestWrite
+        ));
+        assert!(is_allowed(
+            "tenant_admin",
+            CatalogPermission::RawIngestWrite
+        ));
+        assert!(is_allowed(
+            "tenant_operator",
+            CatalogPermission::RawIngestWrite
+        ));
+        assert!(!is_allowed("developer", CatalogPermission::RawIngestWrite));
     }
 }

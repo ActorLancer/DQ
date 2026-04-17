@@ -92,6 +92,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductSku"
+  /api/v1/assets/{assetId}/raw-ingest-batches:
+    post:
+      summary: Create raw ingest batch
+      operationId: createRawIngestBatch
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRawIngestBatchRequest"
+      responses:
+        "200":
+          description: Raw ingest batch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RawIngestBatch"
 components:
   schemas:
     CreateDataProductRequest:
@@ -262,6 +286,75 @@ components:
         status:
           type: string
           nullable: true
+    CreateRawIngestBatchRequest:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+          nullable: true
+        owner_org_id:
+          type: string
+          format: uuid
+        ingest_source_type:
+          type: string
+        declared_object_family:
+          type: string
+          nullable: true
+        source_declared_rights_json:
+          type: object
+          additionalProperties: true
+        ingest_policy_json:
+          type: object
+          additionalProperties: true
+      required:
+        - owner_org_id
+        - ingest_source_type
+    RawIngestBatch:
+      type: object
+      properties:
+        raw_ingest_batch_id:
+          type: string
+          format: uuid
+        owner_org_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+          nullable: true
+        ingest_source_type:
+          type: string
+        declared_object_family:
+          type: string
+          nullable: true
+        source_declared_rights_json:
+          type: object
+          additionalProperties: true
+        ingest_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - raw_ingest_batch_id
+        - owner_org_id
+        - ingest_source_type
+        - source_declared_rights_json
+        - ingest_policy_json
+        - status
+        - created_at
+        - updated_at
     DataResource:
       type: object
       properties:

@@ -212,6 +212,33 @@ pub struct PatchProductSkuRequest {
     pub status: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateRawIngestBatchRequest {
+    pub asset_id: Option<String>,
+    pub owner_org_id: String,
+    pub ingest_source_type: String,
+    pub declared_object_family: Option<String>,
+    #[serde(default)]
+    pub source_declared_rights_json: Value,
+    #[serde(default)]
+    pub ingest_policy_json: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RawIngestBatchView {
+    pub raw_ingest_batch_id: String,
+    pub owner_org_id: String,
+    pub asset_id: Option<String>,
+    pub ingest_source_type: String,
+    pub declared_object_family: Option<String>,
+    pub source_declared_rights_json: Value,
+    pub ingest_policy_json: Value,
+    pub status: String,
+    pub created_by: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

@@ -153,3 +153,4 @@
 - `BATCH-085`（`CAT-001`）：无新增 `V1-gap / V2-reserved / V3-reserved`；将 `TODO-PROC-BIL-001` 从 `blocked` 调整为 `accepted`，记录“已获人工批准继续后续阶段、进入 BIL 时必须执行一致性复核”的审计口径。
 - `BATCH-086`（`CAT-002`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；保持 `TODO-PROC-BIL-001` 追溯约束不变。
 - `BATCH-087`（`CAT-003`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- `BATCH-088`（`CAT-004`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。

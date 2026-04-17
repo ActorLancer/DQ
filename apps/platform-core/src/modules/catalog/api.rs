@@ -1,6 +1,7 @@
 use crate::modules::catalog::domain::{
-    CreateDataProductRequest, CreateProductSkuRequest, DataProductView, PatchDataProductRequest,
-    PatchProductSkuRequest, ProductSkuView, default_trade_mode_for_sku_type, is_standard_sku_type,
+    CreateDataProductRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
+    DataProductView, PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView,
+    RawIngestBatchView, default_trade_mode_for_sku_type, is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
@@ -21,6 +22,10 @@ pub fn router() -> Router {
         .route("/api/v1/products/{id}", patch(patch_product_draft))
         .route("/api/v1/products/{id}/skus", post(create_product_sku))
         .route("/api/v1/skus/{id}", patch(patch_product_sku))
+        .route(
+            "/api/v1/assets/{assetId}/raw-ingest-batches",
+            post(create_raw_ingest_batch),
+        )
 }
 
 async fn create_product_draft(
@@ -338,6 +343,53 @@ async fn patch_product_sku(
     Ok(ApiResponse::ok(view))
 }
 
+async fn create_raw_ingest_batch(
+    headers: HeaderMap,
+    Path(asset_id): Path<String>,
+    Json(payload): Json<CreateRawIngestBatchRequest>,
+) -> Result<Json<ApiResponse<RawIngestBatchView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::RawIngestWrite,
+        "catalog raw ingest batch create",
+    )?;
+    validate_create_raw_ingest_batch_payload(&asset_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::create_raw_ingest_batch(
+        &tx,
+        &asset_id,
+        &payload,
+        header(&headers, "x-user-id").as_deref(),
+    )
+    .await
+    .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "raw_ingest_batch",
+        &view.raw_ingest_batch_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.raw_ingest_batch.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.raw_ingest_batch.create",
+        raw_ingest_batch_id = %view.raw_ingest_batch_id,
+        asset_id = %asset_id,
+        "catalog raw ingest batch created"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 fn validate_create_product_payload(
     payload: &CreateDataProductRequest,
     headers: &HeaderMap,
@@ -483,6 +535,38 @@ fn validate_patch_sku_payload(
         Json(ErrorResponse {
             code: ErrorCode::CatValidationFailed.as_str().to_string(),
             message: "at least one sku patch field is required".to_string(),
+            request_id: header(headers, "x-request-id"),
+        }),
+    ))
+}
+
+fn validate_create_raw_ingest_batch_payload(
+    asset_id_from_path: &str,
+    payload: &CreateRawIngestBatchRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(asset_id_from_body) = payload.asset_id.as_deref()
+        && asset_id_from_body != asset_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    let invalid =
+        payload.owner_org_id.trim().is_empty() || payload.ingest_source_type.trim().is_empty();
+    if !invalid {
+        return Ok(());
+    }
+    Err((
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            code: ErrorCode::CatValidationFailed.as_str().to_string(),
+            message: "required raw ingest batch fields must not be empty".to_string(),
             request_id: header(headers, "x-request-id"),
         }),
     ))
@@ -711,6 +795,25 @@ mod tests {
             .header("content-type", "application/json")
             .header("x-role", "developer")
             .body(Body::from(r#"{"trade_mode":"snapshot_sale"}"#))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_create_raw_ingest_batch_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/raw-ingest-batches")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "owner_org_id":"00000000-0000-0000-0000-000000000003",
+                  "ingest_source_type":"seller_upload"
+                }"#,
+            ))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);

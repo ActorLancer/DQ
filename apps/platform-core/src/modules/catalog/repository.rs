@@ -1,13 +1,54 @@
 use crate::modules::catalog::domain::{
     AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
-    CreateDataResourceRequest, CreateProductSkuRequest, DataProductView, DataResourceView,
-    PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView,
+    CreateDataResourceRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
+    DataProductView, DataResourceView, PatchDataProductRequest, PatchProductSkuRequest,
+    ProductSkuView, RawIngestBatchView,
 };
 use tokio_postgres::{GenericClient, Row};
 
 pub struct PostgresCatalogRepository;
 
 impl PostgresCatalogRepository {
+    pub async fn create_raw_ingest_batch(
+        client: &impl GenericClient,
+        asset_id: &str,
+        payload: &CreateRawIngestBatchRequest,
+        created_by: Option<&str>,
+    ) -> Result<RawIngestBatchView, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.raw_ingest_batch (
+                   owner_org_id, asset_id, ingest_source_type, declared_object_family,
+                   source_declared_rights_json, ingest_policy_json, status, created_by
+                 ) VALUES (
+                   $1::text::uuid, $2::text::uuid, $3, $4, $5::jsonb, $6::jsonb, 'draft', $7::text::uuid
+                 )
+                 RETURNING
+                   raw_ingest_batch_id::text,
+                   owner_org_id::text,
+                   asset_id::text,
+                   ingest_source_type,
+                   declared_object_family,
+                   source_declared_rights_json,
+                   ingest_policy_json,
+                   status,
+                   created_by::text,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &payload.owner_org_id,
+                    &asset_id,
+                    &payload.ingest_source_type,
+                    &payload.declared_object_family,
+                    &payload.source_declared_rights_json,
+                    &payload.ingest_policy_json,
+                    &created_by,
+                ],
+            )
+            .await?;
+        Ok(parse_raw_ingest_batch_row(&row))
+    }
+
     pub async fn create_data_resource(
         client: &impl GenericClient,
         payload: &CreateDataResourceRequest,
@@ -524,5 +565,21 @@ fn parse_product_sku_row(row: &Row) -> ProductSkuView {
         status: row.get(9),
         created_at: row.get(10),
         updated_at: row.get(11),
+    }
+}
+
+fn parse_raw_ingest_batch_row(row: &Row) -> RawIngestBatchView {
+    RawIngestBatchView {
+        raw_ingest_batch_id: row.get(0),
+        owner_org_id: row.get(1),
+        asset_id: row.get(2),
+        ingest_source_type: row.get(3),
+        declared_object_family: row.get(4),
+        source_declared_rights_json: row.get(5),
+        ingest_policy_json: row.get(6),
+        status: row.get(7),
+        created_by: row.get(8),
+        created_at: row.get(9),
+        updated_at: row.get(10),
     }
 }
