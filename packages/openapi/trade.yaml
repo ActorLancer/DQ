@@ -2,5 +2,25 @@ openapi: 3.1.0
 info:
   title: Trade API
   version: v1
+  description: |
+    V1 currently uses event-driven order orchestration for payment-result transitions.
+    TRADE-030 baseline mapping:
+    - payment succeeded -> order status buyer_locked (delivery pending)
+    - payment failed -> order status payment_failed_pending_resolution
+    - payment timeout -> order status payment_timeout_pending_compensation_cancel
 paths: {}
-
+components:
+  schemas:
+    OrderPaymentOrchestrationTransition:
+      type: object
+      required: [payment_result, from_order_status, to_order_status, non_regression_guard]
+      properties:
+        payment_result:
+          type: string
+          enum: [succeeded, failed, timeout]
+        from_order_status:
+          type: string
+        to_order_status:
+          type: string
+        non_regression_guard:
+          type: string

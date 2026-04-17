@@ -3,6 +3,8 @@ use crate::modules::billing::service::{
     BillingPermission, is_allowed, list_corridor_policies, list_jurisdictions,
     list_payout_preferences,
 };
+use crate::modules::order::application::apply_payment_result_to_order;
+use crate::modules::order::domain::PaymentResultKind;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
@@ -764,6 +766,7 @@ async fn handle_payment_webhook(
         .query_opt(
             "SELECT
                status,
+               order_id::text,
                metadata ->> 'webhook_last_occurred_at_ms'
              FROM payment.payment_intent
              WHERE payment_intent_id = $1::text::uuid",
@@ -799,8 +802,9 @@ async fn handle_payment_webhook(
     };
 
     let current_status: String = intent_row.get(0);
+    let order_id: String = intent_row.get(1);
     let last_event_occurred_at_ms = intent_row
-        .get::<_, Option<String>>(1)
+        .get::<_, Option<String>>(2)
         .and_then(|v| v.parse::<i64>().ok());
     let incoming_occurred_at_ms = occurred_at_ms.unwrap_or_else(now_utc_ms);
     if last_event_occurred_at_ms
@@ -903,6 +907,20 @@ async fn handle_payment_webhook(
         .await
         .map_err(map_db_error)?;
     let applied_status: String = row.get(0);
+    let order_result_kind = match target_status {
+        "succeeded" => PaymentResultKind::Succeeded,
+        "failed" => PaymentResultKind::Failed,
+        "expired" => PaymentResultKind::TimedOut,
+        _ => PaymentResultKind::Failed,
+    };
+    let _ = apply_payment_result_to_order(
+        &client,
+        &order_id,
+        order_result_kind,
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
     set_webhook_processed_status(&client, &webhook_event_id, "processed").await?;
     write_audit_event(
         &client,

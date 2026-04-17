@@ -1689,3 +1689,48 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
 - 备注：联调数据库容器 `luna-postgres-test`（`127.0.0.1:55432`），mock 支付容器 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
+
+### BATCH-076（计划中）
+
+- 状态：计划中
+- 当前任务编号：TRADE-030
+- 当前批次目标：实现支付结果到订单推进编排器：支付成功推进到“已锁资/待交付”，支付失败推进到“支付失败待处理”，支付超时推进到“支付超时待补偿/待取消”，并保证状态不可倒退。
+- 前置依赖核对结果：`TRADE-030` 依赖 `BIL-005; TRADE-007; CORE-014`，当前已满足（`BIL-005` 已实现待审批，`TRADE-007/CORE-014` 历史已完成并审批通过）。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/领域模型/全量领域模型与对象关系说明.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/业务流程/业务流程图-V1-完整版.md`
+
+### BATCH-076（实施完成）
+
+- 状态：待审批
+- 当前任务编号：TRADE-030
+- 当前批次目标：实现支付结果到订单推进编排器：支付成功推进到“已锁资/待交付”，支付失败推进到“支付失败待处理”，支付超时推进到“支付超时待补偿/待取消”，并保证状态不可倒退。
+- 前置依赖核对结果：`TRADE-030` 依赖 `BIL-005; TRADE-007; CORE-014`，当前已满足（`BIL-005` 已实现，`TRADE-007/CORE-014` 历史已完成并审批通过）。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/领域模型/全量领域模型与对象关系说明.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/业务流程/业务流程图-V1-完整版.md`
+- 已实现功能：
+  - 新增订单支付结果编排器（`order` 模块）：
+    - 支付成功：推进 `order_main.status -> buyer_locked`，`payment_status -> paid`，`last_reason_code -> payment_succeeded_to_buyer_locked`。
+    - 支付失败：推进 `order_main.status -> payment_failed_pending_resolution`，`payment_status -> failed`。
+    - 支付超时：推进 `order_main.status -> payment_timeout_pending_compensation_cancel`，`payment_status -> expired`。
+  - 增加不可倒退保护：当订单已进入 `seller_delivering/delivered/accepted/settled/closed` 等后序状态时，后续失败/超时事件只记审计，不回退订单状态。
+  - 在 `BIL-005` webhook 的 `processed` 分支挂接编排器，实现“支付结果 -> 订单推进”的实时联动闭环。
+  - 增加订单审计记录：
+    - `order.payment.result.applied`
+    - `order.payment.result.ignored`
+  - 更新 `packages/openapi/trade.yaml`，补充 `TRADE-030` 的事件驱动编排说明与状态迁移 schema。
+- 涉及文件：`apps/platform-core/src/modules/order/mod.rs`、`apps/platform-core/src/modules/order/domain/mod.rs`、`apps/platform-core/src/modules/order/application/mod.rs`、`apps/platform-core/src/modules/billing/api.rs`、`packages/openapi/trade.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务：`DATABASE_URL=postgres://luna:5686@127.0.0.1:55432/luna_data_trading PROVIDER_MODE=mock KAFKA_BROKERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core-bin`
+  4. 构造前序订单（`status=contract_effective`）并创建支付意图。
+  5. 回调 `payment.succeeded`（当前时戳）后再回调旧时戳 `payment.failed`，验证乱序保护。
+  6. DB 回查：
+     - `trade.order_main` 的 `status/payment_status/last_reason_code`
+     - `audit.audit_event` 的 `order.payment.result.applied/ignored`
+     - `payment.payment_webhook_event` 的处理状态
+- 验证结果：通过。构造订单 `30000000-0000-0000-0000-000000009901` 在 `payment.succeeded` 后推进为 `buyer_locked|paid|payment_succeeded_to_buyer_locked`；随后旧时戳 `payment.failed` 被标记 `out_of_order_ignored`，未回退订单状态；审计表存在 `order.payment.result.applied` 记录。
+- 覆盖的冻结文档条目：`全量领域模型`（订单主状态 `created->buyer_locked->seller_delivering...`）、`全集成基线-V1`（支付结果驱动订单推进与防回退）、`业务流程图-V1`（支付后进入待交付链路）。
+- 覆盖的任务清单条目：`TRADE-030`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：联调数据库容器 `luna-postgres-test`（`127.0.0.1:55432`），mock 支付容器 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
