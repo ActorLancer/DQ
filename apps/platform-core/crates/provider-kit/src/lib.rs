@@ -1,7 +1,8 @@
 use async_trait::async_trait;
-use kernel::AppResult;
+use kernel::{AppError, AppResult, new_external_readable_id};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderBackend {
@@ -26,6 +27,24 @@ pub struct PaymentRequest {
     pub order_id: String,
     pub amount_minor: i64,
     pub currency: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MockPaymentScenario {
+    Success,
+    Fail,
+    Timeout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MockPaymentWebhookEvent {
+    pub provider_event_id: String,
+    pub payment_intent_id: String,
+    pub scenario: MockPaymentScenario,
+    pub event_type: String,
+    pub provider_status: String,
+    pub http_status_code: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -57,6 +76,11 @@ pub trait SigningProvider: Send + Sync {
 pub trait PaymentProvider: Send + Sync {
     fn kind(&self) -> &'static str;
     async fn create_intent(&self, request: PaymentRequest) -> AppResult<String>;
+    async fn simulate_webhook(
+        &self,
+        payment_intent_id: &str,
+        scenario: MockPaymentScenario,
+    ) -> AppResult<MockPaymentWebhookEvent>;
 }
 
 #[async_trait]
@@ -122,22 +146,6 @@ define_provider_impl!(
     "real"
 );
 define_provider_impl!(
-    MockPaymentProvider,
-    PaymentProvider,
-    create_intent,
-    PaymentRequest,
-    "mock-payment",
-    "mock"
-);
-define_provider_impl!(
-    RealPaymentProvider,
-    PaymentProvider,
-    create_intent,
-    PaymentRequest,
-    "real-payment",
-    "real"
-);
-define_provider_impl!(
     MockNotificationProvider,
     NotificationProvider,
     send,
@@ -169,6 +177,103 @@ define_provider_impl!(
     "real-fabric",
     "real"
 );
+
+#[derive(Debug, Default, Clone)]
+pub struct MockPaymentProvider;
+
+#[derive(Debug, Default, Clone)]
+pub struct RealPaymentProvider;
+
+#[async_trait]
+impl PaymentProvider for MockPaymentProvider {
+    fn kind(&self) -> &'static str {
+        "mock"
+    }
+
+    async fn create_intent(&self, _request: PaymentRequest) -> AppResult<String> {
+        Ok("mock-payment-ok".to_string())
+    }
+
+    async fn simulate_webhook(
+        &self,
+        payment_intent_id: &str,
+        scenario: MockPaymentScenario,
+    ) -> AppResult<MockPaymentWebhookEvent> {
+        let mode = std::env::var("MOCK_PAYMENT_ADAPTER_MODE")
+            .unwrap_or_else(|_| "stub".to_string())
+            .to_ascii_lowercase();
+        if mode != "live" {
+            return Ok(build_mock_event(payment_intent_id, scenario, None));
+        }
+
+        let base_url = std::env::var("MOCK_PAYMENT_BASE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8089".to_string());
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .build()
+            .map_err(|err| AppError::Startup(format!("mock payment client init failed: {err}")))?;
+        let endpoint = match scenario {
+            MockPaymentScenario::Success => "/mock/payment/charge/success",
+            MockPaymentScenario::Fail => "/mock/payment/charge/fail",
+            MockPaymentScenario::Timeout => "/mock/payment/charge/timeout",
+        };
+        let url = format!("{}{}", base_url.trim_end_matches('/'), endpoint);
+        let response = client.post(&url).send().await;
+
+        match (scenario, response) {
+            (MockPaymentScenario::Timeout, Err(err)) if err.is_timeout() => {
+                Ok(build_mock_event(payment_intent_id, scenario, None))
+            }
+            (_, Ok(resp)) => Ok(build_mock_event(
+                payment_intent_id,
+                scenario,
+                Some(resp.status().as_u16()),
+            )),
+            (_, Err(err)) => Err(AppError::Startup(format!(
+                "mock payment scenario invoke failed: {err}"
+            ))),
+        }
+    }
+}
+
+#[async_trait]
+impl PaymentProvider for RealPaymentProvider {
+    fn kind(&self) -> &'static str {
+        "real"
+    }
+
+    async fn create_intent(&self, _request: PaymentRequest) -> AppResult<String> {
+        Ok("real-payment-ok".to_string())
+    }
+
+    async fn simulate_webhook(
+        &self,
+        payment_intent_id: &str,
+        scenario: MockPaymentScenario,
+    ) -> AppResult<MockPaymentWebhookEvent> {
+        Ok(build_mock_event(payment_intent_id, scenario, None))
+    }
+}
+
+fn build_mock_event(
+    payment_intent_id: &str,
+    scenario: MockPaymentScenario,
+    http_status_code: Option<u16>,
+) -> MockPaymentWebhookEvent {
+    let (event_type, provider_status) = match scenario {
+        MockPaymentScenario::Success => ("payment.succeeded", "succeeded"),
+        MockPaymentScenario::Fail => ("payment.failed", "failed"),
+        MockPaymentScenario::Timeout => ("payment.timeout", "timeout"),
+    };
+    MockPaymentWebhookEvent {
+        provider_event_id: new_external_readable_id("mockpayevt"),
+        payment_intent_id: payment_intent_id.to_string(),
+        scenario,
+        event_type: event_type.to_string(),
+        provider_status: provider_status.to_string(),
+        http_status_code,
+    }
+}
 
 pub fn build_kyc_provider(backend: ProviderBackend) -> Arc<dyn KycProvider> {
     match backend {
@@ -321,5 +426,46 @@ mod tests {
                 .unwrap(),
             "real-fabric-ok"
         );
+    }
+
+    #[tokio::test]
+    async fn mock_payment_adapter_supports_three_scenarios_in_stub_mode() {
+        let provider = build_payment_provider(ProviderBackend::Mock);
+        let success = provider
+            .simulate_webhook("pay-1", MockPaymentScenario::Success)
+            .await
+            .unwrap();
+        let fail = provider
+            .simulate_webhook("pay-2", MockPaymentScenario::Fail)
+            .await
+            .unwrap();
+        let timeout = provider
+            .simulate_webhook("pay-3", MockPaymentScenario::Timeout)
+            .await
+            .unwrap();
+        assert_eq!(success.event_type, "payment.succeeded");
+        assert_eq!(fail.event_type, "payment.failed");
+        assert_eq!(timeout.event_type, "payment.timeout");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires local mock-payment container and MOCK_PAYMENT_ADAPTER_MODE=live"]
+    async fn live_mock_payment_adapter_hits_three_mock_paths() {
+        let provider = build_payment_provider(ProviderBackend::Mock);
+        let success = provider
+            .simulate_webhook("pay-live-1", MockPaymentScenario::Success)
+            .await
+            .unwrap();
+        let fail = provider
+            .simulate_webhook("pay-live-2", MockPaymentScenario::Fail)
+            .await
+            .unwrap();
+        let timeout = provider
+            .simulate_webhook("pay-live-3", MockPaymentScenario::Timeout)
+            .await
+            .unwrap();
+        assert_eq!(success.http_status_code, Some(200));
+        assert_eq!(fail.http_status_code, Some(402));
+        assert_eq!(timeout.http_status_code, None);
     }
 }

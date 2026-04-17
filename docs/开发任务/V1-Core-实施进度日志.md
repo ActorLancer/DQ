@@ -1576,3 +1576,43 @@
 - 新增 TODO / 预留项：无
 - 待人工审批结论：通过
 - 备注：本批联调数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`，用户 `luna`，库 `luna_data_trading`）；mock 支付容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
+
+### BATCH-073（计划中）
+
+- 状态：计划中
+- 当前任务编号：BIL-004
+- 当前批次目标：实现 Mock Payment Provider 适配器，支持 `success/fail/timeout` 三种模拟结果并可生成对应 webhook 事件载荷，补齐最小测试与容器联调验证。
+- 前置依赖核对结果：`BIL-004` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过，可执行本批。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-073（实施完成）
+
+- 状态：待审批
+- 当前任务编号：BIL-004
+- 当前批次目标：实现 Mock Payment Provider 适配器，支持 `success/fail/timeout` 三种模拟结果并可生成对应 webhook 事件载荷，补齐最小测试与容器联调验证。
+- 前置依赖核对结果：`BIL-004` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - 在 `provider-kit` 扩展 `PaymentProvider` 适配能力，新增 `simulate_webhook` 接口与 `MockPaymentScenario`（`success/fail/timeout`）统一枚举。
+  - 新增 `MockPaymentWebhookEvent` 结构，统一 webhook 事件最小字段（`provider_event_id/payment_intent_id/event_type/provider_status/http_status_code`）。
+  - `MockPaymentProvider` 支持两种模式：
+    - `stub`（默认）：直接返回三类场景事件。
+    - `live`：通过 `MOCK_PAYMENT_BASE_URL` 调用 mock-payment 容器接口（`/mock/payment/charge/success|fail|timeout`）并映射响应。
+  - `timeout` 场景支持超时语义：3 秒客户端超时视为有效超时结果。
+  - 补齐单测：
+    - `stub` 三场景覆盖测试；
+    - `live` 三场景联调测试（`#[ignore]`，联调时显式执行）。
+- 涉及文件：`apps/platform-core/crates/provider-kit/Cargo.toml`、`apps/platform-core/crates/provider-kit/src/lib.rs`、`Cargo.lock`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p provider-kit`
+  3. `cargo test -p platform-core`
+  4. `MOCK_PAYMENT_ADAPTER_MODE=live cargo test -p provider-kit live_mock_payment_adapter_hits_three_mock_paths -- --ignored --nocapture`
+  5. `./scripts/check-mock-payment.sh`
+- 验证结果：通过。`provider-kit` 单测 `2 passed + 1 ignored`，`platform-core` 单测 `10 passed`；`live` 联调用例通过；`check-mock-payment.sh` 返回 `[ok] mock-payment scenarios verified`。
+- 覆盖的冻结文档条目：`支付域接口协议正式版`（支付 provider 适配、幂等与一致性约束）、`支付、资金流与轻结算设计`（支付子域 provider 抽象与 mock 联调路径）、`全集成基线-V1`（V1 mock/real provider 双轨边界）
+- 覆盖的任务清单条目：`BIL-004`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：联调容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）；沙箱环境不能直接访问本机端口，live 联调与脚本探针使用提权执行完成验证。
