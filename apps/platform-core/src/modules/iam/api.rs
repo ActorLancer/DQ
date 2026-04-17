@@ -1,12 +1,14 @@
 use crate::modules::iam::domain::{
     ApplicationView, ConnectorView, CreateApplicationRequest, CreateConnectorRequest,
-    CreateDepartmentRequest, CreateExecutionEnvironmentRequest, CreateUserRequest, DepartmentView,
-    ExecutionEnvironmentView, OrganizationAggregateView, PatchApplicationRequest,
-    RegisterOrganizationRequest, SessionContextView, UserView,
+    CreateDepartmentRequest, CreateExecutionEnvironmentRequest, CreateInvitationRequest,
+    CreateUserRequest, DepartmentView, DeviceListQuery, DeviceView, ExecutionEnvironmentView,
+    InvitationListQuery, InvitationView, OrganizationAggregateView, PatchApplicationRequest,
+    RegisterOrganizationRequest, RotateApplicationSecretRequest, SessionContextView,
+    SessionListQuery, SessionView, UserView,
 };
 use crate::modules::iam::service::{IamPermission, is_allowed};
 use auth::{JwtParser, MockJwtParser, extract_bearer};
-use axum::extract::Path;
+use axum::extract::{Path, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
@@ -25,6 +27,27 @@ pub fn router() -> Router {
         .route("/api/v1/iam/users/{id}", get(get_user))
         .route("/api/v1/apps", post(create_app))
         .route("/api/v1/apps/{id}", patch(patch_app).get(get_app))
+        .route(
+            "/api/v1/apps/{id}/credentials/rotate",
+            post(rotate_app_secret),
+        )
+        .route(
+            "/api/v1/apps/{id}/credentials/revoke",
+            post(revoke_app_secret),
+        )
+        .route("/api/v1/users/invite", post(invite_user))
+        .route(
+            "/api/v1/iam/invitations",
+            post(create_invitation).get(list_invitations),
+        )
+        .route(
+            "/api/v1/iam/invitations/{id}/cancel",
+            post(cancel_invitation),
+        )
+        .route("/api/v1/iam/sessions", get(list_sessions))
+        .route("/api/v1/iam/sessions/{id}/revoke", post(revoke_session))
+        .route("/api/v1/iam/devices", get(list_devices))
+        .route("/api/v1/iam/devices/{id}/revoke", post(revoke_device))
         .route("/api/v1/iam/connectors", post(create_connector))
         .route("/api/v1/iam/connectors/{id}", get(get_connector))
         .route(
@@ -369,11 +392,11 @@ async fn create_app(
     let row = client
         .query_one(
             "INSERT INTO core.application (
-               org_id, app_name, app_type, status, client_id, client_secret_hash
+               org_id, app_name, app_type, status, client_id, client_secret_hash, metadata
              ) VALUES (
-               $1::text::uuid, $2, $3, 'active', $4, $5
+               $1::text::uuid, $2, $3, 'active', $4, $5, $6::jsonb
              )
-             RETURNING app_id::text, org_id::text, app_name, app_type, status, client_id",
+             RETURNING app_id::text, org_id::text, app_name, app_type, status, client_id, metadata",
             &[
                 &payload.org_id,
                 &payload.app_name,
@@ -383,6 +406,9 @@ async fn create_app(
                     .unwrap_or_else(|| "api_client".to_string()),
                 &payload.client_id,
                 &payload.client_secret_hash,
+                &serde_json::json!({
+                    "client_secret_status": if payload.client_secret_hash.is_some() { "active" } else { "missing" }
+                }),
             ],
         )
         .await
@@ -394,6 +420,12 @@ async fn create_app(
         app_type: row.get(3),
         status: row.get(4),
         client_id: row.get(5),
+        client_secret_status: row
+            .get::<_, serde_json::Value>(6)
+            .get("client_secret_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
     };
     write_audit_event(
         &client,
@@ -428,7 +460,7 @@ async fn patch_app(
                status = COALESCE($3, status),
                updated_at = now()
              WHERE app_id = $1::text::uuid
-             RETURNING app_id::text, org_id::text, app_name, app_type, status, client_id",
+             RETURNING app_id::text, org_id::text, app_name, app_type, status, client_id, metadata",
             &[&id, &payload.app_name, &payload.status],
         )
         .await
@@ -442,6 +474,12 @@ async fn patch_app(
         app_type: row.get(3),
         status: row.get(4),
         client_id: row.get(5),
+        client_secret_status: row
+            .get::<_, serde_json::Value>(6)
+            .get("client_secret_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
     };
     write_audit_event(
         &client,
@@ -469,7 +507,7 @@ async fn get_app(
     });
     let row = client
         .query_opt(
-            "SELECT app_id::text, org_id::text, app_name, app_type, status, client_id
+            "SELECT app_id::text, org_id::text, app_name, app_type, status, client_id, metadata
              FROM core.application
              WHERE app_id = $1::text::uuid",
             &[&id],
@@ -485,7 +523,489 @@ async fn get_app(
         app_type: row.get(3),
         status: row.get(4),
         client_id: row.get(5),
+        client_secret_status: row
+            .get::<_, serde_json::Value>(6)
+            .get("client_secret_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
     }))
+}
+
+async fn rotate_app_secret(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<RotateApplicationSecretRequest>,
+) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::IdentityWrite,
+        "application credential rotate",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let secret_hash = payload
+        .client_secret_hash
+        .unwrap_or_else(|| new_external_readable_id("appsec"));
+    let row = client
+        .query_opt(
+            "UPDATE core.application
+             SET
+               client_secret_hash = $2,
+               metadata = jsonb_set(
+                 jsonb_set(COALESCE(metadata, '{}'::jsonb), '{client_secret_status}', '\"active\"'::jsonb, true),
+                 '{client_secret_rotated_at}', to_jsonb(now()), true
+               ),
+               updated_at = now()
+             WHERE app_id = $1::text::uuid
+             RETURNING app_id::text, org_id::text, app_name, app_type, status, client_id, metadata",
+            &[&id, &secret_hash],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("application not found", header(&headers, "x-request-id")))?;
+    let view = ApplicationView {
+        app_id: row.get(0),
+        org_id: row.get(1),
+        app_name: row.get(2),
+        app_type: row.get(3),
+        status: row.get(4),
+        client_id: row.get(5),
+        client_secret_status: row
+            .get::<_, serde_json::Value>(6)
+            .get("client_secret_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("active")
+            .to_string(),
+    };
+    write_audit_event(
+        &client,
+        "application",
+        &view.app_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.app.secret.rotate",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn revoke_app_secret(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::IdentityWrite,
+        "application credential revoke",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE core.application
+             SET
+               client_secret_hash = NULL,
+               metadata = jsonb_set(
+                 jsonb_set(COALESCE(metadata, '{}'::jsonb), '{client_secret_status}', '\"revoked\"'::jsonb, true),
+                 '{client_secret_revoked_at}', to_jsonb(now()), true
+               ),
+               updated_at = now()
+             WHERE app_id = $1::text::uuid
+             RETURNING app_id::text, org_id::text, app_name, app_type, status, client_id, metadata",
+            &[&id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("application not found", header(&headers, "x-request-id")))?;
+    let view = ApplicationView {
+        app_id: row.get(0),
+        org_id: row.get(1),
+        app_name: row.get(2),
+        app_type: row.get(3),
+        status: row.get(4),
+        client_id: row.get(5),
+        client_secret_status: row
+            .get::<_, serde_json::Value>(6)
+            .get("client_secret_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("revoked")
+            .to_string(),
+    };
+    write_audit_event(
+        &client,
+        "application",
+        &view.app_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.app.secret.revoke",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn invite_user(
+    headers: HeaderMap,
+    Json(payload): Json<CreateInvitationRequest>,
+) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
+    create_invitation_internal(headers, payload, "iam.user.invite").await
+}
+
+async fn create_invitation(
+    headers: HeaderMap,
+    Json(payload): Json<CreateInvitationRequest>,
+) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
+    create_invitation_internal(headers, payload, "iam.invitation.create").await
+}
+
+async fn create_invitation_internal(
+    headers: HeaderMap,
+    payload: CreateInvitationRequest,
+    audit_action: &str,
+) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityWrite, "invitation create")?;
+    if payload.invited_email.is_none() && payload.invited_phone.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: "invited_email or invited_phone is required".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let expires_hours = payload.expires_in_hours.unwrap_or(72).max(1);
+    let row = client
+        .query_one(
+            "INSERT INTO iam.invitation (
+               org_id, invited_email, invited_phone, invited_role_snapshot, invitation_type,
+               token_hash, expires_at, created_by_user_id
+             ) VALUES (
+               $1::text::uuid, $2::citext, $3, $4::jsonb, $5, $6, now() + ($7::bigint || ' hours')::interval, $8::text::uuid
+             )
+             RETURNING invitation_id::text, org_id::text, invited_email::text, invited_phone,
+                       invitation_type, status,
+                       to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[
+                &payload.org_id,
+                &payload.invited_email,
+                &payload.invited_phone,
+                &serde_json::Value::Array(
+                    payload
+                        .invited_roles
+                        .iter()
+                        .map(|r| serde_json::Value::String(r.clone()))
+                        .collect(),
+                ),
+                &payload
+                    .invitation_type
+                    .clone()
+                    .unwrap_or_else(|| "member".to_string()),
+                &new_external_readable_id("invite"),
+                &expires_hours,
+                &header(&headers, "x-user-id"),
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let view = InvitationView {
+        invitation_id: row.get(0),
+        org_id: row.get(1),
+        invited_email: row.get(2),
+        invited_phone: row.get(3),
+        invitation_type: row.get(4),
+        status: row.get(5),
+        expires_at: row.get(6),
+    };
+    write_audit_event(
+        &client,
+        "invitation",
+        &view.invitation_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        audit_action,
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn list_invitations(
+    headers: HeaderMap,
+    Query(query): Query<InvitationListQuery>,
+) -> Result<Json<ApiResponse<Vec<InvitationView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityRead, "invitation read")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT invitation_id::text, org_id::text, invited_email::text, invited_phone,
+                    invitation_type, status,
+                    to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM iam.invitation
+             WHERE ($1::text IS NULL OR org_id = $1::text::uuid)
+               AND ($2::text IS NULL OR status = $2)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.org_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| InvitationView {
+            invitation_id: row.get(0),
+            org_id: row.get(1),
+            invited_email: row.get(2),
+            invited_phone: row.get(3),
+            invitation_type: row.get(4),
+            status: row.get(5),
+            expires_at: row.get(6),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
+async fn cancel_invitation(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityWrite, "invitation cancel")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.invitation
+             SET status = 'cancelled', updated_at = now()
+             WHERE invitation_id = $1::text::uuid
+             RETURNING invitation_id::text, org_id::text, invited_email::text, invited_phone,
+                       invitation_type, status,
+                       to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[&id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("invitation not found", header(&headers, "x-request-id")))?;
+    let view = InvitationView {
+        invitation_id: row.get(0),
+        org_id: row.get(1),
+        invited_email: row.get(2),
+        invited_phone: row.get(3),
+        invitation_type: row.get(4),
+        status: row.get(5),
+        expires_at: row.get(6),
+    };
+    write_audit_event(
+        &client,
+        "invitation",
+        &view.invitation_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.invitation.cancel",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn list_sessions(
+    headers: HeaderMap,
+    Query(query): Query<SessionListQuery>,
+) -> Result<Json<ApiResponse<Vec<SessionView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::SessionRead, "session list")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT session_id::text, user_id::text, trusted_device_id::text, session_type,
+                    auth_context_level, session_status,
+                    to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM iam.user_session
+             WHERE ($1::text IS NULL OR user_id = $1::text::uuid)
+               AND ($2::text IS NULL OR session_status = $2)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.user_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| SessionView {
+            session_id: row.get(0),
+            user_id: row.get(1),
+            trusted_device_id: row.get(2),
+            session_type: row.get(3),
+            auth_context_level: row.get(4),
+            session_status: row.get(5),
+            expires_at: row.get(6),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
+async fn revoke_session(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<SessionView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityWrite, "session revoke")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.user_session
+             SET session_status = 'revoked', revoked_at = now(), updated_at = now()
+             WHERE session_id = $1::text::uuid
+             RETURNING session_id::text, user_id::text, trusted_device_id::text, session_type,
+                       auth_context_level, session_status,
+                       to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[&id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("session not found", header(&headers, "x-request-id")))?;
+    let view = SessionView {
+        session_id: row.get(0),
+        user_id: row.get(1),
+        trusted_device_id: row.get(2),
+        session_type: row.get(3),
+        auth_context_level: row.get(4),
+        session_status: row.get(5),
+        expires_at: row.get(6),
+    };
+    write_audit_event(
+        &client,
+        "session",
+        &view.session_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.session.revoke",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn list_devices(
+    headers: HeaderMap,
+    Query(query): Query<DeviceListQuery>,
+) -> Result<Json<ApiResponse<Vec<DeviceView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::SessionRead, "device list")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT trusted_device_id::text, user_id::text, device_name, platform, browser,
+                    trust_level, status,
+                    to_char(last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM iam.trusted_device
+             WHERE ($1::text IS NULL OR user_id = $1::text::uuid)
+               AND ($2::text IS NULL OR status = $2)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.user_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| DeviceView {
+            trusted_device_id: row.get(0),
+            user_id: row.get(1),
+            device_name: row.get(2),
+            platform: row.get(3),
+            browser: row.get(4),
+            trust_level: row.get(5),
+            status: row.get(6),
+            last_seen_at: row.get(7),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
+async fn revoke_device(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<DeviceView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityWrite, "device revoke")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.trusted_device
+             SET status = 'revoked', updated_at = now()
+             WHERE trusted_device_id = $1::text::uuid
+             RETURNING trusted_device_id::text, user_id::text, device_name, platform, browser,
+                       trust_level, status,
+                       to_char(last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[&id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row = row.ok_or_else(|| not_found("device not found", header(&headers, "x-request-id")))?;
+    let view = DeviceView {
+        trusted_device_id: row.get(0),
+        user_id: row.get(1),
+        device_name: row.get(2),
+        platform: row.get(3),
+        browser: row.get(4),
+        trust_level: row.get(5),
+        status: row.get(6),
+        last_seen_at: row.get(7),
+    };
+    write_audit_event(
+        &client,
+        "trusted_device",
+        &view.trusted_device_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.device.revoke",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
 }
 
 async fn create_connector(
@@ -984,6 +1504,43 @@ mod tests {
                     .header("x-role", "tenant_operator")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"status":"disabled"}"#))
+                    .expect("request build"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_invitation_create_for_developer_role() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/iam/invitations")
+                    .method("POST")
+                    .header("x-role", "developer")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"org_id":"10000000-0000-0000-0000-000000000001","invited_email":"new@acme.test"}"#,
+                    ))
+                    .expect("request build"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_session_revoke_for_tenant_operator() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/iam/sessions/10000000-0000-0000-0000-000000000401/revoke")
+                    .method("POST")
+                    .header("x-role", "tenant_operator")
+                    .body(Body::empty())
                     .expect("request build"),
             )
             .await

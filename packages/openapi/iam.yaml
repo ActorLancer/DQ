@@ -112,6 +112,120 @@ paths:
           description: Application patched
         "404":
           description: Not found
+  /api/v1/apps/{id}/credentials/rotate:
+    post:
+      summary: Rotate application secret
+      operationId: rotateApplicationSecret
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Application secret rotated
+        "404":
+          description: Not found
+  /api/v1/apps/{id}/credentials/revoke:
+    post:
+      summary: Revoke application secret
+      operationId: revokeApplicationSecret
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Application secret revoked
+        "404":
+          description: Not found
+  /api/v1/users/invite:
+    post:
+      summary: Invite user shortcut endpoint
+      operationId: inviteUser
+      responses:
+        "200":
+          description: Invitation created
+  /api/v1/iam/invitations:
+    post:
+      summary: Create invitation
+      operationId: createInvitation
+      responses:
+        "200":
+          description: Invitation created
+    get:
+      summary: List invitations
+      operationId: listInvitations
+      responses:
+        "200":
+          description: Invitation list
+  /api/v1/iam/invitations/{id}/cancel:
+    post:
+      summary: Cancel invitation
+      operationId: cancelInvitation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invitation cancelled
+        "404":
+          description: Not found
+  /api/v1/iam/sessions:
+    get:
+      summary: List sessions
+      operationId: listSessions
+      responses:
+        "200":
+          description: Session list
+  /api/v1/iam/sessions/{id}/revoke:
+    post:
+      summary: Revoke session
+      operationId: revokeSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session revoked
+        "404":
+          description: Not found
+  /api/v1/iam/devices:
+    get:
+      summary: List trusted devices
+      operationId: listTrustedDevices
+      responses:
+        "200":
+          description: Device list
+  /api/v1/iam/devices/{id}/revoke:
+    post:
+      summary: Revoke trusted device
+      operationId: revokeTrustedDevice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Device revoked
+        "404":
+          description: Not found
   /api/v1/iam/connectors:
     post:
       summary: Create connector

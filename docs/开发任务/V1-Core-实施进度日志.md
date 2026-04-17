@@ -1773,17 +1773,9 @@
 - 待人工审批结论：通过
 - 备注：本批仅执行 `DB-034` 阻塞链解除与闭环验证，不扩展其他 BIL 功能任务。
 
-### BATCH-079（计划中）
-
-- 状态：计划中
-- 当前任务编号：IAM-001, IAM-002, IAM-003, IAM-004
-- 当前批次目标：在 `iam` 模块落地主体聚合、基础身份模型 CRUD、登录上下文镜像与组织注册接口，并完成权限校验、审计落库、OpenAPI 同步与最小验证闭环。
-- 前置依赖核对结果：`IAM-001~004` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，上述任务均已完成并审批通过；当前无阻塞。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/业务流程/业务流程图-V1-完整版.md`
-
 ### BATCH-079（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：IAM-001, IAM-002, IAM-003, IAM-004
 - 当前批次目标：完成 IAM 起始 4 个任务闭环（主体聚合、基础身份 CRUD、登录上下文镜像、组织注册接口）。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018` 均已完成并审批通过；本批无阻塞。
@@ -1815,5 +1807,48 @@
 - 覆盖的任务清单条目：`IAM-001`, `IAM-002`, `IAM-003`, `IAM-004`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`TODO-PROC-BIL-001` 仍保持冻结状态，本批未扩展其它 BIL 任务。
+
+### BATCH-080（计划中）
+
+- 状态：计划中
+- 当前任务编号：IAM-005, IAM-006, IAM-007, IAM-008
+- 当前批次目标：在 `iam` 模块补齐成员邀请、会话/设备最小管理、应用接口闭环与应用密钥轮换/吊销能力，并同步审计、权限、OpenAPI 与最小测试。
+- 前置依赖核对结果：`IAM-005~008` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，上述任务均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
+
+### BATCH-080（待审批）
+
+- 状态：待审批
+- 当前任务编号：IAM-005, IAM-006, IAM-007, IAM-008
+- 当前批次目标：在 `iam` 模块补齐成员邀请、会话/设备最小管理、应用接口闭环与应用密钥轮换/吊销能力，并同步审计、权限、OpenAPI 与最小测试。
+- 前置依赖核对结果：`IAM-005~008` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
+- 已实现功能：
+  - `IAM-005`：新增邀请接口 `POST /api/v1/users/invite`、`POST /api/v1/iam/invitations`、`GET /api/v1/iam/invitations`、`POST /api/v1/iam/invitations/{id}/cancel`，落地 `iam.invitation` 表写入与取消。
+  - `IAM-006`：新增会话/设备接口 `GET /api/v1/iam/sessions`、`POST /api/v1/iam/sessions/{id}/revoke`、`GET /api/v1/iam/devices`、`POST /api/v1/iam/devices/{id}/revoke`，落地最小会话管理与设备撤销。
+  - `IAM-007`：保留并验证 `POST /api/v1/apps`、`PATCH /api/v1/apps/{id}`、`GET /api/v1/apps/{id}`，同步扩展返回字段 `client_secret_status`，用于应用与 API 产品绑定可见性。
+  - `IAM-008`：新增应用密钥管理接口 `POST /api/v1/apps/{id}/credentials/rotate`、`POST /api/v1/apps/{id}/credentials/revoke`；落地 `client_secret_hash` 轮换/吊销与 metadata 状态记录（`active/revoked`）。
+  - 审计补齐：新增 `iam.user.invite`、`iam.invitation.create/cancel`、`iam.session.revoke`、`iam.device.revoke`、`iam.app.secret.rotate/revoke` 事件写入。
+  - OpenAPI 同步：`packages/openapi/iam.yaml` 已新增上述路径，确保契约与实现一致。
+- 涉及文件：`apps/platform-core/src/modules/iam/domain.rs`、`apps/platform-core/src/modules/iam/api.rs`、`packages/openapi/iam.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务并手工 API 验证（`APP_PORT=18080`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`）：
+     - `POST /api/v1/orgs/register`
+     - `POST /api/v1/iam/invitations`
+     - `POST /api/v1/apps`
+     - `POST /api/v1/apps/{id}/credentials/rotate`
+     - `POST /api/v1/apps/{id}/credentials/revoke`
+     - `GET /api/v1/iam/sessions`
+     - `GET /api/v1/iam/devices`
+  4. 审计回查：`SELECT action_name, ref_type, result_code FROM audit.audit_event WHERE action_name IN ('iam.user.invite','iam.invitation.create','iam.app.secret.rotate','iam.app.secret.revoke','iam.session.revoke','iam.device.revoke') ORDER BY event_time DESC LIMIT 12;`
+- 验证结果：通过。`platform-core` 单测 `23/23` 通过；手工 API 返回 `success=true`，密钥状态按 `active -> revoked` 变化；会话/设备查询成功返回数组；审计回查到 `iam.invitation.create`、`iam.app.secret.rotate`、`iam.app.secret.revoke` 记录。
+- 覆盖的冻结文档条目：身份与会话接口基线中的 `invitations`、`sessions`、`devices` 路径；`010_identity_and_access.sql` 中 `iam.invitation/iam.user_session/iam.trusted_device/core.application` 对象；IAM 技术接入文档中的本地模式最小闭环要求。
+- 覆盖的任务清单条目：`IAM-005`, `IAM-006`, `IAM-007`, `IAM-008`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`TODO-PROC-BIL-001` 持续保持冻结状态；本批未扩展 BIL 线。

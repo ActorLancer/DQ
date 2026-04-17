@@ -85,6 +85,11 @@ pub struct CreateApplicationRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct RotateApplicationSecretRequest {
+    pub client_secret_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct PatchApplicationRequest {
     pub app_name: Option<String>,
     pub status: Option<String>,
@@ -98,6 +103,70 @@ pub struct ApplicationView {
     pub app_type: String,
     pub status: String,
     pub client_id: String,
+    pub client_secret_status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateInvitationRequest {
+    pub org_id: String,
+    pub invited_email: Option<String>,
+    pub invited_phone: Option<String>,
+    #[serde(default)]
+    pub invited_roles: Vec<String>,
+    pub invitation_type: Option<String>,
+    pub expires_in_hours: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InvitationListQuery {
+    pub org_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct InvitationView {
+    pub invitation_id: String,
+    pub org_id: String,
+    pub invited_email: Option<String>,
+    pub invited_phone: Option<String>,
+    pub invitation_type: String,
+    pub status: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SessionListQuery {
+    pub user_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SessionView {
+    pub session_id: String,
+    pub user_id: String,
+    pub trusted_device_id: Option<String>,
+    pub session_type: String,
+    pub auth_context_level: String,
+    pub session_status: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DeviceListQuery {
+    pub user_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DeviceView {
+    pub trusted_device_id: String,
+    pub user_id: String,
+    pub device_name: Option<String>,
+    pub platform: Option<String>,
+    pub browser: Option<String>,
+    pub trust_level: String,
+    pub status: String,
+    pub last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
