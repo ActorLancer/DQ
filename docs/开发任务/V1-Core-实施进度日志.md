@@ -1949,22 +1949,9 @@
 - 待人工审批结论：通过
 - 备注：本批保持 V1 范围，不引入 V2/V3 正式实现；`TODO-PROC-BIL-001` 继续保持冻结状态。
 
-### BATCH-084（计划中）
-
-- 状态：计划中
-- 当前任务编号：IAM-002, IAM-003, IAM-011, IAM-020
-- 当前批次目标：修复 IAM 阶段审查发现的 5 个缺口：1) 业务写入与审计写入事务一致性；2) Keycloak token 解析接入不足；3) step-up 接口契约路径漂移；4) IAM-002 仓储层缺口；5) IAM 批次人工审批记录缺失。
-- 前置依赖核对结果：`IAM-001~IAM-020` 已实现并口头审批通过；当前为同阶段修复批，不新增跨阶段依赖；无阻塞。
-- 预计涉及文件：`apps/platform-core/src/modules/iam/api.rs`、`apps/platform-core/src/modules/iam/mod.rs`、`apps/platform-core/src/modules/iam/repository.rs`（新增）、`apps/platform-core/crates/auth/src/lib.rs`、`apps/platform-core/crates/auth/Cargo.toml`、`packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`、`docs/开发任务/V1-Core-人工审批记录.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
-- 预计验证方式：
-  1. `cargo fmt --all`
-  2. `cargo test -p auth`
-  3. `cargo test -p platform-core`
-  4. OpenAPI 同步校验：`cmp -s packages/openapi/iam.yaml docs/02-openapi/iam.yaml`
-
 ### BATCH-084（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：IAM-002, IAM-003, IAM-011, IAM-020
 - 当前批次目标：修复 IAM 阶段审查发现的 5 个缺口：事务一致性、Keycloak token 解析、step-up 契约路径、IAM 仓储层边界、人工审批记录补录。
 - 前置依赖核对结果：`IAM-001~IAM-020` 均已实现且已口头审批通过；本批为 IAM 阶段内部修复批，无新增跨阶段依赖阻塞。
@@ -1998,4 +1985,4 @@
 - 覆盖的任务清单条目：`IAM-002`, `IAM-003`, `IAM-011`, `IAM-020`
 - 未覆盖项：无（本批目标内）
 - 新增 TODO / 预留项：无新增未完成项；已关闭本批对应 5 个缺口追踪项（见 TODO 清单 `TODO-IAM-002-REPO-001` 等）。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
