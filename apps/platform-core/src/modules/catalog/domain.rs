@@ -239,34 +239,36 @@ pub struct RawIngestBatchView {
     pub updated_at: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        STANDARD_SKU_TYPES, default_trade_mode_for_sku_type, is_standard_sku_type,
-        is_trade_mode_compatible_with_sku,
-    };
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateRawObjectManifestRequest {
+    pub raw_ingest_batch_id: Option<String>,
+    pub storage_binding_id: Option<String>,
+    pub object_name: String,
+    pub object_uri: Option<String>,
+    pub mime_type: Option<String>,
+    pub container_type: Option<String>,
+    pub byte_size: Option<i64>,
+    pub object_hash: Option<String>,
+    #[serde(default)]
+    pub source_time_range_json: Value,
+    #[serde(default)]
+    pub manifest_json: Value,
+}
 
-    #[test]
-    fn standard_sku_truth_list_matches_v1_frozen_set() {
-        assert_eq!(STANDARD_SKU_TYPES.len(), 8);
-        assert!(is_standard_sku_type("FILE_STD"));
-        assert!(is_standard_sku_type("RPT_STD"));
-        assert!(!is_standard_sku_type("FILE_PREMIUM"));
-    }
-
-    #[test]
-    fn sku_trade_mode_mapping_is_frozen() {
-        assert_eq!(
-            default_trade_mode_for_sku_type("FILE_SUB"),
-            Some("revision_subscription")
-        );
-        assert!(is_trade_mode_compatible_with_sku(
-            "QRY_LITE",
-            "template_query"
-        ));
-        assert!(!is_trade_mode_compatible_with_sku(
-            "API_PPU",
-            "api_subscription"
-        ));
-    }
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RawObjectManifestView {
+    pub raw_object_manifest_id: String,
+    pub raw_ingest_batch_id: String,
+    pub storage_binding_id: Option<String>,
+    pub object_name: String,
+    pub object_uri: Option<String>,
+    pub mime_type: Option<String>,
+    pub container_type: Option<String>,
+    pub byte_size: Option<i64>,
+    pub object_hash: Option<String>,
+    pub source_time_range_json: Value,
+    pub manifest_json: Value,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
 }

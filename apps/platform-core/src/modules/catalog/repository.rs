@@ -1,14 +1,40 @@
 use crate::modules::catalog::domain::{
     AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
     CreateDataResourceRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
-    DataProductView, DataResourceView, PatchDataProductRequest, PatchProductSkuRequest,
-    ProductSkuView, RawIngestBatchView,
+    CreateRawObjectManifestRequest, DataProductView, DataResourceView, PatchDataProductRequest,
+    PatchProductSkuRequest, ProductSkuView, RawIngestBatchView, RawObjectManifestView,
 };
 use tokio_postgres::{GenericClient, Row};
 
 pub struct PostgresCatalogRepository;
 
 impl PostgresCatalogRepository {
+    pub async fn get_raw_ingest_batch(
+        client: &impl GenericClient,
+        id: &str,
+    ) -> Result<Option<RawIngestBatchView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "SELECT
+                   raw_ingest_batch_id::text,
+                   owner_org_id::text,
+                   asset_id::text,
+                   ingest_source_type,
+                   declared_object_family,
+                   source_declared_rights_json,
+                   ingest_policy_json,
+                   status,
+                   created_by::text,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 FROM catalog.raw_ingest_batch
+                 WHERE raw_ingest_batch_id = $1::text::uuid",
+                &[&id],
+            )
+            .await?;
+        Ok(row.map(|row| parse_raw_ingest_batch_row(&row)))
+    }
+
     pub async fn create_raw_ingest_batch(
         client: &impl GenericClient,
         asset_id: &str,
@@ -47,6 +73,51 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(parse_raw_ingest_batch_row(&row))
+    }
+
+    pub async fn create_raw_object_manifest(
+        client: &impl GenericClient,
+        raw_ingest_batch_id: &str,
+        payload: &CreateRawObjectManifestRequest,
+    ) -> Result<RawObjectManifestView, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.raw_object_manifest (
+                   raw_ingest_batch_id, storage_binding_id, object_name, object_uri, mime_type,
+                   container_type, byte_size, object_hash, source_time_range_json, manifest_json, status
+                 ) VALUES (
+                   $1::text::uuid, $2::text::uuid, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, 'registered'
+                 )
+                 RETURNING
+                   raw_object_manifest_id::text,
+                   raw_ingest_batch_id::text,
+                   storage_binding_id::text,
+                   object_name,
+                   object_uri,
+                   mime_type,
+                   container_type,
+                   byte_size,
+                   object_hash,
+                   source_time_range_json,
+                   manifest_json,
+                   status,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &raw_ingest_batch_id,
+                    &payload.storage_binding_id,
+                    &payload.object_name,
+                    &payload.object_uri,
+                    &payload.mime_type,
+                    &payload.container_type,
+                    &payload.byte_size,
+                    &payload.object_hash,
+                    &payload.source_time_range_json,
+                    &payload.manifest_json,
+                ],
+            )
+            .await?;
+        Ok(parse_raw_object_manifest_row(&row))
     }
 
     pub async fn create_data_resource(
@@ -581,5 +652,24 @@ fn parse_raw_ingest_batch_row(row: &Row) -> RawIngestBatchView {
         created_by: row.get(8),
         created_at: row.get(9),
         updated_at: row.get(10),
+    }
+}
+
+fn parse_raw_object_manifest_row(row: &Row) -> RawObjectManifestView {
+    RawObjectManifestView {
+        raw_object_manifest_id: row.get(0),
+        raw_ingest_batch_id: row.get(1),
+        storage_binding_id: row.get(2),
+        object_name: row.get(3),
+        object_uri: row.get(4),
+        mime_type: row.get(5),
+        container_type: row.get(6),
+        byte_size: row.get(7),
+        object_hash: row.get(8),
+        source_time_range_json: row.get(9),
+        manifest_json: row.get(10),
+        status: row.get(11),
+        created_at: row.get(12),
+        updated_at: row.get(13),
     }
 }

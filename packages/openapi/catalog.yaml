@@ -116,6 +116,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RawIngestBatch"
+  /api/v1/raw-ingest-batches/{id}/manifests:
+    post:
+      summary: Create raw object manifest
+      operationId: createRawObjectManifest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRawObjectManifestRequest"
+      responses:
+        "200":
+          description: Raw object manifest created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RawObjectManifest"
 components:
   schemas:
     CreateDataProductRequest:
@@ -352,6 +376,97 @@ components:
         - ingest_source_type
         - source_declared_rights_json
         - ingest_policy_json
+        - status
+        - created_at
+        - updated_at
+    CreateRawObjectManifestRequest:
+      type: object
+      properties:
+        raw_ingest_batch_id:
+          type: string
+          format: uuid
+          nullable: true
+        storage_binding_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_name:
+          type: string
+        object_uri:
+          type: string
+          nullable: true
+        mime_type:
+          type: string
+          nullable: true
+        container_type:
+          type: string
+          nullable: true
+        byte_size:
+          type: integer
+          format: int64
+          nullable: true
+        object_hash:
+          type: string
+          nullable: true
+        source_time_range_json:
+          type: object
+          additionalProperties: true
+        manifest_json:
+          type: object
+          additionalProperties: true
+      required:
+        - object_name
+    RawObjectManifest:
+      type: object
+      properties:
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+        raw_ingest_batch_id:
+          type: string
+          format: uuid
+        storage_binding_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_name:
+          type: string
+        object_uri:
+          type: string
+          nullable: true
+        mime_type:
+          type: string
+          nullable: true
+        container_type:
+          type: string
+          nullable: true
+        byte_size:
+          type: integer
+          format: int64
+          nullable: true
+        object_hash:
+          type: string
+          nullable: true
+        source_time_range_json:
+          type: object
+          additionalProperties: true
+        manifest_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - raw_object_manifest_id
+        - raw_ingest_batch_id
+        - object_name
+        - source_time_range_json
+        - manifest_json
         - status
         - created_at
         - updated_at

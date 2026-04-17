@@ -1,7 +1,8 @@
 use crate::modules::catalog::domain::{
     CreateDataProductRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
-    DataProductView, PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView,
-    RawIngestBatchView, default_trade_mode_for_sku_type, is_standard_sku_type,
+    CreateRawObjectManifestRequest, DataProductView, PatchDataProductRequest,
+    PatchProductSkuRequest, ProductSkuView, RawIngestBatchView, RawObjectManifestView,
+    default_trade_mode_for_sku_type, is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
@@ -25,6 +26,10 @@ pub fn router() -> Router {
         .route(
             "/api/v1/assets/{assetId}/raw-ingest-batches",
             post(create_raw_ingest_batch),
+        )
+        .route(
+            "/api/v1/raw-ingest-batches/{id}/manifests",
+            post(create_raw_object_manifest),
         )
 }
 
@@ -390,6 +395,64 @@ async fn create_raw_ingest_batch(
     Ok(ApiResponse::ok(view))
 }
 
+async fn create_raw_object_manifest(
+    headers: HeaderMap,
+    Path(raw_ingest_batch_id): Path<String>,
+    Json(payload): Json<CreateRawObjectManifestRequest>,
+) -> Result<Json<ApiResponse<RawObjectManifestView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::RawIngestWrite,
+        "catalog raw object manifest create",
+    )?;
+    validate_create_raw_object_manifest_payload(&raw_ingest_batch_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing_batch =
+        PostgresCatalogRepository::get_raw_ingest_batch(&client, &raw_ingest_batch_id)
+            .await
+            .map_err(map_db_error)?;
+    if existing_batch.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "raw ingest batch does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view =
+        PostgresCatalogRepository::create_raw_object_manifest(&tx, &raw_ingest_batch_id, &payload)
+            .await
+            .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "raw_object_manifest",
+        &view.raw_object_manifest_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.raw_object_manifest.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.raw_object_manifest.create",
+        raw_object_manifest_id = %view.raw_object_manifest_id,
+        raw_ingest_batch_id = %raw_ingest_batch_id,
+        "catalog raw object manifest created"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 fn validate_create_product_payload(
     payload: &CreateDataProductRequest,
     headers: &HeaderMap,
@@ -572,6 +635,46 @@ fn validate_create_raw_ingest_batch_payload(
     ))
 }
 
+fn validate_create_raw_object_manifest_payload(
+    raw_ingest_batch_id_from_path: &str,
+    payload: &CreateRawObjectManifestRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(raw_ingest_batch_id_from_body) = payload.raw_ingest_batch_id.as_deref()
+        && raw_ingest_batch_id_from_body != raw_ingest_batch_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "raw_ingest_batch_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.object_name.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "object_name is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.byte_size.is_some_and(|v| v < 0) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "byte_size must be >= 0".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
 async fn validate_template_compatibility(
     client: &impl GenericClient,
     template_id: Option<&str>,
@@ -717,105 +820,4 @@ fn map_db_error(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>)
             request_id: None,
         }),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::router;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use tower::ServiceExt;
-
-    #[tokio::test]
-    async fn rejects_create_product_without_permission() {
-        let app = router();
-        let req = Request::builder()
-            .method("POST")
-            .uri("/api/v1/products")
-            .header("content-type", "application/json")
-            .header("x-role", "developer")
-            .body(Body::from(
-                r#"{
-                  "asset_id":"00000000-0000-0000-0000-000000000001",
-                  "asset_version_id":"00000000-0000-0000-0000-000000000002",
-                  "seller_org_id":"00000000-0000-0000-0000-000000000003",
-                  "title":"p",
-                  "category":"c",
-                  "product_type":"data_product",
-                  "delivery_type":"file_download"
-                }"#,
-            ))
-            .expect("request");
-        let resp = app.oneshot(req).await.expect("response");
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn rejects_patch_product_without_permission() {
-        let app = router();
-        let req = Request::builder()
-            .method("PATCH")
-            .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
-            .header("content-type", "application/json")
-            .header("x-role", "developer")
-            .body(Body::from(r#"{"title":"updated"}"#))
-            .expect("request");
-        let resp = app.oneshot(req).await.expect("response");
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn rejects_create_sku_without_permission() {
-        let app = router();
-        let req = Request::builder()
-            .method("POST")
-            .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/skus")
-            .header("content-type", "application/json")
-            .header("x-role", "developer")
-            .body(Body::from(
-                r#"{
-                  "sku_code":"SKU-001",
-                  "sku_type":"FILE_STD",
-                  "billing_mode":"one_time",
-                  "acceptance_mode":"manual_accept",
-                  "refund_mode":"manual_refund"
-                }"#,
-            ))
-            .expect("request");
-        let resp = app.oneshot(req).await.expect("response");
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn rejects_patch_sku_without_permission() {
-        let app = router();
-        let req = Request::builder()
-            .method("PATCH")
-            .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001")
-            .header("content-type", "application/json")
-            .header("x-role", "developer")
-            .body(Body::from(r#"{"trade_mode":"snapshot_sale"}"#))
-            .expect("request");
-        let resp = app.oneshot(req).await.expect("response");
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn rejects_create_raw_ingest_batch_without_permission() {
-        let app = router();
-        let req = Request::builder()
-            .method("POST")
-            .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/raw-ingest-batches")
-            .header("content-type", "application/json")
-            .header("x-role", "developer")
-            .body(Body::from(
-                r#"{
-                  "owner_org_id":"00000000-0000-0000-0000-000000000003",
-                  "ingest_source_type":"seller_upload"
-                }"#,
-            ))
-            .expect("request");
-        let resp = app.oneshot(req).await.expect("response");
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-    }
 }

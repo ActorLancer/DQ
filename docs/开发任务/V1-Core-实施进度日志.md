@@ -2079,7 +2079,7 @@
 
 ### BATCH-088
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-004
 - 当前批次目标：实现 `POST /api/v1/assets/{assetId}/raw-ingest-batches`，落地原始接入批次创建能力，并补齐权限校验、事务审计、错误码、OpenAPI 与最小验证。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-087` 已获人工审批通过，允许执行。
@@ -2127,5 +2127,59 @@
 - 覆盖的任务清单条目：`CAT-004`
 - 未覆盖项：`CAT-004` 描述中的“清单维护接口”细项在冻结清单中对应 `CAT-005` (`POST /api/v1/raw-ingest-batches/{id}/manifests`)，本批未越任务实现。
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：联调首轮携带不存在的 `x-user-id` 触发外键约束失败，已调整为不传 `x-user-id` 后复测通过。
+
+### BATCH-089
+
+- 状态：待审批
+- 当前任务编号：CAT-005
+- 当前批次目标：实现 `POST /api/v1/raw-ingest-batches/{id}/manifests`，支持原始对象 URI、hash、格式、大小、归属记录，并补齐权限、事务审计、OpenAPI 与最小验证。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-088` 已获人工审批通过，允许执行。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-005` 描述、DoD、acceptance 与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-005` 在 `CAT-004` 后的顺序边界。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：计划中 -> 编码 -> 验证 -> 待审批固定步骤。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与不可越阶段约束。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：批次记录模板沿用。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：`TODO-PROC-BIL-001` 追溯保持。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：`BATCH-088` 已补录通过。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：保持 V1 范围与对象模型边界。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：`catalog` 接口归属。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/raw-ingest-batches/{id}/manifests`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批仍以审计事件为主，不新增业务 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：单测 + 手工 API + 审计回查最小闭环。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：在 `platform-core/modules/catalog` 内增量实现。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 业务真值权威。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚实现。
+- technical_reference 约束映射：
+  - `docs/原始PRD/数据原样处理与产品化加工流程设计.md:L189`：原始接入登记输出应覆盖对象清单及对象 hash。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L157`：4.2A 要求记录对象与来源信息，作为后续格式识别输入。
+  - `docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql:L1`：`catalog.raw_object_manifest` 字段、默认状态与外键约束。
+- 已实现功能：
+  1. 新增原始对象清单模型：`CreateRawObjectManifestRequest`、`RawObjectManifestView`。
+  2. 新增仓储方法：`get_raw_ingest_batch` 与 `create_raw_object_manifest`。
+  3. 新增接口：`POST /api/v1/raw-ingest-batches/{id}/manifests`，包含路径/请求一致性校验、批次存在性校验、事务审计与成功响应。
+  4. 新增权限拒绝测试：无权限角色访问清单创建接口返回 `403`。
+  5. 更新 OpenAPI：新增 manifests 路径与 `CreateRawObjectManifestRequest/RawObjectManifest` schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-人工审批记录.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 本地栈核验：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  4. 端到端联调（`APP_PORT=18084`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`KAFKA_BROKERS=127.0.0.1:9094`）：
+     - 预置数据：`core.organization` + `catalog.data_asset` + `catalog.raw_ingest_batch`
+     - 调用 `POST /api/v1/raw-ingest-batches/{id}/manifests`
+     - 回查 `catalog.raw_object_manifest` 与 `audit.audit_event`
+     - 清理测试数据（`raw_object_manifest/raw_ingest_batch/data_asset/organization`）
+  5. 数据残留核对：验证业务表残留均为 `0`；审计表按 append-only 保留请求记录。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `41 passed, 0 failed, 1 ignored`；API 返回 `success=true` 且 `status=registered`；审计命中 `catalog.raw_object_manifest.create|raw_object_manifest|success`；业务表清理后残留 `0|0|0|0`。
+- 覆盖的冻结文档条目：`docs/原始PRD/数据原样处理与产品化加工流程设计.md`（4.2 原始接入登记输出）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2A 原始接入区对象记录）、`docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql`（`catalog.raw_object_manifest` 字段与默认状态）、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（5.5 manifests 接口项）。
+- 覆盖的任务清单条目：`CAT-005`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：联调时若不显式设置 `KAFKA_BROKERS=127.0.0.1:9094` 会触发 startup self-check 失败；已按本地栈口径修正并完成验证。
