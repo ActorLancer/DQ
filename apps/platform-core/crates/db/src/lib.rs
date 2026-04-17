@@ -42,7 +42,10 @@ pub struct InMemoryOrderRepository {
 #[async_trait]
 impl OrderRepository for InMemoryOrderRepository {
     async fn upsert(&self, order: OrderRecord) -> AppResult<()> {
-        self.data.write().await.insert(order.order_id.clone(), order);
+        self.data
+            .write()
+            .await
+            .insert(order.order_id.clone(), order);
         Ok(())
     }
 
@@ -114,7 +117,12 @@ impl OrderRepository for PostgresOrderRepository {
                  DO UPDATE SET tenant_id = EXCLUDED.tenant_id,
                                status = EXCLUDED.status,
                                amount_minor = EXCLUDED.amount_minor",
-                &[&order.order_id, &order.tenant_id, &order.status, &order.amount_minor],
+                &[
+                    &order.order_id,
+                    &order.tenant_id,
+                    &order.status,
+                    &order.amount_minor,
+                ],
             )
             .await
             .map_err(|e| AppError::Config(format!("postgres upsert order failed: {e}")))?;
@@ -182,7 +190,9 @@ pub fn build_order_repository(
 ) -> Arc<dyn OrderRepository> {
     match backend {
         OrderRepositoryBackend::InMemory => Arc::new(InMemoryOrderRepository::default()),
-        OrderRepositoryBackend::Postgres => Arc::new(PostgresOrderRepository::new(pool.dsn.clone())),
+        OrderRepositoryBackend::Postgres => {
+            Arc::new(PostgresOrderRepository::new(pool.dsn.clone()))
+        }
     }
 }
 
@@ -450,8 +460,7 @@ mod query_compile_checks {
     ];
 
     pub const ORDER_SELECT_BY_ID: &str = "SELECT order_id, tenant_id, status, created_at, updated_at FROM trade_order WHERE order_id = $1";
-    pub const OUTBOX_PENDING_SELECT: &str =
-        "SELECT event_id, topic, aggregate_type, aggregate_id, payload_json, idempotency_key FROM outbox_event WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1";
+    pub const OUTBOX_PENDING_SELECT: &str = "SELECT event_id, topic, aggregate_type, aggregate_id, payload_json, idempotency_key FROM outbox_event WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1";
     pub const AUDIT_BY_OBJECT: &str = "SELECT action, object_type, object_id, result, created_at FROM audit_log WHERE object_type = $1 AND object_id = $2 ORDER BY created_at DESC LIMIT $3";
 
     #[test]
@@ -479,9 +488,9 @@ impl BusinessMutationWriter for NoopBusinessMutationWriter {
 mod tests {
     use super::*;
     use audit_kit::AuditContext;
+    use audit_kit::NoopAuditWriter;
     use outbox_kit::{NoopOutboxWriter, PublishStatus, RetryPolicy};
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use audit_kit::NoopAuditWriter;
 
     #[tokio::test]
     async fn tx_template_executes() {

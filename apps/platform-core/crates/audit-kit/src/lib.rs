@@ -131,6 +131,9 @@ mod tests {
             },
             evidence: vec![],
         };
-        writer.write_event(event).await.expect("write should succeed");
+        writer
+            .write_event(event)
+            .await
+            .expect("write should succeed");
     }
 }

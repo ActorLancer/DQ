@@ -63,11 +63,7 @@ mod tests {
         for module in CORE010_REQUIRED_MODULES {
             for dir in TEMPLATE_DIRS {
                 let path = root.join(module).join(dir);
-                assert!(
-                    path.is_dir(),
-                    "module template missing: {}",
-                    path.display()
-                );
+                assert!(path.is_dir(), "module template missing: {}", path.display());
             }
         }
     }

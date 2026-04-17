@@ -437,7 +437,8 @@ mod tests {
     #[test]
     fn error_code_document_is_compatible() {
         let doc = include_str!("../../../../../docs/01-architecture/error-codes.md");
-        validate_error_code_document(doc).expect("error codes doc should include required prefixes");
+        validate_error_code_document(doc)
+            .expect("error codes doc should include required prefixes");
     }
 
     #[test]
