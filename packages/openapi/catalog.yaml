@@ -3,4 +3,185 @@ info:
   title: Catalog API
   version: v1
 paths: {}
-
+components:
+  schemas:
+    DataResource:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+        owner_org_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        sensitivity_level:
+          type: string
+        status:
+          type: string
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - asset_id
+        - owner_org_id
+        - title
+        - category
+        - sensitivity_level
+        - status
+        - created_at
+        - updated_at
+    AssetVersion:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        version_no:
+          type: integer
+        schema_version:
+          type: string
+          nullable: true
+        schema_hash:
+          type: string
+          nullable: true
+        sample_hash:
+          type: string
+          nullable: true
+        full_hash:
+          type: string
+          nullable: true
+        data_size_bytes:
+          type: integer
+          nullable: true
+        origin_region:
+          type: string
+          nullable: true
+        allowed_region:
+          type: array
+          items:
+            type: string
+        requires_controlled_execution:
+          type: boolean
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - asset_version_id
+        - asset_id
+        - version_no
+        - allowed_region
+        - requires_controlled_execution
+        - status
+        - created_at
+        - updated_at
+    DataProduct:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        product_type:
+          type: string
+        status:
+          type: string
+        price_mode:
+          type: string
+        price:
+          type: string
+        currency_code:
+          type: string
+        delivery_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - product_id
+        - asset_id
+        - asset_version_id
+        - seller_org_id
+        - title
+        - category
+        - product_type
+        - status
+        - price_mode
+        - price
+        - currency_code
+        - delivery_type
+        - created_at
+        - updated_at
+    ProductSku:
+      type: object
+      properties:
+        sku_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_code:
+          type: string
+        sku_type:
+          type: string
+        unit_name:
+          type: string
+          nullable: true
+        billing_mode:
+          type: string
+        acceptance_mode:
+          type: string
+        refund_mode:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - sku_id
+        - product_id
+        - sku_code
+        - sku_type
+        - billing_mode
+        - acceptance_mode
+        - refund_mode
+        - status
+        - created_at
+        - updated_at

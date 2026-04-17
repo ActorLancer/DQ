@@ -1986,3 +1986,46 @@
 - 未覆盖项：无（本批目标内）
 - 新增 TODO / 预留项：无新增未完成项；已关闭本批对应 5 个缺口追踪项（见 TODO 清单 `TODO-IAM-002-REPO-001` 等）。
 - 待人工审批结论：通过
+
+### BATCH-085
+
+- 状态：计划中
+- 当前任务编号：CAT-001
+- 当前批次目标：实现 Catalog 领域基础模型与仓储（DataResource、AssetVersion、DataProduct、ProductSKU），为 `CAT-002+` 接口任务提供持久化与结构基线。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-084` 已通过，满足继续执行条件。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/mod.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：实现后执行 `cargo fmt --all`、`cargo test -p platform-core`，并按 `CAT-001 technical_reference` 逐项核对模型/仓储字段与语义。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5. V1 接口）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）。
+- 覆盖的任务清单条目：`CAT-001`
+- 未覆盖项：无
+- 新增 TODO / 预留项：待实现后评估；`TODO-PROC-BIL-001` 维持冻结追溯状态，不在本批改动 BIL 任务范围。
+- 待人工审批结论：待审批
+- 备注：按“单复杂任务”批次策略执行。
+
+### BATCH-085
+
+- 状态：待审批
+- 当前任务编号：CAT-001
+- 当前批次目标：实现 Catalog 领域基础模型与仓储（DataResource、AssetVersion、DataProduct、ProductSKU），为 `CAT-002+` 接口任务提供持久化与结构基线。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-084` 已通过，满足继续执行条件。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/mod.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：
+  1. 在 `catalog` 模块新增基础领域模型：`CreateDataResourceRequest/DataResourceView`、`CreateAssetVersionRequest/AssetVersionView`、`CreateDataProductRequest/DataProductView`、`CreateProductSkuRequest/ProductSkuView`。
+  2. 冻结并实现标准 SKU 真值集合 `FILE_STD/FILE_SUB/SHARE_RO/API_SUB/API_PPU/QRY_LITE/SBX_STD/RPT_STD` 及校验函数 `is_standard_sku_type`。
+  3. 新增 `PostgresCatalogRepository`，实现 DataResource/AssetVersion/DataProduct/ProductSKU 的创建与读取仓储方法（含 SKU 列表查询）。
+  4. `packages/openapi/catalog.yaml` 新增基础 schema（`DataResource/AssetVersion/DataProduct/ProductSku`），用于后续 `CAT-002+` 接口复用。
+- 涉及文件：`apps/platform-core/src/modules/catalog/mod.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 对照 `CAT-001 technical_reference` 逐项核对模型与仓储字段语义（DataAsset/DataAssetVersion/Product/ProductSKU）。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `31 passed, 0 failed, 1 ignored`；新增用例 `modules::catalog::domain::tests::standard_sku_truth_list_matches_v1_frozen_set` 通过。
+- 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5.1/5.2 商品与 SKU）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）。
+- 覆盖的任务清单条目：`CAT-001`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增代码 TODO；`TODO-PROC-BIL-001` 状态调整为 `accepted`（已获人工批准继续后续阶段，但保留历史偏移追溯并要求进入 BIL 阶段执行一致性复核）。
+- 待人工审批结论：待审批
+- 备注：本批只做 `CAT-001`，未推进 `CAT-002+` 接口实现。
