@@ -298,3 +298,34 @@ pub struct FormatDetectionResultView {
     pub status: String,
     pub created_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateExtractionJobRequest {
+    pub raw_object_manifest_id: Option<String>,
+    pub asset_version_id: Option<String>,
+    pub job_type: String,
+    #[serde(default)]
+    pub job_config_json: Value,
+    #[serde(default)]
+    pub result_summary_json: Value,
+    pub output_uri: Option<String>,
+    pub output_hash: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ExtractionJobView {
+    pub extraction_job_id: String,
+    pub raw_object_manifest_id: String,
+    pub asset_version_id: Option<String>,
+    pub job_type: String,
+    pub job_config_json: Value,
+    pub result_summary_json: Value,
+    pub output_uri: Option<String>,
+    pub output_hash: Option<String>,
+    pub status: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}

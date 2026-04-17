@@ -164,6 +164,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FormatDetectionResult"
+  /api/v1/raw-object-manifests/{id}/extraction-jobs:
+    post:
+      summary: Create extraction job for raw object manifest
+      operationId: createExtractionJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExtractionJobRequest"
+      responses:
+        "200":
+          description: Extraction job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractionJob"
 components:
   schemas:
     CreateDataProductRequest:
@@ -561,6 +585,88 @@ components:
         - schema_hint_json
         - status
         - created_at
+    CreateExtractionJobRequest:
+      type: object
+      properties:
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        job_type:
+          type: string
+        job_config_json:
+          type: object
+          additionalProperties: true
+        result_summary_json:
+          type: object
+          additionalProperties: true
+        output_uri:
+          type: string
+          nullable: true
+        output_hash:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+      required:
+        - job_type
+    ExtractionJob:
+      type: object
+      properties:
+        extraction_job_id:
+          type: string
+          format: uuid
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        job_type:
+          type: string
+        job_config_json:
+          type: object
+          additionalProperties: true
+        result_summary_json:
+          type: object
+          additionalProperties: true
+        output_uri:
+          type: string
+          nullable: true
+        output_hash:
+          type: string
+          nullable: true
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - extraction_job_id
+        - raw_object_manifest_id
+        - job_type
+        - job_config_json
+        - result_summary_json
+        - status
+        - created_at
+        - updated_at
     DataResource:
       type: object
       properties:

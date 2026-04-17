@@ -1,9 +1,10 @@
 use crate::modules::catalog::domain::{
     AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
-    CreateDataResourceRequest, CreateFormatDetectionRequest, CreateProductSkuRequest,
-    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView, DataResourceView,
-    FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView,
-    RawIngestBatchView, RawObjectManifestView,
+    CreateDataResourceRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
+    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
+    DataProductView, DataResourceView, ExtractionJobView, FormatDetectionResultView,
+    PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView, RawIngestBatchView,
+    RawObjectManifestView,
 };
 use tokio_postgres::{GenericClient, Row};
 
@@ -186,6 +187,51 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(parse_format_detection_result_row(&row))
+    }
+
+    pub async fn create_extraction_job(
+        client: &impl GenericClient,
+        raw_object_manifest_id: &str,
+        payload: &CreateExtractionJobRequest,
+    ) -> Result<ExtractionJobView, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.extraction_job (
+                   raw_object_manifest_id, asset_version_id, job_type, job_config_json,
+                   result_summary_json, output_uri, output_hash, status
+                 ) VALUES (
+                   $1::text::uuid, $2::text::uuid, $3, $4::jsonb, $5::jsonb, $6, $7, $8
+                 )
+                 RETURNING
+                   extraction_job_id::text,
+                   raw_object_manifest_id::text,
+                   asset_version_id::text,
+                   job_type,
+                   job_config_json,
+                   result_summary_json,
+                   output_uri,
+                   output_hash,
+                   status,
+                   to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &raw_object_manifest_id,
+                    &payload.asset_version_id,
+                    &payload.job_type,
+                    &payload.job_config_json,
+                    &payload.result_summary_json,
+                    &payload.output_uri,
+                    &payload.output_hash,
+                    &payload
+                        .status
+                        .clone()
+                        .unwrap_or_else(|| "draft".to_string()),
+                ],
+            )
+            .await?;
+        Ok(parse_extraction_job_row(&row))
     }
 
     pub async fn create_data_resource(
@@ -754,5 +800,23 @@ fn parse_format_detection_result_row(row: &Row) -> FormatDetectionResultView {
         detected_at: row.get(7),
         status: row.get(8),
         created_at: row.get(9),
+    }
+}
+
+fn parse_extraction_job_row(row: &Row) -> ExtractionJobView {
+    ExtractionJobView {
+        extraction_job_id: row.get(0),
+        raw_object_manifest_id: row.get(1),
+        asset_version_id: row.get(2),
+        job_type: row.get(3),
+        job_config_json: row.get(4),
+        result_summary_json: row.get(5),
+        output_uri: row.get(6),
+        output_hash: row.get(7),
+        status: row.get(8),
+        started_at: row.get(9),
+        completed_at: row.get(10),
+        created_at: row.get(11),
+        updated_at: row.get(12),
     }
 }

@@ -163,4 +163,25 @@ mod tests {
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
+
+    #[tokio::test]
+    async fn rejects_create_extraction_job_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri(
+                "/api/v1/raw-object-manifests/00000000-0000-0000-0000-000000000001/extraction-jobs",
+            )
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "job_type":"schema_extract",
+                  "job_config_json":{"mode":"quick"}
+                }"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
 }
