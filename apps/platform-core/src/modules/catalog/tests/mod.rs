@@ -72,6 +72,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_put_product_metadata_profile_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("PUT")
+            .uri("/api/v1/products/00000000-0000-0000-0000-000000000100/metadata-profile")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "business_description_json": {"product_name":"demo"},
+                  "data_content_json": {"object_type":"table"},
+                  "structure_description_json": {"schema_version":"v1"},
+                  "quality_description_json": {"missing_rate":0.01},
+                  "compliance_description_json": {"contains_pi":false},
+                  "delivery_description_json": {"delivery_modes":["file"]},
+                  "version_description_json": {"version_no":1},
+                  "authorization_description_json": {"license_scope":"internal"},
+                  "responsibility_description_json": {"owner":"seller"},
+                  "processing_overview_json": {"processing_mode":"seller_self_managed"}
+                }"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
     async fn rejects_create_sku_without_permission() {
         let app = router();
         let req = Request::builder()

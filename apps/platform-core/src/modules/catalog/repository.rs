@@ -4,8 +4,10 @@ use crate::modules::catalog::domain::{
     CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
     CreateRawObjectManifestRequest, DataProductView, DataResourceView, ExtractionJobView,
     FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
-    PreviewArtifactView, ProductSkuView, RawIngestBatchView, RawObjectManifestView,
+    PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
+    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
 };
+use serde_json::{Value, json};
 use tokio_postgres::{GenericClient, Row};
 
 pub struct PostgresCatalogRepository;
@@ -554,6 +556,98 @@ impl PostgresCatalogRepository {
         Ok(row.map(|row| parse_data_product_row(&row)))
     }
 
+    pub async fn upsert_product_metadata_profile(
+        client: &impl GenericClient,
+        product_id: &str,
+        asset_version_id: &str,
+        payload: &PutProductMetadataProfileRequest,
+    ) -> Result<ProductMetadataProfileView, tokio_postgres::Error> {
+        let metadata_version_no = payload.metadata_version_no.unwrap_or(1);
+        let business_description_json = normalize_json_object(&payload.business_description_json);
+        let data_content_json = normalize_json_object(&payload.data_content_json);
+        let structure_description_json = normalize_json_object(&payload.structure_description_json);
+        let quality_description_json = normalize_json_object(&payload.quality_description_json);
+        let compliance_description_json =
+            normalize_json_object(&payload.compliance_description_json);
+        let delivery_description_json = normalize_json_object(&payload.delivery_description_json);
+        let version_description_json = normalize_json_object(&payload.version_description_json);
+        let authorization_description_json =
+            normalize_json_object(&payload.authorization_description_json);
+        let responsibility_description_json =
+            normalize_json_object(&payload.responsibility_description_json);
+        let processing_overview_json = normalize_json_object(&payload.processing_overview_json);
+        let metadata = normalize_json_object(&payload.metadata);
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.product_metadata_profile (
+                   product_id, asset_version_id, metadata_version_no,
+                   business_description_json, data_content_json, structure_description_json,
+                   quality_description_json, compliance_description_json, delivery_description_json,
+                   version_description_json, authorization_description_json, responsibility_description_json,
+                   processing_overview_json, status, metadata
+                 ) VALUES (
+                   $1::text::uuid, $2::text::uuid, $3,
+                   $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb,
+                   $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15::jsonb
+                 )
+                 ON CONFLICT (product_id, metadata_version_no) DO UPDATE SET
+                   asset_version_id = EXCLUDED.asset_version_id,
+                   business_description_json = EXCLUDED.business_description_json,
+                   data_content_json = EXCLUDED.data_content_json,
+                   structure_description_json = EXCLUDED.structure_description_json,
+                   quality_description_json = EXCLUDED.quality_description_json,
+                   compliance_description_json = EXCLUDED.compliance_description_json,
+                   delivery_description_json = EXCLUDED.delivery_description_json,
+                   version_description_json = EXCLUDED.version_description_json,
+                   authorization_description_json = EXCLUDED.authorization_description_json,
+                   responsibility_description_json = EXCLUDED.responsibility_description_json,
+                   processing_overview_json = EXCLUDED.processing_overview_json,
+                   status = EXCLUDED.status,
+                   metadata = EXCLUDED.metadata
+                 RETURNING
+                   product_metadata_profile_id::text,
+                   product_id::text,
+                   asset_version_id::text,
+                   metadata_version_no,
+                   business_description_json,
+                   data_content_json,
+                   structure_description_json,
+                   quality_description_json,
+                   compliance_description_json,
+                   delivery_description_json,
+                   version_description_json,
+                   authorization_description_json,
+                   responsibility_description_json,
+                   processing_overview_json,
+                   status,
+                   metadata,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &product_id,
+                    &asset_version_id,
+                    &metadata_version_no,
+                    &business_description_json,
+                    &data_content_json,
+                    &structure_description_json,
+                    &quality_description_json,
+                    &compliance_description_json,
+                    &delivery_description_json,
+                    &version_description_json,
+                    &authorization_description_json,
+                    &responsibility_description_json,
+                    &processing_overview_json,
+                    &payload
+                        .status
+                        .clone()
+                        .unwrap_or_else(|| "draft".to_string()),
+                    &metadata,
+                ],
+            )
+            .await?;
+        Ok(parse_product_metadata_profile_row(&row))
+    }
+
     pub async fn create_product_sku(
         client: &impl GenericClient,
         product_id: &str,
@@ -877,5 +971,36 @@ fn parse_preview_artifact_row(row: &Row) -> PreviewArtifactView {
         status: row.get(8),
         created_at: row.get(9),
         updated_at: row.get(10),
+    }
+}
+
+fn parse_product_metadata_profile_row(row: &Row) -> ProductMetadataProfileView {
+    ProductMetadataProfileView {
+        product_metadata_profile_id: row.get(0),
+        product_id: row.get(1),
+        asset_version_id: row.get(2),
+        metadata_version_no: row.get(3),
+        business_description_json: row.get(4),
+        data_content_json: row.get(5),
+        structure_description_json: row.get(6),
+        quality_description_json: row.get(7),
+        compliance_description_json: row.get(8),
+        delivery_description_json: row.get(9),
+        version_description_json: row.get(10),
+        authorization_description_json: row.get(11),
+        responsibility_description_json: row.get(12),
+        processing_overview_json: row.get(13),
+        status: row.get(14),
+        metadata: row.get(15),
+        created_at: row.get(16),
+        updated_at: row.get(17),
+    }
+}
+
+fn normalize_json_object(value: &Value) -> Value {
+    if value.is_object() {
+        value.clone()
+    } else {
+        json!({})
     }
 }

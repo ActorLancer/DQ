@@ -2,7 +2,8 @@ use crate::modules::catalog::domain::{
     CreateDataProductRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
     CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
     CreateRawObjectManifestRequest, DataProductView, ExtractionJobView, FormatDetectionResultView,
-    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView, ProductSkuView,
+    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
+    ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
     RawIngestBatchView, RawObjectManifestView, default_trade_mode_for_sku_type,
     is_standard_sku_type,
 };
@@ -12,7 +13,7 @@ use crate::modules::catalog::service::{
 };
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{patch, post};
+use axum::routing::{patch, post, put};
 use axum::{Json, Router};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
@@ -23,6 +24,10 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/v1/products", post(create_product_draft))
         .route("/api/v1/products/{id}", patch(patch_product_draft))
+        .route(
+            "/api/v1/products/{id}/metadata-profile",
+            put(put_product_metadata_profile),
+        )
         .route("/api/v1/products/{id}/skus", post(create_product_sku))
         .route("/api/v1/skus/{id}", patch(patch_product_sku))
         .route(
@@ -161,6 +166,77 @@ async fn patch_product_draft(
         action = "catalog.product.patch",
         product_id = %view.product_id,
         "catalog product draft patched"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
+async fn put_product_metadata_profile(
+    headers: HeaderMap,
+    Path(product_id): Path<String>,
+    Json(payload): Json<PutProductMetadataProfileRequest>,
+) -> Result<Json<ApiResponse<ProductMetadataProfileView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ProductDraftWrite,
+        "catalog product metadata profile put",
+    )?;
+    validate_put_product_metadata_profile_payload(&product_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let product = PostgresCatalogRepository::get_data_product(&client, &product_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    if product.status != "draft" {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "only draft product can edit metadata profile".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::upsert_product_metadata_profile(
+        &tx,
+        &product_id,
+        &product.asset_version_id,
+        &payload,
+    )
+    .await
+    .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "product_metadata_profile",
+        &view.product_metadata_profile_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.product_metadata_profile.upsert",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.product_metadata_profile.upsert",
+        product_id = %product_id,
+        product_metadata_profile_id = %view.product_metadata_profile_id,
+        "catalog product metadata profile upserted"
     );
     Ok(ApiResponse::ok(view))
 }
@@ -708,6 +784,50 @@ fn validate_patch_product_payload(
             request_id: header(headers, "x-request-id"),
         }),
     ))
+}
+
+fn validate_put_product_metadata_profile_payload(
+    product_id_from_path: &str,
+    payload: &PutProductMetadataProfileRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(product_id_from_body) = payload.product_id.as_deref()
+        && product_id_from_body != product_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "product_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.metadata_version_no.is_some_and(|v| v != 1) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "V1 only supports metadata_version_no=1".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .status
+        .as_deref()
+        .is_some_and(|v| v.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "status must not be empty".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_create_sku_payload(

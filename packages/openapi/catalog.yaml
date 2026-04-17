@@ -44,6 +44,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataProduct"
+  /api/v1/products/{id}/metadata-profile:
+    put:
+      summary: Upsert metadata profile for product
+      operationId: putProductMetadataProfile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutProductMetadataProfileRequest"
+      responses:
+        "200":
+          description: Product metadata profile upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductMetadataProfile"
   /api/v1/products/{id}/skus:
     post:
       summary: Create SKU for draft product
@@ -294,6 +318,126 @@ components:
         status:
           type: string
           nullable: true
+    PutProductMetadataProfileRequest:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata_version_no:
+          type: integer
+          nullable: true
+        business_description_json:
+          type: object
+          additionalProperties: true
+        data_content_json:
+          type: object
+          additionalProperties: true
+        structure_description_json:
+          type: object
+          additionalProperties: true
+        quality_description_json:
+          type: object
+          additionalProperties: true
+        compliance_description_json:
+          type: object
+          additionalProperties: true
+        delivery_description_json:
+          type: object
+          additionalProperties: true
+        version_description_json:
+          type: object
+          additionalProperties: true
+        authorization_description_json:
+          type: object
+          additionalProperties: true
+        responsibility_description_json:
+          type: object
+          additionalProperties: true
+        processing_overview_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    ProductMetadataProfile:
+      type: object
+      properties:
+        product_metadata_profile_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        metadata_version_no:
+          type: integer
+        business_description_json:
+          type: object
+          additionalProperties: true
+        data_content_json:
+          type: object
+          additionalProperties: true
+        structure_description_json:
+          type: object
+          additionalProperties: true
+        quality_description_json:
+          type: object
+          additionalProperties: true
+        compliance_description_json:
+          type: object
+          additionalProperties: true
+        delivery_description_json:
+          type: object
+          additionalProperties: true
+        version_description_json:
+          type: object
+          additionalProperties: true
+        authorization_description_json:
+          type: object
+          additionalProperties: true
+        responsibility_description_json:
+          type: object
+          additionalProperties: true
+        processing_overview_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - product_metadata_profile_id
+        - product_id
+        - asset_version_id
+        - metadata_version_no
+        - business_description_json
+        - data_content_json
+        - structure_description_json
+        - quality_description_json
+        - compliance_description_json
+        - delivery_description_json
+        - version_description_json
+        - authorization_description_json
+        - responsibility_description_json
+        - processing_overview_json
+        - status
+        - metadata
+        - created_at
+        - updated_at
     CreateProductSkuRequest:
       type: object
       properties:

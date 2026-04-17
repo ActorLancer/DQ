@@ -358,3 +358,54 @@ pub struct PreviewArtifactView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PutProductMetadataProfileRequest {
+    pub product_id: Option<String>,
+    pub metadata_version_no: Option<i32>,
+    #[serde(default)]
+    pub business_description_json: Value,
+    #[serde(default)]
+    pub data_content_json: Value,
+    #[serde(default)]
+    pub structure_description_json: Value,
+    #[serde(default)]
+    pub quality_description_json: Value,
+    #[serde(default)]
+    pub compliance_description_json: Value,
+    #[serde(default)]
+    pub delivery_description_json: Value,
+    #[serde(default)]
+    pub version_description_json: Value,
+    #[serde(default)]
+    pub authorization_description_json: Value,
+    #[serde(default)]
+    pub responsibility_description_json: Value,
+    #[serde(default)]
+    pub processing_overview_json: Value,
+    pub status: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProductMetadataProfileView {
+    pub product_metadata_profile_id: String,
+    pub product_id: String,
+    pub asset_version_id: String,
+    pub metadata_version_no: i32,
+    pub business_description_json: Value,
+    pub data_content_json: Value,
+    pub structure_description_json: Value,
+    pub quality_description_json: Value,
+    pub compliance_description_json: Value,
+    pub delivery_description_json: Value,
+    pub version_description_json: Value,
+    pub authorization_description_json: Value,
+    pub responsibility_description_json: Value,
+    pub processing_overview_json: Value,
+    pub status: String,
+    pub metadata: Value,
+    pub created_at: String,
+    pub updated_at: String,
+}
