@@ -3,16 +3,35 @@ use crate::modules::billing::domain::{CorridorPolicy, JurisdictionProfile, Payou
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BillingPermission {
     ReadPolicy,
+    PaymentIntentRead,
+    PaymentIntentCreate,
+    PaymentIntentCancel,
 }
 
 pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
-    if permission != BillingPermission::ReadPolicy {
-        return false;
+    match permission {
+        BillingPermission::ReadPolicy => matches!(
+            role,
+            "platform_admin" | "platform_finance_operator" | "tenant_admin"
+        ),
+        BillingPermission::PaymentIntentRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_finance_operator"
+                | "platform_risk_settlement"
+                | "tenant_admin"
+                | "tenant_operator"
+        ),
+        BillingPermission::PaymentIntentCreate | BillingPermission::PaymentIntentCancel => {
+            matches!(
+                role,
+                "platform_admin"
+                    | "platform_finance_operator"
+                    | "platform_risk_settlement"
+                    | "tenant_admin"
+            )
+        }
     }
-    matches!(
-        role,
-        "platform_admin" | "platform_finance_operator" | "tenant_admin"
-    )
 }
 
 pub fn list_jurisdictions() -> Vec<JurisdictionProfile> {
@@ -72,6 +91,22 @@ mod tests {
         ));
         assert!(is_allowed("tenant_admin", BillingPermission::ReadPolicy));
         assert!(!is_allowed("tenant_auditor", BillingPermission::ReadPolicy));
+    }
+
+    #[test]
+    fn only_expected_roles_can_write_payment_intents() {
+        assert!(is_allowed(
+            "platform_admin",
+            BillingPermission::PaymentIntentCreate
+        ));
+        assert!(is_allowed(
+            "platform_risk_settlement",
+            BillingPermission::PaymentIntentCancel
+        ));
+        assert!(!is_allowed(
+            "tenant_operator",
+            BillingPermission::PaymentIntentCancel
+        ));
     }
 
     #[test]

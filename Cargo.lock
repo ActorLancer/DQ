@@ -985,6 +985,7 @@ dependencies = [
  "reqwest",
  "serde",
  "tokio",
+ "tokio-postgres",
  "tower",
  "tracing",
  "tracing-subscriber",

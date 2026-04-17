@@ -1466,16 +1466,8 @@
 - 覆盖的任务清单条目：`DB-035`
 - 未覆盖项：`DB-034`（前置依赖 `BIL-023` 未完成，已登记阻塞）
 - 新增 TODO / 预留项：`TODO-DB-034-001`（`blocked`）
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响本批验收。
-
-### BATCH-070（计划中）
-
-- 状态：计划中
-- 当前任务编号：BIL-001
-- 当前批次目标：实现 `Payment Jurisdiction / Corridor / Payout Preference` 的基础模型与接口占位，补齐最小权限校验、审计留痕、错误码映射、OpenAPI 草案与最小测试。
-- 前置依赖核对结果：`BIL-001` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`；当前仓库显示这些前置任务均已完成并经人工审批通过，可进入实现。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
 
 ### BATCH-070（实施完成）
 
@@ -1503,4 +1495,52 @@
 - 覆盖的任务清单条目：`BIL-001`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
+- 待人工审批结论：通过
+
+### BATCH-071（计划中）
+
+- 状态：计划中
+- 当前任务编号：BIL-002
+- 当前批次目标：实现支付意图接口 `POST /api/v1/payments/intents`、`GET /api/v1/payments/intents/{id}`、`POST /api/v1/payments/intents/{id}/cancel`，覆盖最小权限校验、错误码响应、幂等键复用与数据库落表。
+- 前置依赖核对结果：`BIL-002` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过，可执行本批。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-071（实施完成）
+
+- 状态：待审批
+- 当前任务编号：BIL-002
+- 当前批次目标：实现支付意图接口 `POST /api/v1/payments/intents`、`GET /api/v1/payments/intents/{id}`、`POST /api/v1/payments/intents/{id}/cancel`，覆盖最小权限校验、错误码响应、幂等键复用与数据库落表。
+- 前置依赖核对结果：`BIL-002` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - 新增支付意图接口并接入 PostgreSQL `payment.payment_intent` 表真实读写：
+    - `POST /api/v1/payments/intents`
+    - `GET /api/v1/payments/intents/{id}`
+    - `POST /api/v1/payments/intents/{id}/cancel`
+  - 支持 `x-idempotency-key` 幂等复用：重复创建返回同一 `payment_intent`。
+  - 新增支付意图权限模型：`PaymentIntentRead / PaymentIntentCreate / PaymentIntentCancel`；落地 `x-role` 校验。
+  - 取消支付支持状态保护：`succeeded/failed/expired` 禁止取消，返回冲突错误。
+  - 更新 `packages/openapi/billing.yaml`，补齐支付意图请求/响应/错误码契约。
+  - 保持审计留痕：支付意图创建、幂等重放、读取、取消均输出结构化日志。
+- 涉及文件：`apps/platform-core/Cargo.toml`、`apps/platform-core/src/modules/billing/api.rs`、`apps/platform-core/src/modules/billing/service.rs`、`packages/openapi/billing.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt`
+  2. `cargo test -p platform-core`
+  3. `./scripts/check-mock-payment.sh`
+  4. 启动服务（联调环境变量）：`DATABASE_URL=postgres://luna:5686@127.0.0.1:55432/luna_data_trading PROVIDER_MODE=mock KAFKA_BROKERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core-bin`
+  5. 接口联调（HTTP）：
+     - `POST /api/v1/payments/intents`（`x-role: tenant_admin`）
+     - 幂等重放同请求（同 `x-idempotency-key`）
+     - `GET /api/v1/payments/intents/{id}`（`x-role: tenant_operator`）
+     - `POST /api/v1/payments/intents/{id}/cancel`（`tenant_operator` 预期拒绝）
+     - `POST /api/v1/payments/intents/{id}/cancel`（`tenant_admin` 预期成功）
+  6. 数据库回查：
+     - `SELECT payment_intent_id::text,status,idempotency_key,request_id,provider_key,amount::text FROM payment.payment_intent WHERE idempotency_key='idem-bil002-001';`
+     - `SELECT payment_intent_id::text,status,updated_at::text FROM payment.payment_intent WHERE payment_intent_id='4f4b3a2e-508b-4902-ba35-97aa905b3772'::uuid;`
+- 验证结果：通过。单测 `8/8` 通过；mock payment 脚本返回 `[ok]`；创建接口返回 `200` 且写入数据库；幂等重放返回 `200` 且同一 `payment_intent_id`；无权限取消返回 `403 + IAM_UNAUTHORIZED`；管理员取消返回 `200`，数据库状态更新为 `canceled`。
+- 覆盖的冻结文档条目：`支付域接口协议正式版`（V1 支付意图创建/查询/取消、幂等规则）、`支付、资金流与轻结算设计`（支付编排层最小闭环）、`全集成基线-V1`（支付域与交易域解耦、V1 Mock+真实接口占位）
+- 覆盖的任务清单条目：`BIL-002`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
 - 待人工审批结论：待审批
+- 备注：本批联调数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`，`luna/luna_data_trading`）；mock 支付容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
