@@ -1577,17 +1577,9 @@
 - 待人工审批结论：通过
 - 备注：本批联调数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`，用户 `luna`，库 `luna_data_trading`）；mock 支付容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
 
-### BATCH-073（计划中）
-
-- 状态：计划中
-- 当前任务编号：BIL-004
-- 当前批次目标：实现 Mock Payment Provider 适配器，支持 `success/fail/timeout` 三种模拟结果并可生成对应 webhook 事件载荷，补齐最小测试与容器联调验证。
-- 前置依赖核对结果：`BIL-004` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过，可执行本批。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
-
 ### BATCH-073（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：BIL-004
 - 当前批次目标：实现 Mock Payment Provider 适配器，支持 `success/fail/timeout` 三种模拟结果并可生成对应 webhook 事件载荷，补齐最小测试与容器联调验证。
 - 前置依赖核对结果：`BIL-004` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过。
@@ -1614,5 +1606,45 @@
 - 覆盖的任务清单条目：`BIL-004`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：联调容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）；沙箱环境不能直接访问本机端口，live 联调与脚本探针使用提权执行完成验证。
+
+### BATCH-074（返工中）
+
+- 状态：返工中
+- 当前任务编号：BIL-002, BIL-003
+- 当前批次目标：修复 `BIL-003` 的状态历史一致性缺陷（错误写入 `old_status=new_status`），并补齐 `BIL-002/BIL-003` 的审计落地（写入 `audit.audit_event`，可在数据库回查）。
+- 前置依赖核对结果：`BIL-002/BIL-003` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过；可执行返工批次。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-074（返工后待审批）
+
+- 状态：返工后待审批
+- 当前任务编号：BIL-002, BIL-003
+- 当前批次目标：修复 `BIL-003` 的状态历史一致性缺陷并补齐 `BIL-002/BIL-003` 审计落地。
+- 前置依赖核对结果：`BIL-002/BIL-003` 前置依赖均已完成且审批通过，无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - `BIL-003` 一致性修复：删除 `order lock` 接口中手工插入 `trade.order_status_history` 的逻辑，避免生成 `old_status=new_status` 的伪状态迁移记录。
+  - `BIL-002` 审计补齐：`create/get/cancel payment_intent` 成功路径新增 `audit.audit_event` 持久化，记录 `action_name/ref_type/ref_id/result_code/request_id/trace_id/actor_role`。
+  - `BIL-003` 审计补齐：`order lock` 成功路径新增 `audit.audit_event` 持久化（`order.payment.lock`）。
+  - 保持原有权限校验、错误码与 OpenAPI 路径不变，避免接口契约漂移。
+- 涉及文件：`apps/platform-core/src/modules/billing/api.rs`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务：`DATABASE_URL=postgres://luna:5686@127.0.0.1:55432/luna_data_trading PROVIDER_MODE=mock KAFKA_BROKERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core-bin`
+  4. 联调接口：
+     - `POST /api/v1/payments/intents`
+     - `GET /api/v1/payments/intents/{id}`
+     - `POST /api/v1/payments/intents/{id}/cancel`
+     - `POST /api/v1/orders/{id}/lock`
+  5. 审计回查：`SELECT action_name, ref_type, ref_id::text, result_code FROM audit.audit_event WHERE ref_id IN (...) ORDER BY event_time DESC LIMIT 12;`
+  6. 状态历史回查：`SELECT old_status,new_status,reason_code,changed_at FROM trade.order_status_history WHERE order_id=... ORDER BY changed_at DESC LIMIT 5;`
+- 验证结果：通过。接口创建/读取/取消/锁资均返回 `success=true`；`audit.audit_event` 可回查到 `payment.intent.create/read/cancel` 与 `order.payment.lock` 记录；本次锁资操作未再写入新的 `old_status=new_status` 伪迁移历史。
+- 覆盖的冻结文档条目：`支付域接口协议正式版`（支付意图与锁资接口、幂等与一致性）、`支付、资金流与轻结算设计`（支付审计留痕）、`全集成基线-V1`（审计与业务日志分离，审计主链落库）。
+- 覆盖的任务清单条目：`BIL-002`, `BIL-003`（返工补齐）
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：联调数据库容器 `luna-postgres-test`（`127.0.0.1:55432`），mock 支付容器 `datab-mock-payment-provider`（`127.0.0.1:8089`）。

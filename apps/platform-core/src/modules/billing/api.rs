@@ -144,6 +144,18 @@ async fn create_payment_intent(
 
     if let Some(ref key) = idempotency_key {
         if let Some(existing) = select_intent_by_idempotency(&client, key).await? {
+            write_audit_event(
+                &client,
+                "payment",
+                "payment_intent",
+                &existing.payment_intent_id,
+                header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+                "payment.intent.create.idempotent_replay",
+                "success",
+                header(&headers, "x-request-id").as_deref(),
+                header(&headers, "x-trace-id").as_deref(),
+            )
+            .await?;
             info!(
                 action = "payment.intent.create.idempotent_replay",
                 payment_intent_id = %existing.payment_intent_id,
@@ -220,6 +232,18 @@ async fn create_payment_intent(
         .map_err(map_db_error)?;
 
     let intent = parse_intent_row(&row)?;
+    write_audit_event(
+        &client,
+        "payment",
+        "payment_intent",
+        &intent.payment_intent_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "payment.intent.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
     info!(
         action = "payment.intent.create",
         payment_intent_id = %intent.payment_intent_id,
@@ -273,6 +297,18 @@ async fn get_payment_intent(
 
     if let Some(row) = row {
         let intent = parse_intent_row(&row)?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_intent",
+            &intent.payment_intent_id,
+            header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+            "payment.intent.read",
+            "success",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
         info!(
             action = "payment.intent.read",
             payment_intent_id = %intent.payment_intent_id,
@@ -363,6 +399,18 @@ async fn cancel_payment_intent(
         .await
         .map_err(map_db_error)?;
     let intent = parse_intent_row(&row)?;
+    write_audit_event(
+        &client,
+        "payment",
+        "payment_intent",
+        &intent.payment_intent_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "payment.intent.cancel",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
     info!(
         action = "payment.intent.cancel",
         payment_intent_id = %intent.payment_intent_id,
@@ -460,29 +508,6 @@ async fn lock_order_payment(
         ));
     };
 
-    let old_status_row = client
-        .query_one(
-            "SELECT status FROM trade.order_main WHERE order_id = $1::text::uuid",
-            &[&order_id],
-        )
-        .await
-        .map_err(map_db_error)?;
-    let current_status: String = old_status_row.get(0);
-    let _ = client
-        .execute(
-            "INSERT INTO trade.order_status_history
-             (order_id, old_status, new_status, changed_by_type, reason_code)
-             VALUES ($1::text::uuid, $2, $3, 'system', COALESCE($4::text, 'payment_lock'))",
-            &[
-                &order_id,
-                &current_status,
-                &current_status,
-                &payload.lock_reason,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
-
     let view = OrderLockView {
         order_id: row.get::<_, String>(0),
         payment_intent_id: payload.payment_intent_id.clone(),
@@ -490,6 +515,18 @@ async fn lock_order_payment(
         payment_status: row.get::<_, String>(2),
         buyer_locked_at: row.get::<_, String>(3),
     };
+    write_audit_event(
+        &client,
+        "trade",
+        "order",
+        &view.order_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "order.payment.lock",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
     info!(
         action = "order.payment.lock",
         order_id = %view.order_id,
@@ -555,6 +592,56 @@ async fn select_intent_by_idempotency(
         .await
         .map_err(map_db_error)?;
     row.map(|r| parse_intent_row(&r)).transpose()
+}
+
+async fn write_audit_event(
+    client: &tokio_postgres::Client,
+    domain_name: &str,
+    ref_type: &str,
+    ref_id: &str,
+    actor_role: &str,
+    action_name: &str,
+    result_code: &str,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    client
+        .execute(
+            "INSERT INTO audit.audit_event (
+               domain_name,
+               ref_type,
+               ref_id,
+               actor_type,
+               action_name,
+               result_code,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1,
+               $2,
+               $3::text::uuid,
+               'role',
+               $4,
+               $5,
+               $6,
+               $7,
+               jsonb_build_object('actor_role', $8::text)
+             )",
+            &[
+                &domain_name,
+                &ref_type,
+                &ref_id,
+                &action_name,
+                &result_code,
+                &request_id,
+                &trace_id,
+                &actor_role,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    Ok(())
 }
 
 fn header(headers: &HeaderMap, key: &str) -> Option<String> {
@@ -625,7 +712,7 @@ fn map_db_error(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>)
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {
             code: ErrorCode::BilProviderFailed.as_str().to_string(),
-            message: format!("payment intent persistence failed: {err}"),
+            message: format!("billing persistence failed: {err}"),
             request_id: None,
         }),
     )
