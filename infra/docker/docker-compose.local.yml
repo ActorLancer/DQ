@@ -23,7 +23,7 @@ services:
   postgres:
     <<: *service-defaults
     profiles: ["core", "demo"]
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: datab-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-datab}
