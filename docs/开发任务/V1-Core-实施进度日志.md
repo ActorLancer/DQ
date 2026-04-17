@@ -2022,7 +2022,8 @@
   1. `cargo fmt --all`
   2. `cargo test -p platform-core`
   3. 对照 `CAT-001 technical_reference` 逐项核对模型与仓储字段语义（DataAsset/DataAssetVersion/Product/ProductSKU）。
-- 验证结果：通过。`cargo test -p platform-core` 结果 `31 passed, 0 failed, 1 ignored`；新增用例 `modules::catalog::domain::tests::standard_sku_truth_list_matches_v1_frozen_set` 通过。
+  4. 本地数据库写入回滚验证（`datab-postgres:5432`）：在单事务中依次插入 `core.organization -> catalog.data_asset -> catalog.asset_version -> catalog.product -> catalog.product_sku`，读取返回 ID 后 `ROLLBACK`，并复查测试商品行数为 0。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `31 passed, 0 failed, 1 ignored`；新增用例 `modules::catalog::domain::tests::standard_sku_truth_list_matches_v1_frozen_set` 通过；数据库事务插入链路成功并已回滚，复查 `catalog.product` 测试数据残留为 `0`。
 - 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5.1/5.2 商品与 SKU）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）。
 - 覆盖的任务清单条目：`CAT-001`
 - 未覆盖项：无
