@@ -1879,17 +1879,9 @@
 - 待人工审批结论：通过
 - 备注：本批在不重建骨架前提下复用既有 IAM API 结构扩展；`TODO-PROC-BIL-001` 持续保持冻结状态。
 
-### BATCH-082（计划中）
-
-- 状态：计划中
-- 当前任务编号：IAM-013, IAM-014, IAM-015, IAM-016
-- 当前批次目标：补齐企业 OIDC 连接占位接口、Fabric 身份镜像与证书吊销占位接口、party-review 联动字段、以及登录/登出/邀请/撤销/角色变更的审计闭环。
-- 前置依赖核对结果：`IAM-013~016` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
-
 ### BATCH-082（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：IAM-013, IAM-014, IAM-015, IAM-016
 - 当前批次目标：补齐企业 OIDC 连接占位接口、Fabric 身份镜像与证书吊销占位接口、party-review 联动字段、以及登录/登出/邀请/撤销/角色变更的审计闭环。
 - 前置依赖核对结果：`IAM-013~016` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
@@ -1920,5 +1912,47 @@
 - 覆盖的任务清单条目：`IAM-013`, `IAM-014`, `IAM-015`, `IAM-016`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批未引入 V2/V3 正式能力，仅冻结 V1 占位接口与状态口径；`TODO-PROC-BIL-001` 继续保持冻结状态。
+
+### BATCH-083（计划中）
+
+- 状态：计划中
+- 当前任务编号：IAM-017, IAM-018, IAM-019, IAM-020
+- 当前批次目标：补齐 IAM 六类对象列表与详情联调接口、本地测试身份一键脚本、IAM/Party/Access 集成测试，以及 `docs/02-openapi/iam.yaml` 归档交付。
+- 前置依赖核对结果：`IAM-017~020` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
+
+### BATCH-083（待审批）
+
+- 状态：待审批
+- 当前任务编号：IAM-017, IAM-018, IAM-019, IAM-020
+- 当前批次目标：补齐 IAM 六类对象列表与详情联调接口、本地测试身份一键脚本、IAM/Party/Access 集成测试，以及 `docs/02-openapi/iam.yaml` 归档交付。
+- 前置依赖核对结果：`IAM-017~020` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
+- 已实现功能：
+  - `IAM-017`：补齐组织/部门/用户/应用/连接器/执行环境的列表与详情联调用接口：
+    - `GET /api/v1/iam/orgs`、`GET /api/v1/iam/orgs/{id}`
+    - `GET/POST /api/v1/iam/departments`、`GET /api/v1/iam/departments/{id}`
+    - `GET/POST /api/v1/iam/users`、`GET /api/v1/iam/users/{id}`
+    - `GET/POST /api/v1/apps`、`GET /api/v1/apps/{id}`
+    - `GET/POST /api/v1/iam/connectors`、`GET /api/v1/iam/connectors/{id}`
+    - `GET/POST /api/v1/iam/execution-environments`、`GET /api/v1/iam/execution-environments/{id}`
+    并支持常用过滤参数（`org_id/status/department_id/connector_id`）。
+  - `IAM-018`：新增本地测试身份脚本 `scripts/seed-local-iam-test-identities.sh`，一键生成卖方管理员、买方管理员、运营管理员、审计员、开发者账号及角色绑定；脚本具备组织/部门自补齐能力与幂等 upsert。
+  - `IAM-019`：新增 live 集成测试 `apps/platform-core/tests/iam_party_access_integration.rs`（`#[ignore]`），覆盖组织注册、邀请成员、创建应用、权限拒绝、会话撤销、设备撤销，并扩展验证列表/详情接口可用性。
+  - `IAM-020`：生成并落盘 `docs/02-openapi/iam.yaml` 第一版（由 `packages/openapi/iam.yaml` 同步），并在 `docs/02-openapi/README.md` 增加归档说明。
+- 涉及文件：`apps/platform-core/src/modules/iam/domain.rs`、`apps/platform-core/src/modules/iam/api.rs`、`apps/platform-core/tests/iam_party_access_integration.rs`、`scripts/seed-local-iam-test-identities.sh`、`packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`、`docs/02-openapi/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab ./scripts/seed-local-iam-test-identities.sh`
+  4. 启动服务后执行 live 集成测试：
+     `IAM_IT_BASE_URL=http://127.0.0.1:18080 IAM_IT_DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core --test iam_party_access_integration -- --ignored --nocapture`
+- 验证结果：通过。单测 `30/30` 通过；本地身份脚本成功生成 5 个目标账号；live 集成测试 `1 passed`，覆盖 IAM-019 要求的关键链路；`docs/02-openapi/iam.yaml` 已存在并与 `packages/openapi/iam.yaml` 同步。
+- 覆盖的冻结文档条目：身份与会话接口协议（列表/详情、邀请、会话、设备、应用绑定）、`010_identity_and_access.sql`（core/iam/authz 对象）、IAM 技术接入方案（local 模式测试身份与联调能力）。
+- 覆盖的任务清单条目：`IAM-017`, `IAM-018`, `IAM-019`, `IAM-020`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批保持 V1 范围，不引入 V2/V3 正式实现；`TODO-PROC-BIL-001` 继续保持冻结状态。

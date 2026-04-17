@@ -1,16 +1,17 @@
 use crate::modules::access;
 use crate::modules::iam::domain::{
     AccessCheckRequest, AccessCheckView, AccessPermissionRuleView, ActionResultView,
-    ApplicationView, CertificateView, ConnectorView, CreateApplicationRequest,
-    CreateConnectorRequest, CreateDepartmentRequest, CreateExecutionEnvironmentRequest,
-    CreateInvitationRequest, CreateMfaAuthenticatorRequest, CreateSsoConnectionRequest,
-    CreateUserRequest, DepartmentView, DeviceListQuery, DeviceView, ExecutionEnvironmentView,
+    ApplicationListQuery, ApplicationView, CertificateView, ConnectorListQuery, ConnectorView,
+    CreateApplicationRequest, CreateConnectorRequest, CreateDepartmentRequest,
+    CreateExecutionEnvironmentRequest, CreateInvitationRequest, CreateMfaAuthenticatorRequest,
+    CreateSsoConnectionRequest, CreateUserRequest, DepartmentListQuery, DepartmentView,
+    DeviceListQuery, DeviceView, ExecutionEnvironmentListQuery, ExecutionEnvironmentView,
     FabricIdentityView, InvitationListQuery, InvitationView, LoginRequest, LoginView,
-    LogoutRequest, MfaAuthenticatorView, OrganizationAggregateView, PatchApplicationRequest,
-    PatchOrganizationLinkageRequest, PatchSsoConnectionRequest, RegisterOrganizationRequest,
-    RotateApplicationSecretRequest, SessionContextView, SessionListQuery, SessionView,
-    SsoConnectionListQuery, SsoConnectionView, StepUpCheckRequest, StepUpCheckView,
-    StepUpVerifyRequest, UpdateUserRolesRequest, UserView,
+    LogoutRequest, MfaAuthenticatorView, OrganizationAggregateView, OrganizationListQuery,
+    PatchApplicationRequest, PatchOrganizationLinkageRequest, PatchSsoConnectionRequest,
+    RegisterOrganizationRequest, RotateApplicationSecretRequest, SessionContextView,
+    SessionListQuery, SessionView, SsoConnectionListQuery, SsoConnectionView, StepUpCheckRequest,
+    StepUpCheckView, StepUpVerifyRequest, UpdateUserRolesRequest, UserListQuery, UserView,
 };
 use crate::modules::iam::service::{
     HighRiskAction, IamPermission, high_risk_action_requires_step_up, is_allowed, role_seeds,
@@ -28,6 +29,7 @@ use tracing::info;
 pub fn router() -> Router {
     Router::new()
         .route("/api/v1/orgs/register", post(register_org))
+        .route("/api/v1/iam/orgs", get(list_orgs))
         .route("/api/v1/iam/orgs/{id}", get(get_org))
         .route(
             "/api/v1/iam/orgs/{id}/party-review-linkage",
@@ -35,12 +37,15 @@ pub fn router() -> Router {
         )
         .route("/api/v1/auth/login", post(login))
         .route("/api/v1/auth/logout", post(logout))
-        .route("/api/v1/iam/departments", post(create_department))
+        .route(
+            "/api/v1/iam/departments",
+            post(create_department).get(list_departments),
+        )
         .route("/api/v1/iam/departments/{id}", get(get_department))
-        .route("/api/v1/iam/users", post(create_user))
+        .route("/api/v1/iam/users", post(create_user).get(list_users))
         .route("/api/v1/iam/users/{id}", get(get_user))
         .route("/api/v1/iam/users/{id}/roles", post(update_user_roles))
-        .route("/api/v1/apps", post(create_app))
+        .route("/api/v1/apps", post(create_app).get(list_apps))
         .route("/api/v1/apps/{id}", patch(patch_app).get(get_app))
         .route(
             "/api/v1/apps/{id}/credentials/rotate",
@@ -101,11 +106,14 @@ pub fn router() -> Router {
             "/api/v1/iam/certificates/{id}/revoke",
             post(revoke_certificate),
         )
-        .route("/api/v1/iam/connectors", post(create_connector))
+        .route(
+            "/api/v1/iam/connectors",
+            post(create_connector).get(list_connectors),
+        )
         .route("/api/v1/iam/connectors/{id}", get(get_connector))
         .route(
             "/api/v1/iam/execution-environments",
-            post(create_execution_environment),
+            post(create_execution_environment).get(list_execution_environments),
         )
         .route(
             "/api/v1/iam/execution-environments/{id}",
@@ -231,6 +239,50 @@ async fn get_org(
     )
     .await?;
     Ok(ApiResponse::ok(view))
+}
+
+async fn list_orgs(
+    headers: HeaderMap,
+    Query(query): Query<OrganizationListQuery>,
+) -> Result<Json<ApiResponse<Vec<OrganizationAggregateView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::OrgRead, "org list")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT
+               o.org_id::text,
+               o.org_name,
+               o.org_type,
+               o.status,
+               o.country_code,
+               o.compliance_level,
+               o.metadata,
+               to_char(o.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(o.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               EXISTS (
+                 SELECT 1 FROM risk.blacklist_entry b
+                 WHERE b.subject_type = 'organization'
+                   AND b.subject_id = o.org_id
+                   AND b.status = 'active'
+               ) AS blacklist_active
+             FROM core.organization o
+             WHERE ($1::text IS NULL OR o.status = $1)
+               AND ($2::text IS NULL OR o.org_type = $2)
+             ORDER BY o.created_at DESC
+             LIMIT 100",
+            &[&query.status, &query.org_type],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| parse_org_row(row, row.get::<_, bool>(9)))
+        .collect();
+    Ok(ApiResponse::ok(views))
 }
 
 async fn patch_org_party_review_linkage(
@@ -557,6 +609,41 @@ async fn get_department(
     }))
 }
 
+async fn list_departments(
+    headers: HeaderMap,
+    Query(query): Query<DepartmentListQuery>,
+) -> Result<Json<ApiResponse<Vec<DepartmentView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityRead, "department list")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT department_id::text, org_id::text, department_name, parent_department_id::text, status
+             FROM core.department
+             WHERE ($1::text IS NULL OR org_id = $1::text::uuid)
+               AND ($2::text IS NULL OR status = $2)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.org_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| DepartmentView {
+            department_id: row.get(0),
+            org_id: row.get(1),
+            department_name: row.get(2),
+            parent_department_id: row.get(3),
+            status: row.get(4),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
 async fn create_user(
     headers: HeaderMap,
     Json(payload): Json<CreateUserRequest>,
@@ -666,6 +753,47 @@ async fn get_user(
         email: row.get(7),
         phone: row.get(8),
     }))
+}
+
+async fn list_users(
+    headers: HeaderMap,
+    Query(query): Query<UserListQuery>,
+) -> Result<Json<ApiResponse<Vec<UserView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityRead, "user list")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT user_id::text, org_id::text, department_id::text, login_id::text, display_name,
+                    user_type, status, email::text, phone
+             FROM core.user_account
+             WHERE ($1::text IS NULL OR org_id = $1::text::uuid)
+               AND ($2::text IS NULL OR department_id = $2::text::uuid)
+               AND ($3::text IS NULL OR status = $3)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.org_id, &query.department_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| UserView {
+            user_id: row.get(0),
+            org_id: row.get(1),
+            department_id: row.get(2),
+            login_id: row.get(3),
+            display_name: row.get(4),
+            user_type: row.get(5),
+            status: row.get(6),
+            email: row.get(7),
+            phone: row.get(8),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
 }
 
 async fn create_app(
@@ -819,6 +947,48 @@ async fn get_app(
             .unwrap_or("unknown")
             .to_string(),
     }))
+}
+
+async fn list_apps(
+    headers: HeaderMap,
+    Query(query): Query<ApplicationListQuery>,
+) -> Result<Json<ApiResponse<Vec<ApplicationView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityRead, "application list")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT app_id::text, org_id::text, app_name, app_type, status, client_id, metadata
+             FROM core.application
+             WHERE ($1::text IS NULL OR org_id = $1::text::uuid)
+               AND ($2::text IS NULL OR status = $2)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.org_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| ApplicationView {
+            app_id: row.get(0),
+            org_id: row.get(1),
+            app_name: row.get(2),
+            app_type: row.get(3),
+            status: row.get(4),
+            client_id: row.get(5),
+            client_secret_status: row
+                .get::<_, serde_json::Value>(6)
+                .get("client_secret_status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
 }
 
 async fn rotate_app_secret(
@@ -1377,6 +1547,42 @@ async fn get_connector(
     }))
 }
 
+async fn list_connectors(
+    headers: HeaderMap,
+    Query(query): Query<ConnectorListQuery>,
+) -> Result<Json<ApiResponse<Vec<ConnectorView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::IdentityRead, "connector list")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT connector_id::text, org_id::text, connector_name, connector_type, status, endpoint_ref
+             FROM core.connector
+             WHERE ($1::text IS NULL OR org_id = $1::text::uuid)
+               AND ($2::text IS NULL OR status = $2)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.org_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| ConnectorView {
+            connector_id: row.get(0),
+            org_id: row.get(1),
+            connector_name: row.get(2),
+            connector_type: row.get(3),
+            status: row.get(4),
+            endpoint_ref: row.get(5),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
 async fn create_execution_environment(
     headers: HeaderMap,
     Json(payload): Json<CreateExecutionEnvironmentRequest>,
@@ -1470,6 +1676,48 @@ async fn get_execution_environment(
         status: row.get(5),
         region_code: row.get(6),
     }))
+}
+
+async fn list_execution_environments(
+    headers: HeaderMap,
+    Query(query): Query<ExecutionEnvironmentListQuery>,
+) -> Result<Json<ApiResponse<Vec<ExecutionEnvironmentView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::IdentityRead,
+        "execution environment list",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT environment_id::text, org_id::text, connector_id::text, environment_name, environment_type, status, region_code
+             FROM core.execution_environment
+             WHERE ($1::text IS NULL OR org_id = $1::text::uuid)
+               AND ($2::text IS NULL OR connector_id = $2::text::uuid)
+               AND ($3::text IS NULL OR status = $3)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.org_id, &query.connector_id, &query.status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| ExecutionEnvironmentView {
+            environment_id: row.get(0),
+            org_id: row.get(1),
+            connector_id: row.get(2),
+            environment_name: row.get(3),
+            environment_type: row.get(4),
+            status: row.get(5),
+            region_code: row.get(6),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
 }
 
 async fn get_auth_me(

@@ -40,6 +40,12 @@ pub struct OrganizationAggregateView {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct OrganizationListQuery {
+    pub status: Option<String>,
+    pub org_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct PatchOrganizationLinkageRequest {
     pub review_status: Option<String>,
     pub risk_status: Option<String>,
@@ -64,6 +70,12 @@ pub struct DepartmentView {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct DepartmentListQuery {
+    pub org_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateUserRequest {
     pub org_id: String,
     pub department_id: Option<String>,
@@ -85,6 +97,13 @@ pub struct UserView {
     pub status: String,
     pub email: Option<String>,
     pub phone: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserListQuery {
+    pub org_id: Option<String>,
+    pub department_id: Option<String>,
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -116,6 +135,12 @@ pub struct ApplicationView {
     pub status: String,
     pub client_id: String,
     pub client_secret_status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApplicationListQuery {
+    pub org_id: Option<String>,
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -340,6 +365,12 @@ pub struct ConnectorView {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ConnectorListQuery {
+    pub org_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateExecutionEnvironmentRequest {
     pub org_id: Option<String>,
     pub connector_id: Option<String>,
@@ -357,6 +388,13 @@ pub struct ExecutionEnvironmentView {
     pub environment_type: String,
     pub status: String,
     pub region_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExecutionEnvironmentListQuery {
+    pub org_id: Option<String>,
+    pub connector_id: Option<String>,
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
