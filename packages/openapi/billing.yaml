@@ -175,6 +175,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/orders/{id}/lock:
+    post:
+      summary: Lock order payment and link payment intent
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockOrderRequest"
+      responses:
+        "200":
+          description: Order lock completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderLockResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Payment intent or order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Payment intent and order mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -215,6 +261,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/PaymentIntent"
+    ApiEnvelopeOrderLock:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/OrderLock"
     BillingPolicyView:
       type: object
       required: [jurisdictions, corridor_policies]
@@ -438,6 +492,36 @@ components:
           type: string
         updated_at:
           type: string
+    LockOrderRequest:
+      type: object
+      required: [payment_intent_id]
+      properties:
+        payment_intent_id:
+          type: string
+        lock_reason:
+          type: string
+          nullable: true
+    OrderLock:
+      type: object
+      required:
+        [
+          order_id,
+          payment_intent_id,
+          order_status,
+          payment_status,
+          buyer_locked_at,
+        ]
+      properties:
+        order_id:
+          type: string
+        payment_intent_id:
+          type: string
+        order_status:
+          type: string
+        payment_status:
+          type: string
+        buyer_locked_at:
+          type: string
     BillingPolicyResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBillingPolicy"
@@ -447,3 +531,6 @@ components:
     PaymentIntentResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopePaymentIntent"
+    OrderLockResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeOrderLock"

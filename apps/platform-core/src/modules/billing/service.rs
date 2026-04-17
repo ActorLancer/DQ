@@ -6,6 +6,7 @@ pub enum BillingPermission {
     PaymentIntentRead,
     PaymentIntentCreate,
     PaymentIntentCancel,
+    OrderLock,
 }
 
 pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
@@ -31,6 +32,13 @@ pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
                     | "tenant_admin"
             )
         }
+        BillingPermission::OrderLock => matches!(
+            role,
+            "platform_admin"
+                | "platform_finance_operator"
+                | "platform_risk_settlement"
+                | "tenant_admin"
+        ),
     }
 }
 
@@ -107,6 +115,16 @@ mod tests {
             "tenant_operator",
             BillingPermission::PaymentIntentCancel
         ));
+    }
+
+    #[test]
+    fn only_expected_roles_can_lock_order() {
+        assert!(is_allowed("tenant_admin", BillingPermission::OrderLock));
+        assert!(is_allowed(
+            "platform_risk_settlement",
+            BillingPermission::OrderLock
+        ));
+        assert!(!is_allowed("tenant_operator", BillingPermission::OrderLock));
     }
 
     #[test]

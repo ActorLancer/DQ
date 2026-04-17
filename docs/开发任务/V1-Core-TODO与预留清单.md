@@ -131,3 +131,4 @@
 - `BATCH-069`（`DB-035`）：新增阻塞项 `TODO-DB-034-001`（`DB-034` 依赖 `BIL-023` 未完成，触发强制暂停）。
 - `BATCH-070`（`BIL-001`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-071`（`BIL-002`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-072`（`BIL-003`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。

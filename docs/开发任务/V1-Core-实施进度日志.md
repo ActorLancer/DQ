@@ -1507,7 +1507,7 @@
 
 ### BATCH-071（实施完成）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：BIL-002
 - 当前批次目标：实现支付意图接口 `POST /api/v1/payments/intents`、`GET /api/v1/payments/intents/{id}`、`POST /api/v1/payments/intents/{id}/cancel`，覆盖最小权限校验、错误码响应、幂等键复用与数据库落表。
 - 前置依赖核对结果：`BIL-002` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过。
@@ -1542,5 +1542,53 @@
 - 覆盖的任务清单条目：`BIL-002`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批联调数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`，`luna/luna_data_trading`）；mock 支付容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
+
+### BATCH-072（计划中）
+
+- 状态：计划中
+- 当前任务编号：BIL-003
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/lock`，把订单与支付意图关联，落地最小权限校验、错误码、审计日志与数据库写入。
+- 前置依赖核对结果：`BIL-003` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过，可执行本批。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-072（实施完成）
+
+- 状态：待审批
+- 当前任务编号：BIL-003
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/lock`，把订单与支付意图关联，落地最小权限校验、错误码、审计日志与数据库写入。
+- 前置依赖核对结果：`BIL-003` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - 新增订单锁资接口：`POST /api/v1/orders/{id}/lock`。
+  - 接口校验 `payment_intent_id` 存在且与订单一致；不一致返回 `409 + BIL_PROVIDER_FAILED`。
+  - 锁资落库更新 `trade.order_main`：
+    - `payment_status='locked'`
+    - `buyer_locked_at`（首次锁定）
+    - `payment_channel_snapshot` 追加 `payment_intent_id/provider_key/lock_reason/locked_at`
+  - 写入 `trade.order_status_history` 锁资历史记录。
+  - 新增权限 `BillingPermission::OrderLock`，拒绝 `tenant_operator` 执行锁资。
+  - 更新 `packages/openapi/billing.yaml`，补充 `/api/v1/orders/{id}/lock` 请求/响应契约。
+  - 输出结构化日志：`action=\"order.payment.lock\"`。
+- 涉及文件：`apps/platform-core/src/modules/billing/api.rs`、`apps/platform-core/src/modules/billing/service.rs`、`packages/openapi/billing.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt`
+  2. `cargo test -p platform-core`
+  3. `./scripts/check-mock-payment.sh`
+  4. 启动服务（联调环境变量）：`DATABASE_URL=postgres://luna:5686@127.0.0.1:55432/luna_data_trading PROVIDER_MODE=mock KAFKA_BROKERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core-bin`
+  5. 接口联调：
+     - `POST /api/v1/payments/intents`（创建用于锁资的支付意图）
+     - `POST /api/v1/orders/{id}/lock`（`tenant_operator`，预期 `403`）
+     - `POST /api/v1/orders/{id}/lock`（`tenant_admin`，预期 `200`）
+     - 用“属于其他订单”的 `payment_intent_id` 调锁资（预期 `409`）
+  6. DB 回查：
+     - `trade.order_main` 中 `payment_status` 与 `payment_channel_snapshot.payment_intent_id`
+     - `trade.order_status_history` 新增记录
+- 验证结果：通过。单测 `10/10`；mock-payment 探针 `[ok]`；权限拒绝返回 `403 + IAM_UNAUTHORIZED`；授权锁资返回 `200` 并落库；跨订单 intent 锁资返回 `409 + BIL_PROVIDER_FAILED`；历史表成功写入。
+- 覆盖的冻结文档条目：`支付域接口协议正式版`（支付状态一致性与接口约束）、`支付、资金流与轻结算设计`（支付编排到订单联动）、`全集成基线-V1`（支付域驱动主链路闭环）
+- 覆盖的任务清单条目：`BIL-003`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批联调数据库容器为 `luna-postgres-test`（`127.0.0.1:55432`，用户 `luna`，库 `luna_data_trading`）；mock 支付容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）。

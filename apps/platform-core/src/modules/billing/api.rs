@@ -57,6 +57,21 @@ pub struct PaymentIntentView {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct LockOrderRequest {
+    pub payment_intent_id: String,
+    pub lock_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct OrderLockView {
+    pub order_id: String,
+    pub payment_intent_id: String,
+    pub order_status: String,
+    pub payment_status: String,
+    pub buyer_locked_at: String,
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/api/v1/billing/policies", get(get_billing_policies))
@@ -70,6 +85,7 @@ pub fn router() -> Router {
             "/api/v1/payments/intents/{id}/cancel",
             post(cancel_payment_intent),
         )
+        .route("/api/v1/orders/{id}/lock", post(lock_order_payment))
 }
 
 async fn get_billing_policies(
@@ -355,6 +371,135 @@ async fn cancel_payment_intent(
     Ok(ApiResponse::ok(intent))
 }
 
+async fn lock_order_payment(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+    Json(payload): Json<LockOrderRequest>,
+) -> Result<Json<ApiResponse<OrderLockView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, BillingPermission::OrderLock, "order lock")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let intent_row = client
+        .query_opt(
+            "SELECT payment_intent_id::text, order_id::text, provider_key
+             FROM payment.payment_intent
+             WHERE payment_intent_id = $1::text::uuid",
+            &[&payload.payment_intent_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+
+    let Some(intent_row) = intent_row else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::BilProviderFailed.as_str().to_string(),
+                message: format!("payment intent not found: {}", payload.payment_intent_id),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+
+    let intent_order_id: String = intent_row.get(1);
+    if intent_order_id != order_id {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::BilProviderFailed.as_str().to_string(),
+                message: format!(
+                    "payment intent {} does not belong to order {}",
+                    payload.payment_intent_id, order_id
+                ),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+    let provider_key: String = intent_row.get(2);
+
+    let row = client
+        .query_opt(
+            "UPDATE trade.order_main
+             SET
+               payment_status = 'locked',
+               buyer_locked_at = COALESCE(buyer_locked_at, now()),
+               payment_channel_snapshot = payment_channel_snapshot || jsonb_build_object(
+                 'payment_intent_id', $2::text,
+                 'provider_key', $3::text,
+                 'lock_reason', COALESCE($4::text, 'payment_lock'),
+                 'locked_at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+               ),
+               updated_at = now()
+             WHERE order_id = $1::text::uuid
+             RETURNING
+               order_id::text,
+               status,
+               payment_status,
+               to_char(buyer_locked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[
+                &order_id,
+                &payload.payment_intent_id,
+                &provider_key,
+                &payload.lock_reason,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+
+    let Some(row) = row else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::BilProviderFailed.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+
+    let old_status_row = client
+        .query_one(
+            "SELECT status FROM trade.order_main WHERE order_id = $1::text::uuid",
+            &[&order_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let current_status: String = old_status_row.get(0);
+    let _ = client
+        .execute(
+            "INSERT INTO trade.order_status_history
+             (order_id, old_status, new_status, changed_by_type, reason_code)
+             VALUES ($1::text::uuid, $2, $3, 'system', COALESCE($4::text, 'payment_lock'))",
+            &[
+                &order_id,
+                &current_status,
+                &current_status,
+                &payload.lock_reason,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+
+    let view = OrderLockView {
+        order_id: row.get::<_, String>(0),
+        payment_intent_id: payload.payment_intent_id.clone(),
+        order_status: row.get::<_, String>(1),
+        payment_status: row.get::<_, String>(2),
+        buyer_locked_at: row.get::<_, String>(3),
+    };
+    info!(
+        action = "order.payment.lock",
+        order_id = %view.order_id,
+        payment_intent_id = %view.payment_intent_id,
+        payment_status = %view.payment_status,
+        "order lock operation completed"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 fn parse_intent_row(
     row: &tokio_postgres::Row,
 ) -> Result<PaymentIntentView, (StatusCode, Json<ErrorResponse>)> {
@@ -538,6 +683,26 @@ mod tests {
                     .method("POST")
                     .header("x-role", "tenant_operator")
                     .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_lock_order_for_tenant_operator() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/orders/30000000-0000-0000-0000-000000000101/lock")
+                    .method("POST")
+                    .header("x-role", "tenant_operator")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"payment_intent_id":"4f4b3a2e-508b-4902-ba35-97aa905b3772"}"#,
+                    ))
                     .expect("request should build"),
             )
             .await
