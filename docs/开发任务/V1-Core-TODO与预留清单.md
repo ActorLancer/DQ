@@ -38,6 +38,7 @@
 | TODO-CTX-019-001 | CTX-019 | V1-gap | context | `docs/00-context/service-to-module-map.md` | closed | 任务清单要求的交付文件在仓库中缺失，导致 `CORE-032` 依赖文档基线不完整。 | 已在 `BATCH-050` 补齐 `docs/00-context/service-to-module-map.md` 并纳入审批。 | no |
 | TODO-CTX-020-001 | CTX-020 | V1-gap | context | `docs/00-context/local-deployment-boundary.md` | closed | 任务清单要求的交付文件在仓库中缺失，导致本地部署边界冻结依据不完整。 | 已在 `BATCH-050` 补齐 `docs/00-context/local-deployment-boundary.md` 并纳入审批。 | no |
 | TODO-DB-034-001 | DB-034 | V1-gap | db-seed | `db/seeds/031_sku_trigger_matrix.sql` | blocked | `DB-034` 前置依赖 `BIL-023` 未完成，且 `docs/03-db/sku-billing-trigger-matrix.md` 目前缺失，无法按冻结口径固化 8 SKU 触发矩阵种子。 | 先完成并审批 `BIL-023`（交付 `docs/03-db/sku-billing-trigger-matrix.md`），再落地 `031_sku_trigger_matrix.sql` 与对应校验脚本后关闭。 | yes |
+| TODO-PROC-BIL-001 | BIL-* | tech-debt | process-governance | `docs/开发任务/V1-Core-实施进度日志.md` | blocked | 实际执行顺序发生跨阶段偏移：在 IAM 阶段未完成前已进入并实现 `BIL-001~BIL-005` 与 `TRADE-030`。为保证后续审计可追溯，冻结新增 BIL 开发任务与已完成 BIL 任务修改。 | 先完成并审批 `IAM-001~IAM-020`，再由人工明确“解冻范围”（仅新增 BIL 任务或允许返工既有 BIL 任务）后关闭。 | yes |
 
 ## 当前非阻塞记录
 
@@ -136,3 +137,4 @@
 - `BATCH-074`（`BIL-002`, `BIL-003` 返工）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-075`（`BIL-005`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-076`（`TRADE-030`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-077`（流程纠偏：BIL 阶段冻结登记）：新增阻塞项 `TODO-PROC-BIL-001`，冻结“继续新增 BIL 任务”和“已完成 BIL 任务改动”，待 `IAM-001~IAM-020` 审批通过后再人工解冻。
