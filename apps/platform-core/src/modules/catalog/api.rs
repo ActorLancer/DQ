@@ -1,13 +1,14 @@
 use crate::modules::catalog::domain::{
     AssetFieldDefinitionView, AssetProcessingJobView, AssetQualityReportView,
     CreateAssetFieldDefinitionRequest, CreateAssetProcessingJobRequest,
-    CreateAssetQualityReportRequest, CreateDataProductRequest, CreateExtractionJobRequest,
-    CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
-    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView,
-    ExtractionJobView, FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
-    PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
-    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
-    default_trade_mode_for_sku_type, is_standard_sku_type,
+    CreateAssetQualityReportRequest, CreateDataContractRequest, CreateDataProductRequest,
+    CreateExtractionJobRequest, CreateFormatDetectionRequest, CreatePreviewArtifactRequest,
+    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
+    DataContractView, DataProductView, ExtractionJobView, FormatDetectionResultView,
+    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
+    ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
+    RawIngestBatchView, RawObjectManifestView, default_trade_mode_for_sku_type,
+    is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
@@ -15,7 +16,7 @@ use crate::modules::catalog::service::{
 };
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{patch, post, put};
+use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
@@ -32,6 +33,14 @@ pub fn router() -> Router {
         )
         .route("/api/v1/products/{id}/skus", post(create_product_sku))
         .route("/api/v1/skus/{id}", patch(patch_product_sku))
+        .route(
+            "/api/v1/skus/{id}/data-contracts",
+            post(create_data_contract),
+        )
+        .route(
+            "/api/v1/skus/{id}/data-contracts/{contractId}",
+            get(get_data_contract),
+        )
         .route(
             "/api/v1/assets/{assetId}/raw-ingest-batches",
             post(create_raw_ingest_batch),
@@ -448,6 +457,113 @@ async fn patch_product_sku(
         action = "catalog.sku.patch",
         sku_id = %view.sku_id,
         "catalog sku patched"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
+async fn create_data_contract(
+    headers: HeaderMap,
+    Path(sku_id): Path<String>,
+    Json(payload): Json<CreateDataContractRequest>,
+) -> Result<Json<ApiResponse<DataContractView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ProductDraftWrite,
+        "catalog data contract create",
+    )?;
+    validate_create_data_contract_payload(&sku_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing_sku = PostgresCatalogRepository::get_product_sku(&client, &sku_id)
+        .await
+        .map_err(map_db_error)?;
+    if existing_sku.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "sku does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::create_data_contract(&tx, &sku_id, &payload)
+        .await
+        .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "data_contract",
+        &view.data_contract_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.data_contract.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.data_contract.create",
+        data_contract_id = %view.data_contract_id,
+        sku_id = %sku_id,
+        "catalog data contract created"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
+async fn get_data_contract(
+    headers: HeaderMap,
+    Path((sku_id, contract_id)): Path<(String, String)>,
+) -> Result<Json<ApiResponse<DataContractView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ProductDraftWrite,
+        "catalog data contract read",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing_sku = PostgresCatalogRepository::get_product_sku(&client, &sku_id)
+        .await
+        .map_err(map_db_error)?;
+    if existing_sku.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "sku does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let view = PostgresCatalogRepository::get_data_contract(&client, &sku_id, &contract_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "data contract does not exist for sku".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    info!(
+        action = "catalog.data_contract.read",
+        data_contract_id = %view.data_contract_id,
+        sku_id = %sku_id,
+        "catalog data contract read"
     );
     Ok(ApiResponse::ok(view))
 }
@@ -1467,6 +1583,60 @@ fn validate_create_asset_processing_job_payload(
         .status
         .as_deref()
         .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "status must not be empty".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_create_data_contract_payload(
+    sku_id_from_path: &str,
+    payload: &CreateDataContractRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(sku_id_from_body) = payload.sku_id.as_deref()
+        && sku_id_from_body != sku_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "sku_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.contract_name.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "contract_name is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.version_no.is_some_and(|version| version <= 0) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "version_no must be > 0".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .status
+        .as_deref()
+        .is_some_and(|status| status.trim().is_empty())
     {
         return Err((
             StatusCode::BAD_REQUEST,

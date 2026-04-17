@@ -558,3 +558,67 @@ pub struct AssetProcessingJobView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateDataContractRequest {
+    pub sku_id: Option<String>,
+    pub asset_version_id: Option<String>,
+    pub product_id: Option<String>,
+    pub contract_name: String,
+    pub version_no: Option<i32>,
+    pub contract_scope: Option<String>,
+    #[serde(default)]
+    pub business_terms_json: Value,
+    #[serde(default)]
+    pub structure_terms_json: Value,
+    #[serde(default)]
+    pub quality_terms_json: Value,
+    #[serde(default)]
+    pub compliance_terms_json: Value,
+    #[serde(default)]
+    pub delivery_terms_json: Value,
+    #[serde(default)]
+    pub version_terms_json: Value,
+    #[serde(default)]
+    pub acceptance_terms_json: Value,
+    #[serde(default)]
+    pub rights_terms_json: Value,
+    #[serde(default)]
+    pub responsibility_terms_json: Value,
+    #[serde(default)]
+    pub processing_terms_json: Value,
+    pub content_digest: Option<String>,
+    pub status: Option<String>,
+    pub effective_from: Option<String>,
+    pub effective_to: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DataContractView {
+    pub data_contract_id: String,
+    pub asset_version_id: Option<String>,
+    pub product_id: Option<String>,
+    pub sku_id: Option<String>,
+    pub contract_name: String,
+    pub version_no: i32,
+    pub contract_scope: String,
+    pub business_terms_json: Value,
+    pub structure_terms_json: Value,
+    pub quality_terms_json: Value,
+    pub compliance_terms_json: Value,
+    pub delivery_terms_json: Value,
+    pub version_terms_json: Value,
+    pub acceptance_terms_json: Value,
+    pub rights_terms_json: Value,
+    pub responsibility_terms_json: Value,
+    pub processing_terms_json: Value,
+    pub content_digest: Option<String>,
+    pub status: String,
+    pub effective_from: Option<String>,
+    pub effective_to: Option<String>,
+    pub metadata: Value,
+    pub created_at: String,
+    pub updated_at: String,
+}

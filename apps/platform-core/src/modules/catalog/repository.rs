@@ -2,10 +2,11 @@ use crate::modules::catalog::domain::{
     AssetFieldDefinitionView, AssetProcessingInputView, AssetProcessingJobView,
     AssetQualityReportView, AssetVersionView, CreateAssetFieldDefinitionRequest,
     CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest, CreateAssetVersionRequest,
-    CreateDataProductRequest, CreateDataResourceRequest, CreateExtractionJobRequest,
-    CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
-    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView, DataResourceView,
-    ExtractionJobView, FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
+    CreateDataContractRequest, CreateDataProductRequest, CreateDataResourceRequest,
+    CreateExtractionJobRequest, CreateFormatDetectionRequest, CreatePreviewArtifactRequest,
+    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
+    DataContractView, DataProductView, DataResourceView, ExtractionJobView,
+    FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
     PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
     PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
 };
@@ -1044,6 +1045,126 @@ impl PostgresCatalogRepository {
             .await?;
         Ok(rows.iter().map(parse_product_sku_row).collect())
     }
+
+    pub async fn create_data_contract(
+        client: &impl GenericClient,
+        sku_id: &str,
+        payload: &CreateDataContractRequest,
+    ) -> Result<DataContractView, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "INSERT INTO contract.data_contract (
+                   asset_version_id, product_id, sku_id, contract_name, version_no, contract_scope,
+                   business_terms_json, structure_terms_json, quality_terms_json, compliance_terms_json,
+                   delivery_terms_json, version_terms_json, acceptance_terms_json, rights_terms_json,
+                   responsibility_terms_json, processing_terms_json, content_digest, status,
+                   effective_from, effective_to, metadata
+                 ) VALUES (
+                   $1::text::uuid, $2::text::uuid, $3::text::uuid, $4, $5, $6,
+                   $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb,
+                   $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb,
+                   $15::jsonb, $16::jsonb, $17, $18,
+                   $19::text::timestamptz, $20::text::timestamptz, $21::jsonb
+                 )
+                 RETURNING
+                   data_contract_id::text,
+                   asset_version_id::text,
+                   product_id::text,
+                   sku_id::text,
+                   contract_name,
+                   version_no,
+                   contract_scope,
+                   business_terms_json,
+                   structure_terms_json,
+                   quality_terms_json,
+                   compliance_terms_json,
+                   delivery_terms_json,
+                   version_terms_json,
+                   acceptance_terms_json,
+                   rights_terms_json,
+                   responsibility_terms_json,
+                   processing_terms_json,
+                   content_digest,
+                   status,
+                   to_char(effective_from AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(effective_to AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   metadata,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &payload.asset_version_id,
+                    &payload.product_id,
+                    &sku_id,
+                    &payload.contract_name,
+                    &payload.version_no.unwrap_or(1),
+                    &payload
+                        .contract_scope
+                        .clone()
+                        .unwrap_or_else(|| "sku".to_string()),
+                    &normalize_object_json(&payload.business_terms_json),
+                    &normalize_object_json(&payload.structure_terms_json),
+                    &normalize_object_json(&payload.quality_terms_json),
+                    &normalize_object_json(&payload.compliance_terms_json),
+                    &normalize_object_json(&payload.delivery_terms_json),
+                    &normalize_object_json(&payload.version_terms_json),
+                    &normalize_object_json(&payload.acceptance_terms_json),
+                    &normalize_object_json(&payload.rights_terms_json),
+                    &normalize_object_json(&payload.responsibility_terms_json),
+                    &normalize_object_json(&payload.processing_terms_json),
+                    &payload.content_digest,
+                    &payload
+                        .status
+                        .clone()
+                        .unwrap_or_else(|| "draft".to_string()),
+                    &payload.effective_from,
+                    &payload.effective_to,
+                    &normalize_object_json(&payload.metadata),
+                ],
+            )
+            .await?;
+        Ok(parse_data_contract_row(&row))
+    }
+
+    pub async fn get_data_contract(
+        client: &impl GenericClient,
+        sku_id: &str,
+        data_contract_id: &str,
+    ) -> Result<Option<DataContractView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "SELECT
+                   data_contract_id::text,
+                   asset_version_id::text,
+                   product_id::text,
+                   sku_id::text,
+                   contract_name,
+                   version_no,
+                   contract_scope,
+                   business_terms_json,
+                   structure_terms_json,
+                   quality_terms_json,
+                   compliance_terms_json,
+                   delivery_terms_json,
+                   version_terms_json,
+                   acceptance_terms_json,
+                   rights_terms_json,
+                   responsibility_terms_json,
+                   processing_terms_json,
+                   content_digest,
+                   status,
+                   to_char(effective_from AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(effective_to AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   metadata,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 FROM contract.data_contract
+                 WHERE sku_id = $1::text::uuid
+                   AND data_contract_id = $2::text::uuid",
+                &[&sku_id, &data_contract_id],
+            )
+            .await?;
+        Ok(row.map(|row| parse_data_contract_row(&row)))
+    }
 }
 
 fn parse_data_resource_row(row: &Row) -> DataResourceView {
@@ -1112,6 +1233,35 @@ fn parse_product_sku_row(row: &Row) -> ProductSkuView {
         status: row.get(9),
         created_at: row.get(10),
         updated_at: row.get(11),
+    }
+}
+
+fn parse_data_contract_row(row: &Row) -> DataContractView {
+    DataContractView {
+        data_contract_id: row.get(0),
+        asset_version_id: row.get(1),
+        product_id: row.get(2),
+        sku_id: row.get(3),
+        contract_name: row.get(4),
+        version_no: row.get(5),
+        contract_scope: row.get(6),
+        business_terms_json: row.get(7),
+        structure_terms_json: row.get(8),
+        quality_terms_json: row.get(9),
+        compliance_terms_json: row.get(10),
+        delivery_terms_json: row.get(11),
+        version_terms_json: row.get(12),
+        acceptance_terms_json: row.get(13),
+        rights_terms_json: row.get(14),
+        responsibility_terms_json: row.get(15),
+        processing_terms_json: row.get(16),
+        content_digest: row.get(17),
+        status: row.get(18),
+        effective_from: row.get(19),
+        effective_to: row.get(20),
+        metadata: row.get(21),
+        created_at: row.get(22),
+        updated_at: row.get(23),
     }
 }
 

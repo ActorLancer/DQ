@@ -2445,37 +2445,6 @@
 - 待人工审批结论：通过
 - 备注：联调首轮报错 `database operation failed: error serializing parameter 9`（`assessed_at` 参数类型）；已将 SQL 显式改为 `$10::text::timestamptz` 后复测通过。
 
-### BATCH-096
-
-- 状态：计划中
-- 当前任务编号：CAT-012
-- 当前批次目标：实现 `POST /api/v1/assets/{versionId}/processing-jobs`，记录输入来源、责任主体、处理摘要。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-095` 已获人工审批通过，允许执行。
-- 已阅读证据（文件 + 本批关注要点）：
-  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-012` 描述、DoD、acceptance 与 technical_reference。
-  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-012` 顺序、范围与 `CAT-013` 边界。
-  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先记录“计划中”，再编码与完整验证。
-  4. `docs/开发任务/AI-Agent-执行提示词.md`：严格遵守冻结范围与 V1 约束。
-  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用批次结构与审计留痕格式。
-  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：维持 `TODO-PROC-BIL-001` 追溯状态。
-  7. `docs/开发任务/V1-Core-人工审批记录.md`：`BATCH-095` 已补录审批通过。
-  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：V1 处理链路输出需落 PostgreSQL 主状态。
-  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog` 服务边界。
-  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/assets/{versionId}/processing-jobs`。
-  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批仅补审计，不新增事件 topic。
-  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
-  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + DB 回查闭环。
-  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按功能拆分实现与测试，避免单文件过大。
-  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调优先 `datab-postgres:5432`。
-  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
-  17. `docs/开发准备/技术选型正式版.md`：处理状态与审计以 PostgreSQL 为准。
-  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚扩展 `catalog` 子模块。
-- technical_reference 约束映射：
-  - `docs/原始PRD/数据原样处理与产品化加工流程设计.md:L189`：交易前流程含“加工处理执行”，需形成加工责任链。
-  - `docs/业务流程/业务流程图-V1-完整版.md:L157`：4.2A 加工处理区要求写入 `AssetProcessingJob / Input / evidence`。
-  - `docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql:L1`：加工链路归属 V1 处理流程迁移；本仓库落表结构由 `062_data_product_metadata_contract.sql` 定义 `catalog.asset_processing_job/input`。
-- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/processing_jobs.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-096（待审批）
 
 - 状态：通过
@@ -2507,3 +2476,66 @@
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 待人工审批结论：通过
 - 备注：联调首轮因测试 SQL 使用历史字段 `org_code` 导致组织插入失败，已改按当前库结构（`org_name/org_type/status`）重跑并通过。
+
+### BATCH-097
+
+- 状态：计划中
+- 当前任务编号：CAT-013
+- 当前批次目标：实现数据契约接口 `POST /api/v1/skus/{id}/data-contracts` 与 `GET /api/v1/skus/{id}/data-contracts/{contractId}`。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-096` 已获人工审批通过，允许执行。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-013` 描述、DoD、acceptance 与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-013` 顺序、范围与 `CAT-014` 边界。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先记“计划中”，再编码、验证、待审批。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与不越阶段原则。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用固定批次记录结构。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：本文件后续由人工维护，本批不自动写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：V1 数据契约对象化建模与 PostgreSQL 主状态。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog/contract_meta` 边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST/GET /api/v1/skus/{id}/data-contracts...`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批仅补审计，不新增 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + 审计回查闭环。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：继续按功能拆分，避免单文件堆积。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调优先 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
+  17. `docs/开发准备/技术选型正式版.md`：契约与审计以 PostgreSQL 为权威真值。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚扩展 `catalog`。
+- technical_reference 约束映射：
+  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L112`：十大元信息域中契约与条款对象化承载。
+  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L86`：数据契约必须单独建模，不得仅塞入 `product.metadata`。
+  - `docs/数据库设计/V1/upgrade/062_data_product_metadata_contract.sql:L1`：`contract.data_contract` 字段、默认值、唯一与约束规则。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/data_contracts.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-097（待审批）
+
+- 状态：通过
+- 当前任务编号：CAT-013
+- 当前批次目标：实现数据契约接口 `POST /api/v1/skus/{id}/data-contracts` 与 `GET /api/v1/skus/{id}/data-contracts/{contractId}`。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-096` 已获人工审批通过。
+- 已实现功能：
+  1. 新增数据契约模型：`CreateDataContractRequest`、`DataContractView`。
+  2. 新增仓储方法：`create_data_contract`、`get_data_contract`，读写 `contract.data_contract` 并按 `sku_id + data_contract_id` 关联查询。
+  3. 新增接口：`POST /api/v1/skus/{id}/data-contracts`，包含路径/请求一致性校验、`contract_name` 必填校验、`version_no > 0` 校验、SKU 存在性校验、事务审计。
+  4. 新增接口：`GET /api/v1/skus/{id}/data-contracts/{contractId}`，包含 SKU 存在性校验与契约归属校验。
+  5. 新增测试拆分：新增 `tests/data_contracts.rs`，独立覆盖 `sku_id` 路径不一致校验；权限拒绝用例补充在 `tests/mod.rs`。
+  6. 更新 OpenAPI：新增 data-contracts 路径与 `CreateDataContractRequest/DataContract` schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/data_contracts.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 端到端联调（`APP_PORT=18092`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`KAFKA_BROKERS=127.0.0.1:9094`）：
+     - 预置数据：`core.organization` + `catalog.data_asset` + `catalog.asset_version` + `catalog.product` + `catalog.product_sku`
+     - 调用 `POST /api/v1/skus/{id}/data-contracts`
+     - 调用 `GET /api/v1/skus/{id}/data-contracts/{contractId}`
+     - 回查 `contract.data_contract` 与 `audit.audit_event`
+     - 清理测试数据（`data_contract/product_sku/product/asset_version/data_asset/organization`）
+  4. 数据残留核对：验证业务表残留均为 `0`；审计表按 append-only 保留请求记录。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `59 passed, 0 failed, 1 ignored`；`POST/GET` 接口均返回 `success=true` 且 `data_contract_id=eb42b70f-be78-47f5-9200-3ccaf60cd9c5`；`contract.data_contract` 命中 `contract_scope=sku`、`business_terms_json/processing_terms_json` 正确回写；审计命中 `catalog.data_contract.create|data_contract|success|req-cat013-contract-001`；业务数据清理后残留 `0|0`。
+- 覆盖的冻结文档条目：`docs/原始PRD/数据商品元信息与数据契约设计.md`（3.2 契约独立建模 + 4. 元信息域条款化）、`docs/数据库设计/V1/upgrade/062_data_product_metadata_contract.sql`（`contract.data_contract` 字段与约束）、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（`POST/GET /api/v1/skus/{id}/data-contracts...` 冻结接口）。
+- 覆盖的任务清单条目：`CAT-013`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：通过
+- 备注：按你的要求，本批未更新 `V1-Core-人工审批记录.md`，审批条目由你手工维护。
