@@ -1022,7 +1022,7 @@ async fn set_webhook_processed_status(
     Ok(())
 }
 
-fn now_utc_ms() -> i64 {
+pub(crate) fn now_utc_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -1047,7 +1047,7 @@ fn normalize_epoch_ms(value: i64) -> i64 {
     }
 }
 
-fn is_replay_window_valid(occurred_at_ms: i64) -> bool {
+pub(crate) fn is_replay_window_valid(occurred_at_ms: i64) -> bool {
     let now_ms = now_utc_ms();
     let max_backward_ms = 15 * 60 * 1000;
     let max_forward_ms = 2 * 60 * 1000;
@@ -1070,7 +1070,7 @@ fn verify_webhook_signature_placeholder(
     signature.map(|v| !v.trim().is_empty()).unwrap_or(false)
 }
 
-fn map_webhook_target_status(
+pub(crate) fn map_webhook_target_status(
     event_type: &str,
     provider_status: Option<&str>,
 ) -> Option<&'static str> {
@@ -1088,7 +1088,7 @@ fn map_webhook_target_status(
     None
 }
 
-fn payment_status_rank(status: &str) -> i32 {
+pub(crate) fn payment_status_rank(status: &str) -> i32 {
     match status {
         "created" => 0,
         "pending" | "processing" | "locked" => 1,
