@@ -1,7 +1,7 @@
 use crate::modules::catalog::domain::{
     AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
     CreateDataResourceRequest, CreateProductSkuRequest, DataProductView, DataResourceView,
-    PatchDataProductRequest, ProductSkuView,
+    PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView,
 };
 use tokio_postgres::{GenericClient, Row};
 
@@ -287,16 +287,23 @@ impl PostgresCatalogRepository {
 
     pub async fn create_product_sku(
         client: &impl GenericClient,
+        product_id: &str,
         payload: &CreateProductSkuRequest,
     ) -> Result<ProductSkuView, tokio_postgres::Error> {
+        let mut metadata = payload.metadata.clone();
+        if let Some(template_id) = &payload.template_id {
+            metadata["draft_template_id"] = serde_json::Value::String(template_id.clone());
+        }
         let row = client
             .query_one(
                 "INSERT INTO catalog.product_sku (
-                   product_id, sku_code, sku_type, unit_name, billing_mode, acceptance_mode,
-                   refund_mode, sla_json, quota_json, status, metadata
+                   product_id, sku_code, sku_type, unit_name, billing_mode, trade_mode,
+                   delivery_object_kind, subscription_cadence, share_protocol, result_form,
+                   acceptance_mode, refund_mode, sla_json, quota_json, status, metadata
                  ) VALUES (
                    $1::text::uuid, $2, $3, $4, $5, $6,
-                   $7, $8::jsonb, $9::jsonb, 'draft', $10::jsonb
+                   $7, $8, $9, $10,
+                   $11, $12, $13::jsonb, $14::jsonb, 'draft', $15::jsonb
                  )
                  RETURNING
                    sku_id::text,
@@ -305,26 +312,94 @@ impl PostgresCatalogRepository {
                    sku_type,
                    unit_name,
                    billing_mode,
+                   trade_mode,
                    acceptance_mode,
                    refund_mode,
                    status,
                    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
                 &[
-                    &payload.product_id,
+                    &product_id,
                     &payload.sku_code,
                     &payload.sku_type,
                     &payload.unit_name,
                     &payload.billing_mode,
+                    &payload.trade_mode,
+                    &payload.delivery_object_kind,
+                    &payload.subscription_cadence,
+                    &payload.share_protocol,
+                    &payload.result_form,
                     &payload.acceptance_mode,
                     &payload.refund_mode,
                     &payload.sla_json,
                     &payload.quota_json,
-                    &payload.metadata,
+                    &metadata,
                 ],
             )
             .await?;
         Ok(parse_product_sku_row(&row))
+    }
+
+    pub async fn patch_product_sku(
+        client: &impl GenericClient,
+        id: &str,
+        payload: &PatchProductSkuRequest,
+    ) -> Result<Option<ProductSkuView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "UPDATE catalog.product_sku
+                 SET
+                   sku_code = COALESCE($2, sku_code),
+                   sku_type = COALESCE($3, sku_type),
+                   unit_name = COALESCE($4, unit_name),
+                   billing_mode = COALESCE($5, billing_mode),
+                   trade_mode = COALESCE($6, trade_mode),
+                   delivery_object_kind = COALESCE($7, delivery_object_kind),
+                   subscription_cadence = COALESCE($8, subscription_cadence),
+                   share_protocol = COALESCE($9, share_protocol),
+                   result_form = COALESCE($10, result_form),
+                   acceptance_mode = COALESCE($11, acceptance_mode),
+                   refund_mode = COALESCE($12, refund_mode),
+                   status = COALESCE($13, status),
+                   metadata = CASE
+                     WHEN $14::text IS NULL THEN metadata
+                     ELSE jsonb_set(metadata, '{draft_template_id}', to_jsonb($14::text), true)
+                   END,
+                   updated_at = now()
+                 WHERE sku_id = $1::text::uuid
+                   AND status = 'draft'
+                 RETURNING
+                   sku_id::text,
+                   product_id::text,
+                   sku_code,
+                   sku_type,
+                   unit_name,
+                   billing_mode,
+                   trade_mode,
+                   acceptance_mode,
+                   refund_mode,
+                   status,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &id,
+                    &payload.sku_code,
+                    &payload.sku_type,
+                    &payload.unit_name,
+                    &payload.billing_mode,
+                    &payload.trade_mode,
+                    &payload.delivery_object_kind,
+                    &payload.subscription_cadence,
+                    &payload.share_protocol,
+                    &payload.result_form,
+                    &payload.acceptance_mode,
+                    &payload.refund_mode,
+                    &payload.status,
+                    &payload.template_id,
+                ],
+            )
+            .await?;
+        Ok(row.map(|row| parse_product_sku_row(&row)))
     }
 
     pub async fn get_product_sku(
@@ -340,6 +415,7 @@ impl PostgresCatalogRepository {
                    sku_type,
                    unit_name,
                    billing_mode,
+                   trade_mode,
                    acceptance_mode,
                    refund_mode,
                    status,
@@ -366,6 +442,7 @@ impl PostgresCatalogRepository {
                    sku_type,
                    unit_name,
                    billing_mode,
+                   trade_mode,
                    acceptance_mode,
                    refund_mode,
                    status,
@@ -441,10 +518,11 @@ fn parse_product_sku_row(row: &Row) -> ProductSkuView {
         sku_type: row.get(3),
         unit_name: row.get(4),
         billing_mode: row.get(5),
-        acceptance_mode: row.get(6),
-        refund_mode: row.get(7),
-        status: row.get(8),
-        created_at: row.get(9),
-        updated_at: row.get(10),
+        trade_mode: row.get(6),
+        acceptance_mode: row.get(7),
+        refund_mode: row.get(8),
+        status: row.get(9),
+        created_at: row.get(10),
+        updated_at: row.get(11),
     }
 }

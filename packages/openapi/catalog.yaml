@@ -44,6 +44,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataProduct"
+  /api/v1/products/{id}/skus:
+    post:
+      summary: Create SKU for draft product
+      operationId: createProductSku
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductSkuRequest"
+      responses:
+        "200":
+          description: SKU created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSku"
+  /api/v1/skus/{id}:
+    patch:
+      summary: Patch draft SKU
+      operationId: patchProductSku
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchProductSkuRequest"
+      responses:
+        "200":
+          description: SKU updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSku"
 components:
   schemas:
     CreateDataProductRequest:
@@ -121,6 +169,94 @@ components:
           type: string
           nullable: true
         searchable_text:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+    CreateProductSkuRequest:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        sku_code:
+          type: string
+        sku_type:
+          type: string
+        unit_name:
+          type: string
+          nullable: true
+        billing_mode:
+          type: string
+        trade_mode:
+          type: string
+          nullable: true
+        delivery_object_kind:
+          type: string
+          nullable: true
+        subscription_cadence:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        result_form:
+          type: string
+          nullable: true
+        template_id:
+          type: string
+          format: uuid
+          nullable: true
+        acceptance_mode:
+          type: string
+        refund_mode:
+          type: string
+      required:
+        - sku_code
+        - sku_type
+        - billing_mode
+        - acceptance_mode
+        - refund_mode
+    PatchProductSkuRequest:
+      type: object
+      properties:
+        sku_code:
+          type: string
+          nullable: true
+        sku_type:
+          type: string
+          nullable: true
+        unit_name:
+          type: string
+          nullable: true
+        billing_mode:
+          type: string
+          nullable: true
+        trade_mode:
+          type: string
+          nullable: true
+        delivery_object_kind:
+          type: string
+          nullable: true
+        subscription_cadence:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        result_form:
+          type: string
+          nullable: true
+        template_id:
+          type: string
+          format: uuid
+          nullable: true
+        acceptance_mode:
+          type: string
+          nullable: true
+        refund_mode:
           type: string
           nullable: true
         status:
@@ -283,6 +419,8 @@ components:
           nullable: true
         billing_mode:
           type: string
+        trade_mode:
+          type: string
         acceptance_mode:
           type: string
         refund_mode:
@@ -301,6 +439,7 @@ components:
         - sku_code
         - sku_type
         - billing_mode
+        - trade_mode
         - acceptance_mode
         - refund_mode
         - status

@@ -2015,25 +2015,7 @@
 
 ### BATCH-086
 
-- 状态：计划中
-- 当前任务编号：CAT-002
-- 当前批次目标：实现 `POST /api/v1/products` 与 `PATCH /api/v1/products/{id}`，支持商品草稿创建与编辑，补齐权限校验、审计、错误码与最小测试。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-085` 已审批通过，允许进入下一批。
-- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/mod.rs`、`apps/platform-core/src/lib.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：尚未开始，本条为计划记录。
-- 涉及文件：待实现后补充。
-- 验证步骤：实现后执行 `cargo fmt --all`、`cargo test -p platform-core`，并补一轮数据库写入验证（创建草稿 + 编辑草稿 + 审计可见）。
-- 验证结果：待实现后补充。
-- 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5.1 商品接口）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）。
-- 覆盖的任务清单条目：`CAT-002`
-- 未覆盖项：无
-- 新增 TODO / 预留项：待实现后评估；继续保留 `TODO-PROC-BIL-001` 追溯口径。
-- 待人工审批结论：待审批
-- 备注：按“单复杂任务”批次执行。
-
-### BATCH-086
-
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-002
 - 当前批次目标：实现 `POST /api/v1/products` 与 `PATCH /api/v1/products/{id}`，支持商品草稿创建与编辑，补齐权限校验、审计、错误码与最小测试。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-085` 已审批通过，允许执行。
@@ -2060,5 +2042,55 @@
 - 覆盖的任务清单条目：`CAT-002`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved`；继续保持 `TODO-PROC-BIL-001` 追溯约束。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：首次联调使用了回滚批次的历史临时 ID 导致一次 `OPS_INTERNAL`，已更正为真实前置测试数据后通过全链路验证并完成清理。
+
+### BATCH-087
+
+- 状态：计划中
+- 当前任务编号：CAT-003
+- 当前批次目标：实现 `POST /api/v1/products/{id}/skus` 与 `PATCH /api/v1/skus/{id}`，并完成标准 SKU 真值、trade_mode 合法性、模板兼容性校验。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-086` 已审批通过，允许进入本批。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：尚未开始，本条为计划记录。
+- 涉及文件：待实现后补充。
+- 验证步骤：实现后执行 `cargo fmt --all`、`cargo test -p platform-core`，并执行数据库/API联调验证（创建 SKU + 编辑 SKU + 审计记录查询 + 清理）。
+- 验证结果：待实现后补充。
+- 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5.2 SKU 接口）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）。
+- 覆盖的任务清单条目：`CAT-003`
+- 未覆盖项：无
+- 新增 TODO / 预留项：待实现后评估；保持 `TODO-PROC-BIL-001` 追溯约束不变。
+- 待人工审批结论：待审批
+- 备注：按“单复杂任务”批次执行。
+
+### BATCH-087
+
+- 状态：待审批
+- 当前任务编号：CAT-003
+- 当前批次目标：实现 `POST /api/v1/products/{id}/skus` 与 `PATCH /api/v1/skus/{id}`，并完成标准 SKU 真值、trade_mode 合法性、模板兼容性校验。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-086` 已审批通过，允许执行。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 已实现功能：
+  1. 实现 `POST /api/v1/products/{id}/skus` 与 `PATCH /api/v1/skus/{id}`，接入 `platform-core` 主路由。
+  2. 落地标准 SKU 真值校验：非 `FILE_STD/FILE_SUB/SHARE_RO/API_SUB/API_PPU/QRY_LITE/SBX_STD/RPT_STD` 直接拒绝。
+  3. 落地 trade_mode 合法性与 SKU 兼容性校验，冻结映射：`FILE_STD->snapshot_sale`、`FILE_SUB->revision_subscription`、`SHARE_RO->share_grant`、`API_SUB->api_subscription`、`API_PPU->api_pay_per_use`、`QRY_LITE->template_query`、`SBX_STD->sandbox_workspace`、`RPT_STD->report_delivery`。
+  4. 落地模板兼容性校验：若请求携带 `template_id`，校验 `contract.template_definition.applicable_sku_types` 含当前 `sku_type`。
+  5. SKU 创建/编辑采用“业务写入 + 审计写入同事务提交”，并补充审计动作：`catalog.sku.create`、`catalog.sku.patch`。
+  6. 更新 OpenAPI：新增 `/api/v1/products/{id}/skus`、`/api/v1/skus/{id}` 及对应请求 schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 端到端联调（`APP_PORT=18082`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`）：
+     - 准备前置数据：`organization -> data_asset -> asset_version -> product(draft) -> template_definition(active, applicable_sku_types=['FILE_STD'])`
+     - 调用 `POST /api/v1/products/{id}/skus` 创建 SKU
+     - 调用 `PATCH /api/v1/skus/{id}` 编辑 SKU
+     - 查询 `audit.audit_event` 校验 `catalog.sku.create/patch`
+     - 清理测试数据（product/template/asset_version/data_asset/organization）
+- 验证结果：通过。`cargo test -p platform-core` 结果 `38 passed, 0 failed, 1 ignored`；SKU 创建/编辑接口均返回 `success=true`；审计命中 `catalog.sku.create` 与 `catalog.sku.patch`；测试数据已清理。
+- 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5.2 SKU 接口）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）。
+- 覆盖的任务清单条目：`CAT-003`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：首次联调因服务未就绪导致连接失败，改为 health-check 等待后复测通过。
