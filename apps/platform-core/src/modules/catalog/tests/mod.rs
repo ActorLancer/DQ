@@ -1,6 +1,7 @@
 mod asset_objects;
 mod data_contracts;
 mod processing_jobs;
+mod release_policy;
 
 #[cfg(test)]
 mod tests {
@@ -344,6 +345,26 @@ mod tests {
                   "object_kind":"delivery_object",
                   "object_name":"delivery-package",
                   "object_uri":"s3://product/delivery-package.zip"
+                }"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_patch_release_policy_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("PATCH")
+            .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/release-policy")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "release_mode":"revision",
+                  "is_revision_subscribable":true,
+                  "update_frequency":"daily"
                 }"#,
             ))
             .expect("request");

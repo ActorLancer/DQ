@@ -2600,3 +2600,64 @@
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 待人工审批结论：通过
 - 备注：按你的要求，本批继续把新增测试能力拆分到独立文件，避免持续堆积到单一测试文件。
+
+### BATCH-099
+
+- 状态：计划中
+- 当前任务编号：CAT-015
+- 当前批次目标：实现版本发布/订阅策略接口 `PATCH /api/v1/assets/{assetId}/release-policy`。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-098` 已获人工审批通过，允许执行。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-015` 描述、DoD、acceptance 与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-015` 顺序与 `CAT-016` 边界。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先记“计划中”，再编码与完整验证。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与阶段边界不越界。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用固定批次记录格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：本文件由人工维护，本批不自动写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：版本策略以 PostgreSQL 状态为权威。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog` 边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `PATCH /api/v1/assets/{assetId}/release-policy`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批维持审计闭环，不新增 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + DB 回查闭环。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增测试拆分为独立文件，降低单文件膨胀。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调优先 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
+  17. `docs/开发准备/技术选型正式版.md`：版本策略主状态存 PostgreSQL。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚扩展 `catalog`。
+- technical_reference 约束映射：
+  - `docs/原始PRD/数据商品存储与分层存储设计.md:L155`：闭环中商品治理后对象发布与订阅策略需要可控版本化。
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：V1 冻结接口包含 `PATCH /api/v1/assets/{assetId}/release-policy`。
+  - `docs/数据库设计/V1/upgrade/064_storage_layering_architecture.sql:L1`：分层架构与版本治理字段协同；实际版本策略字段由 `061_data_object_trade_modes.sql` 增补到 `catalog.asset_version`。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/release_policy.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+
+### BATCH-099（待审批）
+
+- 状态：通过
+- 当前任务编号：CAT-015
+- 当前批次目标：实现版本发布/订阅策略接口 `PATCH /api/v1/assets/{assetId}/release-policy`。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-098` 已获人工审批通过。
+- 已实现功能：
+  1. 新增发布策略模型：`PatchAssetReleasePolicyRequest`、`AssetReleasePolicyView`。
+  2. 新增仓储方法：`patch_asset_release_policy`，按 `asset_id` 批量更新 `catalog.asset_version` 的 `release_mode/is_revision_subscribable/update_frequency/release_notes_json`，并返回最新版本策略快照与更新版本数。
+  3. 新增接口：`PATCH /api/v1/assets/{assetId}/release-policy`，包含资产存在性校验、最小变更字段校验、`release_mode` 枚举校验（`snapshot|revision`）、事务审计。
+  4. 新增测试拆分：新增 `tests/release_policy.rs`，独立覆盖 `release_mode` 非法值校验；权限拒绝用例补充在 `tests/mod.rs`。
+  5. 更新 OpenAPI：新增 release-policy 路径与 `PatchAssetReleasePolicyRequest/AssetReleasePolicy` schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/release_policy.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 端到端联调（`APP_PORT=18094`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`KAFKA_BROKERS=127.0.0.1:9094`）：
+     - 预置数据：`core.organization` + `catalog.data_asset` + 同资产两条 `catalog.asset_version`
+     - 调用 `PATCH /api/v1/assets/{assetId}/release-policy`
+     - 回查 `catalog.asset_version`（确认两版本策略均更新）与 `audit.audit_event`
+     - 清理测试数据（`asset_version/data_asset/organization`）
+  4. 数据残留核对：验证业务表残留均为 `0`；审计表按 append-only 保留请求记录。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `63 passed, 0 failed, 1 ignored`；API 返回 `success=true` 且 `applied_version_count=2`、`latest_version_no=2`；两条 `asset_version` 均更新为 `release_mode=revision`、`is_revision_subscribable=true`、`update_frequency=daily`、`release_notes_json={"note":"enable subscription"}`；审计命中 `catalog.asset.release_policy.patch|asset|success|req-cat015-release-001`；清理后残留 `0|0`。
+- 覆盖的冻结文档条目：`docs/原始PRD/数据商品存储与分层存储设计.md`（闭环中的版本化治理）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（冻结路径 `PATCH /api/v1/assets/{assetId}/release-policy`）、`docs/数据库设计/V1/upgrade/064_storage_layering_architecture.sql`（分层策略协同）、`docs/数据库设计/V1/upgrade/061_data_object_trade_modes.sql`（`asset_version` 发布策略字段）。
+- 覆盖的任务清单条目：`CAT-015`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：通过
+- 备注：按你的要求，本批将 release-policy 校验测试独立拆分到 `tests/release_policy.rs`，避免持续堆积在单一测试文件。

@@ -1,14 +1,14 @@
 use crate::modules::catalog::domain::{
     AssetFieldDefinitionView, AssetObjectView, AssetProcessingJobView, AssetQualityReportView,
-    CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest, CreateAssetProcessingJobRequest,
-    CreateAssetQualityReportRequest, CreateDataContractRequest, CreateDataProductRequest,
-    CreateExtractionJobRequest, CreateFormatDetectionRequest, CreatePreviewArtifactRequest,
-    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
-    DataContractView, DataProductView, ExtractionJobView, FormatDetectionResultView,
-    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
-    ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
-    RawIngestBatchView, RawObjectManifestView, default_trade_mode_for_sku_type,
-    is_standard_sku_type,
+    AssetReleasePolicyView, CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest,
+    CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest, CreateDataContractRequest,
+    CreateDataProductRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
+    CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
+    CreateRawObjectManifestRequest, DataContractView, DataProductView, ExtractionJobView,
+    FormatDetectionResultView, PatchAssetReleasePolicyRequest, PatchDataProductRequest,
+    PatchProductSkuRequest, PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
+    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
+    default_trade_mode_for_sku_type, is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
@@ -64,6 +64,10 @@ pub fn router() -> Router {
         .route(
             "/api/v1/assets/{versionId}/objects",
             post(create_asset_object),
+        )
+        .route(
+            "/api/v1/assets/{assetId}/release-policy",
+            patch(patch_asset_release_policy),
         )
         .route(
             "/api/v1/assets/{versionId}/field-definitions",
@@ -925,6 +929,72 @@ async fn create_asset_object(
     Ok(ApiResponse::ok(view))
 }
 
+async fn patch_asset_release_policy(
+    headers: HeaderMap,
+    Path(asset_id): Path<String>,
+    Json(payload): Json<PatchAssetReleasePolicyRequest>,
+) -> Result<Json<ApiResponse<AssetReleasePolicyView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ProductDraftWrite,
+        "catalog asset release policy patch",
+    )?;
+    validate_patch_asset_release_policy_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing_asset = PostgresCatalogRepository::get_data_resource(&client, &asset_id)
+        .await
+        .map_err(map_db_error)?;
+    if existing_asset.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::patch_asset_release_policy(&tx, &asset_id, &payload)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "asset versions do not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    write_audit_event(
+        &tx,
+        "asset",
+        &asset_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.asset.release_policy.patch",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.asset.release_policy.patch",
+        asset_id = %asset_id,
+        applied_version_count = %view.applied_version_count,
+        "catalog asset release policy patched"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 async fn create_asset_field_definition(
     headers: HeaderMap,
     Path(asset_version_id): Path<String>,
@@ -1557,6 +1627,55 @@ fn validate_create_asset_object_payload(
                 message:
                     "object_kind must be one of raw_object|preview_object|delivery_object|report_object|result_object"
                         .to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_patch_asset_release_policy_payload(
+    payload: &PatchAssetReleasePolicyRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let has_change = payload.release_mode.is_some()
+        || payload.is_revision_subscribable.is_some()
+        || payload.update_frequency.is_some()
+        || payload.release_notes_json.is_object();
+    if !has_change {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "at least one release policy field is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .release_mode
+        .as_deref()
+        .is_some_and(|value| !matches!(value, "snapshot" | "revision"))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "release_mode must be snapshot or revision".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .update_frequency
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "update_frequency must not be empty".to_string(),
                 request_id: header(headers, "x-request-id"),
             }),
         ));

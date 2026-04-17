@@ -674,3 +674,24 @@ pub struct AssetObjectView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PatchAssetReleasePolicyRequest {
+    pub release_mode: Option<String>,
+    pub is_revision_subscribable: Option<bool>,
+    pub update_frequency: Option<String>,
+    #[serde(default)]
+    pub release_notes_json: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct AssetReleasePolicyView {
+    pub asset_id: String,
+    pub release_mode: String,
+    pub is_revision_subscribable: bool,
+    pub update_frequency: Option<String>,
+    pub release_notes_json: Value,
+    pub applied_version_count: i64,
+    pub latest_asset_version_id: String,
+    pub latest_version_no: i32,
+}

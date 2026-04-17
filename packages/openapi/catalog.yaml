@@ -308,6 +308,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssetObject"
+  /api/v1/assets/{assetId}/release-policy:
+    patch:
+      summary: Patch release policy for asset
+      operationId: patchAssetReleasePolicy
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchAssetReleasePolicyRequest"
+      responses:
+        "200":
+          description: Asset release policy patched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetReleasePolicy"
   /api/v1/assets/{versionId}/field-definitions:
     post:
       summary: Create field definition for asset version
@@ -1195,6 +1219,56 @@ components:
         - storage_metadata
         - created_at
         - updated_at
+    PatchAssetReleasePolicyRequest:
+      type: object
+      properties:
+        release_mode:
+          type: string
+          enum:
+            - snapshot
+            - revision
+          nullable: true
+        is_revision_subscribable:
+          type: boolean
+          nullable: true
+        update_frequency:
+          type: string
+          nullable: true
+        release_notes_json:
+          type: object
+          additionalProperties: true
+    AssetReleasePolicy:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+        release_mode:
+          type: string
+        is_revision_subscribable:
+          type: boolean
+        update_frequency:
+          type: string
+          nullable: true
+        release_notes_json:
+          type: object
+          additionalProperties: true
+        applied_version_count:
+          type: integer
+          format: int64
+        latest_asset_version_id:
+          type: string
+          format: uuid
+        latest_version_no:
+          type: integer
+      required:
+        - asset_id
+        - release_mode
+        - is_revision_subscribable
+        - release_notes_json
+        - applied_version_count
+        - latest_asset_version_id
+        - latest_version_no
     CreateAssetFieldDefinitionRequest:
       type: object
       properties:

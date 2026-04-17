@@ -1,14 +1,15 @@
 use crate::modules::catalog::domain::{
     AssetFieldDefinitionView, AssetObjectView, AssetProcessingInputView, AssetProcessingJobView,
-    AssetQualityReportView, AssetVersionView, CreateAssetFieldDefinitionRequest,
-    CreateAssetObjectRequest, CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest,
-    CreateAssetVersionRequest, CreateDataContractRequest, CreateDataProductRequest,
-    CreateDataResourceRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
-    CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
-    CreateRawObjectManifestRequest, DataContractView, DataProductView, DataResourceView,
-    ExtractionJobView, FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
-    PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
-    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
+    AssetQualityReportView, AssetReleasePolicyView, AssetVersionView,
+    CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest, CreateAssetProcessingJobRequest,
+    CreateAssetQualityReportRequest, CreateAssetVersionRequest, CreateDataContractRequest,
+    CreateDataProductRequest, CreateDataResourceRequest, CreateExtractionJobRequest,
+    CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
+    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataContractView, DataProductView,
+    DataResourceView, ExtractionJobView, FormatDetectionResultView, PatchAssetReleasePolicyRequest,
+    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
+    ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
+    RawIngestBatchView, RawObjectManifestView,
 };
 use serde_json::{Value, json};
 use tokio_postgres::{GenericClient, Row};
@@ -1250,6 +1251,72 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(row.map(|row| parse_data_contract_row(&row)))
+    }
+
+    pub async fn patch_asset_release_policy(
+        client: &impl GenericClient,
+        asset_id: &str,
+        payload: &PatchAssetReleasePolicyRequest,
+    ) -> Result<Option<AssetReleasePolicyView>, tokio_postgres::Error> {
+        let updated_count_row = client
+            .query_one(
+                "WITH updated AS (
+                   UPDATE catalog.asset_version
+                      SET release_mode = COALESCE($2, release_mode),
+                          is_revision_subscribable = COALESCE($3, is_revision_subscribable),
+                          update_frequency = CASE
+                            WHEN $4::text IS NULL THEN update_frequency
+                            ELSE $4
+                          END,
+                          release_notes_json = CASE
+                            WHEN $5::jsonb = '{}'::jsonb THEN release_notes_json
+                            ELSE $5::jsonb
+                          END,
+                          updated_at = now()
+                    WHERE asset_id = $1::text::uuid
+                    RETURNING 1
+                 )
+                 SELECT count(*)::bigint FROM updated",
+                &[
+                    &asset_id,
+                    &payload.release_mode,
+                    &payload.is_revision_subscribable,
+                    &payload.update_frequency,
+                    &normalize_object_json(&payload.release_notes_json),
+                ],
+            )
+            .await?;
+        let updated_count: i64 = updated_count_row.get(0);
+        if updated_count == 0 {
+            return Ok(None);
+        }
+        let latest_row = client
+            .query_one(
+                "SELECT
+                   asset_version_id::text,
+                   version_no,
+                   release_mode,
+                   is_revision_subscribable,
+                   update_frequency,
+                   release_notes_json
+                 FROM catalog.asset_version
+                 WHERE asset_id = $1::text::uuid
+                 ORDER BY version_no DESC
+                 LIMIT 1",
+                &[&asset_id],
+            )
+            .await?;
+
+        Ok(Some(AssetReleasePolicyView {
+            asset_id: asset_id.to_string(),
+            release_mode: latest_row.get(2),
+            is_revision_subscribable: latest_row.get(3),
+            update_frequency: latest_row.get(4),
+            release_notes_json: latest_row.get(5),
+            applied_version_count: updated_count,
+            latest_asset_version_id: latest_row.get(0),
+            latest_version_no: latest_row.get(1),
+        }))
     }
 }
 
