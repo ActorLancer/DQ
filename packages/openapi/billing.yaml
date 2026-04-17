@@ -221,6 +221,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/payments/webhooks/{provider}:
+    post:
+      summary: Receive payment webhook callback
+      description: Provider callback entrypoint with signature placeholder, idempotency, replay protection, and out-of-order guard.
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-provider-signature
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-webhook-timestamp
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-trace-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentWebhookRequest"
+      responses:
+        "200":
+          description: Webhook accepted and processed (or safely ignored)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentWebhookResultResponse"
+        "400":
+          description: Invalid payload or persistence failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -269,6 +325,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/OrderLock"
+    ApiEnvelopePaymentWebhookResult:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/PaymentWebhookResult"
     BillingPolicyView:
       type: object
       required: [jurisdictions, corridor_policies]
@@ -522,6 +586,60 @@ components:
           type: string
         buyer_locked_at:
           type: string
+    PaymentWebhookRequest:
+      type: object
+      required: [provider_event_id, event_type]
+      properties:
+        provider_event_id:
+          type: string
+        event_type:
+          type: string
+        payment_intent_id:
+          type: string
+          nullable: true
+        provider_status:
+          type: string
+          nullable: true
+        occurred_at_ms:
+          type: integer
+          format: int64
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+    PaymentWebhookResult:
+      type: object
+      required:
+        [
+          webhook_event_id,
+          provider_key,
+          provider_event_id,
+          processed_status,
+          duplicate,
+          signature_verified,
+          out_of_order_ignored,
+        ]
+      properties:
+        webhook_event_id:
+          type: string
+        provider_key:
+          type: string
+        provider_event_id:
+          type: string
+        processed_status:
+          type: string
+        duplicate:
+          type: boolean
+        signature_verified:
+          type: boolean
+        out_of_order_ignored:
+          type: boolean
+        payment_intent_id:
+          type: string
+          nullable: true
+        applied_payment_status:
+          type: string
+          nullable: true
     BillingPolicyResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBillingPolicy"
@@ -534,3 +652,6 @@ components:
     OrderLockResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeOrderLock"
+    PaymentWebhookResultResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopePaymentWebhookResult"

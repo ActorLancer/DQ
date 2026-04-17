@@ -1609,14 +1609,6 @@
 - 待人工审批结论：通过
 - 备注：联调容器为 `datab-mock-payment-provider`（`127.0.0.1:8089`）；沙箱环境不能直接访问本机端口，live 联调与脚本探针使用提权执行完成验证。
 
-### BATCH-074（返工中）
-
-- 状态：返工中
-- 当前任务编号：BIL-002, BIL-003
-- 当前批次目标：修复 `BIL-003` 的状态历史一致性缺陷（错误写入 `old_status=new_status`），并补齐 `BIL-002/BIL-003` 的审计落地（写入 `audit.audit_event`，可在数据库回查）。
-- 前置依赖核对结果：`BIL-002/BIL-003` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成并审批通过；可执行返工批次。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
-
 ### BATCH-074（返工后待审批）
 
 - 状态：返工后待审批
@@ -1644,6 +1636,55 @@
 - 验证结果：通过。接口创建/读取/取消/锁资均返回 `success=true`；`audit.audit_event` 可回查到 `payment.intent.create/read/cancel` 与 `order.payment.lock` 记录；本次锁资操作未再写入新的 `old_status=new_status` 伪迁移历史。
 - 覆盖的冻结文档条目：`支付域接口协议正式版`（支付意图与锁资接口、幂等与一致性）、`支付、资金流与轻结算设计`（支付审计留痕）、`全集成基线-V1`（审计与业务日志分离，审计主链落库）。
 - 覆盖的任务清单条目：`BIL-002`, `BIL-003`（返工补齐）
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：通过
+- 备注：联调数据库容器 `luna-postgres-test`（`127.0.0.1:55432`），mock 支付容器 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
+
+### BATCH-075（计划中）
+
+- 状态：计划中
+- 当前任务编号：BIL-005
+- 当前批次目标：实现 `POST /api/v1/payments/webhooks/{provider}`，补齐签名占位、幂等、防重放、乱序保护、审计落地与最小验证。
+- 前置依赖核对结果：`BIL-005` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-075（实施完成）
+
+- 状态：待审批
+- 当前任务编号：BIL-005
+- 当前批次目标：实现支付 webhook 接口 `POST /api/v1/payments/webhooks/{provider}`，支持签名占位、幂等、防重放、乱序保护，并补齐审计与最小测试。
+- 前置依赖核对结果：`BIL-005` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`，当前均已完成且审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - 新增 webhook 接口：`POST /api/v1/payments/webhooks/{provider}`。
+  - 签名占位：支持 `x-provider-signature`，`mock_payment` 默认要求值为 `mock-signature`（可由 `MOCK_PAYMENT_WEBHOOK_SIGNATURE` 覆盖）。
+  - 幂等去重：基于 `payment.payment_webhook_event(provider_key, provider_event_id)` 唯一性，实现重复回调标记 `duplicate` 且不重复推进状态。
+  - 防重放：基于 `x-webhook-timestamp` / `occurred_at_ms` 执行时间窗校验（向后 15 分钟、向前 2 分钟），超窗标记 `rejected_replay`。
+  - 乱序保护：基于 `payment_intent.metadata.webhook_last_occurred_at_ms` 与状态等级进行回退保护，旧事件标记 `out_of_order_ignored`。
+  - 状态推进：映射 `payment.succeeded|failed|timeout` 到 `payment_intent.status`（`succeeded|failed|expired`），并回写 webhook 元数据。
+  - 审计落地：写入 `audit.audit_event`，覆盖 `payment.webhook.processed / duplicate / rejected_replay / rejected_signature / out_of_order_ignored`。
+  - OpenAPI 更新：补齐 webhook 路径、请求/响应 DTO 与错误响应描述。
+  - 最小单测补齐：新增 webhook 规则函数测试（状态映射、重放窗口、状态等级回退保护）。
+- 涉及文件：`apps/platform-core/src/modules/billing/api.rs`、`apps/platform-core/Cargo.toml`、`packages/openapi/billing.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务：`DATABASE_URL=postgres://luna:5686@127.0.0.1:55432/luna_data_trading PROVIDER_MODE=mock KAFKA_BROKERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core-bin`
+  4. 创建支付意图：`POST /api/v1/payments/intents`
+  5. webhook 场景联调：
+     - 正常成功回调（`processed`）
+     - 同 `provider_event_id` 重复回调（`duplicate`）
+     - 旧时间戳失败回调（`out_of_order_ignored`）
+     - 超窗重放回调（`rejected_replay`）
+     - 错误签名回调（`rejected_signature`）
+  6. DB 回查：
+     - `payment.payment_intent` 状态与 webhook 元数据
+     - `payment.payment_webhook_event` 处理状态与重复标记
+     - `audit.audit_event` 对应动作记录
+- 验证结果：通过。`platform-core` 单测 `13/13` 通过；联调场景返回符合预期：`processed / duplicate / out_of_order_ignored / rejected_replay / rejected_signature`；`payment_intent` 最终状态保持 `succeeded`，未被旧失败事件回退；审计表可见对应动作记录。
+- 覆盖的冻结文档条目：`支付域接口协议正式版`（webhook 幂等与一致性要求）、`支付、资金流与轻结算设计`（支付回调入口与防重放）、`全集成基线-V1`（支付域审计与状态防回退约束）
+- 覆盖的任务清单条目：`BIL-005`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
 - 待人工审批结论：待审批

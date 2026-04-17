@@ -10,6 +10,8 @@ use axum::{Json, Router};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_postgres::NoTls;
 use tracing::info;
 
@@ -72,6 +74,30 @@ pub struct OrderLockView {
     pub buyer_locked_at: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PaymentWebhookRequest {
+    pub provider_event_id: String,
+    pub event_type: String,
+    pub payment_intent_id: Option<String>,
+    pub provider_status: Option<String>,
+    pub occurred_at_ms: Option<i64>,
+    #[serde(default)]
+    pub payload: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PaymentWebhookResultView {
+    pub webhook_event_id: String,
+    pub provider_key: String,
+    pub provider_event_id: String,
+    pub processed_status: String,
+    pub duplicate: bool,
+    pub signature_verified: bool,
+    pub out_of_order_ignored: bool,
+    pub payment_intent_id: Option<String>,
+    pub applied_payment_status: Option<String>,
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/api/v1/billing/policies", get(get_billing_policies))
@@ -84,6 +110,10 @@ pub fn router() -> Router {
         .route(
             "/api/v1/payments/intents/{id}/cancel",
             post(cancel_payment_intent),
+        )
+        .route(
+            "/api/v1/payments/webhooks/{provider}",
+            post(handle_payment_webhook),
         )
         .route("/api/v1/orders/{id}/lock", post(lock_order_payment))
 }
@@ -537,6 +567,369 @@ async fn lock_order_payment(
     Ok(ApiResponse::ok(view))
 }
 
+async fn handle_payment_webhook(
+    headers: HeaderMap,
+    Path(provider): Path<String>,
+    Json(payload): Json<PaymentWebhookRequest>,
+) -> Result<Json<ApiResponse<PaymentWebhookResultView>>, (StatusCode, Json<ErrorResponse>)> {
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let provider_exists = client
+        .query_opt(
+            "SELECT provider_key FROM payment.provider WHERE provider_key = $1",
+            &[&provider],
+        )
+        .await
+        .map_err(map_db_error)?;
+    if provider_exists.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::BilProviderFailed.as_str().to_string(),
+                message: format!("provider not found: {provider}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let existing_row = client
+        .query_opt(
+            "SELECT webhook_event_id::text, signature_verified, payment_intent_id::text
+             FROM payment.payment_webhook_event
+             WHERE provider_key = $1 AND provider_event_id = $2",
+            &[&provider, &payload.provider_event_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    if let Some(existing) = existing_row {
+        let webhook_event_id: String = existing.get(0);
+        let signature_verified: bool = existing.get(1);
+        let payment_intent_id: Option<String> = existing.get(2);
+        let _ = client
+            .execute(
+                "UPDATE payment.payment_webhook_event
+                 SET duplicate_flag = true, processed_status = 'duplicate', processed_at = now()
+                 WHERE webhook_event_id = $1::text::uuid",
+                &[&webhook_event_id],
+            )
+            .await
+            .map_err(map_db_error)?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_webhook_event",
+            &webhook_event_id,
+            "provider_callback",
+            "payment.webhook.duplicate",
+            "duplicate",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "duplicate".to_string(),
+            duplicate: true,
+            signature_verified,
+            out_of_order_ignored: false,
+            payment_intent_id,
+            applied_payment_status: None,
+        }));
+    }
+
+    let signature_verified = verify_webhook_signature_placeholder(
+        &provider,
+        header(&headers, "x-provider-signature").as_deref(),
+        &payload,
+    );
+    let occurred_at_ms =
+        parse_webhook_timestamp_ms(header(&headers, "x-webhook-timestamp").as_deref(), &payload);
+
+    let webhook_insert = client
+        .query_one(
+            "INSERT INTO payment.payment_webhook_event (
+               provider_key,
+               provider_event_id,
+               event_type,
+               signature_verified,
+               payment_intent_id,
+               payload,
+               processed_status,
+               duplicate_flag
+             ) VALUES (
+               $1, $2, $3, $4, $5::text::uuid, $6::jsonb, 'pending', false
+             )
+             RETURNING webhook_event_id::text",
+            &[
+                &provider,
+                &payload.provider_event_id,
+                &payload.event_type,
+                &signature_verified,
+                &payload.payment_intent_id,
+                &payload.payload,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let webhook_event_id: String = webhook_insert.get(0);
+
+    if !signature_verified {
+        set_webhook_processed_status(&client, &webhook_event_id, "rejected_signature").await?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_webhook_event",
+            &webhook_event_id,
+            "provider_callback",
+            "payment.webhook.rejected_signature",
+            "rejected",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "rejected_signature".to_string(),
+            duplicate: false,
+            signature_verified,
+            out_of_order_ignored: false,
+            payment_intent_id: payload.payment_intent_id,
+            applied_payment_status: None,
+        }));
+    }
+
+    if !is_replay_window_valid(occurred_at_ms.unwrap_or_else(now_utc_ms)) {
+        set_webhook_processed_status(&client, &webhook_event_id, "rejected_replay").await?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_webhook_event",
+            &webhook_event_id,
+            "provider_callback",
+            "payment.webhook.rejected_replay",
+            "rejected",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "rejected_replay".to_string(),
+            duplicate: false,
+            signature_verified: true,
+            out_of_order_ignored: false,
+            payment_intent_id: payload.payment_intent_id,
+            applied_payment_status: None,
+        }));
+    }
+
+    let Some(payment_intent_id) = payload.payment_intent_id.clone() else {
+        set_webhook_processed_status(&client, &webhook_event_id, "processed_noop").await?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_webhook_event",
+            &webhook_event_id,
+            "provider_callback",
+            "payment.webhook.processed_noop",
+            "success",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "processed_noop".to_string(),
+            duplicate: false,
+            signature_verified: true,
+            out_of_order_ignored: false,
+            payment_intent_id: None,
+            applied_payment_status: None,
+        }));
+    };
+
+    let intent_row = client
+        .query_opt(
+            "SELECT
+               status,
+               metadata ->> 'webhook_last_occurred_at_ms'
+             FROM payment.payment_intent
+             WHERE payment_intent_id = $1::text::uuid",
+            &[&payment_intent_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let Some(intent_row) = intent_row else {
+        set_webhook_processed_status(&client, &webhook_event_id, "intent_not_found").await?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_webhook_event",
+            &webhook_event_id,
+            "provider_callback",
+            "payment.webhook.intent_not_found",
+            "failed",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "intent_not_found".to_string(),
+            duplicate: false,
+            signature_verified: true,
+            out_of_order_ignored: false,
+            payment_intent_id: Some(payment_intent_id),
+            applied_payment_status: None,
+        }));
+    };
+
+    let current_status: String = intent_row.get(0);
+    let last_event_occurred_at_ms = intent_row
+        .get::<_, Option<String>>(1)
+        .and_then(|v| v.parse::<i64>().ok());
+    let incoming_occurred_at_ms = occurred_at_ms.unwrap_or_else(now_utc_ms);
+    if last_event_occurred_at_ms
+        .map(|last| incoming_occurred_at_ms < last)
+        .unwrap_or(false)
+    {
+        set_webhook_processed_status(&client, &webhook_event_id, "out_of_order_ignored").await?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_intent",
+            &payment_intent_id,
+            "provider_callback",
+            "payment.webhook.out_of_order_ignored",
+            "ignored",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "out_of_order_ignored".to_string(),
+            duplicate: false,
+            signature_verified: true,
+            out_of_order_ignored: true,
+            payment_intent_id: Some(payment_intent_id),
+            applied_payment_status: None,
+        }));
+    }
+
+    let target_status =
+        map_webhook_target_status(&payload.event_type, payload.provider_status.as_deref());
+    let Some(target_status) = target_status else {
+        set_webhook_processed_status(&client, &webhook_event_id, "processed_noop").await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "processed_noop".to_string(),
+            duplicate: false,
+            signature_verified: true,
+            out_of_order_ignored: false,
+            payment_intent_id: Some(payment_intent_id),
+            applied_payment_status: None,
+        }));
+    };
+
+    if payment_status_rank(target_status) < payment_status_rank(&current_status) {
+        set_webhook_processed_status(&client, &webhook_event_id, "out_of_order_ignored").await?;
+        write_audit_event(
+            &client,
+            "payment",
+            "payment_intent",
+            &payment_intent_id,
+            "provider_callback",
+            "payment.webhook.out_of_order_ignored",
+            "ignored",
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+        return Ok(ApiResponse::ok(PaymentWebhookResultView {
+            webhook_event_id,
+            provider_key: provider,
+            provider_event_id: payload.provider_event_id,
+            processed_status: "out_of_order_ignored".to_string(),
+            duplicate: false,
+            signature_verified: true,
+            out_of_order_ignored: true,
+            payment_intent_id: Some(payment_intent_id),
+            applied_payment_status: None,
+        }));
+    }
+
+    let row = client
+        .query_one(
+            "UPDATE payment.payment_intent
+             SET
+               status = $2,
+               metadata = metadata || jsonb_build_object(
+                 'webhook_last_event_id', $3::text,
+                 'webhook_last_occurred_at_ms', $4::bigint,
+                 'webhook_last_event_type', $5::text,
+                 'webhook_last_provider_status', COALESCE($6::text, '')
+               ),
+               updated_at = now()
+             WHERE payment_intent_id = $1::text::uuid
+             RETURNING status",
+            &[
+                &payment_intent_id,
+                &target_status,
+                &payload.provider_event_id,
+                &incoming_occurred_at_ms,
+                &payload.event_type,
+                &payload.provider_status,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let applied_status: String = row.get(0);
+    set_webhook_processed_status(&client, &webhook_event_id, "processed").await?;
+    write_audit_event(
+        &client,
+        "payment",
+        "payment_intent",
+        &payment_intent_id,
+        "provider_callback",
+        "payment.webhook.processed",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(PaymentWebhookResultView {
+        webhook_event_id,
+        provider_key: provider,
+        provider_event_id: payload.provider_event_id,
+        processed_status: "processed".to_string(),
+        duplicate: false,
+        signature_verified: true,
+        out_of_order_ignored: false,
+        payment_intent_id: Some(payment_intent_id),
+        applied_payment_status: Some(applied_status),
+    }))
+}
+
 fn parse_intent_row(
     row: &tokio_postgres::Row,
 ) -> Result<PaymentIntentView, (StatusCode, Json<ErrorResponse>)> {
@@ -592,6 +985,99 @@ async fn select_intent_by_idempotency(
         .await
         .map_err(map_db_error)?;
     row.map(|r| parse_intent_row(&r)).transpose()
+}
+
+async fn set_webhook_processed_status(
+    client: &tokio_postgres::Client,
+    webhook_event_id: &str,
+    status: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let _ = client
+        .execute(
+            "UPDATE payment.payment_webhook_event
+             SET processed_status = $2, processed_at = now()
+             WHERE webhook_event_id = $1::text::uuid",
+            &[&webhook_event_id, &status],
+        )
+        .await
+        .map_err(map_db_error)?;
+    Ok(())
+}
+
+fn now_utc_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn parse_webhook_timestamp_ms(
+    header_timestamp: Option<&str>,
+    payload: &PaymentWebhookRequest,
+) -> Option<i64> {
+    let parse = |raw: &str| raw.trim().parse::<i64>().ok().map(normalize_epoch_ms);
+    header_timestamp
+        .and_then(parse)
+        .or(payload.occurred_at_ms.map(normalize_epoch_ms))
+}
+
+fn normalize_epoch_ms(value: i64) -> i64 {
+    if value < 10_000_000_000 {
+        value * 1000
+    } else {
+        value
+    }
+}
+
+fn is_replay_window_valid(occurred_at_ms: i64) -> bool {
+    let now_ms = now_utc_ms();
+    let max_backward_ms = 15 * 60 * 1000;
+    let max_forward_ms = 2 * 60 * 1000;
+    occurred_at_ms >= now_ms - max_backward_ms && occurred_at_ms <= now_ms + max_forward_ms
+}
+
+fn verify_webhook_signature_placeholder(
+    provider: &str,
+    signature: Option<&str>,
+    payload: &PaymentWebhookRequest,
+) -> bool {
+    if payload.provider_event_id.trim().is_empty() || payload.event_type.trim().is_empty() {
+        return false;
+    }
+    let expected = std::env::var("MOCK_PAYMENT_WEBHOOK_SIGNATURE")
+        .unwrap_or_else(|_| "mock-signature".to_string());
+    if provider == "mock_payment" {
+        return signature.map(|v| v.trim() == expected).unwrap_or(false);
+    }
+    signature.map(|v| !v.trim().is_empty()).unwrap_or(false)
+}
+
+fn map_webhook_target_status(
+    event_type: &str,
+    provider_status: Option<&str>,
+) -> Option<&'static str> {
+    let normalized_type = event_type.trim().to_ascii_lowercase();
+    let normalized_status = provider_status.unwrap_or("").trim().to_ascii_lowercase();
+    if normalized_type.contains("succeeded") || normalized_status == "succeeded" {
+        return Some("succeeded");
+    }
+    if normalized_type.contains("failed") || normalized_status == "failed" {
+        return Some("failed");
+    }
+    if normalized_type.contains("timeout") || normalized_status == "timeout" {
+        return Some("expired");
+    }
+    None
+}
+
+fn payment_status_rank(status: &str) -> i32 {
+    match status {
+        "created" => 0,
+        "pending" | "processing" | "locked" => 1,
+        "failed" | "expired" | "canceled" => 2,
+        "succeeded" => 3,
+        _ => 0,
+    }
 }
 
 async fn write_audit_event(
@@ -795,5 +1281,35 @@ mod tests {
             .await
             .expect("router should respond");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn webhook_status_mapping_supports_success_fail_timeout() {
+        assert_eq!(
+            map_webhook_target_status("payment.succeeded", None),
+            Some("succeeded")
+        );
+        assert_eq!(
+            map_webhook_target_status("payment.failed", None),
+            Some("failed")
+        );
+        assert_eq!(
+            map_webhook_target_status("payment.timeout", None),
+            Some("expired")
+        );
+    }
+
+    #[test]
+    fn replay_window_blocks_expired_timestamp() {
+        let old = now_utc_ms() - 16 * 60 * 1000;
+        assert!(!is_replay_window_valid(old));
+        let fresh = now_utc_ms();
+        assert!(is_replay_window_valid(fresh));
+    }
+
+    #[test]
+    fn status_rank_prevents_regression() {
+        assert!(payment_status_rank("failed") < payment_status_rank("succeeded"));
+        assert!(payment_status_rank("created") < payment_status_rank("failed"));
     }
 }

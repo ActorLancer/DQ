@@ -134,3 +134,4 @@
 - `BATCH-072`（`BIL-003`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-073`（`BIL-004`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
 - `BATCH-074`（`BIL-002`, `BIL-003` 返工）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+- `BATCH-075`（`BIL-005`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
