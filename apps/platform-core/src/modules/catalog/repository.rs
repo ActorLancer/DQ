@@ -1,12 +1,12 @@
 use crate::modules::catalog::domain::{
-    AssetFieldDefinitionView, AssetProcessingInputView, AssetProcessingJobView,
+    AssetFieldDefinitionView, AssetObjectView, AssetProcessingInputView, AssetProcessingJobView,
     AssetQualityReportView, AssetVersionView, CreateAssetFieldDefinitionRequest,
-    CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest, CreateAssetVersionRequest,
-    CreateDataContractRequest, CreateDataProductRequest, CreateDataResourceRequest,
-    CreateExtractionJobRequest, CreateFormatDetectionRequest, CreatePreviewArtifactRequest,
-    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
-    DataContractView, DataProductView, DataResourceView, ExtractionJobView,
-    FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
+    CreateAssetObjectRequest, CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest,
+    CreateAssetVersionRequest, CreateDataContractRequest, CreateDataProductRequest,
+    CreateDataResourceRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
+    CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
+    CreateRawObjectManifestRequest, DataContractView, DataProductView, DataResourceView,
+    ExtractionJobView, FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
     PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
     PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
 };
@@ -773,6 +773,92 @@ impl PostgresCatalogRepository {
         Ok(parse_asset_quality_report_row(&row))
     }
 
+    pub async fn create_asset_object(
+        client: &impl GenericClient,
+        asset_version_id: &str,
+        payload: &CreateAssetObjectRequest,
+    ) -> Result<AssetObjectView, tokio_postgres::Error> {
+        let object_row = client
+            .query_one(
+                "INSERT INTO catalog.asset_object_binding (
+                   asset_version_id, object_kind, object_name, object_locator, share_protocol,
+                   schema_json, output_schema_json, freshness_json, access_constraints, metadata
+                 ) VALUES (
+                   $1::text::uuid, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb
+                 )
+                 RETURNING
+                   asset_object_id::text,
+                   asset_version_id::text,
+                   object_kind,
+                   object_name,
+                   object_locator,
+                   share_protocol,
+                   schema_json,
+                   output_schema_json,
+                   freshness_json,
+                   access_constraints,
+                   metadata,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &asset_version_id,
+                    &payload.object_kind,
+                    &payload.object_name,
+                    &payload.object_locator,
+                    &payload.share_protocol,
+                    &normalize_object_json(&payload.schema_json),
+                    &normalize_object_json(&payload.output_schema_json),
+                    &normalize_object_json(&payload.freshness_json),
+                    &normalize_object_json(&payload.access_constraints),
+                    &normalize_object_json(&payload.metadata),
+                ],
+            )
+            .await?;
+
+        let storage_row = client
+            .query_one(
+                "INSERT INTO catalog.asset_storage_binding (
+                   asset_version_id, storage_type, object_uri, payload_role, object_hash,
+                   encryption_algo, worm_enabled, metadata, storage_zone, access_path_type
+                 ) VALUES (
+                   $1::text::uuid, $2, $3, 'primary_payload', $4, $5, $6, $7::jsonb, $8, $9
+                 )
+                 RETURNING
+                   asset_storage_binding_id::text,
+                   object_uri,
+                   storage_type,
+                   storage_zone,
+                   access_path_type,
+                   object_hash,
+                   encryption_algo,
+                   worm_enabled,
+                   metadata",
+                &[
+                    &asset_version_id,
+                    &payload
+                        .storage_type
+                        .clone()
+                        .unwrap_or_else(|| "object_storage".to_string()),
+                    &payload.object_uri,
+                    &payload.object_hash,
+                    &payload.encryption_algo,
+                    &payload.worm_enabled.unwrap_or(false),
+                    &normalize_object_json(&payload.metadata),
+                    &payload
+                        .storage_zone
+                        .clone()
+                        .unwrap_or_else(|| "product".to_string()),
+                    &payload
+                        .access_path_type
+                        .clone()
+                        .unwrap_or_else(|| "object_uri".to_string()),
+                ],
+            )
+            .await?;
+
+        Ok(parse_asset_object_row(&object_row, &storage_row))
+    }
+
     pub async fn create_asset_processing_job(
         client: &impl GenericClient,
         output_asset_version_id: &str,
@@ -1262,6 +1348,33 @@ fn parse_data_contract_row(row: &Row) -> DataContractView {
         metadata: row.get(21),
         created_at: row.get(22),
         updated_at: row.get(23),
+    }
+}
+
+fn parse_asset_object_row(object_row: &Row, storage_row: &Row) -> AssetObjectView {
+    AssetObjectView {
+        asset_object_id: object_row.get(0),
+        asset_version_id: object_row.get(1),
+        object_kind: object_row.get(2),
+        object_name: object_row.get(3),
+        object_locator: object_row.get(4),
+        share_protocol: object_row.get(5),
+        schema_json: object_row.get(6),
+        output_schema_json: object_row.get(7),
+        freshness_json: object_row.get(8),
+        access_constraints: object_row.get(9),
+        object_metadata: object_row.get(10),
+        asset_storage_binding_id: storage_row.get(0),
+        object_uri: storage_row.get(1),
+        storage_type: storage_row.get(2),
+        storage_zone: storage_row.get(3),
+        access_path_type: storage_row.get(4),
+        object_hash: storage_row.get(5),
+        encryption_algo: storage_row.get(6),
+        worm_enabled: storage_row.get(7),
+        storage_metadata: storage_row.get(8),
+        created_at: object_row.get(11),
+        updated_at: object_row.get(12),
     }
 }
 

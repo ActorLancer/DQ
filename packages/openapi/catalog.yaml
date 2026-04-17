@@ -284,6 +284,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PreviewArtifact"
+  /api/v1/assets/{versionId}/objects:
+    post:
+      summary: Create asset object for asset version
+      operationId: createAssetObject
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetObjectRequest"
+      responses:
+        "200":
+          description: Asset object created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetObject"
   /api/v1/assets/{versionId}/field-definitions:
     post:
       summary: Create field definition for asset version
@@ -1026,6 +1050,149 @@ components:
         - preview_type
         - preview_policy_json
         - status
+        - created_at
+        - updated_at
+    CreateAssetObjectRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_kind:
+          type: string
+          enum:
+            - raw_object
+            - preview_object
+            - delivery_object
+            - report_object
+            - result_object
+        object_name:
+          type: string
+        object_locator:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        schema_json:
+          type: object
+          additionalProperties: true
+        output_schema_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        access_constraints:
+          type: object
+          additionalProperties: true
+        object_uri:
+          type: string
+        storage_type:
+          type: string
+          nullable: true
+        storage_zone:
+          type: string
+          nullable: true
+        access_path_type:
+          type: string
+          nullable: true
+        object_hash:
+          type: string
+          nullable: true
+        encryption_algo:
+          type: string
+          nullable: true
+        worm_enabled:
+          type: boolean
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - object_kind
+        - object_name
+        - object_uri
+    AssetObject:
+      type: object
+      properties:
+        asset_object_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        object_kind:
+          type: string
+        object_name:
+          type: string
+        object_locator:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        schema_json:
+          type: object
+          additionalProperties: true
+        output_schema_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        access_constraints:
+          type: object
+          additionalProperties: true
+        object_metadata:
+          type: object
+          additionalProperties: true
+        asset_storage_binding_id:
+          type: string
+          format: uuid
+        object_uri:
+          type: string
+        storage_type:
+          type: string
+        storage_zone:
+          type: string
+        access_path_type:
+          type: string
+        object_hash:
+          type: string
+          nullable: true
+        encryption_algo:
+          type: string
+          nullable: true
+        worm_enabled:
+          type: boolean
+        storage_metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - asset_object_id
+        - asset_version_id
+        - object_kind
+        - object_name
+        - schema_json
+        - output_schema_json
+        - freshness_json
+        - access_constraints
+        - object_metadata
+        - asset_storage_binding_id
+        - object_uri
+        - storage_type
+        - storage_zone
+        - access_path_type
+        - worm_enabled
+        - storage_metadata
         - created_at
         - updated_at
     CreateAssetFieldDefinitionRequest:

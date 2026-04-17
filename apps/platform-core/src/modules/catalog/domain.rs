@@ -622,3 +622,55 @@ pub struct DataContractView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateAssetObjectRequest {
+    pub asset_version_id: Option<String>,
+    pub object_kind: String,
+    pub object_name: String,
+    pub object_locator: Option<String>,
+    pub share_protocol: Option<String>,
+    #[serde(default)]
+    pub schema_json: Value,
+    #[serde(default)]
+    pub output_schema_json: Value,
+    #[serde(default)]
+    pub freshness_json: Value,
+    #[serde(default)]
+    pub access_constraints: Value,
+    pub object_uri: String,
+    pub storage_type: Option<String>,
+    pub storage_zone: Option<String>,
+    pub access_path_type: Option<String>,
+    pub object_hash: Option<String>,
+    pub encryption_algo: Option<String>,
+    pub worm_enabled: Option<bool>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct AssetObjectView {
+    pub asset_object_id: String,
+    pub asset_version_id: String,
+    pub object_kind: String,
+    pub object_name: String,
+    pub object_locator: Option<String>,
+    pub share_protocol: Option<String>,
+    pub schema_json: Value,
+    pub output_schema_json: Value,
+    pub freshness_json: Value,
+    pub access_constraints: Value,
+    pub object_metadata: Value,
+    pub asset_storage_binding_id: String,
+    pub object_uri: String,
+    pub storage_type: String,
+    pub storage_zone: String,
+    pub access_path_type: String,
+    pub object_hash: Option<String>,
+    pub encryption_algo: Option<String>,
+    pub worm_enabled: bool,
+    pub storage_metadata: Value,
+    pub created_at: String,
+    pub updated_at: String,
+}

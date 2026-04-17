@@ -1,6 +1,6 @@
 use crate::modules::catalog::domain::{
-    AssetFieldDefinitionView, AssetProcessingJobView, AssetQualityReportView,
-    CreateAssetFieldDefinitionRequest, CreateAssetProcessingJobRequest,
+    AssetFieldDefinitionView, AssetObjectView, AssetProcessingJobView, AssetQualityReportView,
+    CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest, CreateAssetProcessingJobRequest,
     CreateAssetQualityReportRequest, CreateDataContractRequest, CreateDataProductRequest,
     CreateExtractionJobRequest, CreateFormatDetectionRequest, CreatePreviewArtifactRequest,
     CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
@@ -60,6 +60,10 @@ pub fn router() -> Router {
         .route(
             "/api/v1/assets/{versionId}/preview-artifacts",
             post(create_preview_artifact),
+        )
+        .route(
+            "/api/v1/assets/{versionId}/objects",
+            post(create_asset_object),
         )
         .route(
             "/api/v1/assets/{versionId}/field-definitions",
@@ -865,6 +869,62 @@ async fn create_preview_artifact(
     Ok(ApiResponse::ok(view))
 }
 
+async fn create_asset_object(
+    headers: HeaderMap,
+    Path(asset_version_id): Path<String>,
+    Json(payload): Json<CreateAssetObjectRequest>,
+) -> Result<Json<ApiResponse<AssetObjectView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::RawIngestWrite,
+        "catalog asset object create",
+    )?;
+    validate_create_asset_object_payload(&asset_version_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
+        .await
+        .map_err(map_db_error)?;
+    if existing_version.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset version does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::create_asset_object(&tx, &asset_version_id, &payload)
+        .await
+        .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "asset_object",
+        &view.asset_object_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.asset_object.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.asset_object.create",
+        asset_object_id = %view.asset_object_id,
+        asset_version_id = %asset_version_id,
+        "catalog asset object created"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 async fn create_asset_field_definition(
     headers: HeaderMap,
     Path(asset_version_id): Path<String>,
@@ -1449,6 +1509,54 @@ fn validate_create_asset_field_definition_payload(
             Json(ErrorResponse {
                 code: ErrorCode::CatValidationFailed.as_str().to_string(),
                 message: "field_name, field_path and field_type are required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_create_asset_object_payload(
+    asset_version_id_from_path: &str,
+    payload: &CreateAssetObjectRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(asset_version_id_from_body) = payload.asset_version_id.as_deref()
+        && asset_version_id_from_body != asset_version_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "asset_version_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.object_kind.trim().is_empty()
+        || payload.object_name.trim().is_empty()
+        || payload.object_uri.trim().is_empty()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "object_kind, object_name and object_uri are required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if !matches!(
+        payload.object_kind.as_str(),
+        "raw_object" | "preview_object" | "delivery_object" | "report_object" | "result_object"
+    ) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message:
+                    "object_kind must be one of raw_object|preview_object|delivery_object|report_object|result_object"
+                        .to_string(),
                 request_id: header(headers, "x-request-id"),
             }),
         ));

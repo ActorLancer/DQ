@@ -1,3 +1,4 @@
+mod asset_objects;
 mod data_contracts;
 mod processing_jobs;
 
@@ -325,6 +326,26 @@ mod tests {
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/data-contracts/00000000-0000-0000-0000-000000000002")
             .header("x-role", "developer")
             .body(Body::empty())
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_create_asset_object_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/objects")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "object_kind":"delivery_object",
+                  "object_name":"delivery-package",
+                  "object_uri":"s3://product/delivery-package.zip"
+                }"#,
+            ))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
