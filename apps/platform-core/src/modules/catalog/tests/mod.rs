@@ -144,4 +144,23 @@ mod tests {
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
+
+    #[tokio::test]
+    async fn rejects_detect_format_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/raw-object-manifests/00000000-0000-0000-0000-000000000001/detect-format")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "detected_object_family":"tabular",
+                  "classification_confidence":0.92
+                }"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
 }

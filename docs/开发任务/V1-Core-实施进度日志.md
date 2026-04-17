@@ -187,7 +187,7 @@
 
 ### BATCH-006
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CTX-013, CTX-014, CTX-015
 - 当前批次目标：冻结任务 ownership 策略、输出当前仓库与目标基线差距分析、冻结 V1 退出标准，形成后续 BOOT/ENV/CORE 的执行与验收门槛。
 - 前置依赖核对结果：`CTX-013`/`CTX-015` 无依赖；`CTX-014` 依赖 `CTX-022; CTX-023; CTX-024`，已完成且用户确认审批通过。
@@ -205,7 +205,7 @@
 
 ### BATCH-007
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CTX-016, CTX-017, CTX-018
 - 当前批次目标：补齐术语统一、专题文档到模块映射、V1 非目标清单，降低后续实现阶段命名漂移和范围外开发风险。
 - 前置依赖核对结果：三项任务在 CSV 中 `depends_on` 为空；用户确认上一批审批通过，可继续执行。
@@ -2132,7 +2132,7 @@
 
 ### BATCH-089
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-005
 - 当前批次目标：实现 `POST /api/v1/raw-ingest-batches/{id}/manifests`，支持原始对象 URI、hash、格式、大小、归属记录，并补齐权限、事务审计、OpenAPI 与最小验证。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-088` 已获人工审批通过，允许执行。
@@ -2181,5 +2181,58 @@
 - 覆盖的任务清单条目：`CAT-005`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：联调时若不显式设置 `KAFKA_BROKERS=127.0.0.1:9094` 会触发 startup self-check 失败；已按本地栈口径修正并完成验证。
+
+### BATCH-090
+
+- 状态：待审批
+- 当前任务编号：CAT-006
+- 当前批次目标：实现 `POST /api/v1/raw-object-manifests/{id}/detect-format`，保存格式识别结果并补齐权限、审计、OpenAPI 与最小验证。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-089` 已获人工审批通过，允许执行。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-006` 描述、DoD、acceptance 与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-006` 顺序与 `CAT-007` 边界。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：计划中 -> 编码 -> 验证 -> 待审批固定流程。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与不可越阶段。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：批次记录格式沿用。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：`TODO-PROC-BIL-001` 追溯保持。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：`BATCH-089` 已补录通过。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：保持 V1 范围。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：`catalog` 归属边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/raw-object-manifests/{id}/detect-format`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批继续以内审计为主，不新增业务 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：单测 + 手工 API + 审计回查闭环。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按功能逻辑拆分实现，避免单文件过大。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL` / `KAFKA_BROKERS`。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 为业务真值权威。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚。
+- technical_reference 约束映射：
+  - `docs/原始PRD/数据原样处理与产品化加工流程设计.md:L189`：格式识别阶段必须产出对象族与置信度。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L157`：4.2A 分类识别区要求形成 `FormatDetectionResult`。
+  - `docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql:L1`：`catalog.format_detection_result` 字段、索引与默认状态约束。
+- 已实现功能：
+  1. 新增格式识别模型：`CreateFormatDetectionRequest`、`FormatDetectionResultView`。
+  2. 新增仓储方法：`get_raw_object_manifest` 与 `create_format_detection_result`。
+  3. 新增接口：`POST /api/v1/raw-object-manifests/{id}/detect-format`，包含路径/请求一致性校验、对象存在性校验、置信度区间校验、事务审计与成功响应。
+  4. 新增权限拒绝测试：无权限角色访问 detect-format 接口返回 `403`。
+  5. 更新 OpenAPI：新增 detect-format 路径与 `CreateFormatDetectionRequest/FormatDetectionResult` schema。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-人工审批记录.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 端到端联调（`APP_PORT=18085`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`KAFKA_BROKERS=127.0.0.1:9094`）：
+     - 预置数据：`core.organization` + `catalog.data_asset` + `catalog.raw_ingest_batch` + `catalog.raw_object_manifest`
+     - 调用 `POST /api/v1/raw-object-manifests/{id}/detect-format`
+     - 回查 `catalog.format_detection_result` 与 `audit.audit_event`
+     - 清理测试数据（`format_detection_result/raw_object_manifest/raw_ingest_batch/data_asset/organization`）
+  4. 数据残留核对：验证业务表残留均为 `0`；审计表按 append-only 保留请求记录。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `49 passed, 0 failed, 1 ignored`；API 返回 `success=true` 且识别状态 `detected`；审计命中 `catalog.format_detection_result.create|format_detection_result|success`；业务表清理后残留 `0|0|0|0|0`。
+- 覆盖的冻结文档条目：`docs/原始PRD/数据原样处理与产品化加工流程设计.md`（4.3 格式识别输出项）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2A 分类识别区）、`docs/数据库设计/V1/upgrade/063_raw_processing_pipeline.sql`（`catalog.format_detection_result` 字段与默认状态）、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（5.5 detect-format 接口项）。
+- 覆盖的任务清单条目：`CAT-006`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：沿用你当前的测试拆分结构（`modules/*/tests/mod.rs`），本批继续按功能域增量扩展，避免把全部逻辑继续堆积在单点文件。

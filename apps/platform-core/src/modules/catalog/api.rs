@@ -1,8 +1,9 @@
 use crate::modules::catalog::domain::{
-    CreateDataProductRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
-    CreateRawObjectManifestRequest, DataProductView, PatchDataProductRequest,
-    PatchProductSkuRequest, ProductSkuView, RawIngestBatchView, RawObjectManifestView,
-    default_trade_mode_for_sku_type, is_standard_sku_type,
+    CreateDataProductRequest, CreateFormatDetectionRequest, CreateProductSkuRequest,
+    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView,
+    FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView,
+    RawIngestBatchView, RawObjectManifestView, default_trade_mode_for_sku_type,
+    is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
@@ -30,6 +31,10 @@ pub fn router() -> Router {
         .route(
             "/api/v1/raw-ingest-batches/{id}/manifests",
             post(create_raw_object_manifest),
+        )
+        .route(
+            "/api/v1/raw-object-manifests/{id}/detect-format",
+            post(detect_raw_object_format),
         )
 }
 
@@ -453,6 +458,67 @@ async fn create_raw_object_manifest(
     Ok(ApiResponse::ok(view))
 }
 
+async fn detect_raw_object_format(
+    headers: HeaderMap,
+    Path(raw_object_manifest_id): Path<String>,
+    Json(payload): Json<CreateFormatDetectionRequest>,
+) -> Result<Json<ApiResponse<FormatDetectionResultView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::RawIngestWrite,
+        "catalog format detection create",
+    )?;
+    validate_detect_format_payload(&raw_object_manifest_id, &payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let existing =
+        PostgresCatalogRepository::get_raw_object_manifest(&client, &raw_object_manifest_id)
+            .await
+            .map_err(map_db_error)?;
+    if existing.is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "raw object manifest does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::create_format_detection_result(
+        &tx,
+        &raw_object_manifest_id,
+        &payload,
+    )
+    .await
+    .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "format_detection_result",
+        &view.format_detection_result_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.format_detection_result.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.format_detection_result.create",
+        format_detection_result_id = %view.format_detection_result_id,
+        raw_object_manifest_id = %raw_object_manifest_id,
+        "catalog format detection result created"
+    );
+    Ok(ApiResponse::ok(view))
+}
+
 fn validate_create_product_payload(
     payload: &CreateDataProductRequest,
     headers: &HeaderMap,
@@ -668,6 +734,49 @@ fn validate_create_raw_object_manifest_payload(
             Json(ErrorResponse {
                 code: ErrorCode::CatValidationFailed.as_str().to_string(),
                 message: "byte_size must be >= 0".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_detect_format_payload(
+    raw_object_manifest_id_from_path: &str,
+    payload: &CreateFormatDetectionRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(raw_object_manifest_id_from_body) = payload.raw_object_manifest_id.as_deref()
+        && raw_object_manifest_id_from_body != raw_object_manifest_id_from_path
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "raw_object_manifest_id in body does not match path".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload.detected_object_family.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "detected_object_family is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .classification_confidence
+        .is_some_and(|v| !(0.0..=1.0).contains(&v))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "classification_confidence must be within [0, 1]".to_string(),
                 request_id: header(headers, "x-request-id"),
             }),
         ));

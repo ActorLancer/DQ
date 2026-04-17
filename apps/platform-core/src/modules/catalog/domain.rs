@@ -272,3 +272,29 @@ pub struct RawObjectManifestView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateFormatDetectionRequest {
+    pub raw_object_manifest_id: Option<String>,
+    pub detected_object_family: String,
+    pub detected_format: Option<String>,
+    #[serde(default)]
+    pub schema_hint_json: Value,
+    pub recommended_processing_path: Option<String>,
+    pub classification_confidence: Option<f64>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct FormatDetectionResultView {
+    pub format_detection_result_id: String,
+    pub raw_object_manifest_id: String,
+    pub detected_object_family: String,
+    pub detected_format: Option<String>,
+    pub schema_hint_json: Value,
+    pub recommended_processing_path: Option<String>,
+    pub classification_confidence: Option<f64>,
+    pub detected_at: Option<String>,
+    pub status: String,
+    pub created_at: String,
+}

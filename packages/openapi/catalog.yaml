@@ -140,6 +140,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RawObjectManifest"
+  /api/v1/raw-object-manifests/{id}/detect-format:
+    post:
+      summary: Detect format for raw object manifest
+      operationId: detectRawObjectFormat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFormatDetectionRequest"
+      responses:
+        "200":
+          description: Format detection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormatDetectionResult"
 components:
   schemas:
     CreateDataProductRequest:
@@ -470,6 +494,73 @@ components:
         - status
         - created_at
         - updated_at
+    CreateFormatDetectionRequest:
+      type: object
+      properties:
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        detected_object_family:
+          type: string
+        detected_format:
+          type: string
+          nullable: true
+        schema_hint_json:
+          type: object
+          additionalProperties: true
+        recommended_processing_path:
+          type: string
+          nullable: true
+        classification_confidence:
+          type: number
+          format: double
+          nullable: true
+        status:
+          type: string
+          nullable: true
+      required:
+        - detected_object_family
+    FormatDetectionResult:
+      type: object
+      properties:
+        format_detection_result_id:
+          type: string
+          format: uuid
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+        detected_object_family:
+          type: string
+        detected_format:
+          type: string
+          nullable: true
+        schema_hint_json:
+          type: object
+          additionalProperties: true
+        recommended_processing_path:
+          type: string
+          nullable: true
+        classification_confidence:
+          type: number
+          format: double
+          nullable: true
+        detected_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - format_detection_result_id
+        - raw_object_manifest_id
+        - detected_object_family
+        - schema_hint_json
+        - status
+        - created_at
     DataResource:
       type: object
       properties:

@@ -1,8 +1,9 @@
 use crate::modules::catalog::domain::{
     AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
-    CreateDataResourceRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
-    CreateRawObjectManifestRequest, DataProductView, DataResourceView, PatchDataProductRequest,
-    PatchProductSkuRequest, ProductSkuView, RawIngestBatchView, RawObjectManifestView,
+    CreateDataResourceRequest, CreateFormatDetectionRequest, CreateProductSkuRequest,
+    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView, DataResourceView,
+    FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest, ProductSkuView,
+    RawIngestBatchView, RawObjectManifestView,
 };
 use tokio_postgres::{GenericClient, Row};
 
@@ -118,6 +119,73 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(parse_raw_object_manifest_row(&row))
+    }
+
+    pub async fn get_raw_object_manifest(
+        client: &impl GenericClient,
+        id: &str,
+    ) -> Result<Option<RawObjectManifestView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "SELECT
+                   raw_object_manifest_id::text,
+                   raw_ingest_batch_id::text,
+                   storage_binding_id::text,
+                   object_name,
+                   object_uri,
+                   mime_type,
+                   container_type,
+                   byte_size,
+                   object_hash,
+                   source_time_range_json,
+                   manifest_json,
+                   status,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 FROM catalog.raw_object_manifest
+                 WHERE raw_object_manifest_id = $1::text::uuid",
+                &[&id],
+            )
+            .await?;
+        Ok(row.map(|row| parse_raw_object_manifest_row(&row)))
+    }
+
+    pub async fn create_format_detection_result(
+        client: &impl GenericClient,
+        raw_object_manifest_id: &str,
+        payload: &CreateFormatDetectionRequest,
+    ) -> Result<FormatDetectionResultView, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.format_detection_result (
+                   raw_object_manifest_id, detected_object_family, detected_format, schema_hint_json,
+                   recommended_processing_path, classification_confidence, detected_at, status
+                 ) VALUES (
+                   $1::text::uuid, $2, $3, $4::jsonb, $5, $6::double precision::numeric(8,4), now(), $7
+                 )
+                 RETURNING
+                   format_detection_result_id::text,
+                   raw_object_manifest_id::text,
+                   detected_object_family,
+                   detected_format,
+                   schema_hint_json,
+                   recommended_processing_path,
+                   classification_confidence::double precision,
+                   to_char(detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   status,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &raw_object_manifest_id,
+                    &payload.detected_object_family,
+                    &payload.detected_format,
+                    &payload.schema_hint_json,
+                    &payload.recommended_processing_path,
+                    &payload.classification_confidence,
+                    &payload.status.clone().unwrap_or_else(|| "detected".to_string()),
+                ],
+            )
+            .await?;
+        Ok(parse_format_detection_result_row(&row))
     }
 
     pub async fn create_data_resource(
@@ -671,5 +739,20 @@ fn parse_raw_object_manifest_row(row: &Row) -> RawObjectManifestView {
         status: row.get(11),
         created_at: row.get(12),
         updated_at: row.get(13),
+    }
+}
+
+fn parse_format_detection_result_row(row: &Row) -> FormatDetectionResultView {
+    FormatDetectionResultView {
+        format_detection_result_id: row.get(0),
+        raw_object_manifest_id: row.get(1),
+        detected_object_family: row.get(2),
+        detected_format: row.get(3),
+        schema_hint_json: row.get(4),
+        recommended_processing_path: row.get(5),
+        classification_confidence: row.get(6),
+        detected_at: row.get(7),
+        status: row.get(8),
+        created_at: row.get(9),
     }
 }
