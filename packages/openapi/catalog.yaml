@@ -260,6 +260,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssetFieldDefinition"
+  /api/v1/assets/{versionId}/quality-reports:
+    post:
+      summary: Create quality report for asset version
+      operationId: createAssetQualityReport
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetQualityReportRequest"
+      responses:
+        "200":
+          description: Asset quality report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetQualityReport"
 components:
   schemas:
     CreateDataProductRequest:
@@ -1031,6 +1055,137 @@ components:
         - is_partition_key
         - is_time_field
         - enum_values_json
+        - created_at
+        - updated_at
+    CreateAssetQualityReportRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_no:
+          type: integer
+          nullable: true
+        report_type:
+          type: string
+          nullable: true
+        coverage_range_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        missing_rate:
+          type: number
+          format: double
+          nullable: true
+        duplicate_rate:
+          type: number
+          format: double
+          nullable: true
+        anomaly_rate:
+          type: number
+          format: double
+          nullable: true
+        sampling_method:
+          type: string
+          nullable: true
+        assessed_at:
+          type: string
+          format: date-time
+          nullable: true
+        assessor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_uri:
+          type: string
+          nullable: true
+        report_hash:
+          type: string
+          nullable: true
+        metrics_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    AssetQualityReport:
+      type: object
+      properties:
+        quality_report_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        report_no:
+          type: integer
+        report_type:
+          type: string
+        coverage_range_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        missing_rate:
+          type: number
+          format: double
+          nullable: true
+        duplicate_rate:
+          type: number
+          format: double
+          nullable: true
+        anomaly_rate:
+          type: number
+          format: double
+          nullable: true
+        sampling_method:
+          type: string
+          nullable: true
+        assessed_at:
+          type: string
+          format: date-time
+          nullable: true
+        assessor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_uri:
+          type: string
+          nullable: true
+        report_hash:
+          type: string
+          nullable: true
+        metrics_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - quality_report_id
+        - asset_version_id
+        - report_no
+        - report_type
+        - coverage_range_json
+        - freshness_json
+        - metrics_json
+        - status
+        - metadata
         - created_at
         - updated_at
     DataResource:

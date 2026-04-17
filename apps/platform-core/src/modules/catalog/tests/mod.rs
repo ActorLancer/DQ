@@ -251,4 +251,25 @@ mod tests {
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
+
+    #[tokio::test]
+    async fn rejects_create_asset_quality_report_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/quality-reports")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{
+                  "report_no":1,
+                  "sampling_method":"random_sample",
+                  "report_uri":"s3://quality/report.json",
+                  "report_hash":"sha256:quality-report"
+                }"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
 }

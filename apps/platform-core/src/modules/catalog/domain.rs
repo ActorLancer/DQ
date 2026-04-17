@@ -447,3 +447,50 @@ pub struct AssetFieldDefinitionView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateAssetQualityReportRequest {
+    pub asset_version_id: Option<String>,
+    pub report_no: Option<i32>,
+    pub report_type: Option<String>,
+    #[serde(default)]
+    pub coverage_range_json: Value,
+    #[serde(default)]
+    pub freshness_json: Value,
+    pub missing_rate: Option<f64>,
+    pub duplicate_rate: Option<f64>,
+    pub anomaly_rate: Option<f64>,
+    pub sampling_method: Option<String>,
+    pub assessed_at: Option<String>,
+    pub assessor_org_id: Option<String>,
+    pub report_uri: Option<String>,
+    pub report_hash: Option<String>,
+    #[serde(default)]
+    pub metrics_json: Value,
+    pub status: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct AssetQualityReportView {
+    pub quality_report_id: String,
+    pub asset_version_id: String,
+    pub report_no: i32,
+    pub report_type: String,
+    pub coverage_range_json: Value,
+    pub freshness_json: Value,
+    pub missing_rate: Option<f64>,
+    pub duplicate_rate: Option<f64>,
+    pub anomaly_rate: Option<f64>,
+    pub sampling_method: Option<String>,
+    pub assessed_at: Option<String>,
+    pub assessor_org_id: Option<String>,
+    pub report_uri: Option<String>,
+    pub report_hash: Option<String>,
+    pub metrics_json: Value,
+    pub status: String,
+    pub metadata: Value,
+    pub created_at: String,
+    pub updated_at: String,
+}

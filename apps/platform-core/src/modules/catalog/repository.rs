@@ -1,12 +1,12 @@
 use crate::modules::catalog::domain::{
-    AssetFieldDefinitionView, AssetVersionView, CreateAssetFieldDefinitionRequest,
-    CreateAssetVersionRequest, CreateDataProductRequest, CreateDataResourceRequest,
-    CreateExtractionJobRequest, CreateFormatDetectionRequest, CreatePreviewArtifactRequest,
-    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
-    DataProductView, DataResourceView, ExtractionJobView, FormatDetectionResultView,
-    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
-    ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
-    RawIngestBatchView, RawObjectManifestView,
+    AssetFieldDefinitionView, AssetQualityReportView, AssetVersionView,
+    CreateAssetFieldDefinitionRequest, CreateAssetQualityReportRequest, CreateAssetVersionRequest,
+    CreateDataProductRequest, CreateDataResourceRequest, CreateExtractionJobRequest,
+    CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
+    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataProductView, DataResourceView,
+    ExtractionJobView, FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
+    PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
+    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
 };
 use serde_json::{Value, json};
 use tokio_postgres::{GenericClient, Row};
@@ -701,6 +701,76 @@ impl PostgresCatalogRepository {
         Ok(parse_asset_field_definition_row(&row))
     }
 
+    pub async fn create_asset_quality_report(
+        client: &impl GenericClient,
+        asset_version_id: &str,
+        payload: &CreateAssetQualityReportRequest,
+    ) -> Result<AssetQualityReportView, tokio_postgres::Error> {
+        let coverage_range_json = normalize_json_object(&payload.coverage_range_json);
+        let freshness_json = normalize_json_object(&payload.freshness_json);
+        let metrics_json = normalize_json_object(&payload.metrics_json);
+        let metadata = normalize_json_object(&payload.metadata);
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.asset_quality_report (
+                   asset_version_id, report_no, report_type, coverage_range_json, freshness_json,
+                   missing_rate, duplicate_rate, anomaly_rate, sampling_method, assessed_at,
+                   assessor_org_id, report_uri, report_hash, metrics_json, status, metadata
+                 ) VALUES (
+                   $1::text::uuid, $2, $3, $4::jsonb, $5::jsonb,
+                   $6::double precision::numeric(8,6), $7::double precision::numeric(8,6),
+                   $8::double precision::numeric(8,6), $9, $10::text::timestamptz,
+                   $11::text::uuid, $12, $13, $14::jsonb, $15, $16::jsonb
+                 )
+                 RETURNING
+                   quality_report_id::text,
+                   asset_version_id::text,
+                   report_no,
+                   report_type,
+                   coverage_range_json,
+                   freshness_json,
+                   missing_rate::double precision,
+                   duplicate_rate::double precision,
+                   anomaly_rate::double precision,
+                   sampling_method,
+                   to_char(assessed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   assessor_org_id::text,
+                   report_uri,
+                   report_hash,
+                   metrics_json,
+                   status,
+                   metadata,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &asset_version_id,
+                    &payload.report_no.unwrap_or(1),
+                    &payload
+                        .report_type
+                        .clone()
+                        .unwrap_or_else(|| "seller_declared".to_string()),
+                    &coverage_range_json,
+                    &freshness_json,
+                    &payload.missing_rate,
+                    &payload.duplicate_rate,
+                    &payload.anomaly_rate,
+                    &payload.sampling_method,
+                    &payload.assessed_at,
+                    &payload.assessor_org_id,
+                    &payload.report_uri,
+                    &payload.report_hash,
+                    &metrics_json,
+                    &payload
+                        .status
+                        .clone()
+                        .unwrap_or_else(|| "draft".to_string()),
+                    &metadata,
+                ],
+            )
+            .await?;
+        Ok(parse_asset_quality_report_row(&row))
+    }
+
     pub async fn create_product_sku(
         client: &impl GenericClient,
         product_id: &str,
@@ -1084,5 +1154,29 @@ fn parse_asset_field_definition_row(row: &Row) -> AssetFieldDefinitionView {
         description: row.get(13),
         created_at: row.get(14),
         updated_at: row.get(15),
+    }
+}
+
+fn parse_asset_quality_report_row(row: &Row) -> AssetQualityReportView {
+    AssetQualityReportView {
+        quality_report_id: row.get(0),
+        asset_version_id: row.get(1),
+        report_no: row.get(2),
+        report_type: row.get(3),
+        coverage_range_json: row.get(4),
+        freshness_json: row.get(5),
+        missing_rate: row.get(6),
+        duplicate_rate: row.get(7),
+        anomaly_rate: row.get(8),
+        sampling_method: row.get(9),
+        assessed_at: row.get(10),
+        assessor_org_id: row.get(11),
+        report_uri: row.get(12),
+        report_hash: row.get(13),
+        metrics_json: row.get(14),
+        status: row.get(15),
+        metadata: row.get(16),
+        created_at: row.get(17),
+        updated_at: row.get(18),
     }
 }
