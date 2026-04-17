@@ -90,6 +90,20 @@ pub struct CreateDataProductRequest {
     pub metadata: Value,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PatchDataProductRequest {
+    pub title: Option<String>,
+    pub category: Option<String>,
+    pub product_type: Option<String>,
+    pub description: Option<String>,
+    pub price_mode: Option<String>,
+    pub price: Option<String>,
+    pub currency_code: Option<String>,
+    pub delivery_type: Option<String>,
+    pub searchable_text: Option<String>,
+    pub status: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DataProductView {
     pub product_id: String,

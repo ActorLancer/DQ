@@ -2,9 +2,130 @@ openapi: 3.1.0
 info:
   title: Catalog API
   version: v1
-paths: {}
+paths:
+  /api/v1/products:
+    post:
+      summary: Create product draft
+      operationId: createProductDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDataProductRequest"
+      responses:
+        "200":
+          description: Product draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataProduct"
+  /api/v1/products/{id}:
+    patch:
+      summary: Patch product draft
+      operationId: patchProductDraft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDataProductRequest"
+      responses:
+        "200":
+          description: Product draft updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataProduct"
 components:
   schemas:
+    CreateDataProductRequest:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        product_type:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price_mode:
+          type: string
+          nullable: true
+        price:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+        delivery_type:
+          type: string
+        allowed_usage:
+          type: array
+          items:
+            type: string
+        searchable_text:
+          type: string
+          nullable: true
+      required:
+        - asset_id
+        - asset_version_id
+        - seller_org_id
+        - title
+        - category
+        - product_type
+        - delivery_type
+    PatchDataProductRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        product_type:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        price_mode:
+          type: string
+          nullable: true
+        price:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+        delivery_type:
+          type: string
+          nullable: true
+        searchable_text:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
     DataResource:
       type: object
       properties:

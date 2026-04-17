@@ -151,3 +151,4 @@
 - `BATCH-083`（`IAM-017`, `IAM-018`, `IAM-019`, `IAM-020`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
 - `BATCH-084`（`IAM-002`, `IAM-003`, `IAM-011`, `IAM-020` 缺口修复）：关闭 `TODO-IAM-002-REPO-001`、`TODO-IAM-003-JWT-001`、`TODO-IAM-011-PATH-001`、`TODO-IAM-016-TX-001`、`TODO-PROC-IAM-APPROVAL-001`。
 - `BATCH-085`（`CAT-001`）：无新增 `V1-gap / V2-reserved / V3-reserved`；将 `TODO-PROC-BIL-001` 从 `blocked` 调整为 `accepted`，记录“已获人工批准继续后续阶段、进入 BIL 时必须执行一致性复核”的审计口径。
+- `BATCH-086`（`CAT-002`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；保持 `TODO-PROC-BIL-001` 追溯约束不变。

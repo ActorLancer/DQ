@@ -320,6 +320,7 @@ pub async fn run() -> AppResult<()> {
     let router = build_router(cfg.clone())
         .route("/healthz", axum::routing::get(live_handler))
         .merge(modules::billing::api::router())
+        .merge(modules::catalog::api::router())
         .merge(modules::iam::api::router());
 
     let mut launcher = AppLauncher::new("platform-core");

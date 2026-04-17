@@ -1,7 +1,7 @@
 use crate::modules::catalog::domain::{
     AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
     CreateDataResourceRequest, CreateProductSkuRequest, DataProductView, DataResourceView,
-    ProductSkuView,
+    PatchDataProductRequest, ProductSkuView,
 };
 use tokio_postgres::{GenericClient, Row};
 
@@ -225,6 +225,61 @@ impl PostgresCatalogRepository {
                  FROM catalog.product
                  WHERE product_id = $1::text::uuid",
                 &[&id],
+            )
+            .await?;
+        Ok(row.map(|row| parse_data_product_row(&row)))
+    }
+
+    pub async fn patch_data_product(
+        client: &impl GenericClient,
+        id: &str,
+        payload: &PatchDataProductRequest,
+    ) -> Result<Option<DataProductView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "UPDATE catalog.product
+                 SET
+                   title = COALESCE($2, title),
+                   category = COALESCE($3, category),
+                   product_type = COALESCE($4, product_type),
+                   description = COALESCE($5, description),
+                   price_mode = COALESCE($6, price_mode),
+                   price = COALESCE($7::text::numeric, price),
+                   currency_code = COALESCE($8, currency_code),
+                   delivery_type = COALESCE($9, delivery_type),
+                   searchable_text = COALESCE($10, searchable_text),
+                   status = COALESCE($11, status),
+                   updated_at = now()
+                 WHERE product_id = $1::text::uuid
+                   AND status = 'draft'
+                 RETURNING
+                   product_id::text,
+                   asset_id::text,
+                   asset_version_id::text,
+                   seller_org_id::text,
+                   title,
+                   category,
+                   product_type,
+                   status,
+                   price_mode,
+                   price::text,
+                   currency_code,
+                   delivery_type,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &id,
+                    &payload.title,
+                    &payload.category,
+                    &payload.product_type,
+                    &payload.description,
+                    &payload.price_mode,
+                    &payload.price,
+                    &payload.currency_code,
+                    &payload.delivery_type,
+                    &payload.searchable_text,
+                    &payload.status,
+                ],
             )
             .await?;
         Ok(row.map(|row| parse_data_product_row(&row)))
