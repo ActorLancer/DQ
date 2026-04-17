@@ -324,8 +324,16 @@ paths:
           description: RBAC seed list
   /api/v1/iam/step-up/check:
     post:
-      summary: Create/check step-up challenge for high-risk action
+      summary: Create/check step-up challenge for high-risk action (compat path)
       operationId: checkStepUp
+      deprecated: true
+      responses:
+        "200":
+          description: Step-up challenge status
+  /api/v1/iam/step-up/challenges:
+    post:
+      summary: Create/check step-up challenge for high-risk action
+      operationId: createStepUpChallenge
       responses:
         "200":
           description: Step-up challenge status

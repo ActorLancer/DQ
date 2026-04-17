@@ -9,3 +9,5 @@ authors.workspace = true
 axum = "0.8"
 kernel = { path = "../kernel" }
 serde = { version = "1", features = ["derive"] }
+base64 = "0.22"
+serde_json = "1"

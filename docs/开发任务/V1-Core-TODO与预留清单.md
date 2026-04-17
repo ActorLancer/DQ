@@ -45,6 +45,11 @@
 | 编号 | 对应任务编号 | 类型 | 模块 | 文件路径 | 当前状态 | 原因 | 后续补齐条件 | 是否阻塞继续开发 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TODO-CORE-028-001 | CORE-028 | V1-gap | db | `apps/platform-core/crates/db/src/lib.rs` | closed | 已补齐 `OrderRepository` 的 PostgreSQL 实现与 `ORDER_REPOSITORY_BACKEND` 运行时切换装配。 | 无；后续仅需在真实业务表结构联调时补充更细粒度 SQL 回归样例。 | no |
+| TODO-IAM-002-REPO-001 | IAM-002 | V1-gap | iam | `apps/platform-core/src/modules/iam/repository.rs` | closed | 初版实现为 API 直连 SQL，仓储层边界不清晰。 | 已在 `BATCH-084` 补齐 `PostgresIamRepository` 并由 API 复用，完成后关闭。 | no |
+| TODO-IAM-003-JWT-001 | IAM-003 | V1-gap | iam/auth | `apps/platform-core/crates/auth/src/lib.rs` | closed | 仅有 mock token 解析，未满足 Keycloak claims 解析接入要求。 | 已在 `BATCH-084` 增加 `KeycloakClaimsJwtParser`（本地 claims 解析模式）并接入 `/api/v1/auth/me`。 | no |
+| TODO-IAM-011-PATH-001 | IAM-011 | V1-gap | iam | `packages/openapi/iam.yaml` | closed | step-up 创建接口路径与冻结协议存在漂移。 | 已在 `BATCH-084` 补齐 `/api/v1/iam/step-up/challenges` 并保留 `/check` 兼容路径（deprecated）。 | no |
+| TODO-IAM-016-TX-001 | IAM-016 | tech-debt | iam | `apps/platform-core/src/modules/iam/api.rs` | closed | 多个写接口存在“业务写入成功但审计写入失败导致接口失败”的事务一致性风险。 | 已在 `BATCH-084` 将 IAM 写接口统一改为“业务+审计同事务提交”。 | no |
+| TODO-PROC-IAM-APPROVAL-001 | IAM-001~IAM-020 | tech-debt | process-governance | `docs/开发任务/V1-Core-人工审批记录.md` | closed | IAM 批次审批存在“口头通过”但审批文件缺少结构化条目，审计追溯不足。 | 已在 `BATCH-084` 补录 `BATCH-079~083` 审批记录条目。 | no |
 
 ## 示例记录
 
@@ -144,3 +149,4 @@
 - `BATCH-081`（`IAM-009`, `IAM-010`, `IAM-011`, `IAM-012`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
 - `BATCH-082`（`IAM-013`, `IAM-014`, `IAM-015`, `IAM-016`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
 - `BATCH-083`（`IAM-017`, `IAM-018`, `IAM-019`, `IAM-020`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
+- `BATCH-084`（`IAM-002`, `IAM-003`, `IAM-011`, `IAM-020` 缺口修复）：关闭 `TODO-IAM-002-REPO-001`、`TODO-IAM-003-JWT-001`、`TODO-IAM-011-PATH-001`、`TODO-IAM-016-TX-001`、`TODO-PROC-IAM-APPROVAL-001`。

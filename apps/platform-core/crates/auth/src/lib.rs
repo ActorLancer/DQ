@@ -1,4 +1,5 @@
 use axum::http::{HeaderMap, HeaderValue};
+use base64::Engine;
 use kernel::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +26,73 @@ impl JwtParser for MockJwtParser {
             user_id: "mock-user".to_string(),
             tenant_id: "mock-tenant".to_string(),
             roles: vec!["tenant_admin".to_string()],
+        })
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct KeycloakClaimsJwtParser;
+
+impl JwtParser for KeycloakClaimsJwtParser {
+    fn parse_subject(&self, token: &str) -> AppResult<SessionSubject> {
+        if token.trim().is_empty() {
+            return Err(AppError::Config("jwt token is empty".to_string()));
+        }
+        let mut segments = token.split('.');
+        let _header = segments
+            .next()
+            .ok_or_else(|| AppError::Config("invalid jwt token format".to_string()))?;
+        let payload = segments
+            .next()
+            .ok_or_else(|| AppError::Config("invalid jwt token format".to_string()))?;
+        let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .map_err(|err| AppError::Config(format!("jwt payload decode failed: {err}")))?;
+        let claims: serde_json::Value = serde_json::from_slice(&payload_bytes)
+            .map_err(|err| AppError::Config(format!("jwt claims parse failed: {err}")))?;
+        let user_id = claims
+            .get("sub")
+            .and_then(|v| v.as_str())
+            .or_else(|| claims.get("user_id").and_then(|v| v.as_str()))
+            .ok_or_else(|| AppError::Config("jwt claims missing subject".to_string()))?
+            .to_string();
+        let tenant_id = claims
+            .get("tenant_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| claims.get("org_id").and_then(|v| v.as_str()))
+            .or_else(|| claims.get("azp").and_then(|v| v.as_str()))
+            .unwrap_or("unknown-tenant")
+            .to_string();
+        let mut roles: Vec<String> = claims
+            .get("realm_access")
+            .and_then(|v| v.get("roles"))
+            .and_then(|v| v.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if roles.is_empty() {
+            roles = claims
+                .get("roles")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|v| v.as_str().map(ToString::to_string))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+        }
+        if roles.is_empty() {
+            roles.push("tenant_admin".to_string());
+        }
+        Ok(SessionSubject {
+            user_id,
+            tenant_id,
+            roles,
         })
     }
 }
@@ -206,5 +274,22 @@ mod tests {
             decision.reason.as_deref(),
             Some("permission denied: billing.settle")
         );
+    }
+
+    #[test]
+    fn keycloak_claims_parser_extracts_subject_and_roles() {
+        let parser = KeycloakClaimsJwtParser;
+        let payload = serde_json::json!({
+            "sub": "u-123",
+            "tenant_id": "t-123",
+            "realm_access": {"roles": ["tenant_admin", "auditor"]}
+        });
+        let payload_enc =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.to_string().as_bytes());
+        let token = format!("aaa.{payload_enc}.bbb");
+        let subject = parser.parse_subject(&token).expect("subject parsed");
+        assert_eq!(subject.user_id, "u-123");
+        assert_eq!(subject.tenant_id, "t-123");
+        assert!(subject.roles.iter().any(|r| r == "tenant_admin"));
     }
 }
