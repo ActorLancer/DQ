@@ -5,8 +5,8 @@ use auth::{
 };
 use config::{ProviderMode, RuntimeConfig};
 use db::{
-    DbPool, DbPoolConfig, OrderRepository, OrderRepositoryBackend, build_order_repository,
-    NoopBusinessMutationWriter, TxTemplate,
+    DbPool, DbPoolConfig, NoopBusinessMutationWriter, OrderRepository, OrderRepositoryBackend,
+    TxTemplate, build_order_repository,
 };
 use http::{build_router, live_handler, record_chain_receipt, record_outbox_event, serve};
 use kernel::{
@@ -262,15 +262,14 @@ fn verify_kafka_topics_exist(required_topics: &[String]) -> AppResult<()> {
 }
 
 async fn verify_minio_buckets_exist(required_buckets: &[String]) -> AppResult<()> {
-    let endpoint = std::env::var("MINIO_ENDPOINT").unwrap_or_else(|_| "http://localhost:9000".to_string());
+    let endpoint =
+        std::env::var("MINIO_ENDPOINT").unwrap_or_else(|_| "http://localhost:9000".to_string());
     let client = reqwest::Client::new();
     for bucket in required_buckets {
         let url = format!("{}/{}", endpoint.trim_end_matches('/'), bucket);
-        let resp = client
-            .head(&url)
-            .send()
-            .await
-            .map_err(|e| AppError::Startup(format!("minio bucket probe failed for {bucket}: {e}")))?;
+        let resp = client.head(&url).send().await.map_err(|e| {
+            AppError::Startup(format!("minio bucket probe failed for {bucket}: {e}"))
+        })?;
         if !(resp.status() == StatusCode::OK || resp.status() == StatusCode::FORBIDDEN) {
             return Err(AppError::Startup(format!(
                 "required minio bucket missing or unreachable: {bucket} (status={})",
@@ -282,16 +281,14 @@ async fn verify_minio_buckets_exist(required_buckets: &[String]) -> AppResult<()
 }
 
 async fn verify_opensearch_aliases_exist(required_aliases: &[String]) -> AppResult<()> {
-    let endpoint =
-        std::env::var("OPENSEARCH_ENDPOINT").unwrap_or_else(|_| "http://localhost:9200".to_string());
+    let endpoint = std::env::var("OPENSEARCH_ENDPOINT")
+        .unwrap_or_else(|_| "http://localhost:9200".to_string());
     let client = reqwest::Client::new();
     for alias in required_aliases {
         let url = format!("{}/_alias/{}", endpoint.trim_end_matches('/'), alias);
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| AppError::Startup(format!("opensearch alias probe failed for {alias}: {e}")))?;
+        let resp = client.get(&url).send().await.map_err(|e| {
+            AppError::Startup(format!("opensearch alias probe failed for {alias}: {e}"))
+        })?;
         if resp.status() != StatusCode::OK {
             return Err(AppError::Startup(format!(
                 "required opensearch alias missing: {alias} (status={})",
@@ -320,7 +317,9 @@ pub async fn run() -> AppResult<()> {
         cfg.bind_port,
     );
 
-    let router = build_router(cfg.clone()).route("/healthz", axum::routing::get(live_handler));
+    let router = build_router(cfg.clone())
+        .route("/healthz", axum::routing::get(live_handler))
+        .merge(modules::billing::api::router());
 
     let mut launcher = AppLauncher::new("platform-core");
     let provider_backend = match cfg.provider {

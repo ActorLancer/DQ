@@ -983,7 +983,9 @@ dependencies = [
  "provider-kit",
  "rdkafka",
  "reqwest",
+ "serde",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

@@ -1438,14 +1438,6 @@
 - 待人工审批结论：通过
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响验收。
 
-### BATCH-069（计划中）
-
-- 状态：计划中
-- 当前任务编号：DB-035
-- 当前批次目标：完成 `db/seeds/032_five_scenarios.sql`，把五条标准链路与主/补充 SKU、合同模板、验收模板、退款模板映射固化为可查询演示数据，并接入 seed 执行与校验链路。
-- 前置依赖核对结果：`DB-035` 依赖 `DB-028; CTX-007; CTX-021`，上述依赖均已完成且审批通过。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/00-context/first-5-scenarios.md`、`docs/00-context/v1-closed-loop-matrix.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
-
 ### BATCH-069（实施完成）
 
 - 状态：通过
@@ -1476,3 +1468,39 @@
 - 新增 TODO / 预留项：`TODO-DB-034-001`（`blocked`）
 - 待人工审批结论：待审批
 - 备注：验证数据库容器为 `luna-postgres-test`（`127.0.0.1:55432 -> 5432`）；`ivfflat` notice 为低数据量提示，不影响本批验收。
+
+### BATCH-070（计划中）
+
+- 状态：计划中
+- 当前任务编号：BIL-001
+- 当前批次目标：实现 `Payment Jurisdiction / Corridor / Payout Preference` 的基础模型与接口占位，补齐最小权限校验、审计留痕、错误码映射、OpenAPI 草案与最小测试。
+- 前置依赖核对结果：`BIL-001` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`；当前仓库显示这些前置任务均已完成并经人工审批通过，可进入实现。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+
+### BATCH-070（实施完成）
+
+- 状态：待审批
+- 当前任务编号：BIL-001
+- 当前批次目标：实现 `Payment Jurisdiction / Corridor / Payout Preference` 的基础模型与接口占位，补齐最小权限校验、审计留痕、错误码映射、OpenAPI 草案与最小测试。
+- 前置依赖核对结果：`BIL-001` 依赖 `TRADE-003; TRADE-007; DB-007; ENV-020; CORE-008; CORE-009`；当前仓库显示上述依赖已完成并审批通过。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/支付域接口协议正式版.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
+- 已实现功能：
+  - 在 `billing` 模块落地基础领域模型：`JurisdictionProfile`、`CorridorPolicy`、`PayoutPreference`。
+  - 在 `billing` 模块落地最小服务与权限判定：`BillingPermission::ReadPolicy`，允许角色 `platform_admin / platform_finance_operator / tenant_admin`。
+  - 新增支付域接口占位：
+    - `GET /api/v1/billing/policies`
+    - `GET /api/v1/billing/payout-preferences/{beneficiary_subject_id}`
+  - 接口返回结构化模型数据，拒绝未授权角色并返回 `IAM_UNAUTHORIZED` 错误码。
+  - 接口处理新增日志审计留痕占位（`billing.policy.read`、`billing.payout_preference.read`）。
+  - 更新 `packages/openapi/billing.yaml`，与当前实现路径、权限头、响应模型对齐。
+  - 补齐最小测试：权限拒绝、授权成功、模型基线校验。
+- 涉及文件：`apps/platform-core/Cargo.toml`、`apps/platform-core/src/lib.rs`、`apps/platform-core/src/modules/billing/mod.rs`、`apps/platform-core/src/modules/billing/domain.rs`、`apps/platform-core/src/modules/billing/service.rs`、`apps/platform-core/src/modules/billing/api.rs`、`packages/openapi/billing.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt`
+  2. `cargo test -p platform-core`
+- 验证结果：通过。新增 4 条 `billing` 相关测试全部通过（权限拒绝、权限放行、Jurisdiction/Corridor 基线、模块配置），`platform-core` 总体测试通过。
+- 覆盖的冻结文档条目：`支付域接口协议正式版`（7.1/7.2/7.3 基础对象协议与 V1 读接口边界）、`支付、资金流与轻结算设计`（独立支付子域、SG 起步司法辖区与走廊策略）、`全集成基线-V1`（支付域与交易域解耦、V1 最小支付域占位）
+- 覆盖的任务清单条目：`BIL-001`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批

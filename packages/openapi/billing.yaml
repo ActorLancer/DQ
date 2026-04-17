@@ -2,5 +2,216 @@ openapi: 3.1.0
 info:
   title: Billing API
   version: v1
-paths: {}
+paths:
+  /api/v1/billing/policies:
+    get:
+      summary: Read billing policy baseline
+      description: Return jurisdiction and corridor placeholder baseline for V1 launch.
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+          description: platform_admin | platform_finance_operator | tenant_admin
+      responses:
+        "200":
+          description: Policy baseline loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPolicyResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/billing/payout-preferences/{beneficiary_subject_id}:
+    get:
+      summary: Read payout preference placeholders
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: beneficiary_subject_id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payout preferences loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutPreferenceListResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+          nullable: true
+    ApiEnvelopeBillingPolicy:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/BillingPolicyView"
+    ApiEnvelopePayoutPreferenceList:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayoutPreference"
+    BillingPolicyView:
+      type: object
+      required: [jurisdictions, corridor_policies]
+      properties:
+        jurisdictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/JurisdictionProfile"
+        corridor_policies:
+          type: array
+          items:
+            $ref: "#/components/schemas/CorridorPolicy"
+    JurisdictionProfile:
+      type: object
+      required:
+        [
+          jurisdiction_code,
+          jurisdiction_name,
+          regulator_name,
+          launch_phase,
+          supports_fiat_collection,
+          supports_fiat_payout,
+          supports_crypto_settlement,
+          jurisdiction_status,
+        ]
+      properties:
+        jurisdiction_code:
+          type: string
+        jurisdiction_name:
+          type: string
+        regulator_name:
+          type: string
+        launch_phase:
+          type: string
+        supports_fiat_collection:
+          type: boolean
+        supports_fiat_payout:
+          type: boolean
+        supports_crypto_settlement:
+          type: boolean
+        jurisdiction_status:
+          type: string
+    CorridorPolicy:
+      type: object
+      required:
+        [
+          corridor_policy_id,
+          policy_name,
+          payer_jurisdiction_code,
+          payee_jurisdiction_code,
+          price_currency_code,
+          allowed_collection_currencies,
+          allowed_payout_currencies,
+          route_mode,
+          requires_manual_review,
+          allows_crypto,
+          corridor_status,
+        ]
+      properties:
+        corridor_policy_id:
+          type: string
+        policy_name:
+          type: string
+        payer_jurisdiction_code:
+          type: string
+        payee_jurisdiction_code:
+          type: string
+        price_currency_code:
+          type: string
+        allowed_collection_currencies:
+          type: array
+          items:
+            type: string
+        allowed_payout_currencies:
+          type: array
+          items:
+            type: string
+        route_mode:
+          type: string
+        requires_manual_review:
+          type: boolean
+        allows_crypto:
+          type: boolean
+        corridor_status:
+          type: string
+    PayoutPreference:
+      type: object
+      required:
+        [
+          payout_preference_id,
+          beneficiary_subject_type,
+          beneficiary_subject_id,
+          destination_jurisdiction_code,
+          preferred_currency_code,
+          payout_method,
+          preferred_provider_key,
+          preferred_provider_account_id,
+          is_default,
+          preference_status,
+        ]
+      properties:
+        payout_preference_id:
+          type: string
+        beneficiary_subject_type:
+          type: string
+        beneficiary_subject_id:
+          type: string
+        destination_jurisdiction_code:
+          type: string
+        preferred_currency_code:
+          type: string
+        payout_method:
+          type: string
+        preferred_provider_key:
+          type: string
+        preferred_provider_account_id:
+          type: string
+        is_default:
+          type: boolean
+        preference_status:
+          type: string
+    BillingPolicyResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBillingPolicy"
+    PayoutPreferenceListResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopePayoutPreferenceList"
