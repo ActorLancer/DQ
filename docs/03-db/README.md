@@ -8,3 +8,4 @@
 - `state-machine-to-table-map.md`：订单/授权/交付/结算/争议状态机到字段映射。
 - `migration-compatibility.md`：迁移与种子兼容性测试基线与通过标准。
 - `index-review-baseline.md`：高频路径索引审查基线。
+- `sku-billing-trigger-matrix.md`：8 个 SKU 的计费触发、结算周期、退款/赔付、争议冻结与恢复口径（`BIL-023` 交付）。

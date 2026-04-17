@@ -3,4 +3,5 @@ version,seed_sql
 010,db/seeds/010_test_tenants.sql
 020,db/seeds/020_test_products.sql
 030,db/seeds/030_test_orders.sql
+031,db/seeds/031_sku_trigger_matrix.sql
 032,db/seeds/032_five_scenarios.sql

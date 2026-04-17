@@ -1719,17 +1719,9 @@
 - 待人工审批结论：通过
 - 备注：联调数据库容器 `luna-postgres-test`（`127.0.0.1:55432`），mock 支付容器 `datab-mock-payment-provider`（`127.0.0.1:8089`）。
 
-### BATCH-077
-
-- 状态：计划中
-- 当前任务编号：N/A（流程纠偏批次）
-- 当前批次目标：执行人工指令，冻结“继续新增 BIL 任务”和“已完成 BIL 任务改动”，并把冻结策略写入 TODO 清单用于后续审计回溯。
-- 前置依赖核对结果：不涉及新增业务开发依赖；属于流程治理修正，基于当前日志与任务顺序偏差执行文档级纠偏。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（任务顺序基准）、`docs/开发任务/Agent-开发与半人工审核流程.md`（批次执行流程）、`docs/开发任务/V1-Core-TODO与预留清单.md`（冻结登记落点）
-
 ### BATCH-077（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：N/A（流程纠偏批次）
 - 当前批次目标：冻结“继续新增 BIL 任务”和“已完成 BIL 任务改动”，形成可审计回溯记录。
 - 前置依赖核对结果：不涉及代码构建与环境依赖；仅文档治理调整。
@@ -1747,5 +1739,47 @@
 - 覆盖的任务清单条目：N/A（流程纠偏批次，非新增业务任务实现）。
 - 未覆盖项：无
 - 新增 TODO / 预留项：`TODO-PROC-BIL-001`（`tech-debt`，`blocked`）
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批次不涉及业务代码修改，不触发构建或集成测试。
+
+### BATCH-078（计划中）
+
+- 状态：计划中
+- 当前任务编号：BIL-023, DB-034
+- 当前批次目标：彻底解除 `DB-034` 阻塞，先补齐其唯一前置交付 `BIL-023`（`docs/03-db/sku-billing-trigger-matrix.md`），再落地 `db/seeds/031_sku_trigger_matrix.sql` 与校验脚本，完成 migration/seed 可执行闭环验证。
+- 前置依赖核对结果：
+  - `BIL-023` 依赖 `CTX-021; BIL-017; BIL-018`，当前仓库依赖链已满足，但交付文件缺失。
+  - `DB-034` 依赖 `DB-029; CTX-021; BIL-023`，其中 `DB-029/CTX-021` 已完成，`BIL-023` 将在本批先行补齐并同批验证。
+  - `TODO-PROC-BIL-001` 仍为流程冻结项；本批仅执行“`DB-034` 阻塞解除所必需的前置文档补齐”，不扩展其他 BIL 开发。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/原始PRD/支付、资金流与轻结算设计.md`
+
+### BATCH-078（待审批）
+
+- 状态：待审批
+- 当前任务编号：BIL-023, DB-034
+- 当前批次目标：完成 `DB-034` 全量闭环（依赖文档 + 种子 SQL + 校验脚本 + 可执行验证）。
+- 前置依赖核对结果：
+  - `BIL-023`：依赖满足，已补齐交付 `docs/03-db/sku-billing-trigger-matrix.md`。
+  - `DB-034`：`DB-029; CTX-021` 已完成，`BIL-023` 已在本批补齐后满足。
+  - `TODO-PROC-BIL-001`：保持冻结；本批仅做 `DB-034` 所需最小依赖补齐，不推进其它 BIL 开发项。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/原始PRD/支付、资金流与轻结算设计.md`
+- 已实现功能：
+  - `BIL-023`：新增 `docs/03-db/sku-billing-trigger-matrix.md`，逐项冻结 8 个 SKU 的支付触发、交付触发、验收触发、计费触发、结算周期、退款入口、赔付入口、争议冻结点、恢复结算点。
+  - `DB-034`：新增 `db/seeds/031_sku_trigger_matrix.sql`，将上述 8 SKU 口径固化到 `billing.sku_billing_trigger_matrix`（可查询配置表，支持幂等 upsert）。
+  - 新增 `db/scripts/verify-seed-031.sh`，校验矩阵表记录总数与关键 SKU 字段映射。
+  - 更新 `db/seeds/manifest.csv` 接入 `031`；更新 `docs/03-db/README.md` 索引。
+- 涉及文件：`docs/03-db/sku-billing-trigger-matrix.md`、`db/seeds/031_sku_trigger_matrix.sql`、`db/scripts/verify-seed-031.sh`、`db/seeds/manifest.csv`、`docs/03-db/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `bash db/scripts/migrate-reset.sh`
+  2. `bash db/scripts/migrate-up.sh`
+  3. `bash db/scripts/seed-up.sh`
+  4. `bash db/scripts/verify-seed-031.sh`
+  5. `bash db/scripts/verify-seed-032.sh`
+  6. `bash db/scripts/verify-db-compatibility.sh`
+- 验证结果：通过。`migrate-reset/up`、`seed-up`、`verify-seed-031`、`verify-seed-032`、`verify-db-compatibility` 全部通过；运行中仅出现历史已知 `NOTICE`（如 ivfflat 小样本提示、不存在触发器/索引的 drop 提示），无失败或中断。
+- 覆盖的冻结文档条目：V1 首批 8 SKU 触发口径冻结、计费触发与争议冻结恢复口径、数据库配置可查询基线。
+- 覆盖的任务清单条目：`BIL-023`, `DB-034`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无（关闭 `TODO-DB-034-001`，`TODO-PROC-BIL-001` 保持冻结）
+- 待人工审批结论：待审批
+- 备注：本批仅执行 `DB-034` 阻塞链解除与闭环验证，不扩展其他 BIL 功能任务。
