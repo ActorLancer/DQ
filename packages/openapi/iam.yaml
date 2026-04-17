@@ -2,5 +2,168 @@ openapi: 3.1.0
 info:
   title: IAM API
   version: v1
-paths: {}
-
+paths:
+  /api/v1/orgs/register:
+    post:
+      summary: Register organization
+      operationId: registerOrganization
+      responses:
+        "200":
+          description: Organization registered
+        "403":
+          description: Permission denied
+  /api/v1/iam/orgs/{id}:
+    get:
+      summary: Get organization aggregate
+      operationId: getOrganization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Organization aggregate
+        "404":
+          description: Not found
+  /api/v1/iam/departments:
+    post:
+      summary: Create department
+      operationId: createDepartment
+      responses:
+        "200":
+          description: Department created
+  /api/v1/iam/departments/{id}:
+    get:
+      summary: Get department
+      operationId: getDepartment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Department detail
+        "404":
+          description: Not found
+  /api/v1/iam/users:
+    post:
+      summary: Create user
+      operationId: createUser
+      responses:
+        "200":
+          description: User created
+  /api/v1/iam/users/{id}:
+    get:
+      summary: Get user
+      operationId: getUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User detail
+        "404":
+          description: Not found
+  /api/v1/apps:
+    post:
+      summary: Create application
+      operationId: createApplication
+      responses:
+        "200":
+          description: Application created
+  /api/v1/apps/{id}:
+    get:
+      summary: Get application
+      operationId: getApplication
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Application detail
+        "404":
+          description: Not found
+    patch:
+      summary: Patch application
+      operationId: patchApplication
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Application patched
+        "404":
+          description: Not found
+  /api/v1/iam/connectors:
+    post:
+      summary: Create connector
+      operationId: createConnector
+      responses:
+        "200":
+          description: Connector created
+  /api/v1/iam/connectors/{id}:
+    get:
+      summary: Get connector
+      operationId: getConnector
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Connector detail
+        "404":
+          description: Not found
+  /api/v1/iam/execution-environments:
+    post:
+      summary: Create execution environment
+      operationId: createExecutionEnvironment
+      responses:
+        "200":
+          description: Execution environment created
+  /api/v1/iam/execution-environments/{id}:
+    get:
+      summary: Get execution environment
+      operationId: getExecutionEnvironment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Execution environment detail
+        "404":
+          description: Not found
+  /api/v1/auth/me:
+    get:
+      summary: Resolve login context mirror
+      operationId: getAuthMe
+      responses:
+        "200":
+          description: Session context resolved
+        "401":
+          description: Unauthorized

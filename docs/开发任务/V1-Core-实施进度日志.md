@@ -1742,20 +1742,9 @@
 - 待人工审批结论：通过
 - 备注：本批次不涉及业务代码修改，不触发构建或集成测试。
 
-### BATCH-078（计划中）
-
-- 状态：计划中
-- 当前任务编号：BIL-023, DB-034
-- 当前批次目标：彻底解除 `DB-034` 阻塞，先补齐其唯一前置交付 `BIL-023`（`docs/03-db/sku-billing-trigger-matrix.md`），再落地 `db/seeds/031_sku_trigger_matrix.sql` 与校验脚本，完成 migration/seed 可执行闭环验证。
-- 前置依赖核对结果：
-  - `BIL-023` 依赖 `CTX-021; BIL-017; BIL-018`，当前仓库依赖链已满足，但交付文件缺失。
-  - `DB-034` 依赖 `DB-029; CTX-021; BIL-023`，其中 `DB-029/CTX-021` 已完成，`BIL-023` 将在本批先行补齐并同批验证。
-  - `TODO-PROC-BIL-001` 仍为流程冻结项；本批仅执行“`DB-034` 阻塞解除所必需的前置文档补齐”，不扩展其他 BIL 开发。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/原始PRD/支付、资金流与轻结算设计.md`
-
 ### BATCH-078（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：BIL-023, DB-034
 - 当前批次目标：完成 `DB-034` 全量闭环（依赖文档 + 种子 SQL + 校验脚本 + 可执行验证）。
 - 前置依赖核对结果：
@@ -1781,5 +1770,50 @@
 - 覆盖的任务清单条目：`BIL-023`, `DB-034`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无（关闭 `TODO-DB-034-001`，`TODO-PROC-BIL-001` 保持冻结）
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批仅执行 `DB-034` 阻塞链解除与闭环验证，不扩展其他 BIL 功能任务。
+
+### BATCH-079（计划中）
+
+- 状态：计划中
+- 当前任务编号：IAM-001, IAM-002, IAM-003, IAM-004
+- 当前批次目标：在 `iam` 模块落地主体聚合、基础身份模型 CRUD、登录上下文镜像与组织注册接口，并完成权限校验、审计落库、OpenAPI 同步与最小验证闭环。
+- 前置依赖核对结果：`IAM-001~004` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，上述任务均已完成并审批通过；当前无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/业务流程/业务流程图-V1-完整版.md`
+
+### BATCH-079（待审批）
+
+- 状态：待审批
+- 当前任务编号：IAM-001, IAM-002, IAM-003, IAM-004
+- 当前批次目标：完成 IAM 起始 4 个任务闭环（主体聚合、基础身份 CRUD、登录上下文镜像、组织注册接口）。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018` 均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/业务流程/业务流程图-V1-完整版.md`
+- 已实现功能：
+  - `IAM-001`：实现组织主体聚合能力：`POST /api/v1/orgs/register` 与 `GET /api/v1/iam/orgs/{id}`，返回组织状态、主体类型、司法辖区、合规等级、认证等级、黑白灰名单引用与黑名单激活状态。
+  - `IAM-002`：实现 Department/User/Application/Connector/ExecutionEnvironment 最小 CRUD（create/get，Application 支持 patch），并落审计。
+  - `IAM-003`：实现登录上下文镜像 `GET /api/v1/auth/me`，支持 Bearer token 解析（mock parser）与本地测试用户模式（`x-login-id`）两条链路。
+  - `IAM-004`：组织注册接口支持匿名/半匿名入口字段，记录风险画像与审计事件（`iam.org.register`）。
+  - 路由接入：`platform-core` 主路由已 merge `modules::iam::api::router()`。
+  - OpenAPI 同步：`packages/openapi/iam.yaml` 从空文件更新为首版路径清单并对齐实现接口。
+- 涉及文件：`apps/platform-core/src/modules/iam/mod.rs`、`apps/platform-core/src/modules/iam/domain.rs`、`apps/platform-core/src/modules/iam/service.rs`、`apps/platform-core/src/modules/iam/api.rs`、`apps/platform-core/src/lib.rs`、`packages/openapi/iam.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务（`APP_PORT=18080`）并手工调用：
+     - `POST /api/v1/orgs/register`
+     - `GET /api/v1/iam/orgs/{id}`
+     - `POST /api/v1/iam/departments`
+     - `POST /api/v1/iam/users`
+     - `POST /api/v1/apps` + `PATCH /api/v1/apps/{id}`
+     - `POST /api/v1/iam/connectors`
+     - `POST /api/v1/iam/execution-environments`
+     - `GET /api/v1/auth/me`（`x-login-id` 模式）
+  4. 审计回查：
+     - `SELECT action_name, ref_type, result_code FROM audit.audit_event WHERE action_name LIKE 'iam.%' ORDER BY event_time DESC LIMIT 12;`
+- 验证结果：通过。`platform-core` 单测 `21/21` 通过；手工接口调用全部成功；审计表回查到 `iam.org.register/read`、`iam.department.create`、`iam.user.create`、`iam.app.create/patch`、`iam.connector.create`、`iam.execution_environment.create`、`iam.session.context.read`。
+- 覆盖的冻结文档条目：身份与会话接口基线（注册/会话）、`010_identity_and_access.sql` 的核心对象模型（organization/department/user/application/connector/execution_environment）、主体准入流程。
+- 覆盖的任务清单条目：`IAM-001`, `IAM-002`, `IAM-003`, `IAM-004`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：`TODO-PROC-BIL-001` 仍保持冻结状态，本批未扩展其它 BIL 任务。
