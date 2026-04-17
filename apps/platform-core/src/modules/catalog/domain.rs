@@ -409,3 +409,41 @@ pub struct ProductMetadataProfileView {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateAssetFieldDefinitionRequest {
+    pub asset_version_id: Option<String>,
+    pub object_name: Option<String>,
+    pub field_name: String,
+    pub field_path: String,
+    pub field_type: String,
+    pub is_nullable: Option<bool>,
+    pub is_primary_key: Option<bool>,
+    pub is_partition_key: Option<bool>,
+    pub is_time_field: Option<bool>,
+    pub code_rule: Option<String>,
+    pub unit_text: Option<String>,
+    #[serde(default)]
+    pub enum_values_json: Value,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AssetFieldDefinitionView {
+    pub field_definition_id: String,
+    pub asset_version_id: String,
+    pub object_name: Option<String>,
+    pub field_name: String,
+    pub field_path: String,
+    pub field_type: String,
+    pub is_nullable: bool,
+    pub is_primary_key: bool,
+    pub is_partition_key: bool,
+    pub is_time_field: bool,
+    pub code_rule: Option<String>,
+    pub unit_text: Option<String>,
+    pub enum_values_json: Value,
+    pub description: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}

@@ -236,6 +236,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PreviewArtifact"
+  /api/v1/assets/{versionId}/field-definitions:
+    post:
+      summary: Create field definition for asset version
+      operationId: createAssetFieldDefinition
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetFieldDefinitionRequest"
+      responses:
+        "200":
+          description: Asset field definition created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetFieldDefinition"
 components:
   schemas:
     CreateDataProductRequest:
@@ -906,6 +930,107 @@ components:
         - preview_type
         - preview_policy_json
         - status
+        - created_at
+        - updated_at
+    CreateAssetFieldDefinitionRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_name:
+          type: string
+          nullable: true
+        field_name:
+          type: string
+        field_path:
+          type: string
+        field_type:
+          type: string
+        is_nullable:
+          type: boolean
+          nullable: true
+        is_primary_key:
+          type: boolean
+          nullable: true
+        is_partition_key:
+          type: boolean
+          nullable: true
+        is_time_field:
+          type: boolean
+          nullable: true
+        code_rule:
+          type: string
+          nullable: true
+        unit_text:
+          type: string
+          nullable: true
+        enum_values_json:
+          type: array
+          items: {}
+        description:
+          type: string
+          nullable: true
+      required:
+        - field_name
+        - field_path
+        - field_type
+    AssetFieldDefinition:
+      type: object
+      properties:
+        field_definition_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        object_name:
+          type: string
+          nullable: true
+        field_name:
+          type: string
+        field_path:
+          type: string
+        field_type:
+          type: string
+        is_nullable:
+          type: boolean
+        is_primary_key:
+          type: boolean
+        is_partition_key:
+          type: boolean
+        is_time_field:
+          type: boolean
+        code_rule:
+          type: string
+          nullable: true
+        unit_text:
+          type: string
+          nullable: true
+        enum_values_json:
+          type: array
+          items: {}
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - field_definition_id
+        - asset_version_id
+        - field_name
+        - field_path
+        - field_type
+        - is_nullable
+        - is_primary_key
+        - is_partition_key
+        - is_time_field
+        - enum_values_json
         - created_at
         - updated_at
     DataResource:

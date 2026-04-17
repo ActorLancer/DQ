@@ -1,11 +1,12 @@
 use crate::modules::catalog::domain::{
-    AssetVersionView, CreateAssetVersionRequest, CreateDataProductRequest,
-    CreateDataResourceRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
-    CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
-    CreateRawObjectManifestRequest, DataProductView, DataResourceView, ExtractionJobView,
-    FormatDetectionResultView, PatchDataProductRequest, PatchProductSkuRequest,
-    PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
-    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
+    AssetFieldDefinitionView, AssetVersionView, CreateAssetFieldDefinitionRequest,
+    CreateAssetVersionRequest, CreateDataProductRequest, CreateDataResourceRequest,
+    CreateExtractionJobRequest, CreateFormatDetectionRequest, CreatePreviewArtifactRequest,
+    CreateProductSkuRequest, CreateRawIngestBatchRequest, CreateRawObjectManifestRequest,
+    DataProductView, DataResourceView, ExtractionJobView, FormatDetectionResultView,
+    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
+    ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
+    RawIngestBatchView, RawObjectManifestView,
 };
 use serde_json::{Value, json};
 use tokio_postgres::{GenericClient, Row};
@@ -648,6 +649,58 @@ impl PostgresCatalogRepository {
         Ok(parse_product_metadata_profile_row(&row))
     }
 
+    pub async fn create_asset_field_definition(
+        client: &impl GenericClient,
+        asset_version_id: &str,
+        payload: &CreateAssetFieldDefinitionRequest,
+    ) -> Result<AssetFieldDefinitionView, tokio_postgres::Error> {
+        let enum_values_json = normalize_json_array(&payload.enum_values_json);
+        let row = client
+            .query_one(
+                "INSERT INTO catalog.asset_field_definition (
+                   asset_version_id, object_name, field_name, field_path, field_type,
+                   is_nullable, is_primary_key, is_partition_key, is_time_field, code_rule,
+                   unit_text, enum_values_json, description
+                 ) VALUES (
+                   $1::text::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13
+                 )
+                 RETURNING
+                   field_definition_id::text,
+                   asset_version_id::text,
+                   object_name,
+                   field_name,
+                   field_path,
+                   field_type,
+                   is_nullable,
+                   is_primary_key,
+                   is_partition_key,
+                   is_time_field,
+                   code_rule,
+                   unit_text,
+                   enum_values_json,
+                   description,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &asset_version_id,
+                    &payload.object_name,
+                    &payload.field_name,
+                    &payload.field_path,
+                    &payload.field_type,
+                    &payload.is_nullable.unwrap_or(true),
+                    &payload.is_primary_key.unwrap_or(false),
+                    &payload.is_partition_key.unwrap_or(false),
+                    &payload.is_time_field.unwrap_or(false),
+                    &payload.code_rule,
+                    &payload.unit_text,
+                    &enum_values_json,
+                    &payload.description,
+                ],
+            )
+            .await?;
+        Ok(parse_asset_field_definition_row(&row))
+    }
+
     pub async fn create_product_sku(
         client: &impl GenericClient,
         product_id: &str,
@@ -1002,5 +1055,34 @@ fn normalize_json_object(value: &Value) -> Value {
         value.clone()
     } else {
         json!({})
+    }
+}
+
+fn normalize_json_array(value: &Value) -> Value {
+    if value.is_array() {
+        value.clone()
+    } else {
+        json!([])
+    }
+}
+
+fn parse_asset_field_definition_row(row: &Row) -> AssetFieldDefinitionView {
+    AssetFieldDefinitionView {
+        field_definition_id: row.get(0),
+        asset_version_id: row.get(1),
+        object_name: row.get(2),
+        field_name: row.get(3),
+        field_path: row.get(4),
+        field_type: row.get(5),
+        is_nullable: row.get(6),
+        is_primary_key: row.get(7),
+        is_partition_key: row.get(8),
+        is_time_field: row.get(9),
+        code_rule: row.get(10),
+        unit_text: row.get(11),
+        enum_values_json: row.get(12),
+        description: row.get(13),
+        created_at: row.get(14),
+        updated_at: row.get(15),
     }
 }
