@@ -30,9 +30,21 @@ pub struct OrganizationAggregateView {
     pub whitelist_refs: Vec<String>,
     pub graylist_refs: Vec<String>,
     pub blacklist_refs: Vec<String>,
+    pub review_status: Option<String>,
+    pub risk_status: Option<String>,
+    pub sellable_status: Option<String>,
+    pub freeze_reason: Option<String>,
     pub blacklist_active: bool,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PatchOrganizationLinkageRequest {
+    pub review_status: Option<String>,
+    pub risk_status: Option<String>,
+    pub sellable_status: Option<String>,
+    pub freeze_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -226,6 +238,87 @@ pub struct CreateMfaAuthenticatorRequest {
     pub user_id: String,
     pub authenticator_type: String,
     pub device_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateSsoConnectionRequest {
+    pub org_id: String,
+    pub connection_name: String,
+    pub protocol_type: Option<String>,
+    pub issuer: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret_ref: Option<String>,
+    pub metadata_url: Option<String>,
+    pub redirect_uri: Option<String>,
+    pub jit_provisioning: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PatchSsoConnectionRequest {
+    pub issuer: Option<String>,
+    pub metadata_url: Option<String>,
+    pub redirect_uri: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SsoConnectionListQuery {
+    pub org_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SsoConnectionView {
+    pub sso_connection_id: String,
+    pub org_id: String,
+    pub connection_name: String,
+    pub protocol_type: String,
+    pub issuer: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct FabricIdentityView {
+    pub fabric_identity_binding_id: String,
+    pub msp_id: String,
+    pub enrollment_id: String,
+    pub identity_type: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CertificateView {
+    pub certificate_id: String,
+    pub serial_number: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ActionResultView {
+    pub target_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoginRequest {
+    pub login_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LoginView {
+    pub session_id: String,
+    pub user_id: String,
+    pub org_id: String,
+    pub session_status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LogoutRequest {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateUserRolesRequest {
+    pub roles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

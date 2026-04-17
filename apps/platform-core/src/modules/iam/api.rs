@@ -1,13 +1,16 @@
 use crate::modules::access;
 use crate::modules::iam::domain::{
-    AccessCheckRequest, AccessCheckView, AccessPermissionRuleView, ApplicationView, ConnectorView,
-    CreateApplicationRequest, CreateConnectorRequest, CreateDepartmentRequest,
-    CreateExecutionEnvironmentRequest, CreateInvitationRequest, CreateMfaAuthenticatorRequest,
+    AccessCheckRequest, AccessCheckView, AccessPermissionRuleView, ActionResultView,
+    ApplicationView, CertificateView, ConnectorView, CreateApplicationRequest,
+    CreateConnectorRequest, CreateDepartmentRequest, CreateExecutionEnvironmentRequest,
+    CreateInvitationRequest, CreateMfaAuthenticatorRequest, CreateSsoConnectionRequest,
     CreateUserRequest, DepartmentView, DeviceListQuery, DeviceView, ExecutionEnvironmentView,
-    InvitationListQuery, InvitationView, MfaAuthenticatorView, OrganizationAggregateView,
-    PatchApplicationRequest, RegisterOrganizationRequest, RotateApplicationSecretRequest,
-    SessionContextView, SessionListQuery, SessionView, StepUpCheckRequest, StepUpCheckView,
-    StepUpVerifyRequest, UserView,
+    FabricIdentityView, InvitationListQuery, InvitationView, LoginRequest, LoginView,
+    LogoutRequest, MfaAuthenticatorView, OrganizationAggregateView, PatchApplicationRequest,
+    PatchOrganizationLinkageRequest, PatchSsoConnectionRequest, RegisterOrganizationRequest,
+    RotateApplicationSecretRequest, SessionContextView, SessionListQuery, SessionView,
+    SsoConnectionListQuery, SsoConnectionView, StepUpCheckRequest, StepUpCheckView,
+    StepUpVerifyRequest, UpdateUserRolesRequest, UserView,
 };
 use crate::modules::iam::service::{
     HighRiskAction, IamPermission, high_risk_action_requires_step_up, is_allowed, role_seeds,
@@ -26,10 +29,17 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/v1/orgs/register", post(register_org))
         .route("/api/v1/iam/orgs/{id}", get(get_org))
+        .route(
+            "/api/v1/iam/orgs/{id}/party-review-linkage",
+            patch(patch_org_party_review_linkage),
+        )
+        .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/iam/departments", post(create_department))
         .route("/api/v1/iam/departments/{id}", get(get_department))
         .route("/api/v1/iam/users", post(create_user))
         .route("/api/v1/iam/users/{id}", get(get_user))
+        .route("/api/v1/iam/users/{id}/roles", post(update_user_roles))
         .route("/api/v1/apps", post(create_app))
         .route("/api/v1/apps/{id}", patch(patch_app).get(get_app))
         .route(
@@ -68,6 +78,28 @@ pub fn router() -> Router {
         .route(
             "/api/v1/iam/mfa/authenticators/{id}",
             delete(delete_mfa_authenticator),
+        )
+        .route(
+            "/api/v1/iam/sso/connections",
+            post(create_sso_connection).get(list_sso_connections),
+        )
+        .route(
+            "/api/v1/iam/sso/connections/{id}",
+            patch(patch_sso_connection),
+        )
+        .route("/api/v1/iam/fabric-identities", get(list_fabric_identities))
+        .route(
+            "/api/v1/iam/fabric-identities/{id}/issue",
+            post(issue_fabric_identity),
+        )
+        .route(
+            "/api/v1/iam/fabric-identities/{id}/revoke",
+            post(revoke_fabric_identity),
+        )
+        .route("/api/v1/iam/certificates", get(list_certificates))
+        .route(
+            "/api/v1/iam/certificates/{id}/revoke",
+            post(revoke_certificate),
         )
         .route("/api/v1/iam/connectors", post(create_connector))
         .route("/api/v1/iam/connectors/{id}", get(get_connector))
@@ -193,6 +225,242 @@ async fn get_org(
         &view.org_id,
         header(&headers, "x-role").as_deref().unwrap_or("unknown"),
         "iam.org.read",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn patch_org_party_review_linkage(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<PatchOrganizationLinkageRequest>,
+) -> Result<Json<ApiResponse<OrganizationAggregateView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::IdentityWrite,
+        "party review linkage patch",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE core.organization
+             SET metadata = jsonb_strip_nulls(
+               COALESCE(metadata, '{}'::jsonb)
+               || jsonb_build_object(
+                    'review_status', $2::text,
+                    'risk_status', $3::text,
+                    'sellable_status', $4::text,
+                    'freeze_reason', $5::text
+                  )
+             ),
+             updated_at = now()
+             WHERE org_id = $1::text::uuid
+             RETURNING
+               org_id::text,
+               org_name,
+               org_type,
+               status,
+               country_code,
+               compliance_level,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[
+                &id,
+                &payload.review_status,
+                &payload.risk_status,
+                &payload.sellable_status,
+                &payload.freeze_reason,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("organization not found", header(&headers, "x-request-id")))?;
+    let view = parse_org_row(&row, false);
+    write_audit_event(
+        &client,
+        "organization",
+        &view.org_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.org.party_review_linkage.patch",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn login(
+    headers: HeaderMap,
+    Json(payload): Json<LoginRequest>,
+) -> Result<Json<ApiResponse<LoginView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::SessionWrite, "login")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "SELECT user_id::text, org_id::text
+             FROM core.user_account
+             WHERE login_id = $1::citext",
+            &[&payload.login_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row = row.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: "invalid login id".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        )
+    })?;
+    let user_id: String = row.get(0);
+    let org_id: String = row.get(1);
+    let row = client
+        .query_one(
+            "INSERT INTO iam.user_session (
+               user_id, login_method, auth_context_level, session_type, current_ip, current_country_code,
+               session_status, expires_at, metadata
+             ) VALUES (
+               $1::text::uuid, 'password', 'aal1', 'web', NULL, NULL, 'active', now() + interval '24 hours', $2::jsonb
+             )
+             RETURNING session_id::text, user_id::text, session_status",
+            &[
+                &user_id,
+                &serde_json::json!({
+                    "login_id": payload.login_id,
+                    "mode": std::env::var("IAM_LOGIN_MODE").unwrap_or_else(|_| "local_mock".to_string())
+                }),
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let view = LoginView {
+        session_id: row.get(0),
+        user_id: row.get(1),
+        org_id,
+        session_status: row.get(2),
+    };
+    write_audit_event(
+        &client,
+        "session",
+        &view.session_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.session.login",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn logout(
+    headers: HeaderMap,
+    Json(payload): Json<LogoutRequest>,
+) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::SessionWrite, "logout")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.user_session
+             SET session_status = 'revoked', revoked_at = now(), updated_at = now()
+             WHERE session_id = $1::text::uuid
+             RETURNING session_id::text, session_status",
+            &[&payload.session_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("session not found", header(&headers, "x-request-id")))?;
+    let result = ActionResultView {
+        target_id: row.get(0),
+        status: row.get(1),
+    };
+    write_audit_event(
+        &client,
+        "session",
+        &result.target_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.session.logout",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(result))
+}
+
+async fn update_user_roles(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<UpdateUserRolesRequest>,
+) -> Result<Json<ApiResponse<UserView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::RoleChangeWrite,
+        "user role change write",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let roles = serde_json::Value::Array(
+        payload
+            .roles
+            .iter()
+            .map(|r| serde_json::Value::String(r.clone()))
+            .collect(),
+    );
+    let row = client
+        .query_opt(
+            "UPDATE core.user_account
+             SET attrs = jsonb_set(COALESCE(attrs, '{}'::jsonb), '{roles}', $2::jsonb, true),
+                 updated_at = now()
+             WHERE user_id = $1::text::uuid
+             RETURNING user_id::text, org_id::text, department_id::text, login_id::text,
+                       display_name, user_type, status, email::text, phone",
+            &[&id, &roles],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row = row.ok_or_else(|| not_found("user not found", header(&headers, "x-request-id")))?;
+    let view = UserView {
+        user_id: row.get(0),
+        org_id: row.get(1),
+        department_id: row.get(2),
+        login_id: row.get(3),
+        display_name: row.get(4),
+        user_type: row.get(5),
+        status: row.get(6),
+        email: row.get(7),
+        phone: row.get(8),
+    };
+    write_audit_event(
+        &client,
+        "user",
+        &view.user_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.user.role.change",
         "success",
         header(&headers, "x-request-id").as_deref(),
         header(&headers, "x-trace-id").as_deref(),
@@ -1636,6 +1904,354 @@ async fn delete_mfa_authenticator(
     Ok(ApiResponse::ok(view))
 }
 
+async fn create_sso_connection(
+    headers: HeaderMap,
+    Json(payload): Json<CreateSsoConnectionRequest>,
+) -> Result<Json<ApiResponse<SsoConnectionView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::SsoWrite, "sso connection create")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_one(
+            "INSERT INTO iam.sso_connection (
+               org_id, connection_name, protocol_type, issuer, client_id, client_secret_ref,
+               metadata_url, redirect_uri, jit_provisioning, status, metadata
+             ) VALUES (
+               $1::text::uuid, $2, COALESCE($3, 'oidc'), $4, $5, $6, $7, $8, COALESCE($9, false), 'draft', $10::jsonb
+             )
+             RETURNING sso_connection_id::text, org_id::text, connection_name, protocol_type, issuer, status",
+            &[
+                &payload.org_id,
+                &payload.connection_name,
+                &payload.protocol_type,
+                &payload.issuer,
+                &payload.client_id,
+                &payload.client_secret_ref,
+                &payload.metadata_url,
+                &payload.redirect_uri,
+                &payload.jit_provisioning,
+                &serde_json::json!({"placeholder_mode":"local"}),
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let view = SsoConnectionView {
+        sso_connection_id: row.get(0),
+        org_id: row.get(1),
+        connection_name: row.get(2),
+        protocol_type: row.get(3),
+        issuer: row.get(4),
+        status: row.get(5),
+    };
+    write_audit_event(
+        &client,
+        "sso_connection",
+        &view.sso_connection_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.sso.connection.create",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn list_sso_connections(
+    headers: HeaderMap,
+    Query(query): Query<SsoConnectionListQuery>,
+) -> Result<Json<ApiResponse<Vec<SsoConnectionView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::SsoRead, "sso connection read")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT sso_connection_id::text, org_id::text, connection_name, protocol_type, issuer, status
+             FROM iam.sso_connection
+             WHERE ($1::text IS NULL OR org_id = $1::text::uuid)
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[&query.org_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| SsoConnectionView {
+            sso_connection_id: row.get(0),
+            org_id: row.get(1),
+            connection_name: row.get(2),
+            protocol_type: row.get(3),
+            issuer: row.get(4),
+            status: row.get(5),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
+async fn patch_sso_connection(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<PatchSsoConnectionRequest>,
+) -> Result<Json<ApiResponse<SsoConnectionView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::SsoWrite, "sso connection patch")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.sso_connection
+             SET issuer = COALESCE($2, issuer),
+                 metadata_url = COALESCE($3, metadata_url),
+                 redirect_uri = COALESCE($4, redirect_uri),
+                 status = COALESCE($5, status),
+                 updated_at = now()
+             WHERE sso_connection_id = $1::text::uuid
+             RETURNING sso_connection_id::text, org_id::text, connection_name, protocol_type, issuer, status",
+            &[
+                &id,
+                &payload.issuer,
+                &payload.metadata_url,
+                &payload.redirect_uri,
+                &payload.status,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("sso connection not found", header(&headers, "x-request-id")))?;
+    let view = SsoConnectionView {
+        sso_connection_id: row.get(0),
+        org_id: row.get(1),
+        connection_name: row.get(2),
+        protocol_type: row.get(3),
+        issuer: row.get(4),
+        status: row.get(5),
+    };
+    write_audit_event(
+        &client,
+        "sso_connection",
+        &view.sso_connection_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.sso.connection.patch",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn list_fabric_identities(
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<FabricIdentityView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::FabricRead, "fabric identity read")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT fabric_identity_binding_id::text, msp_id, enrollment_id, identity_type, status
+             FROM iam.fabric_identity_binding
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| FabricIdentityView {
+            fabric_identity_binding_id: row.get(0),
+            msp_id: row.get(1),
+            enrollment_id: row.get(2),
+            identity_type: row.get(3),
+            status: row.get(4),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
+async fn issue_fabric_identity(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::FabricWrite,
+        "fabric identity issue placeholder",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.fabric_identity_binding
+             SET status = 'issued', issued_at = now(), updated_at = now()
+             WHERE fabric_identity_binding_id = $1::text::uuid
+             RETURNING fabric_identity_binding_id::text, status",
+            &[&id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row = row.ok_or_else(|| {
+        not_found(
+            "fabric identity not found",
+            header(&headers, "x-request-id"),
+        )
+    })?;
+    let view = ActionResultView {
+        target_id: row.get(0),
+        status: row.get(1),
+    };
+    write_audit_event(
+        &client,
+        "fabric_identity_binding",
+        &view.target_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.fabric.identity.issue",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn revoke_fabric_identity(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::FabricWrite,
+        "fabric identity revoke placeholder",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.fabric_identity_binding
+             SET status = 'revoked', revoked_at = now(), updated_at = now()
+             WHERE fabric_identity_binding_id = $1::text::uuid
+             RETURNING fabric_identity_binding_id::text, status",
+            &[&id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row = row.ok_or_else(|| {
+        not_found(
+            "fabric identity not found",
+            header(&headers, "x-request-id"),
+        )
+    })?;
+    let view = ActionResultView {
+        target_id: row.get(0),
+        status: row.get(1),
+    };
+    write_audit_event(
+        &client,
+        "fabric_identity_binding",
+        &view.target_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.fabric.identity.revoke",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn list_certificates(
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<CertificateView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, IamPermission::FabricRead, "certificate read")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let rows = client
+        .query(
+            "SELECT certificate_id::text, serial_number, status
+             FROM iam.certificate_record
+             ORDER BY created_at DESC
+             LIMIT 100",
+            &[],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let views = rows
+        .iter()
+        .map(|row| CertificateView {
+            certificate_id: row.get(0),
+            serial_number: row.get(1),
+            status: row.get(2),
+        })
+        .collect();
+    Ok(ApiResponse::ok(views))
+}
+
+async fn revoke_certificate(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        IamPermission::FabricWrite,
+        "certificate revoke placeholder",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let row = client
+        .query_opt(
+            "UPDATE iam.certificate_record
+             SET status = 'revoked', updated_at = now()
+             WHERE certificate_id = $1::text::uuid
+             RETURNING certificate_id::text, status",
+            &[&id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row =
+        row.ok_or_else(|| not_found("certificate not found", header(&headers, "x-request-id")))?;
+    let result = ActionResultView {
+        target_id: row.get(0),
+        status: row.get(1),
+    };
+    write_audit_event(
+        &client,
+        "certificate_record",
+        &result.target_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "iam.certificate.revoke",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(result))
+}
+
 fn default_access_rules() -> Vec<AccessPermissionRuleView> {
     access::ACCESS_RULES
         .iter()
@@ -1662,6 +2278,12 @@ fn permission_from_code(
         "iam.mfa.read" => Ok(IamPermission::MfaRead),
         "iam.mfa.write" => Ok(IamPermission::MfaWrite),
         "iam.access.policy.read" => Ok(IamPermission::AccessPolicyRead),
+        "iam.sso.read" => Ok(IamPermission::SsoRead),
+        "iam.sso.write" => Ok(IamPermission::SsoWrite),
+        "iam.fabric.read" => Ok(IamPermission::FabricRead),
+        "iam.fabric.write" => Ok(IamPermission::FabricWrite),
+        "iam.session.write" => Ok(IamPermission::SessionWrite),
+        "iam.user.role.change" => Ok(IamPermission::RoleChangeWrite),
         _ => Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -1765,6 +2387,22 @@ fn parse_org_row(row: &Row, blacklist_active: bool) -> OrganizationAggregateView
                     .collect()
             })
             .unwrap_or_default(),
+        review_status: metadata
+            .get("review_status")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string),
+        risk_status: metadata
+            .get("risk_status")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string),
+        sellable_status: metadata
+            .get("sellable_status")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string),
+        freeze_reason: metadata
+            .get("freeze_reason")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string),
         blacklist_active,
         created_at: row.get(7),
         updated_at: row.get(8),
@@ -2021,6 +2659,46 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"user_id":"10000000-0000-0000-0000-000000000401","authenticator_type":"totp"}"#,
+                    ))
+                    .expect("request build"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_sso_create_for_developer_role() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/iam/sso/connections")
+                    .method("POST")
+                    .header("x-role", "developer")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"org_id":"10000000-0000-0000-0000-000000000001","connection_name":"corp-oidc"}"#,
+                    ))
+                    .expect("request build"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_logout_for_tenant_operator() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/auth/logout")
+                    .method("POST")
+                    .header("x-role", "tenant_operator")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"session_id":"10000000-0000-0000-0000-000000000411"}"#,
                     ))
                     .expect("request build"),
             )

@@ -1845,17 +1845,9 @@
 - 待人工审批结论：通过
 - 备注：`TODO-PROC-BIL-001` 持续保持冻结状态；本批未扩展 BIL 线。
 
-### BATCH-081（计划中）
-
-- 状态：计划中
-- 当前任务编号：IAM-009, IAM-010, IAM-011, IAM-012
-- 当前批次目标：在 IAM/Access 模块补齐角色-权限-作用域放行规则、RBAC 种子加载与统一权限校验中间件，并实现 step-up 占位与 MFA 占位接口。
-- 前置依赖核对结果：`IAM-009~012` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
-- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/权限设计/接口权限校验清单.md`、`docs/权限设计/权限点清单.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`
-
 ### BATCH-081（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：IAM-009, IAM-010, IAM-011, IAM-012
 - 当前批次目标：在 IAM/Access 模块补齐角色-权限-作用域放行规则、RBAC 种子加载与统一权限校验中间件，并实现 step-up 占位与 MFA 占位接口。
 - 前置依赖核对结果：`IAM-009~012` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
@@ -1884,5 +1876,49 @@
 - 覆盖的任务清单条目：`IAM-009`, `IAM-010`, `IAM-011`, `IAM-012`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：本批在不重建骨架前提下复用既有 IAM API 结构扩展；`TODO-PROC-BIL-001` 持续保持冻结状态。
+
+### BATCH-082（计划中）
+
+- 状态：计划中
+- 当前任务编号：IAM-013, IAM-014, IAM-015, IAM-016
+- 当前批次目标：补齐企业 OIDC 连接占位接口、Fabric 身份镜像与证书吊销占位接口、party-review 联动字段、以及登录/登出/邀请/撤销/角色变更的审计闭环。
+- 前置依赖核对结果：`IAM-013~016` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
+
+### BATCH-082（待审批）
+
+- 状态：待审批
+- 当前任务编号：IAM-013, IAM-014, IAM-015, IAM-016
+- 当前批次目标：补齐企业 OIDC 连接占位接口、Fabric 身份镜像与证书吊销占位接口、party-review 联动字段、以及登录/登出/邀请/撤销/角色变更的审计闭环。
+- 前置依赖核对结果：`IAM-013~016` 统一依赖 `CORE-001; CORE-004; CORE-005; CORE-006; DB-003; ENV-018`，均已完成并审批通过；本批无阻塞。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`、`docs/原始PRD/IAM 技术接入方案.md`
+- 已实现功能：
+  - `IAM-013`：新增企业 OIDC 占位接口 `POST/GET /api/v1/iam/sso/connections`、`PATCH /api/v1/iam/sso/connections/{id}`，落地 `iam.sso_connection` 配置模型与本地占位状态流转。
+  - `IAM-014`：新增 Fabric 身份镜像与证书占位接口：`GET /api/v1/iam/fabric-identities`、`POST /api/v1/iam/fabric-identities/{id}/issue`、`POST /api/v1/iam/fabric-identities/{id}/revoke`、`GET /api/v1/iam/certificates`、`POST /api/v1/iam/certificates/{id}/revoke`。
+  - `IAM-015`：扩展组织聚合返回字段并实现联动写入接口 `PATCH /api/v1/iam/orgs/{id}/party-review-linkage`，覆盖 `review_status/risk_status/sellable_status/freeze_reason`。
+  - `IAM-016`：补齐会话与设备审计链路中的关键动作留痕：新增 `POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`POST /api/v1/iam/users/{id}/roles`，并落审计 `iam.session.login/logout`、`iam.user.role.change`；与前批已有邀请/撤销审计形成闭环。
+  - RBAC 扩展：新增 `SsoRead/SsoWrite/FabricRead/FabricWrite/SessionWrite/RoleChangeWrite` 权限并纳入种子加载映射。
+  - OpenAPI 同步：`packages/openapi/iam.yaml` 补充上述全部路径，保持契约与实现一致。
+- 涉及文件：`apps/platform-core/src/modules/iam/domain.rs`、`apps/platform-core/src/modules/iam/service.rs`、`apps/platform-core/src/modules/iam/api.rs`、`apps/platform-core/src/modules/access/mod.rs`、`packages/openapi/iam.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务并手工 API 验证（`APP_PORT=18080`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`）：
+     - `PATCH /api/v1/iam/orgs/{id}/party-review-linkage`
+     - `POST /api/v1/auth/login`
+     - `POST /api/v1/auth/logout`
+     - `POST /api/v1/iam/users/{id}/roles`
+     - `POST /api/v1/iam/sso/connections`
+     - `PATCH /api/v1/iam/sso/connections/{id}`
+     - `GET /api/v1/iam/fabric-identities`
+     - `GET /api/v1/iam/certificates`
+  4. 审计回查：`SELECT action_name, ref_type, result_code FROM audit.audit_event WHERE action_name IN ('iam.org.party_review_linkage.patch','iam.session.login','iam.session.logout','iam.user.role.change','iam.sso.connection.create','iam.sso.connection.patch') ORDER BY event_time DESC LIMIT 20;`
+- 验证结果：通过。`platform-core` 单测 `30/30` 通过；手工 API 全部返回 `success=true`；组织联动字段回写生效；审计回查命中 `iam.org.party_review_linkage.patch`、`iam.session.login/logout`、`iam.user.role.change`、`iam.sso.connection.create/patch`。
+- 覆盖的冻结文档条目：身份与会话协议中的 `sso/connections`、`fabric-identities`、`certificates`、`step-up/mfa` 语义边界；`010_identity_and_access.sql` 中 `iam.sso_connection/iam.fabric_identity_binding/iam.certificate_record/iam.user_session` 对象；IAM 技术接入方案中的 local 占位实现要求。
+- 覆盖的任务清单条目：`IAM-013`, `IAM-014`, `IAM-015`, `IAM-016`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无
+- 待人工审批结论：待审批
+- 备注：本批未引入 V2/V3 正式能力，仅冻结 V1 占位接口与状态口径；`TODO-PROC-BIL-001` 继续保持冻结状态。

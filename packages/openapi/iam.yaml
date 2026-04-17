@@ -12,6 +12,40 @@ paths:
           description: Organization registered
         "403":
           description: Permission denied
+  /api/v1/iam/orgs/{id}/party-review-linkage:
+    patch:
+      summary: Patch party-review linkage fields on organization
+      operationId: patchOrgPartyReviewLinkage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Organization linkage patched
+        "404":
+          description: Not found
+  /api/v1/auth/login:
+    post:
+      summary: Local/mock login placeholder
+      operationId: authLogin
+      responses:
+        "200":
+          description: Login session created
+        "401":
+          description: Unauthorized
+  /api/v1/auth/logout:
+    post:
+      summary: Local/mock logout placeholder
+      operationId: authLogout
+      responses:
+        "200":
+          description: Session revoked
+        "404":
+          description: Not found
   /api/v1/iam/orgs/{id}:
     get:
       summary: Get organization aggregate
@@ -72,6 +106,22 @@ paths:
       responses:
         "200":
           description: User detail
+        "404":
+          description: Not found
+  /api/v1/iam/users/{id}/roles:
+    post:
+      summary: Update user role snapshot (placeholder)
+      operationId: updateUserRoles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User role snapshot updated
         "404":
           description: Not found
   /api/v1/apps:
@@ -297,6 +347,97 @@ paths:
       responses:
         "200":
           description: MFA authenticator revoked
+        "404":
+          description: Not found
+  /api/v1/iam/sso/connections:
+    post:
+      summary: Create SSO connection placeholder
+      operationId: createSsoConnection
+      responses:
+        "200":
+          description: SSO connection created
+    get:
+      summary: List SSO connections
+      operationId: listSsoConnections
+      responses:
+        "200":
+          description: SSO connection list
+  /api/v1/iam/sso/connections/{id}:
+    patch:
+      summary: Patch SSO connection placeholder
+      operationId: patchSsoConnection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: SSO connection patched
+        "404":
+          description: Not found
+  /api/v1/iam/fabric-identities:
+    get:
+      summary: List fabric identity bindings
+      operationId: listFabricIdentities
+      responses:
+        "200":
+          description: Fabric identity list
+  /api/v1/iam/fabric-identities/{id}/issue:
+    post:
+      summary: Issue fabric identity placeholder
+      operationId: issueFabricIdentity
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Fabric identity issued
+        "404":
+          description: Not found
+  /api/v1/iam/fabric-identities/{id}/revoke:
+    post:
+      summary: Revoke fabric identity placeholder
+      operationId: revokeFabricIdentity
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Fabric identity revoked
+        "404":
+          description: Not found
+  /api/v1/iam/certificates:
+    get:
+      summary: List certificates
+      operationId: listCertificates
+      responses:
+        "200":
+          description: Certificate list
+  /api/v1/iam/certificates/{id}/revoke:
+    post:
+      summary: Revoke certificate placeholder
+      operationId: revokeCertificate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Certificate revoked
         "404":
           description: Not found
   /api/v1/iam/connectors:

@@ -142,3 +142,4 @@
 - `BATCH-079`（`IAM-001`, `IAM-002`, `IAM-003`, `IAM-004`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
 - `BATCH-080`（`IAM-005`, `IAM-006`, `IAM-007`, `IAM-008`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
 - `BATCH-081`（`IAM-009`, `IAM-010`, `IAM-011`, `IAM-012`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。
+- `BATCH-082`（`IAM-013`, `IAM-014`, `IAM-015`, `IAM-016`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项（`TODO-PROC-BIL-001` 继续保持冻结）。

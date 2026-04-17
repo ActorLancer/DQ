@@ -13,6 +13,12 @@ pub enum IamPermission {
     MfaRead,
     MfaWrite,
     AccessPolicyRead,
+    SsoRead,
+    SsoWrite,
+    FabricRead,
+    FabricWrite,
+    SessionWrite,
+    RoleChangeWrite,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +63,12 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::MfaRead,
                     IamPermission::MfaWrite,
                     IamPermission::AccessPolicyRead,
+                    IamPermission::SsoRead,
+                    IamPermission::SsoWrite,
+                    IamPermission::FabricRead,
+                    IamPermission::FabricWrite,
+                    IamPermission::SessionWrite,
+                    IamPermission::RoleChangeWrite,
                 ]),
             },
             RoleSeed {
@@ -68,6 +80,8 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::SessionRead,
                     IamPermission::StepUpRead,
                     IamPermission::MfaRead,
+                    IamPermission::SsoRead,
+                    IamPermission::FabricRead,
                 ]),
             },
             RoleSeed {
@@ -84,6 +98,12 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::MfaRead,
                     IamPermission::MfaWrite,
                     IamPermission::AccessPolicyRead,
+                    IamPermission::SsoRead,
+                    IamPermission::SsoWrite,
+                    IamPermission::FabricRead,
+                    IamPermission::FabricWrite,
+                    IamPermission::SessionWrite,
+                    IamPermission::RoleChangeWrite,
                 ]),
             },
             RoleSeed {
@@ -100,6 +120,8 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::SessionRead,
                     IamPermission::StepUpRead,
                     IamPermission::AccessPolicyRead,
+                    IamPermission::SsoRead,
+                    IamPermission::FabricRead,
                 ]),
             },
             RoleSeed {
@@ -178,5 +200,13 @@ mod tests {
         assert!(high_risk_action_requires_step_up(
             HighRiskAction::PermissionChange
         ));
+    }
+
+    #[test]
+    fn role_matrix_for_sso_and_fabric_permissions() {
+        assert!(is_allowed("tenant_admin", IamPermission::SsoWrite));
+        assert!(is_allowed("platform_admin", IamPermission::FabricWrite));
+        assert!(is_allowed("platform_auditor", IamPermission::FabricRead));
+        assert!(!is_allowed("developer", IamPermission::SsoWrite));
     }
 }
