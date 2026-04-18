@@ -1,11 +1,11 @@
 use crate::modules::order::dto::{
     CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData, CreateTradePreRequestRequest,
-    FreezeOrderPriceSnapshotResponse, FreezeOrderPriceSnapshotResponseData,
+    FreezeOrderPriceSnapshotResponse, FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
     TradePreRequestResponse, TradePreRequestResponseData,
 };
 use crate::modules::order::repo::{
     create_order_with_snapshot, find_order_by_idempotency, freeze_order_price_snapshot,
-    insert_trade_pre_request, load_trade_pre_request, write_trade_audit_event,
+    insert_trade_pre_request, load_order_detail, load_trade_pre_request, write_trade_audit_event,
 };
 use axum::Json;
 use axum::extract::Path;
@@ -68,6 +68,54 @@ pub async fn create_order_api(
         "order created"
     );
     Ok(ApiResponse::ok(CreateOrderResponse { data: created }))
+}
+
+pub async fn get_order_detail_api(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+) -> Result<Json<ApiResponse<GetOrderDetailResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, TradePermission::ReadOrder, "order read")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let Some(order) = load_order_detail(&client, &order_id).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+    enforce_order_read_scope(&headers, &order.buyer_org_id, &order.seller_org_id)?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    write_trade_audit_event(
+        &client,
+        "order",
+        &order.order_id,
+        &actor_role,
+        "trade.order.read",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    info!(
+        action = "trade.order.read",
+        order_id = %order.order_id,
+        current_state = %order.current_state,
+        payment_status = %order.payment_status,
+        "order detail queried"
+    );
+
+    Ok(ApiResponse::ok(GetOrderDetailResponse { data: order }))
 }
 
 pub async fn create_trade_pre_request(
@@ -216,6 +264,7 @@ pub async fn freeze_order_price_snapshot_api(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TradePermission {
     CreateOrder,
+    ReadOrder,
     CreatePreRequest,
     ReadPreRequest,
 }
@@ -225,6 +274,16 @@ fn is_allowed(role: &str, permission: TradePermission) -> bool {
         TradePermission::CreateOrder => matches!(
             role,
             "buyer_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
+        ),
+        TradePermission::ReadOrder => matches!(
+            role,
+            "buyer_operator"
+                | "seller_operator"
+                | "tenant_admin"
+                | "auditor"
+                | "platform_admin"
+                | "platform_audit_security"
+                | "platform_risk_settlement"
         ),
         TradePermission::CreatePreRequest => matches!(role, "buyer_operator" | "tenant_admin"),
         TradePermission::ReadPreRequest => matches!(
@@ -313,6 +372,38 @@ fn enforce_order_create_scope(
         Json(ErrorResponse {
             code: ErrorCode::IamUnauthorized.as_str().to_string(),
             message: "order create is forbidden for tenant scope".to_string(),
+            request_id: header(headers, "x-request-id"),
+        }),
+    ))
+}
+
+fn enforce_order_read_scope(
+    headers: &HeaderMap,
+    buyer_org_id: &str,
+    seller_org_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let role = header(headers, "x-role").unwrap_or_default();
+    if role.starts_with("platform_") {
+        return Ok(());
+    }
+    let tenant_id = header(headers, "x-tenant-id").ok_or_else(|| {
+        (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: "order read requires x-tenant-id".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        )
+    })?;
+    if tenant_id == buyer_org_id || tenant_id == seller_org_id {
+        return Ok(());
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            message: "order read is forbidden for tenant scope".to_string(),
             request_id: header(headers, "x-request-id"),
         }),
     ))

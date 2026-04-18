@@ -30,6 +30,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateOrderResponse'
+  /api/v1/orders/{id}:
+    get:
+      summary: Get order detail with layered status fields
+      operationId: getOrderDetail
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order detail found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderDetailResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -224,6 +243,77 @@ components:
         price_snapshot:
           $ref: '#/components/schemas/OrderPriceSnapshot'
         created_at:
+          type: string
+          format: date-time
+    GetOrderDetailResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/GetOrderDetailResponseData'
+    GetOrderDetailResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          buyer_org_id,
+          seller_org_id,
+          product_id,
+          sku_id,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          amount,
+          currency_code,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        buyer_org_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        price_snapshot:
+          $ref: '#/components/schemas/OrderPriceSnapshot'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
     TradePreRequestResponse:
