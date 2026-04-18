@@ -6,6 +6,6 @@ pub mod domain;
 pub mod handlers;
 pub mod models;
 pub mod service;
-pub mod webhook;
 #[cfg(test)]
 mod tests;
+pub mod webhook;

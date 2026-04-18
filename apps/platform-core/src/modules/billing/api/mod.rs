@@ -2,8 +2,8 @@ use crate::modules::billing::handlers::{
     cancel_payment_intent, create_payment_intent, get_billing_policies, get_payment_intent,
     get_payout_preferences, handle_payment_webhook, lock_order_payment,
 };
-use axum::routing::{get, post};
 use axum::Router;
+use axum::routing::{get, post};
 
 pub fn router() -> Router {
     Router::new()
@@ -24,4 +24,3 @@ pub fn router() -> Router {
         )
         .route("/api/v1/orders/{id}/lock", post(lock_order_payment))
 }
-

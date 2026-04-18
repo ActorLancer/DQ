@@ -9,11 +9,12 @@ mod template_policy_db;
 
 #[cfg(test)]
 mod tests {
-    use super::super::api::router;
     use super::super::domain::{
         STANDARD_SKU_TYPES, default_trade_mode_for_sku_type, is_standard_sku_type,
         is_trade_mode_compatible_with_sku,
     };
+    use super::super::router as catalog_router;
+    use super::super::router::router;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
@@ -91,6 +92,33 @@ mod tests {
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn api_router_wrapper_matches_catalog_router() {
+        let app_from_api = router();
+        let app_from_catalog_router = catalog_router::router();
+
+        let req1 = Request::builder()
+            .method("GET")
+            .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
+            .header("x-role", "developer")
+            .body(Body::empty())
+            .expect("request");
+        let resp1 = app_from_api.oneshot(req1).await.expect("response");
+
+        let req2 = Request::builder()
+            .method("GET")
+            .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
+            .header("x-role", "developer")
+            .body(Body::empty())
+            .expect("request");
+        let resp2 = app_from_catalog_router
+            .oneshot(req2)
+            .await
+            .expect("response");
+
+        assert_eq!(resp1.status(), resp2.status());
     }
 
     #[tokio::test]
