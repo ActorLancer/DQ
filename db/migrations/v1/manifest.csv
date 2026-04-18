@@ -21,3 +21,4 @@ version,up_sql,down_sql
 067,docs/数据库设计/V1/upgrade/067_trade_chain_monitoring.sql,docs/数据库设计/V1/downgrade/067_trade_chain_monitoring.sql
 068,docs/数据库设计/V1/upgrade/068_trade_chain_monitoring_authz.sql,docs/数据库设计/V1/downgrade/068_trade_chain_monitoring_authz.sql
 070,docs/数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql,docs/数据库设计/V1/downgrade/070_seed_role_permissions_v1.sql
+071,docs/数据库设计/V1/upgrade/071_trade_order_layered_status.sql,docs/数据库设计/V1/downgrade/071_trade_order_layered_status.sql

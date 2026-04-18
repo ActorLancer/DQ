@@ -1,3 +1,4 @@
+use crate::modules::order::domain::derive_closed_layered_status_by_reason;
 use crate::modules::order::dto::CancelOrderResponseData;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
@@ -80,13 +81,21 @@ pub async fn cancel_order_with_state_machine(
             "UPDATE trade.order_main
              SET status = 'closed',
                  payment_status = $2,
-                 last_reason_code = $3,
+                 delivery_status = $3,
+                 acceptance_status = $4,
+                 settlement_status = $5,
+                 dispute_status = $6,
+                 last_reason_code = $7,
                  closed_at = now()
              WHERE order_id = $1::text::uuid
              RETURNING to_char(closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
             &[
                 &order_id,
                 &transition.target_payment_status,
+                &transition.layered_status.delivery_status,
+                &transition.layered_status.acceptance_status,
+                &transition.layered_status.settlement_status,
+                &transition.layered_status.dispute_status,
                 &transition.reason_code,
             ],
         )
@@ -121,6 +130,7 @@ pub async fn cancel_order_with_state_machine(
 
 struct CancelTransition {
     target_payment_status: String,
+    layered_status: crate::modules::order::domain::LayeredOrderStatus,
     refund_branch: &'static str,
     refund_required: bool,
     reason_code: &'static str,
@@ -130,6 +140,7 @@ fn derive_cancel_transition(status: &str, payment_status: &str) -> Option<Cancel
     match status {
         "created" => Some(CancelTransition {
             target_payment_status: payment_status.to_string(),
+            layered_status: derive_closed_layered_status_by_reason("order_cancel_before_lock"),
             refund_branch: "no_refund",
             refund_required: false,
             reason_code: "order_cancel_before_lock",
@@ -138,6 +149,9 @@ fn derive_cancel_transition(status: &str, payment_status: &str) -> Option<Cancel
             if payment_status == "paid" {
                 Some(CancelTransition {
                     target_payment_status: "refund_pending".to_string(),
+                    layered_status: derive_closed_layered_status_by_reason(
+                        "order_cancel_refund_required_after_lock",
+                    ),
                     refund_branch: "refund_required",
                     refund_required: true,
                     reason_code: "order_cancel_refund_required_after_lock",
@@ -145,6 +159,9 @@ fn derive_cancel_transition(status: &str, payment_status: &str) -> Option<Cancel
             } else {
                 Some(CancelTransition {
                     target_payment_status: payment_status.to_string(),
+                    layered_status: derive_closed_layered_status_by_reason(
+                        "order_cancel_before_payment_success",
+                    ),
                     refund_branch: "no_refund",
                     refund_required: false,
                     reason_code: "order_cancel_before_payment_success",
@@ -153,12 +170,18 @@ fn derive_cancel_transition(status: &str, payment_status: &str) -> Option<Cancel
         }
         "payment_failed_pending_resolution" => Some(CancelTransition {
             target_payment_status: "failed".to_string(),
+            layered_status: derive_closed_layered_status_by_reason(
+                "order_cancel_after_payment_failed",
+            ),
             refund_branch: "no_refund",
             refund_required: false,
             reason_code: "order_cancel_after_payment_failed",
         }),
         "payment_timeout_pending_compensation_cancel" => Some(CancelTransition {
             target_payment_status: "expired".to_string(),
+            layered_status: derive_closed_layered_status_by_reason(
+                "order_cancel_after_payment_timeout",
+            ),
             refund_branch: "no_refund",
             refund_required: false,
             reason_code: "order_cancel_after_payment_timeout",

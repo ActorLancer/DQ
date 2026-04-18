@@ -1,5 +1,6 @@
 use crate::modules::order::domain::{
-    OrderPriceSnapshot, SettlementTermsSnapshot, TaxTermsSnapshot, derive_settlement_basis,
+    OrderPriceSnapshot, SettlementTermsSnapshot, TaxTermsSnapshot, derive_layered_status,
+    derive_settlement_basis,
 };
 use crate::modules::order::dto::{CreateOrderRequest, CreateOrderResponseData};
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
@@ -83,6 +84,7 @@ pub async fn create_order_with_snapshot(
         "currency_code": ctx.currency_code,
         "captured_at": price_snapshot.captured_at
     });
+    let layered_status = derive_layered_status("created", "unpaid");
 
     let row = tx
         .query_one(
@@ -95,6 +97,10 @@ pub async fn create_order_with_snapshot(
                sku_id,
                status,
                payment_status,
+               delivery_status,
+               acceptance_status,
+               settlement_status,
+               dispute_status,
                payment_mode,
                amount,
                currency_code,
@@ -111,6 +117,10 @@ pub async fn create_order_with_snapshot(
                $6::text::uuid,
                'created',
                'unpaid',
+               $12,
+               $13,
+               $14,
+               $15,
                'online',
                $7::text::numeric,
                $8,
@@ -143,6 +153,10 @@ pub async fn create_order_with_snapshot(
                 &fee_preview_snapshot,
                 &price_snapshot_json,
                 &idempotency_key,
+                &layered_status.delivery_status,
+                &layered_status.acceptance_status,
+                &layered_status.settlement_status,
+                &layered_status.dispute_status,
             ],
         )
         .await

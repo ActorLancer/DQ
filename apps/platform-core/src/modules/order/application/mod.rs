@@ -1,4 +1,6 @@
-use crate::modules::order::domain::{PaymentResultKind, derive_target_state};
+use crate::modules::order::domain::{
+    PaymentResultKind, derive_layered_status, derive_target_state,
+};
 use axum::Json;
 use axum::http::StatusCode;
 use kernel::{ErrorCode, ErrorResponse};
@@ -39,19 +41,28 @@ pub async fn apply_payment_result_to_order(
         return Ok(None);
     };
 
+    let layered_status = derive_layered_status(next_order_status, next_payment_status);
     let _ = client
         .execute(
             "UPDATE trade.order_main
              SET
                status = $2,
                payment_status = $3,
-               last_reason_code = $4,
+               delivery_status = $4,
+               acceptance_status = $5,
+               settlement_status = $6,
+               dispute_status = $7,
+               last_reason_code = $8,
                updated_at = now()
              WHERE order_id = $1::text::uuid",
             &[
                 &order_id,
                 &next_order_status,
                 &next_payment_status,
+                &layered_status.delivery_status,
+                &layered_status.acceptance_status,
+                &layered_status.settlement_status,
+                &layered_status.dispute_status,
                 &reason_code,
             ],
         )

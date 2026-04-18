@@ -95,7 +95,7 @@ mod tests {
 
         let order_row = client
             .query_one(
-                "SELECT status, contract_id::text, last_reason_code
+                "SELECT status, contract_id::text, delivery_status, acceptance_status, settlement_status, dispute_status, last_reason_code
                  FROM trade.order_main
                  WHERE order_id = $1::text::uuid",
                 &[&seed.confirmable_order_id],
@@ -104,8 +104,12 @@ mod tests {
             .expect("query order");
         assert_eq!(order_row.get::<_, String>(0), "contract_effective");
         assert_eq!(order_row.get::<_, String>(1), contract_id);
+        assert_eq!(order_row.get::<_, String>(2), "pending_delivery");
+        assert_eq!(order_row.get::<_, String>(3), "not_started");
+        assert_eq!(order_row.get::<_, String>(4), "not_started");
+        assert_eq!(order_row.get::<_, String>(5), "none");
         assert_eq!(
-            order_row.get::<_, Option<String>>(2).as_deref(),
+            order_row.get::<_, Option<String>>(6).as_deref(),
             Some("TRADE-006")
         );
 

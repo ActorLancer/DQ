@@ -1,3 +1,4 @@
+use crate::modules::order::domain::derive_layered_status;
 use crate::modules::order::dto::{ConfirmOrderContractRequest, ConfirmOrderContractResponseData};
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
@@ -41,7 +42,7 @@ pub async fn confirm_order_contract(
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
-            "SELECT status
+            "SELECT status, payment_status
              FROM trade.order_main
              WHERE order_id = $1::text::uuid
              FOR UPDATE",
@@ -60,6 +61,7 @@ pub async fn confirm_order_contract(
         ));
     };
     let current_status: String = row.get(0);
+    let current_payment_status: String = row.get(1);
     if !matches!(
         current_status.as_str(),
         "created" | "contract_pending" | "contract_effective"
@@ -158,6 +160,7 @@ pub async fn confirm_order_contract(
     }
 
     let order_status = "contract_effective".to_string();
+    let layered_status = derive_layered_status(&order_status, &current_payment_status);
     tx.execute(
         "UPDATE trade.order_main
          SET contract_id = $2::text::uuid,
@@ -165,10 +168,21 @@ pub async fn confirm_order_contract(
                         WHEN status IN ('created', 'contract_pending') THEN 'contract_effective'
                         ELSE status
                       END,
+             delivery_status = $3,
+             acceptance_status = $4,
+             settlement_status = $5,
+             dispute_status = $6,
              last_reason_code = 'TRADE-006',
              updated_at = now()
          WHERE order_id = $1::text::uuid",
-        &[&order_id, &contract_id],
+        &[
+            &order_id,
+            &contract_id,
+            &layered_status.delivery_status,
+            &layered_status.acceptance_status,
+            &layered_status.settlement_status,
+            &layered_status.dispute_status,
+        ],
     )
     .await
     .map_err(map_db_error)?;

@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::super::super::api::router;
+    use super::super::super::application::apply_payment_result_to_order;
+    use super::super::super::domain::PaymentResultKind;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use serde_json::Value;
@@ -18,7 +20,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trade003_create_order_db_smoke() {
+    async fn trade007_state_machine_fields_db_smoke() {
         if std::env::var("TRADE_DB_SMOKE").ok().as_deref() != Some("1") {
             return;
         }
@@ -39,8 +41,8 @@ mod tests {
                 .as_millis()
         );
         let seed = seed_graph(&client, &suffix).await.expect("seed graph");
-        let request_id = format!("req-trade003-{suffix}");
-        let idempotency_key = format!("idem-trade003-{suffix}");
+        let request_id = format!("req-trade007-{suffix}");
+        let idempotency_key = format!("idem-trade007-{suffix}");
 
         let app = router();
         let response = app
@@ -66,7 +68,6 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::OK);
-
         let body = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("body");
@@ -75,61 +76,49 @@ mod tests {
             .as_str()
             .expect("order id")
             .to_string();
-        assert_eq!(
-            json["data"]["data"]["price_snapshot"]["product_id"].as_str(),
-            Some(seed.product_id.as_str())
-        );
-        assert_eq!(
-            json["data"]["data"]["price_snapshot"]["sku_id"].as_str(),
-            Some(seed.sku_id.as_str())
-        );
-        assert_eq!(json["data"]["data"]["status"].as_str(), Some("created"));
 
         let row = client
             .query_one(
-                "SELECT
-                   product_id::text,
-                   sku_id::text,
-                   buyer_org_id::text,
-                   seller_org_id::text,
-                   status,
-                   payment_status,
-                   delivery_status,
-                   acceptance_status,
-                   settlement_status,
-                   dispute_status,
-                   price_snapshot_json
+                "SELECT status, payment_status, delivery_status, acceptance_status, settlement_status, dispute_status
                  FROM trade.order_main
                  WHERE order_id = $1::text::uuid",
                 &[&order_id],
             )
             .await
-            .expect("query order");
-        let snapshot: Value = row.get(10);
-        assert_eq!(row.get::<_, String>(0), seed.product_id);
-        assert_eq!(row.get::<_, String>(1), seed.sku_id);
-        assert_eq!(row.get::<_, String>(2), seed.buyer_org_id);
-        assert_eq!(row.get::<_, String>(3), seed.seller_org_id);
-        assert_eq!(row.get::<_, String>(4), "created");
-        assert_eq!(row.get::<_, String>(5), "unpaid");
-        assert_eq!(row.get::<_, String>(6), "pending_delivery");
-        assert_eq!(row.get::<_, String>(7), "not_started");
-        assert_eq!(row.get::<_, String>(8), "not_started");
-        assert_eq!(row.get::<_, String>(9), "none");
-        assert_eq!(snapshot["billing_mode"].as_str(), Some("one_time"));
+            .expect("query created order");
+        assert_eq!(row.get::<_, String>(0), "created");
+        assert_eq!(row.get::<_, String>(1), "unpaid");
+        assert_eq!(row.get::<_, String>(2), "pending_delivery");
+        assert_eq!(row.get::<_, String>(3), "not_started");
+        assert_eq!(row.get::<_, String>(4), "not_started");
+        assert_eq!(row.get::<_, String>(5), "none");
 
-        let audit_count: i64 = client
+        let applied = apply_payment_result_to_order(
+            &client,
+            &order_id,
+            PaymentResultKind::Succeeded,
+            Some(&request_id),
+            Some("trace-trade007"),
+        )
+        .await
+        .expect("apply payment result");
+        assert_eq!(applied.as_deref(), Some("buyer_locked"));
+
+        let paid_row = client
             .query_one(
-                "SELECT COUNT(*)::bigint
-                 FROM audit.audit_event
-                 WHERE request_id = $1
-                   AND action_name = 'trade.order.create'",
-                &[&request_id],
+                "SELECT status, payment_status, delivery_status, acceptance_status, settlement_status, dispute_status
+                 FROM trade.order_main
+                 WHERE order_id = $1::text::uuid",
+                &[&order_id],
             )
             .await
-            .expect("query audit")
-            .get(0);
-        assert!(audit_count >= 1);
+            .expect("query paid order");
+        assert_eq!(paid_row.get::<_, String>(0), "buyer_locked");
+        assert_eq!(paid_row.get::<_, String>(1), "paid");
+        assert_eq!(paid_row.get::<_, String>(2), "pending_delivery");
+        assert_eq!(paid_row.get::<_, String>(3), "not_started");
+        assert_eq!(paid_row.get::<_, String>(4), "pending_settlement");
+        assert_eq!(paid_row.get::<_, String>(5), "none");
 
         cleanup_graph(&client, &seed, &order_id).await;
     }
@@ -143,7 +132,7 @@ mod tests {
                    $1::text, 'enterprise', 'active', '{}'::jsonb
                  )
                  RETURNING org_id::text",
-                &[&format!("trade003-buyer-{suffix}")],
+                &[&format!("trade007-buyer-{suffix}")],
             )
             .await?;
         let buyer_org_id: String = buyer_org.get(0);
@@ -156,7 +145,7 @@ mod tests {
                    $1::text, 'enterprise', 'active', '{}'::jsonb
                  )
                  RETURNING org_id::text",
-                &[&format!("trade003-seller-{suffix}")],
+                &[&format!("trade007-seller-{suffix}")],
             )
             .await?;
         let seller_org_id: String = seller_org.get(0);
@@ -171,8 +160,8 @@ mod tests {
                  RETURNING asset_id::text",
                 &[
                     &seller_org_id,
-                    &format!("trade003-asset-{suffix}"),
-                    &format!("trade003 asset desc {suffix}"),
+                    &format!("trade007-asset-{suffix}"),
+                    &format!("trade007 asset desc {suffix}"),
                 ],
             )
             .await?;
@@ -210,9 +199,9 @@ mod tests {
                     &asset_id,
                     &asset_version_id,
                     &seller_org_id,
-                    &format!("trade003-product-{suffix}"),
-                    &format!("trade003 product desc {suffix}"),
-                    &format!("trade003 search text {suffix}"),
+                    &format!("trade007-product-{suffix}"),
+                    &format!("trade007 product desc {suffix}"),
+                    &format!("trade007 search text {suffix}"),
                 ],
             )
             .await?;
@@ -226,7 +215,7 @@ mod tests {
                    $1::text::uuid, $2, 'FILE_STD', '份', 'one_time', 'manual_accept', 'manual_refund', 'active'
                  )
                  RETURNING sku_id::text",
-                &[&product_id, &format!("TRADE003-SKU-{suffix}")],
+                &[&product_id, &format!("TRADE007-SKU-{suffix}")],
             )
             .await?;
         let sku_id: String = sku.get(0);

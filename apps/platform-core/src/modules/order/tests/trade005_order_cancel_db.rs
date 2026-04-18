@@ -81,7 +81,7 @@ mod tests {
 
         let row = client
             .query_one(
-                "SELECT status, payment_status, last_reason_code
+                "SELECT status, payment_status, delivery_status, acceptance_status, settlement_status, dispute_status, last_reason_code
                  FROM trade.order_main
                  WHERE order_id = $1::text::uuid",
                 &[&seed.locked_order_id],
@@ -90,8 +90,12 @@ mod tests {
             .expect("query closed order");
         assert_eq!(row.get::<_, String>(0), "closed");
         assert_eq!(row.get::<_, String>(1), "refund_pending");
+        assert_eq!(row.get::<_, String>(2), "canceled");
+        assert_eq!(row.get::<_, String>(3), "canceled");
+        assert_eq!(row.get::<_, String>(4), "canceled");
+        assert_eq!(row.get::<_, String>(5), "none");
         assert_eq!(
-            row.get::<_, Option<String>>(2).as_deref(),
+            row.get::<_, Option<String>>(6).as_deref(),
             Some("order_cancel_refund_required_after_lock")
         );
 

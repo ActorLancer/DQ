@@ -4,6 +4,7 @@ mod trade003_create_order_db;
 mod trade004_order_detail_db;
 mod trade005_order_cancel_db;
 mod trade006_contract_confirm_db;
+mod trade007_state_machine_fields_db;
 
 #[cfg(test)]
 mod tests {
