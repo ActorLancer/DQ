@@ -1,3 +1,4 @@
+mod order_api_ppu_transition;
 mod order_api_sub_transition;
 mod order_cancel;
 mod order_contract_confirm;
@@ -8,6 +9,9 @@ mod order_read;
 mod pre_request;
 mod price_snapshot;
 
+pub use order_api_ppu_transition::{
+    ApiPpuTransitionRequest, ApiPpuTransitionResponse, ApiPpuTransitionResponseData,
+};
 pub use order_api_sub_transition::{
     ApiSubTransitionRequest, ApiSubTransitionResponse, ApiSubTransitionResponseData,
 };
