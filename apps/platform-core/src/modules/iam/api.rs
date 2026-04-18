@@ -1683,7 +1683,7 @@ async fn list_mfa_authenticators(
 ) -> Result<Json<ApiResponse<Vec<MfaAuthenticatorView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::MfaRead, "mfa authenticator read")?;
     let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
+    let (client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -1895,7 +1895,7 @@ async fn list_sso_connections(
 ) -> Result<Json<ApiResponse<Vec<SsoConnectionView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SsoRead, "sso connection read")?;
     let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
+    let (client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -1986,7 +1986,7 @@ async fn list_fabric_identities(
 ) -> Result<Json<ApiResponse<Vec<FabricIdentityView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::FabricRead, "fabric identity read")?;
     let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
+    let (client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -2118,7 +2118,7 @@ async fn list_certificates(
 ) -> Result<Json<ApiResponse<Vec<CertificateView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::FabricRead, "certificate read")?;
     let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
+    let (client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
