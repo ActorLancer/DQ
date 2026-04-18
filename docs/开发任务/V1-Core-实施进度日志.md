@@ -2922,22 +2922,9 @@
 - 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 继续由人工维护，本批未自动写入。
 
-### BATCH-107（计划中）
-
-- 状态：计划中
-- 当前任务编号：CAT-024
-- 当前批次目标：按冻结清单完成 Catalog/Listing/Review 全链路集成验证，覆盖商品创建、SKU 创建、质量报告、契约发布、提交审核、审核通过/驳回、冻结（含 step-up）并补齐 API 联调证据。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-106` 已通过，可继续执行。
-- 预计涉及文件：
-  - `apps/platform-core/src/modules/catalog/tests/mod.rs`
-  - `apps/platform-core/src/modules/catalog/tests/cat024_catalog_listing_review_db.rs`
-  - `docs/开发任务/V1-Core-实施进度日志.md`
-  - `docs/开发任务/V1-Core-TODO与预留清单.md`
-- 待人工审批结论：待审批
-
 ### BATCH-107（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-024
 - 当前批次目标：按冻结文档完成 Catalog/Listing/Review 集成验证：商品创建、SKU 创建、质量报告、契约发布、提交审核、审核通过/驳回、冻结（step-up）。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-106` 已通过，可执行。
@@ -2995,5 +2982,76 @@
 - 覆盖的任务清单条目：`CAT-024`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 按你的要求继续由你手工维护，本批未自动写入。
+
+### BATCH-108（计划中）
+
+- 状态：计划中
+- 当前任务编号：CAT-025
+- 当前批次目标：生成 `docs/02-openapi/catalog.yaml` 第一版并完成与 Catalog 当前实现的路径/方法一致性校验及 API 联调验证。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-107` 已通过，可继续执行。
+- 预计涉及文件：
+  - `docs/02-openapi/catalog.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 待人工审批结论：待审批
+
+### BATCH-108（待审批）
+
+- 状态：待审批
+- 当前任务编号：CAT-025
+- 当前批次目标：生成 `docs/02-openapi/catalog.yaml` 第一版并与当前 Catalog 实现完成一致性校验。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-107` 已通过，可继续执行。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `CAT-025` 交付物、DoD、acceptance、technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版任务解释，与 CSV 一致。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按固定流程执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持 V1 冻结边界，不扩展功能。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：先登记计划中，再补待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步批次记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：仅读规则，继续由人工维护。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对目录/商品聚合与流程基线。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 catalog 模块边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认 V1 接口冻结口径。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认审计/事件边界不变。
+  12. `docs/开发准备/统一错误码字典正式版.md`：维持统一错误码约束。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：补齐文档与接口联调验证证据。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按既有文档目录落盘 OpenAPI。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调基于本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：用环境变量启动服务验证。
+  17. `docs/开发准备/技术选型正式版.md`：沿用 Rust + PostgreSQL + Axum + Kafka。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体，不新增架构动作。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L200`：OpenAPI 覆盖目录与商品聚合相关对象。
+  2. `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：OpenAPI 路径与请求头/核心字段口径一致。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L86`：接口覆盖创建、提交、审核、冻结等流程节点。
+- 已实现功能：
+  1. 新增交付文件 `docs/02-openapi/catalog.yaml`（由 `packages/openapi/catalog.yaml` 同步生成第一版）。
+  2. 完成 OpenAPI 与实现路由路径/方法一致性校验（`apps/platform-core/src/modules/catalog/router.rs` 对比 `docs/02-openapi/catalog.yaml`）。
+  3. 完成手工 API 联调：`GET /api/v1/catalog/standard-scenarios`，返回 5 条标准场景并验证审计落库。
+- 涉及文件：
+  - `docs/02-openapi/catalog.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cmp -s docs/02-openapi/catalog.yaml packages/openapi/catalog.yaml`
+  2. OpenAPI vs router 一致性脚本校验（路径/方法缺失与漂移检查）。
+  3. `cargo fmt --all`
+  4. `cargo test -p platform-core`
+  5. `APP_PORT=18080 ... cargo run -p platform-core`
+  6. `curl -X GET /api/v1/catalog/standard-scenarios` + `psql` 审计计数核验。
+- 验证结果：
+  - `catalog_openapi_synced=yes`（文档与包内规范一致）。
+  - 路径/方法一致性脚本结果：`missing_paths=[] extra_paths=[] method_mismatch=[]`。
+  - `cargo test -p platform-core`：通过（`82 passed, 0 failed, 1 ignored`）。
+  - `curl` 联调：`scenario_count=5`、`scenario_codes=S1,S2,S3,S4,S5`、`audit_count=1`（request_id=`req-cat025-openapi-1776509305`）。
+- 覆盖的冻结文档条目：
+  - `docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5. V1 接口）
+  - `docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）
+- 覆盖的任务清单条目：`CAT-025`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`audit.audit_event` 为 append-only，联调验证后未执行审计数据删除；`V1-Core-人工审批记录.md` 继续由你手工维护。

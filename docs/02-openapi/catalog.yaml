@@ -1,0 +1,2704 @@
+openapi: 3.1.0
+info:
+  title: Catalog API
+  version: v1
+paths:
+  /api/v1/catalog/standard-scenarios:
+    get:
+      summary: List frozen standard scenario templates
+      operationId: getStandardScenarioTemplates
+      responses:
+        "200":
+          description: Standard scenario templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StandardScenarioTemplate"
+  /api/v1/products:
+    post:
+      summary: Create product draft
+      operationId: createProductDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDataProductRequest"
+      responses:
+        "200":
+          description: Product draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataProduct"
+  /api/v1/products/{id}:
+    get:
+      summary: Get product detail
+      operationId: getProductDetail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+    patch:
+      summary: Patch product draft
+      operationId: patchProductDraft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDataProductRequest"
+      responses:
+        "200":
+          description: Product draft updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataProduct"
+  /api/v1/sellers/{orgId}/profile:
+    get:
+      summary: Get seller profile
+      operationId: getSellerProfile
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Seller profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SellerProfile"
+  /api/v1/products/{id}/submit:
+    post:
+      summary: Submit product for review
+      operationId: submitProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitProductRequest"
+      responses:
+        "200":
+          description: Product submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSubmit"
+  /api/v1/products/{id}/bind-template:
+    post:
+      summary: Bind default template to product and existing skus
+      operationId: bindProductTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BindTemplateRequest"
+      responses:
+        "200":
+          description: Product template bound
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBinding"
+  /api/v1/products/{id}/suspend:
+    post:
+      summary: Suspend product by delist or freeze
+      operationId: suspendProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: x-step-up-challenge-id
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Required when `suspend_mode=freeze`.
+        - name: x-user-id
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Required when `suspend_mode=freeze`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuspendProductRequest"
+      responses:
+        "200":
+          description: Product status transitioned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductLifecycle"
+  /api/v1/products/{id}/metadata-profile:
+    put:
+      summary: Upsert metadata profile for product
+      operationId: putProductMetadataProfile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutProductMetadataProfileRequest"
+      responses:
+        "200":
+          description: Product metadata profile upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductMetadataProfile"
+  /api/v1/products/{id}/skus:
+    post:
+      summary: Create SKU for draft product
+      operationId: createProductSku
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductSkuRequest"
+      responses:
+        "200":
+          description: SKU created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSku"
+  /api/v1/review/subjects/{id}:
+    post:
+      summary: Subject review decision
+      operationId: reviewSubject
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionRequest"
+      responses:
+        "200":
+          description: Subject review recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewDecision"
+  /api/v1/review/products/{id}:
+    post:
+      summary: Product review decision
+      operationId: reviewProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionRequest"
+      responses:
+        "200":
+          description: Product reviewed and status transitioned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSubmit"
+  /api/v1/review/compliance/{id}:
+    post:
+      summary: Compliance review decision
+      operationId: reviewCompliance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionRequest"
+      responses:
+        "200":
+          description: Compliance review recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewDecision"
+  /api/v1/skus/{id}:
+    patch:
+      summary: Patch draft SKU
+      operationId: patchProductSku
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchProductSkuRequest"
+      responses:
+        "200":
+          description: SKU updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSku"
+  /api/v1/skus/{id}/bind-template:
+    post:
+      summary: Bind template for sku
+      operationId: bindSkuTemplate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BindTemplateRequest"
+      responses:
+        "200":
+          description: SKU template bound
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateBinding"
+  /api/v1/policies/{id}:
+    patch:
+      summary: Patch usage policy
+      operationId: patchUsagePolicy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchUsagePolicyRequest"
+      responses:
+        "200":
+          description: Usage policy patched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsagePolicy"
+  /api/v1/skus/{id}/data-contracts:
+    post:
+      summary: Create data contract for SKU
+      operationId: createDataContract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDataContractRequest"
+      responses:
+        "200":
+          description: Data contract created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataContract"
+  /api/v1/skus/{id}/data-contracts/{contractId}:
+    get:
+      summary: Get data contract by id for SKU
+      operationId: getDataContract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: contractId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Data contract detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataContract"
+  /api/v1/assets/{assetId}/raw-ingest-batches:
+    post:
+      summary: Create raw ingest batch
+      operationId: createRawIngestBatch
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRawIngestBatchRequest"
+      responses:
+        "200":
+          description: Raw ingest batch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RawIngestBatch"
+  /api/v1/raw-ingest-batches/{id}/manifests:
+    post:
+      summary: Create raw object manifest
+      operationId: createRawObjectManifest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRawObjectManifestRequest"
+      responses:
+        "200":
+          description: Raw object manifest created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RawObjectManifest"
+  /api/v1/raw-object-manifests/{id}/detect-format:
+    post:
+      summary: Detect format for raw object manifest
+      operationId: detectRawObjectFormat
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFormatDetectionRequest"
+      responses:
+        "200":
+          description: Format detection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormatDetectionResult"
+  /api/v1/raw-object-manifests/{id}/extraction-jobs:
+    post:
+      summary: Create extraction job for raw object manifest
+      operationId: createExtractionJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExtractionJobRequest"
+      responses:
+        "200":
+          description: Extraction job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractionJob"
+  /api/v1/assets/{versionId}/preview-artifacts:
+    post:
+      summary: Create preview artifact for asset version
+      operationId: createPreviewArtifact
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePreviewArtifactRequest"
+      responses:
+        "200":
+          description: Preview artifact created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewArtifact"
+  /api/v1/assets/{versionId}/objects:
+    post:
+      summary: Create asset object for asset version
+      operationId: createAssetObject
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetObjectRequest"
+      responses:
+        "200":
+          description: Asset object created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetObject"
+  /api/v1/assets/{assetId}/release-policy:
+    patch:
+      summary: Patch release policy for asset
+      operationId: patchAssetReleasePolicy
+      parameters:
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchAssetReleasePolicyRequest"
+      responses:
+        "200":
+          description: Asset release policy patched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetReleasePolicy"
+  /api/v1/assets/{versionId}/field-definitions:
+    post:
+      summary: Create field definition for asset version
+      operationId: createAssetFieldDefinition
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetFieldDefinitionRequest"
+      responses:
+        "200":
+          description: Asset field definition created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetFieldDefinition"
+  /api/v1/assets/{versionId}/quality-reports:
+    post:
+      summary: Create quality report for asset version
+      operationId: createAssetQualityReport
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetQualityReportRequest"
+      responses:
+        "200":
+          description: Asset quality report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetQualityReport"
+  /api/v1/assets/{versionId}/processing-jobs:
+    post:
+      summary: Create processing job for asset version
+      operationId: createAssetProcessingJob
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetProcessingJobRequest"
+      responses:
+        "200":
+          description: Asset processing job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetProcessingJob"
+components:
+  schemas:
+    CreateDataProductRequest:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        product_type:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price_mode:
+          type: string
+          nullable: true
+        price:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+        delivery_type:
+          type: string
+        allowed_usage:
+          type: array
+          items:
+            type: string
+        searchable_text:
+          type: string
+          nullable: true
+        subtitle:
+          type: string
+          nullable: true
+        industry:
+          type: string
+          nullable: true
+        use_cases:
+          type: array
+          items:
+            type: string
+        data_classification:
+          type: string
+          nullable: true
+        quality_score:
+          type: string
+          nullable: true
+      required:
+        - asset_id
+        - asset_version_id
+        - seller_org_id
+        - title
+        - category
+        - product_type
+        - delivery_type
+    PatchDataProductRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        product_type:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        price_mode:
+          type: string
+          nullable: true
+        price:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+        delivery_type:
+          type: string
+          nullable: true
+        searchable_text:
+          type: string
+          nullable: true
+        subtitle:
+          type: string
+          nullable: true
+        industry:
+          type: string
+          nullable: true
+        use_cases:
+          type: array
+          items:
+            type: string
+          nullable: true
+        data_classification:
+          type: string
+          nullable: true
+        quality_score:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+    SubmitProductRequest:
+      type: object
+      properties:
+        submission_note:
+          type: string
+          nullable: true
+    SuspendProductRequest:
+      type: object
+      properties:
+        suspend_mode:
+          type: string
+          enum:
+            - delist
+            - freeze
+        reason:
+          type: string
+          nullable: true
+      required:
+        - suspend_mode
+    ReviewDecisionRequest:
+      type: object
+      properties:
+        action_name:
+          type: string
+          enum:
+            - approve
+            - reject
+        action_reason:
+          type: string
+          nullable: true
+      required:
+        - action_name
+    PutProductMetadataProfileRequest:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata_version_no:
+          type: integer
+          nullable: true
+        business_description_json:
+          type: object
+          additionalProperties: true
+        data_content_json:
+          type: object
+          additionalProperties: true
+        structure_description_json:
+          type: object
+          additionalProperties: true
+        quality_description_json:
+          type: object
+          additionalProperties: true
+        compliance_description_json:
+          type: object
+          additionalProperties: true
+        delivery_description_json:
+          type: object
+          additionalProperties: true
+        version_description_json:
+          type: object
+          additionalProperties: true
+        authorization_description_json:
+          type: object
+          additionalProperties: true
+        responsibility_description_json:
+          type: object
+          additionalProperties: true
+        processing_overview_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    ProductMetadataProfile:
+      type: object
+      properties:
+        product_metadata_profile_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        metadata_version_no:
+          type: integer
+        business_description_json:
+          type: object
+          additionalProperties: true
+        data_content_json:
+          type: object
+          additionalProperties: true
+        structure_description_json:
+          type: object
+          additionalProperties: true
+        quality_description_json:
+          type: object
+          additionalProperties: true
+        compliance_description_json:
+          type: object
+          additionalProperties: true
+        delivery_description_json:
+          type: object
+          additionalProperties: true
+        version_description_json:
+          type: object
+          additionalProperties: true
+        authorization_description_json:
+          type: object
+          additionalProperties: true
+        responsibility_description_json:
+          type: object
+          additionalProperties: true
+        processing_overview_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - product_metadata_profile_id
+        - product_id
+        - asset_version_id
+        - metadata_version_no
+        - business_description_json
+        - data_content_json
+        - structure_description_json
+        - quality_description_json
+        - compliance_description_json
+        - delivery_description_json
+        - version_description_json
+        - authorization_description_json
+        - responsibility_description_json
+        - processing_overview_json
+        - status
+        - metadata
+        - created_at
+        - updated_at
+    CreateProductSkuRequest:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        sku_code:
+          type: string
+        sku_type:
+          type: string
+        unit_name:
+          type: string
+          nullable: true
+        billing_mode:
+          type: string
+        trade_mode:
+          type: string
+          nullable: true
+        delivery_object_kind:
+          type: string
+          nullable: true
+        subscription_cadence:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        result_form:
+          type: string
+          nullable: true
+        template_id:
+          type: string
+          format: uuid
+          nullable: true
+        acceptance_mode:
+          type: string
+        refund_mode:
+          type: string
+      required:
+        - sku_code
+        - sku_type
+        - billing_mode
+        - acceptance_mode
+        - refund_mode
+    PatchProductSkuRequest:
+      type: object
+      properties:
+        sku_code:
+          type: string
+          nullable: true
+        sku_type:
+          type: string
+          nullable: true
+        unit_name:
+          type: string
+          nullable: true
+        billing_mode:
+          type: string
+          nullable: true
+        trade_mode:
+          type: string
+          nullable: true
+        delivery_object_kind:
+          type: string
+          nullable: true
+        subscription_cadence:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        result_form:
+          type: string
+          nullable: true
+        template_id:
+          type: string
+          format: uuid
+          nullable: true
+        acceptance_mode:
+          type: string
+          nullable: true
+        refund_mode:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+    BindTemplateRequest:
+      type: object
+      properties:
+        template_id:
+          type: string
+          format: uuid
+        binding_type:
+          type: string
+          nullable: true
+          enum:
+            - contract
+            - acceptance
+            - refund
+            - license
+      required:
+        - template_id
+    TemplateBinding:
+      type: object
+      properties:
+        binding_scope:
+          type: string
+          enum:
+            - product
+            - sku
+        target_id:
+          type: string
+          format: uuid
+        template_id:
+          type: string
+          format: uuid
+        binding_type:
+          type: string
+        status:
+          type: string
+        bound_sku_count:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - binding_scope
+        - target_id
+        - template_id
+        - binding_type
+        - status
+        - bound_sku_count
+        - updated_at
+    PatchUsagePolicyRequest:
+      type: object
+      properties:
+        policy_name:
+          type: string
+          nullable: true
+        subject_constraints:
+          type: object
+          additionalProperties: true
+        usage_constraints:
+          type: object
+          additionalProperties: true
+        time_constraints:
+          type: object
+          additionalProperties: true
+        region_constraints:
+          type: object
+          additionalProperties: true
+        output_constraints:
+          type: object
+          additionalProperties: true
+        exportable:
+          type: boolean
+          nullable: true
+        status:
+          type: string
+          nullable: true
+    UsagePolicy:
+      type: object
+      properties:
+        policy_id:
+          type: string
+          format: uuid
+        owner_org_id:
+          type: string
+          format: uuid
+        policy_name:
+          type: string
+        stage_from:
+          type: string
+        subject_constraints:
+          type: object
+          additionalProperties: true
+        usage_constraints:
+          type: object
+          additionalProperties: true
+        time_constraints:
+          type: object
+          additionalProperties: true
+        region_constraints:
+          type: object
+          additionalProperties: true
+        output_constraints:
+          type: object
+          additionalProperties: true
+        exportable:
+          type: boolean
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - policy_id
+        - owner_org_id
+        - policy_name
+        - stage_from
+        - subject_constraints
+        - usage_constraints
+        - time_constraints
+        - region_constraints
+        - output_constraints
+        - exportable
+        - status
+        - created_at
+        - updated_at
+    CreateRawIngestBatchRequest:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+          nullable: true
+        owner_org_id:
+          type: string
+          format: uuid
+        ingest_source_type:
+          type: string
+        declared_object_family:
+          type: string
+          nullable: true
+        source_declared_rights_json:
+          type: object
+          additionalProperties: true
+        ingest_policy_json:
+          type: object
+          additionalProperties: true
+      required:
+        - owner_org_id
+        - ingest_source_type
+    RawIngestBatch:
+      type: object
+      properties:
+        raw_ingest_batch_id:
+          type: string
+          format: uuid
+        owner_org_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+          nullable: true
+        ingest_source_type:
+          type: string
+        declared_object_family:
+          type: string
+          nullable: true
+        source_declared_rights_json:
+          type: object
+          additionalProperties: true
+        ingest_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - raw_ingest_batch_id
+        - owner_org_id
+        - ingest_source_type
+        - source_declared_rights_json
+        - ingest_policy_json
+        - status
+        - created_at
+        - updated_at
+    CreateRawObjectManifestRequest:
+      type: object
+      properties:
+        raw_ingest_batch_id:
+          type: string
+          format: uuid
+          nullable: true
+        storage_binding_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_name:
+          type: string
+        object_uri:
+          type: string
+          nullable: true
+        mime_type:
+          type: string
+          nullable: true
+        container_type:
+          type: string
+          nullable: true
+        byte_size:
+          type: integer
+          format: int64
+          nullable: true
+        object_hash:
+          type: string
+          nullable: true
+        source_time_range_json:
+          type: object
+          additionalProperties: true
+        manifest_json:
+          type: object
+          additionalProperties: true
+      required:
+        - object_name
+    RawObjectManifest:
+      type: object
+      properties:
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+        raw_ingest_batch_id:
+          type: string
+          format: uuid
+        storage_binding_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_name:
+          type: string
+        object_uri:
+          type: string
+          nullable: true
+        mime_type:
+          type: string
+          nullable: true
+        container_type:
+          type: string
+          nullable: true
+        byte_size:
+          type: integer
+          format: int64
+          nullable: true
+        object_hash:
+          type: string
+          nullable: true
+        source_time_range_json:
+          type: object
+          additionalProperties: true
+        manifest_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - raw_object_manifest_id
+        - raw_ingest_batch_id
+        - object_name
+        - source_time_range_json
+        - manifest_json
+        - status
+        - created_at
+        - updated_at
+    CreateFormatDetectionRequest:
+      type: object
+      properties:
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        detected_object_family:
+          type: string
+        detected_format:
+          type: string
+          nullable: true
+        schema_hint_json:
+          type: object
+          additionalProperties: true
+        recommended_processing_path:
+          type: string
+          nullable: true
+        classification_confidence:
+          type: number
+          format: double
+          nullable: true
+        status:
+          type: string
+          nullable: true
+      required:
+        - detected_object_family
+    FormatDetectionResult:
+      type: object
+      properties:
+        format_detection_result_id:
+          type: string
+          format: uuid
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+        detected_object_family:
+          type: string
+        detected_format:
+          type: string
+          nullable: true
+        schema_hint_json:
+          type: object
+          additionalProperties: true
+        recommended_processing_path:
+          type: string
+          nullable: true
+        classification_confidence:
+          type: number
+          format: double
+          nullable: true
+        detected_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - format_detection_result_id
+        - raw_object_manifest_id
+        - detected_object_family
+        - schema_hint_json
+        - status
+        - created_at
+    CreateExtractionJobRequest:
+      type: object
+      properties:
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        job_type:
+          type: string
+        job_config_json:
+          type: object
+          additionalProperties: true
+        result_summary_json:
+          type: object
+          additionalProperties: true
+        output_uri:
+          type: string
+          nullable: true
+        output_hash:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+      required:
+        - job_type
+    ExtractionJob:
+      type: object
+      properties:
+        extraction_job_id:
+          type: string
+          format: uuid
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        job_type:
+          type: string
+        job_config_json:
+          type: object
+          additionalProperties: true
+        result_summary_json:
+          type: object
+          additionalProperties: true
+        output_uri:
+          type: string
+          nullable: true
+        output_hash:
+          type: string
+          nullable: true
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - extraction_job_id
+        - raw_object_manifest_id
+        - job_type
+        - job_config_json
+        - result_summary_json
+        - status
+        - created_at
+        - updated_at
+    CreatePreviewArtifactRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        preview_type:
+          type: string
+        preview_uri:
+          type: string
+          nullable: true
+        preview_hash:
+          type: string
+          nullable: true
+        preview_payload:
+          type: object
+          additionalProperties: true
+        preview_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+      required:
+        - preview_type
+    PreviewArtifact:
+      type: object
+      properties:
+        preview_artifact_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        raw_object_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        preview_type:
+          type: string
+        preview_uri:
+          type: string
+          nullable: true
+        preview_hash:
+          type: string
+          nullable: true
+        preview_payload:
+          type: object
+          additionalProperties: true
+        preview_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - preview_artifact_id
+        - asset_version_id
+        - preview_type
+        - preview_policy_json
+        - status
+        - created_at
+        - updated_at
+    CreateAssetObjectRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_kind:
+          type: string
+          enum:
+            - raw_object
+            - preview_object
+            - delivery_object
+            - report_object
+            - result_object
+        object_name:
+          type: string
+        object_locator:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        schema_json:
+          type: object
+          additionalProperties: true
+        output_schema_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        access_constraints:
+          type: object
+          additionalProperties: true
+        object_uri:
+          type: string
+        storage_type:
+          type: string
+          nullable: true
+        storage_zone:
+          type: string
+          nullable: true
+        access_path_type:
+          type: string
+          nullable: true
+        object_hash:
+          type: string
+          nullable: true
+        encryption_algo:
+          type: string
+          nullable: true
+        worm_enabled:
+          type: boolean
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - object_kind
+        - object_name
+        - object_uri
+    AssetObject:
+      type: object
+      properties:
+        asset_object_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        object_kind:
+          type: string
+        object_name:
+          type: string
+        object_locator:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        schema_json:
+          type: object
+          additionalProperties: true
+        output_schema_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        access_constraints:
+          type: object
+          additionalProperties: true
+        object_metadata:
+          type: object
+          additionalProperties: true
+        asset_storage_binding_id:
+          type: string
+          format: uuid
+        object_uri:
+          type: string
+        storage_type:
+          type: string
+        storage_zone:
+          type: string
+        access_path_type:
+          type: string
+        object_hash:
+          type: string
+          nullable: true
+        encryption_algo:
+          type: string
+          nullable: true
+        worm_enabled:
+          type: boolean
+        storage_metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - asset_object_id
+        - asset_version_id
+        - object_kind
+        - object_name
+        - schema_json
+        - output_schema_json
+        - freshness_json
+        - access_constraints
+        - object_metadata
+        - asset_storage_binding_id
+        - object_uri
+        - storage_type
+        - storage_zone
+        - access_path_type
+        - worm_enabled
+        - storage_metadata
+        - created_at
+        - updated_at
+    PatchAssetReleasePolicyRequest:
+      type: object
+      properties:
+        release_mode:
+          type: string
+          enum:
+            - snapshot
+            - revision
+          nullable: true
+        is_revision_subscribable:
+          type: boolean
+          nullable: true
+        update_frequency:
+          type: string
+          nullable: true
+        release_notes_json:
+          type: object
+          additionalProperties: true
+    AssetReleasePolicy:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+        release_mode:
+          type: string
+        is_revision_subscribable:
+          type: boolean
+        update_frequency:
+          type: string
+          nullable: true
+        release_notes_json:
+          type: object
+          additionalProperties: true
+        applied_version_count:
+          type: integer
+          format: int64
+        latest_asset_version_id:
+          type: string
+          format: uuid
+        latest_version_no:
+          type: integer
+      required:
+        - asset_id
+        - release_mode
+        - is_revision_subscribable
+        - release_notes_json
+        - applied_version_count
+        - latest_asset_version_id
+        - latest_version_no
+    CreateAssetFieldDefinitionRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_name:
+          type: string
+          nullable: true
+        field_name:
+          type: string
+        field_path:
+          type: string
+        field_type:
+          type: string
+        is_nullable:
+          type: boolean
+          nullable: true
+        is_primary_key:
+          type: boolean
+          nullable: true
+        is_partition_key:
+          type: boolean
+          nullable: true
+        is_time_field:
+          type: boolean
+          nullable: true
+        code_rule:
+          type: string
+          nullable: true
+        unit_text:
+          type: string
+          nullable: true
+        enum_values_json:
+          type: array
+          items: {}
+        description:
+          type: string
+          nullable: true
+      required:
+        - field_name
+        - field_path
+        - field_type
+    AssetFieldDefinition:
+      type: object
+      properties:
+        field_definition_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        object_name:
+          type: string
+          nullable: true
+        field_name:
+          type: string
+        field_path:
+          type: string
+        field_type:
+          type: string
+        is_nullable:
+          type: boolean
+        is_primary_key:
+          type: boolean
+        is_partition_key:
+          type: boolean
+        is_time_field:
+          type: boolean
+        code_rule:
+          type: string
+          nullable: true
+        unit_text:
+          type: string
+          nullable: true
+        enum_values_json:
+          type: array
+          items: {}
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - field_definition_id
+        - asset_version_id
+        - field_name
+        - field_path
+        - field_type
+        - is_nullable
+        - is_primary_key
+        - is_partition_key
+        - is_time_field
+        - enum_values_json
+        - created_at
+        - updated_at
+    CreateAssetQualityReportRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_no:
+          type: integer
+          nullable: true
+        report_type:
+          type: string
+          nullable: true
+        coverage_range_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        missing_rate:
+          type: number
+          format: double
+          nullable: true
+        duplicate_rate:
+          type: number
+          format: double
+          nullable: true
+        anomaly_rate:
+          type: number
+          format: double
+          nullable: true
+        sampling_method:
+          type: string
+          nullable: true
+        assessed_at:
+          type: string
+          format: date-time
+          nullable: true
+        assessor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_uri:
+          type: string
+          nullable: true
+        report_hash:
+          type: string
+          nullable: true
+        metrics_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    AssetQualityReport:
+      type: object
+      properties:
+        quality_report_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        report_no:
+          type: integer
+        report_type:
+          type: string
+        coverage_range_json:
+          type: object
+          additionalProperties: true
+        freshness_json:
+          type: object
+          additionalProperties: true
+        missing_rate:
+          type: number
+          format: double
+          nullable: true
+        duplicate_rate:
+          type: number
+          format: double
+          nullable: true
+        anomaly_rate:
+          type: number
+          format: double
+          nullable: true
+        sampling_method:
+          type: string
+          nullable: true
+        assessed_at:
+          type: string
+          format: date-time
+          nullable: true
+        assessor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_uri:
+          type: string
+          nullable: true
+        report_hash:
+          type: string
+          nullable: true
+        metrics_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - quality_report_id
+        - asset_version_id
+        - report_no
+        - report_type
+        - coverage_range_json
+        - freshness_json
+        - metrics_json
+        - status
+        - metadata
+        - created_at
+        - updated_at
+    CreateAssetProcessingJobInputSource:
+      type: object
+      properties:
+        input_asset_version_id:
+          type: string
+          format: uuid
+        input_role:
+          type: string
+          nullable: true
+      required:
+        - input_asset_version_id
+    AssetProcessingInput:
+      type: object
+      properties:
+        processing_input_id:
+          type: string
+          format: uuid
+        input_asset_version_id:
+          type: string
+          format: uuid
+        input_role:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - processing_input_id
+        - input_asset_version_id
+        - input_role
+        - created_at
+    CreateAssetProcessingJobRequest:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        processing_mode:
+          type: string
+        processor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        executor_type:
+          type: string
+          nullable: true
+        job_name:
+          type: string
+          nullable: true
+        transform_spec_version:
+          type: string
+          nullable: true
+        desensitization_profile:
+          type: string
+          nullable: true
+        standardization_profile:
+          type: string
+          nullable: true
+        labeling_profile:
+          type: string
+          nullable: true
+        model_artifact_ref:
+          type: string
+          nullable: true
+        evidence_uri:
+          type: string
+          nullable: true
+        evidence_hash:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        input_sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateAssetProcessingJobInputSource"
+        processing_summary_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - processing_mode
+        - input_sources
+    AssetProcessingJob:
+      type: object
+      properties:
+        processing_job_id:
+          type: string
+          format: uuid
+        output_asset_version_id:
+          type: string
+          format: uuid
+        processing_mode:
+          type: string
+        processor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        executor_type:
+          type: string
+        job_name:
+          type: string
+          nullable: true
+        transform_spec_version:
+          type: string
+          nullable: true
+        desensitization_profile:
+          type: string
+          nullable: true
+        standardization_profile:
+          type: string
+          nullable: true
+        labeling_profile:
+          type: string
+          nullable: true
+        model_artifact_ref:
+          type: string
+          nullable: true
+        evidence_uri:
+          type: string
+          nullable: true
+        evidence_hash:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        input_sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetProcessingInput"
+        processing_summary_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - processing_job_id
+        - output_asset_version_id
+        - processing_mode
+        - executor_type
+        - input_sources
+        - processing_summary_json
+        - status
+        - metadata
+        - created_at
+        - updated_at
+    DataResource:
+      type: object
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+        owner_org_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        sensitivity_level:
+          type: string
+        status:
+          type: string
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - asset_id
+        - owner_org_id
+        - title
+        - category
+        - sensitivity_level
+        - status
+        - created_at
+        - updated_at
+    AssetVersion:
+      type: object
+      properties:
+        asset_version_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        version_no:
+          type: integer
+        schema_version:
+          type: string
+          nullable: true
+        schema_hash:
+          type: string
+          nullable: true
+        sample_hash:
+          type: string
+          nullable: true
+        full_hash:
+          type: string
+          nullable: true
+        data_size_bytes:
+          type: integer
+          nullable: true
+        origin_region:
+          type: string
+          nullable: true
+        allowed_region:
+          type: array
+          items:
+            type: string
+        requires_controlled_execution:
+          type: boolean
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - asset_version_id
+        - asset_id
+        - version_no
+        - allowed_region
+        - requires_controlled_execution
+        - status
+        - created_at
+        - updated_at
+    DataProduct:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        product_type:
+          type: string
+        status:
+          type: string
+        price_mode:
+          type: string
+        price:
+          type: string
+        currency_code:
+          type: string
+        delivery_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - product_id
+        - asset_id
+        - asset_version_id
+        - seller_org_id
+        - title
+        - category
+        - product_type
+        - status
+        - price_mode
+        - price
+        - currency_code
+        - delivery_type
+        - created_at
+        - updated_at
+    ProductDetail:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+        product_type:
+          type: string
+        status:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price_mode:
+          type: string
+        price:
+          type: string
+        currency_code:
+          type: string
+        delivery_type:
+          type: string
+        allowed_usage:
+          type: array
+          items:
+            type: string
+        searchable_text:
+          type: string
+          nullable: true
+        subtitle:
+          type: string
+          nullable: true
+        industry:
+          type: string
+          nullable: true
+        use_cases:
+          type: array
+          items:
+            type: string
+        data_classification:
+          type: string
+          nullable: true
+        quality_score:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        search_document_version:
+          type: integer
+        index_sync_status:
+          type: string
+        skus:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductSku"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - product_id
+        - asset_id
+        - asset_version_id
+        - seller_org_id
+        - title
+        - category
+        - product_type
+        - status
+        - price_mode
+        - price
+        - currency_code
+        - delivery_type
+        - allowed_usage
+        - use_cases
+        - metadata
+        - search_document_version
+        - index_sync_status
+        - skus
+        - created_at
+        - updated_at
+    SellerProfile:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        org_name:
+          type: string
+        org_type:
+          type: string
+        status:
+          type: string
+        country_code:
+          type: string
+          nullable: true
+        region_code:
+          type: string
+          nullable: true
+        industry_tags:
+          type: array
+          items:
+            type: string
+        credit_level:
+          type: integer
+        risk_level:
+          type: integer
+        reputation_score:
+          type: string
+        listed_product_count:
+          type: integer
+          format: int64
+        description:
+          type: string
+          nullable: true
+        search_document_version:
+          type: integer
+        index_sync_status:
+          type: string
+      required:
+        - org_id
+        - org_name
+        - org_type
+        - status
+        - industry_tags
+        - credit_level
+        - risk_level
+        - reputation_score
+        - listed_product_count
+        - search_document_version
+        - index_sync_status
+    StandardScenarioTemplate:
+      type: object
+      properties:
+        scenario_code:
+          type: string
+        scenario_name:
+          type: string
+        primary_sku:
+          type: string
+        supplementary_skus:
+          type: array
+          items:
+            type: string
+        product_template:
+          type: object
+          additionalProperties: true
+        metadata_template:
+          type: object
+          additionalProperties: true
+        contract_template:
+          type: string
+        acceptance_template:
+          type: string
+        refund_template:
+          type: string
+        review_sample:
+          type: object
+          additionalProperties: true
+      required:
+        - scenario_code
+        - scenario_name
+        - primary_sku
+        - supplementary_skus
+        - product_template
+        - metadata_template
+        - contract_template
+        - acceptance_template
+        - refund_template
+        - review_sample
+    ProductSubmit:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        review_task_id:
+          type: string
+          format: uuid
+      required:
+        - product_id
+        - status
+        - review_task_id
+    ProductLifecycle:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        previous_status:
+          type: string
+        status:
+          type: string
+      required:
+        - product_id
+        - previous_status
+        - status
+    ReviewDecision:
+      type: object
+      properties:
+        review_task_id:
+          type: string
+          format: uuid
+        review_type:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+      required:
+        - review_task_id
+        - review_type
+        - ref_type
+        - ref_id
+        - status
+    ProductSku:
+      type: object
+      properties:
+        sku_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_code:
+          type: string
+        sku_type:
+          type: string
+        unit_name:
+          type: string
+          nullable: true
+        billing_mode:
+          type: string
+        trade_mode:
+          type: string
+        acceptance_mode:
+          type: string
+        refund_mode:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - sku_id
+        - product_id
+        - sku_code
+        - sku_type
+        - billing_mode
+        - trade_mode
+        - acceptance_mode
+        - refund_mode
+        - status
+        - created_at
+        - updated_at
+    CreateDataContractRequest:
+      type: object
+      properties:
+        sku_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        contract_name:
+          type: string
+        version_no:
+          type: integer
+          nullable: true
+        contract_scope:
+          type: string
+          nullable: true
+        business_terms_json:
+          type: object
+          additionalProperties: true
+        structure_terms_json:
+          type: object
+          additionalProperties: true
+        quality_terms_json:
+          type: object
+          additionalProperties: true
+        compliance_terms_json:
+          type: object
+          additionalProperties: true
+        delivery_terms_json:
+          type: object
+          additionalProperties: true
+        version_terms_json:
+          type: object
+          additionalProperties: true
+        acceptance_terms_json:
+          type: object
+          additionalProperties: true
+        rights_terms_json:
+          type: object
+          additionalProperties: true
+        responsibility_terms_json:
+          type: object
+          additionalProperties: true
+        processing_terms_json:
+          type: object
+          additionalProperties: true
+        content_digest:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        effective_from:
+          type: string
+          format: date-time
+          nullable: true
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - contract_name
+    DataContract:
+      type: object
+      properties:
+        data_contract_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+          nullable: true
+        product_id:
+          type: string
+          format: uuid
+          nullable: true
+        sku_id:
+          type: string
+          format: uuid
+          nullable: true
+        contract_name:
+          type: string
+        version_no:
+          type: integer
+        contract_scope:
+          type: string
+        business_terms_json:
+          type: object
+          additionalProperties: true
+        structure_terms_json:
+          type: object
+          additionalProperties: true
+        quality_terms_json:
+          type: object
+          additionalProperties: true
+        compliance_terms_json:
+          type: object
+          additionalProperties: true
+        delivery_terms_json:
+          type: object
+          additionalProperties: true
+        version_terms_json:
+          type: object
+          additionalProperties: true
+        acceptance_terms_json:
+          type: object
+          additionalProperties: true
+        rights_terms_json:
+          type: object
+          additionalProperties: true
+        responsibility_terms_json:
+          type: object
+          additionalProperties: true
+        processing_terms_json:
+          type: object
+          additionalProperties: true
+        content_digest:
+          type: string
+          nullable: true
+        status:
+          type: string
+        effective_from:
+          type: string
+          format: date-time
+          nullable: true
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - data_contract_id
+        - contract_name
+        - version_no
+        - contract_scope
+        - business_terms_json
+        - structure_terms_json
+        - quality_terms_json
+        - compliance_terms_json
+        - delivery_terms_json
+        - version_terms_json
+        - acceptance_terms_json
+        - rights_terms_json
+        - responsibility_terms_json
+        - processing_terms_json
+        - status
+        - metadata
+        - created_at
+        - updated_at
