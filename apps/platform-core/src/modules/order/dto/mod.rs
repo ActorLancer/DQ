@@ -6,6 +6,7 @@ mod order_create;
 mod order_file_std_transition;
 mod order_file_sub_transition;
 mod order_read;
+mod order_share_ro_transition;
 mod pre_request;
 mod price_snapshot;
 
@@ -27,6 +28,9 @@ pub use order_file_sub_transition::{
     FileSubTransitionRequest, FileSubTransitionResponse, FileSubTransitionResponseData,
 };
 pub use order_read::{GetOrderDetailResponse, GetOrderDetailResponseData};
+pub use order_share_ro_transition::{
+    ShareRoTransitionRequest, ShareRoTransitionResponse, ShareRoTransitionResponseData,
+};
 pub use pre_request::{
     CreateTradePreRequestRequest, TradePreRequestResponse, TradePreRequestResponseData,
 };

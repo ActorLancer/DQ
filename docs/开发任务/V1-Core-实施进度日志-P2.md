@@ -148,6 +148,86 @@
   7. `curl` 依次调用 `api-ppu` 动作链路与非法迁移。
   8. `psql` 回查订单最终状态、审计条数，并清理临时业务测试数据。
 - 验证结果：
+
+### BATCH-121（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-012
+- 当前批次目标：实现只读共享状态机 `SHARE_RO`：共享开通、访问授权、撤销、到期、争议中断，并完成权限、审计、OpenAPI、测试与接口联调闭环。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-011` 已审批通过。
+
+### BATCH-121（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-012
+- 当前批次目标：实现只读共享状态机 `SHARE_RO`：共享开通、访问授权、撤销、到期、争议中断，并完成权限、审计、OpenAPI、测试与接口联调闭环。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-011` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `TRADE-012` DoD、验收标准、technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对 `TRADE-012` 详细任务语义与依赖。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中→编码→验证→待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：确认单任务批次与不可跳步要求。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：记录本批计划与结果。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步本批追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对 `SHARE_RO` 状态机语义（15.3.4）与标准 SKU 映射。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 trade 模块编排边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认 SKU 冻结规则与接口边界。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认审计/事件留痕口径。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：对齐 `SKU-003`（共享开通/撤权）与生命周期断言。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按 dto/repo/api/tests 分层实现。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：按环境变量启动服务联调。
+  17. `docs/开发准备/技术选型正式版.md`：保持 PostgreSQL 为状态真值源。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块职责边界稳定。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L1445`：订单生命周期需主状态可追溯推进。
+  2. `docs/data_trading_blockchain_system_design_split/06-Phase 1：最小可信交易闭环系统设计.md:L65`：状态迁移必须幂等、不可并发矛盾、不可倒退。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：`SHARE_RO` 为标准 SKU 独立语义，不能并入 API/文件路径。
+- 已实现功能：
+  1. 新增 `POST /api/v1/orders/{id}/share-ro/transition`。
+  2. 实现 `SHARE_RO` 状态机动作：`enable_share`、`grant_read_access`、`confirm_first_query`、`revoke_share`、`expire_share`、`interrupt_dispute`。
+  3. 强制 `sku_type=SHARE_RO` 校验；非 `SHARE_RO` 订单拒绝迁移。
+  4. 每次迁移同事务更新 `trade.order_main` 主状态/子状态并写审计 `trade.order.share_ro.transition`。
+  5. 新增 DTO/repo/路由/OpenAPI，补齐权限拒绝测试与 DB smoke 测试。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_share_ro_transition.rs`
+  - `apps/platform-core/src/modules/order/repo/order_share_ro_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/trade012_share_ro_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade012_share_ro_state_machine_db_smoke -- --nocapture`
+  5. `cargo run -p platform-core` 启动服务。
+  6. `psql` 写入 `SHARE_RO` 临时联调数据。
+  7. `curl` 执行动作链路 + 非法迁移校验。
+  8. `psql` 回查状态与审计并清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`119 passed, 0 failed, 1 ignored`）。
+  - `check-local-stack core`：脚本失败（报告 `5432` 不可达）；但后续 DB smoke、psql、curl 均连通成功，记为环境脚本兼容噪声。
+  - `trade012_share_ro_state_machine_db_smoke`：通过（`1 passed`）。
+  - API 联调通过：`enable_share/grant_read_access/confirm_first_query/interrupt_dispute` 全部 `200`；非法 `grant_read_access`（当前 `dispute_interrupted`）返回 `409`，消息含 `SHARE_RO_TRANSITION_FORBIDDEN`。
+  - DB 证据：`dispute_interrupted|paid|blocked|blocked|frozen|opened`。
+  - 审计证据：`trade.order.share_ro.transition` 计数 `4`。
+  - 清理：临时业务测试数据已清理；审计 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 7.2 生命周期主链路
+  - `Phase1 设计` 6.5 状态机约束
+  - `全集成基线 V1` 5.3.2A、15.3.4（`SHARE_RO` 独立状态机语义）
+  - `业务流程图 V1` 4.4.1B（共享开通/撤权/到期）
+- 覆盖的任务清单条目：`TRADE-012`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按你的约定由你手工维护，本批未写入。
   - `cargo fmt --all`：通过。
   - `cargo test -p platform-core`：通过（`115 passed, 0 failed, 1 ignored`）。
   - `check-local-stack core`：脚本失败（报告 `5432` 不可达），但后续 `TRADE_DB_SMOKE`、`psql`、`curl` 验证均可实际连通并成功，记录为环境检测脚本兼容性噪声。
