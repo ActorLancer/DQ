@@ -6,6 +6,7 @@ mod trade005_order_cancel_db;
 mod trade006_contract_confirm_db;
 mod trade007_state_machine_fields_db;
 mod trade008_file_std_state_machine_db;
+mod trade009_file_sub_state_machine_db;
 
 #[cfg(test)]
 mod tests {
@@ -158,6 +159,29 @@ mod tests {
                     .body(Body::from(
                         r#"{
                           "action":"lock_funds"
+                        }"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_file_sub_transition_without_permission() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/orders/30000000-0000-0000-0000-000000000101/file-sub/transition")
+                    .header("x-role", "developer")
+                    .header("x-tenant-id", "10000000-0000-0000-0000-000000000102")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "action":"establish_subscription"
                         }"#,
                     ))
                     .expect("request should build"),

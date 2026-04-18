@@ -118,6 +118,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FileStdTransitionResponse'
+  /api/v1/orders/{id}/file-sub/transition:
+    post:
+      summary: Transition FILE_SUB order state under subscription state-machine rules
+      operationId: transitionFileSubOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileSubTransitionRequest'
+      responses:
+        '200':
+          description: FILE_SUB transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileSubTransitionResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -502,6 +527,28 @@ components:
             ]
         reason_note:
           type: string
+    FileSubTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              establish_subscription,
+              start_cycle_delivery,
+              mark_cycle_delivered,
+              accept_cycle_delivery,
+              pause_subscription,
+              expire_subscription,
+              renew_subscription,
+              request_refund,
+              open_dispute,
+              resolve_dispute_refund,
+              resolve_dispute_complete,
+            ]
+        reason_note:
+          type: string
     FileStdTransitionResponse:
       type: object
       required: [data]
@@ -512,7 +559,58 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/FileStdTransitionResponseData'
+    FileSubTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/FileSubTransitionResponseData'
     FileStdTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    FileSubTransitionResponseData:
       type: object
       required:
         [
