@@ -1,3 +1,4 @@
+mod order_api_sub_transition;
 mod order_cancel;
 mod order_contract_confirm;
 mod order_create;
@@ -7,6 +8,9 @@ mod order_read;
 mod pre_request;
 mod price_snapshot;
 
+pub use order_api_sub_transition::{
+    ApiSubTransitionRequest, ApiSubTransitionResponse, ApiSubTransitionResponseData,
+};
 pub use order_cancel::{CancelOrderResponse, CancelOrderResponseData};
 pub use order_contract_confirm::{
     ConfirmOrderContractRequest, ConfirmOrderContractResponse, ConfirmOrderContractResponseData,
