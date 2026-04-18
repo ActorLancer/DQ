@@ -6,13 +6,15 @@ use crate::modules::catalog::domain::{
     CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
     CreateRawObjectManifestRequest, DataContractView, DataProductView, ExtractionJobView,
     FormatDetectionResultView, PatchAssetReleasePolicyRequest, PatchDataProductRequest,
-    PatchProductSkuRequest, PreviewArtifactView, ProductMetadataProfileView, ProductSkuView,
-    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
-    default_trade_mode_for_sku_type, is_standard_sku_type,
+    PatchProductSkuRequest, PreviewArtifactView, ProductLifecycleView, ProductMetadataProfileView,
+    ProductSkuView, ProductSubmitView, PutProductMetadataProfileRequest, RawIngestBatchView,
+    RawObjectManifestView, ReviewDecisionRequest, ReviewDecisionView, SubmitProductRequest,
+    SuspendProductRequest, default_trade_mode_for_sku_type, is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
-    CatalogPermission, is_allowed, is_valid_sku_trade_mode_pair,
+    CatalogPermission, can_transition_listing_status, is_allowed, is_valid_listing_status,
+    is_valid_sku_trade_mode_pair,
 };
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
@@ -27,10 +29,15 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/v1/products", post(create_product_draft))
         .route("/api/v1/products/{id}", patch(patch_product_draft))
+        .route("/api/v1/products/{id}/submit", post(submit_product))
+        .route("/api/v1/products/{id}/suspend", post(suspend_product))
         .route(
             "/api/v1/products/{id}/metadata-profile",
             put(put_product_metadata_profile),
         )
+        .route("/api/v1/review/subjects/{id}", post(review_subject))
+        .route("/api/v1/review/products/{id}", post(review_product))
+        .route("/api/v1/review/compliance/{id}", post(review_compliance))
         .route("/api/v1/products/{id}/skus", post(create_product_sku))
         .route("/api/v1/skus/{id}", patch(patch_product_sku))
         .route(
@@ -270,6 +277,402 @@ async fn put_product_metadata_profile(
         "catalog product metadata profile upserted"
     );
     Ok(ApiResponse::ok(view))
+}
+
+async fn submit_product(
+    headers: HeaderMap,
+    Path(product_id): Path<String>,
+    Json(payload): Json<SubmitProductRequest>,
+) -> Result<Json<ApiResponse<ProductSubmitView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ProductSubmit,
+        "catalog product submit",
+    )?;
+    validate_submit_product_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let product = PostgresCatalogRepository::get_data_product(&client, &product_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    if product.status != "draft" {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "only draft product can be submitted".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+    ensure_product_submit_ready(&client, &product_id, &headers).await?;
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let updated = PostgresCatalogRepository::transition_product_status(
+        &tx,
+        &product_id,
+        "draft",
+        "pending_review",
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "product status changed concurrently".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        )
+    })?;
+    let review = PostgresCatalogRepository::create_review_decision(
+        &tx,
+        "product_submit",
+        "product",
+        &product_id,
+        "submit",
+        payload.submission_note.as_deref(),
+        "pending",
+    )
+    .await
+    .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "product",
+        &product_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.product.submit",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    info!(
+        action = "catalog.product.submit",
+        product_id = %product_id,
+        review_task_id = %review.review_task_id,
+        status = %updated.status,
+        "catalog product submitted"
+    );
+    Ok(ApiResponse::ok(ProductSubmitView {
+        product_id,
+        status: updated.status,
+        review_task_id: review.review_task_id,
+    }))
+}
+
+async fn review_subject(
+    headers: HeaderMap,
+    Path(subject_id): Path<String>,
+    Json(payload): Json<ReviewDecisionRequest>,
+) -> Result<Json<ApiResponse<ReviewDecisionView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ReviewWrite,
+        "catalog subject review",
+    )?;
+    validate_review_decision_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let review_status = decision_to_review_status(&payload.action_name);
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::create_review_decision(
+        &tx,
+        "subject_review",
+        "subject",
+        &subject_id,
+        &payload.action_name,
+        payload.action_reason.as_deref(),
+        review_status,
+    )
+    .await
+    .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "subject",
+        &subject_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.review.subject",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn review_product(
+    headers: HeaderMap,
+    Path(product_id): Path<String>,
+    Json(payload): Json<ReviewDecisionRequest>,
+) -> Result<Json<ApiResponse<ProductSubmitView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ReviewWrite,
+        "catalog product review",
+    )?;
+    validate_review_decision_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let current = PostgresCatalogRepository::get_data_product(&client, &product_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    let next_status = match payload.action_name.as_str() {
+        "approve" => "listed",
+        "reject" => "draft",
+        _ => "pending_review",
+    };
+    if !is_valid_listing_status(next_status) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "target listing status is invalid".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+    if !can_transition_listing_status(&current.status, next_status) {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "review action is not allowed for current product status".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let updated = PostgresCatalogRepository::transition_product_status(
+        &tx,
+        &product_id,
+        &current.status,
+        next_status,
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "product status changed concurrently".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        )
+    })?;
+    let review = PostgresCatalogRepository::create_review_decision(
+        &tx,
+        "product_review",
+        "product",
+        &product_id,
+        &payload.action_name,
+        payload.action_reason.as_deref(),
+        decision_to_review_status(&payload.action_name),
+    )
+    .await
+    .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "product",
+        &product_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.review.product",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    Ok(ApiResponse::ok(ProductSubmitView {
+        product_id,
+        status: updated.status,
+        review_task_id: review.review_task_id,
+    }))
+}
+
+async fn review_compliance(
+    headers: HeaderMap,
+    Path(compliance_id): Path<String>,
+    Json(payload): Json<ReviewDecisionRequest>,
+) -> Result<Json<ApiResponse<ReviewDecisionView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ReviewWrite,
+        "catalog compliance review",
+    )?;
+    validate_review_decision_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let review_status = decision_to_review_status(&payload.action_name);
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::create_review_decision(
+        &tx,
+        "compliance_review",
+        "compliance",
+        &compliance_id,
+        &payload.action_name,
+        payload.action_reason.as_deref(),
+        review_status,
+    )
+    .await
+    .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "compliance",
+        &compliance_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.review.compliance",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn suspend_product(
+    headers: HeaderMap,
+    Path(product_id): Path<String>,
+    Json(payload): Json<SuspendProductRequest>,
+) -> Result<Json<ApiResponse<ProductLifecycleView>>, (StatusCode, Json<ErrorResponse>)> {
+    validate_suspend_payload(&payload, &headers)?;
+    if payload.suspend_mode == "freeze" {
+        require_any_permission(
+            &headers,
+            &[
+                CatalogPermission::ProductSuspend,
+                CatalogPermission::RiskProductFreeze,
+            ],
+            "catalog product freeze",
+        )?;
+    } else {
+        require_permission(
+            &headers,
+            CatalogPermission::ProductSuspend,
+            "catalog product suspend",
+        )?;
+    }
+
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let existing = PostgresCatalogRepository::get_data_product(&client, &product_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    let next_status = if payload.suspend_mode == "freeze" {
+        "frozen"
+    } else {
+        "delisted"
+    };
+    if !is_valid_listing_status(next_status) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "target listing status is invalid".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+    if !can_transition_listing_status(&existing.status, next_status) {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "suspend action is not allowed for current product status".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+    let previous_status = existing.status.clone();
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let updated = PostgresCatalogRepository::transition_product_status(
+        &tx,
+        &product_id,
+        &existing.status,
+        next_status,
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "product status changed concurrently".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        )
+    })?;
+    write_audit_event(
+        &tx,
+        "product",
+        &product_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.product.suspend",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+    Ok(ApiResponse::ok(ProductLifecycleView {
+        product_id,
+        previous_status,
+        status: updated.status,
+    }))
 }
 
 async fn create_product_sku(
@@ -1279,6 +1682,89 @@ fn validate_put_product_metadata_profile_payload(
     Ok(())
 }
 
+fn validate_submit_product_payload(
+    payload: &SubmitProductRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if payload
+        .submission_note
+        .as_deref()
+        .is_some_and(|note| note.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "submission_note must not be empty".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_review_decision_payload(
+    payload: &ReviewDecisionRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if !matches!(payload.action_name.as_str(), "approve" | "reject") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "action_name must be approve or reject".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .action_reason
+        .as_deref()
+        .is_some_and(|reason| reason.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "action_reason must not be empty".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_suspend_payload(
+    payload: &SuspendProductRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if !matches!(payload.suspend_mode.as_str(), "delist" | "freeze") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "suspend_mode must be delist or freeze".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "reason must not be empty".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_create_sku_payload(
     product_id_from_path: &str,
     payload: &CreateProductSkuRequest,
@@ -1920,6 +2406,75 @@ async fn validate_template_compatibility(
     ))
 }
 
+async fn ensure_product_submit_ready(
+    client: &impl GenericClient,
+    product_id: &str,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let has_profile = PostgresCatalogRepository::product_has_metadata_profile(client, product_id)
+        .await
+        .map_err(map_db_error)?;
+    if !has_profile {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "product metadata profile is required before submit".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    let has_skus = PostgresCatalogRepository::product_has_skus(client, product_id)
+        .await
+        .map_err(map_db_error)?;
+    if !has_skus {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "at least one sku is required before submit".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    let templates_complete =
+        PostgresCatalogRepository::product_all_skus_have_template(client, product_id)
+            .await
+            .map_err(map_db_error)?;
+    if !templates_complete {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "all skus must bind template before submit".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    let risk_blocked = PostgresCatalogRepository::product_is_risk_blocked(client, product_id)
+        .await
+        .map_err(map_db_error)?;
+    if risk_blocked {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "product is blocked by risk policy".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn decision_to_review_status(action_name: &str) -> &'static str {
+    if action_name == "approve" {
+        "approved"
+    } else {
+        "rejected"
+    }
+}
+
 async fn write_audit_event(
     client: &(impl GenericClient + Sync),
     ref_type: &str,
@@ -1974,6 +2529,31 @@ fn require_permission(
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
     if is_allowed(role, permission) {
+        return Ok(());
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            message: format!("{action} is forbidden for current role"),
+            request_id: header(headers, "x-request-id"),
+        }),
+    ))
+}
+
+fn require_any_permission(
+    headers: &HeaderMap,
+    permissions: &[CatalogPermission],
+    action: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let role = headers
+        .get("x-role")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if permissions
+        .iter()
+        .any(|permission| is_allowed(role, *permission))
+    {
         return Ok(());
     }
     Err((

@@ -9,7 +9,7 @@ use crate::modules::catalog::domain::{
     DataResourceView, ExtractionJobView, FormatDetectionResultView, PatchAssetReleasePolicyRequest,
     PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
     ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
-    RawIngestBatchView, RawObjectManifestView,
+    RawIngestBatchView, RawObjectManifestView, ReviewDecisionView,
 };
 use serde_json::{Value, json};
 use tokio_postgres::{GenericClient, Row};
@@ -558,6 +558,148 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(row.map(|row| parse_data_product_row(&row)))
+    }
+
+    pub async fn product_has_metadata_profile(
+        client: &impl GenericClient,
+        product_id: &str,
+    ) -> Result<bool, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT EXISTS (
+                   SELECT 1
+                   FROM catalog.product_metadata_profile
+                   WHERE product_id = $1::text::uuid
+                 )",
+                &[&product_id],
+            )
+            .await?;
+        Ok(row.get(0))
+    }
+
+    pub async fn product_has_skus(
+        client: &impl GenericClient,
+        product_id: &str,
+    ) -> Result<bool, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT EXISTS (
+                   SELECT 1
+                   FROM catalog.product_sku
+                   WHERE product_id = $1::text::uuid
+                 )",
+                &[&product_id],
+            )
+            .await?;
+        Ok(row.get(0))
+    }
+
+    pub async fn product_all_skus_have_template(
+        client: &impl GenericClient,
+        product_id: &str,
+    ) -> Result<bool, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT NOT EXISTS (
+                   SELECT 1
+                   FROM catalog.product_sku
+                   WHERE product_id = $1::text::uuid
+                     AND coalesce(nullif(metadata->>'draft_template_id', ''), '') = ''
+                 )",
+                &[&product_id],
+            )
+            .await?;
+        Ok(row.get(0))
+    }
+
+    pub async fn product_is_risk_blocked(
+        client: &impl GenericClient,
+        product_id: &str,
+    ) -> Result<bool, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT
+                   CASE
+                     WHEN lower(coalesce(metadata->>'risk_blocked', 'false')) IN ('true', '1') THEN true
+                     WHEN lower(coalesce(metadata#>>'{risk_flags,block_submit}', 'false')) IN ('true', '1') THEN true
+                     ELSE false
+                   END
+                 FROM catalog.product
+                 WHERE product_id = $1::text::uuid",
+                &[&product_id],
+            )
+            .await?;
+        Ok(row.get(0))
+    }
+
+    pub async fn transition_product_status(
+        client: &impl GenericClient,
+        product_id: &str,
+        from_status: &str,
+        to_status: &str,
+    ) -> Result<Option<DataProductView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "UPDATE catalog.product
+                 SET status = $3,
+                     updated_at = now()
+                 WHERE product_id = $1::text::uuid
+                   AND status = $2
+                 RETURNING
+                   product_id::text,
+                   asset_id::text,
+                   asset_version_id::text,
+                   seller_org_id::text,
+                   title,
+                   category,
+                   product_type,
+                   status,
+                   price_mode,
+                   price::text,
+                   currency_code,
+                   delivery_type,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[&product_id, &from_status, &to_status],
+            )
+            .await?;
+        Ok(row.map(|row| parse_data_product_row(&row)))
+    }
+
+    pub async fn create_review_decision(
+        client: &impl GenericClient,
+        review_type: &str,
+        ref_type: &str,
+        ref_id: &str,
+        action_name: &str,
+        action_reason: Option<&str>,
+        status: &str,
+    ) -> Result<ReviewDecisionView, tokio_postgres::Error> {
+        let task_row = client
+            .query_one(
+                "INSERT INTO review.review_task (
+                   review_type, ref_type, ref_id, status
+                 ) VALUES (
+                   $1, $2, $3::text::uuid, $4
+                 )
+                 RETURNING review_task_id::text, review_type, ref_type, ref_id::text, status",
+                &[&review_type, &ref_type, &ref_id, &status],
+            )
+            .await?;
+        let review_task_id: String = task_row.get(0);
+
+        client
+            .query_one(
+                "INSERT INTO review.review_step (
+                   review_task_id, step_no, action_name, action_reason, action_at
+                 ) VALUES (
+                   $1::text::uuid, 1, $2, $3, now()
+                 )
+                 RETURNING review_step_id::text",
+                &[&review_task_id, &action_name, &action_reason],
+            )
+            .await?;
+        Ok(parse_review_decision_row(&task_row))
     }
 
     pub async fn upsert_product_metadata_profile(
@@ -1415,6 +1557,16 @@ fn parse_data_contract_row(row: &Row) -> DataContractView {
         metadata: row.get(21),
         created_at: row.get(22),
         updated_at: row.get(23),
+    }
+}
+
+fn parse_review_decision_row(row: &Row) -> ReviewDecisionView {
+    ReviewDecisionView {
+        review_task_id: row.get(0),
+        review_type: row.get(1),
+        ref_type: row.get(2),
+        ref_id: row.get(3),
+        status: row.get(4),
     }
 }
 

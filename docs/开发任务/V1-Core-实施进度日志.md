@@ -2477,37 +2477,6 @@
 - 待人工审批结论：通过
 - 备注：联调首轮因测试 SQL 使用历史字段 `org_code` 导致组织插入失败，已改按当前库结构（`org_name/org_type/status`）重跑并通过。
 
-### BATCH-097
-
-- 状态：计划中
-- 当前任务编号：CAT-013
-- 当前批次目标：实现数据契约接口 `POST /api/v1/skus/{id}/data-contracts` 与 `GET /api/v1/skus/{id}/data-contracts/{contractId}`。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-096` 已获人工审批通过，允许执行。
-- 已阅读证据（文件 + 本批关注要点）：
-  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-013` 描述、DoD、acceptance 与 technical_reference。
-  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-013` 顺序、范围与 `CAT-014` 边界。
-  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先记“计划中”，再编码、验证、待审批。
-  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与不越阶段原则。
-  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用固定批次记录结构。
-  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束。
-  7. `docs/开发任务/V1-Core-人工审批记录.md`：本文件后续由人工维护，本批不自动写入。
-  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：V1 数据契约对象化建模与 PostgreSQL 主状态。
-  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog/contract_meta` 边界。
-  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST/GET /api/v1/skus/{id}/data-contracts...`。
-  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批仅补审计，不新增 topic。
-  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
-  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + 审计回查闭环。
-  14. `docs/开发准备/仓库拆分与目录结构建议.md`：继续按功能拆分，避免单文件堆积。
-  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调优先 `datab-postgres:5432`。
-  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
-  17. `docs/开发准备/技术选型正式版.md`：契约与审计以 PostgreSQL 为权威真值。
-  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚扩展 `catalog`。
-- technical_reference 约束映射：
-  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L112`：十大元信息域中契约与条款对象化承载。
-  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L86`：数据契约必须单独建模，不得仅塞入 `product.metadata`。
-  - `docs/数据库设计/V1/upgrade/062_data_product_metadata_contract.sql:L1`：`contract.data_contract` 字段、默认值、唯一与约束规则。
-- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/data_contracts.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-097（待审批）
 
 - 状态：通过
@@ -2540,37 +2509,6 @@
 - 待人工审批结论：通过
 - 备注：按你的要求，本批未更新 `V1-Core-人工审批记录.md`，审批条目由你手工维护。
 
-### BATCH-098
-
-- 状态：计划中
-- 当前任务编号：CAT-014
-- 当前批次目标：实现可交付对象接口 `POST /api/v1/assets/{versionId}/objects`，区分原始对象、预览对象、交付对象、报告对象、结果对象。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-097` 已获人工审批通过，允许执行。
-- 已阅读证据（文件 + 本批关注要点）：
-  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-014` 描述、DoD、acceptance 与 technical_reference。
-  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-014` 顺序与 `CAT-015` 边界。
-  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先记“计划中”，再编码与完整验证。
-  4. `docs/开发任务/AI-Agent-执行提示词.md`：严格遵守冻结范围与阶段边界。
-  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用批次记录模板。
-  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：维持 `TODO-PROC-BIL-001` 追溯约束。
-  7. `docs/开发任务/V1-Core-人工审批记录.md`：本文件后续由人工维护，本批不自动写入。
-  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：对象分层与商品交付状态应落 PostgreSQL 权威真值。
-  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog` 边界。
-  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `POST /api/v1/assets/{versionId}/objects`。
-  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批维持审计闭环，不新增业务 topic。
-  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
-  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + DB 回查闭环。
-  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按功能逻辑拆分测试与实现，避免单文件继续膨胀。
-  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调优先 `datab-postgres:5432`。
-  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
-  17. `docs/开发准备/技术选型正式版.md`：对象元数据和交付可见性由 PostgreSQL 主导。
-  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚扩展 `catalog`。
-- technical_reference 约束映射：
-  - `docs/原始PRD/数据商品存储与分层存储设计.md:L155`：分层存储闭环要求 `raw/preview/delivery/...` 对象按角色落位并可追溯。
-  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：V1 接口固定包含 `POST /api/v1/assets/{versionId}/objects`。
-  - `docs/数据库设计/V1/upgrade/064_storage_layering_architecture.sql:L1`：分层存储架构升级；对象绑定与存储分区字段存在迁移约束（`storage_zone/access_path_type` 等）。
-- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/asset_objects.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-098（待审批）
 
 - 状态：通过
@@ -2601,37 +2539,6 @@
 - 待人工审批结论：通过
 - 备注：按你的要求，本批继续把新增测试能力拆分到独立文件，避免持续堆积到单一测试文件。
 
-### BATCH-099
-
-- 状态：计划中
-- 当前任务编号：CAT-015
-- 当前批次目标：实现版本发布/订阅策略接口 `PATCH /api/v1/assets/{assetId}/release-policy`。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-098` 已获人工审批通过，允许执行。
-- 已阅读证据（文件 + 本批关注要点）：
-  1. `docs/开发任务/v1-core-开发任务清单.csv`：`CAT-015` 描述、DoD、acceptance 与 technical_reference。
-  2. `docs/开发任务/v1-core-开发任务清单.md`：`CAT-015` 顺序与 `CAT-016` 边界。
-  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先记“计划中”，再编码与完整验证。
-  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围与阶段边界不越界。
-  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用固定批次记录格式。
-  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束。
-  7. `docs/开发任务/V1-Core-人工审批记录.md`：本文件由人工维护，本批不自动写入。
-  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：版本策略以 PostgreSQL 状态为权威。
-  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog` 边界。
-  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口 `PATCH /api/v1/assets/{assetId}/release-policy`。
-  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批维持审计闭环，不新增 topic。
-  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
-  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 手工 API + DB 回查闭环。
-  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增测试拆分为独立文件，降低单文件膨胀。
-  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调优先 `datab-postgres:5432`。
-  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL`、`KAFKA_BROKERS`。
-  17. `docs/开发准备/技术选型正式版.md`：版本策略主状态存 PostgreSQL。
-  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内聚扩展 `catalog`。
-- technical_reference 约束映射：
-  - `docs/原始PRD/数据商品存储与分层存储设计.md:L155`：闭环中商品治理后对象发布与订阅策略需要可控版本化。
-  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：V1 冻结接口包含 `PATCH /api/v1/assets/{assetId}/release-policy`。
-  - `docs/数据库设计/V1/upgrade/064_storage_layering_architecture.sql:L1`：分层架构与版本治理字段协同；实际版本策略字段由 `061_data_object_trade_modes.sql` 增补到 `catalog.asset_version`。
-- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/release_policy.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-
 ### BATCH-099（待审批）
 
 - 状态：通过
@@ -2661,3 +2568,76 @@
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 待人工审批结论：通过
 - 备注：按你的要求，本批将 release-policy 校验测试独立拆分到 `tests/release_policy.rs`，避免持续堆积在单一测试文件。
+
+### BATCH-100
+
+- 状态：计划中
+- 当前任务编号：CAT-016, CAT-017, CAT-018, CAT-019
+- 当前批次目标：补齐商品提审、Listing 状态机、三类审核接口、商品冻结/下架接口，并保持权限/审计/OpenAPI 一致。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 均已完成并通过审批；`BATCH-099` 已完成。
+- 已阅读证据（文件 + 本批关注要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `CAT-016~CAT-019` 顺序、DoD、acceptance、technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认四个任务均为 CAT 连续区间，无跨阶段跳转。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中→编码→完整验证→待审批→本地提交”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：冻结范围内实现，不越界。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用固定批次记录模板。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯口径。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：按你的规则，本批不自动写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：商品状态与审核流以 PostgreSQL 主状态为权威。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：本批归属 `catalog/review` 边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：同步冻结接口口径（submit/review/suspend）。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批不新增 topic，仅补齐审计动作。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / TRD_STATE_CONFLICT / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + API 联调 + DB 回查 + 审计核验。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增测试文件按功能拆分，避免单文件膨胀。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用 `DATABASE_URL` 与请求头审计字段。
+  17. `docs/开发准备/技术选型正式版.md`：状态机与审核落 PostgreSQL，遵循回库校验。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内按 catalog 领域闭环补齐。
+- technical_reference 约束映射：
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L200`：DataAsset/DataProduct/SKU 聚合关系及商品治理口径。
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：冻结接口 `POST /api/v1/products/{id}/submit`、`GET /api/v1/products/{id}` 与商品流接口集合。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L86`：商品“保存草稿→提交审核→合规审核”主流程。
+  - `docs/数据库设计/V1/upgrade/025_review_workflow.sql:L1`：`review.review_task/review.review_step` 与审批表结构。
+  - `docs/权限设计/接口权限校验清单.md:L53`：`submit/review/suspend` 对应权限与高风险操作约束。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/listing_submit_review.rs`、`apps/platform-core/src/modules/catalog/tests/suspend.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+
+### BATCH-100（待审批）
+
+- 状态：通过
+- 当前任务编号：CAT-016, CAT-017, CAT-018, CAT-019
+- 当前批次目标：补齐商品提审、Listing 状态机、三类审核接口、商品冻结/下架接口，并保持权限/审计/OpenAPI 一致。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 均已完成并通过审批；`BATCH-099` 已完成。
+- 已实现功能：
+  1. `CAT-016`：新增 `POST /api/v1/products/{id}/submit`，实现提交审核前置校验（元信息档案存在、至少一个 SKU、所有 SKU 具备模板绑定草稿标记、风险阻断校验），并将商品状态 `draft -> pending_review`。
+  2. `CAT-017`：在 `catalog::service` 冻结基础 Listing 状态机与转移规则（`draft/pending_review/listed/delisted/frozen`），接口执行前进行状态合法性与转移合法性校验。
+  3. `CAT-018`：新增 `POST /api/v1/review/subjects/{id}`、`POST /api/v1/review/products/{id}`、`POST /api/v1/review/compliance/{id}`；写入 `review.review_task` + `review.review_step`；产品审核 `approve/reject` 对应 `pending_review -> listed/draft`。
+  4. `CAT-019`：新增 `POST /api/v1/products/{id}/suspend`，支持 `delist/freeze` 两种动作；接入 `catalog.product.suspend` 与 `risk.product.freeze` 双权限口径；执行状态转移与审计。
+  5. 补齐 OpenAPI 路径与 schema：`SubmitProductRequest`、`SuspendProductRequest`、`ReviewDecisionRequest`、`ProductSubmit`、`ProductLifecycle`、`ReviewDecision`。
+  6. 测试拆分：新增 `tests/listing_submit_review.rs` 与 `tests/suspend.rs`，并在 `tests/mod.rs` 补齐新增接口权限拒绝用例。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/listing_submit_review.rs`、`apps/platform-core/src/modules/catalog/tests/suspend.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 端到端联调（`APP_PORT=18095`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`，`KAFKA_BROKERS=127.0.0.1:9094`）：
+     - 预置数据：`core.organization` + `catalog.data_asset` + `catalog.asset_version` + `catalog.product` + `catalog.product_metadata_profile` + `catalog.product_sku`
+     - 调用 `POST /api/v1/products/{id}/submit`
+     - 调用 `POST /api/v1/review/subjects/{id}`、`POST /api/v1/review/compliance/{id}`、`POST /api/v1/review/products/{id}`
+     - 调用 `POST /api/v1/products/{id}/suspend`（`delist` + `freeze`）
+     - 回查 `catalog.product`、`review.review_task`、`audit.audit_event`
+     - 清理测试业务数据（保留审计 append-only）
+  4. 数据残留核对：`catalog.product|catalog.product_sku|catalog.product_metadata_profile` 残留 `0|0|0`。
+- 验证结果：通过。`cargo test -p platform-core` 结果 `72 passed, 0 failed, 1 ignored`。联调响应链路：
+  - `req-cat016-submit-001`：`status=pending_review`
+  - `req-cat018-product-001`：`status=listed`
+  - `req-cat019-delist-001`：`previous_status=listed,status=delisted`
+  - `req-cat019-freeze-001`：`previous_status=delisted,status=frozen`
+  - 最终 `catalog.product.status=frozen`
+  - `review.review_task`（`product_submit/product_review/compliance_review`）计数 `3`
+  - 审计命中：`catalog.product.submit`、`catalog.review.subject`、`catalog.review.compliance`、`catalog.review.product`、`catalog.product.suspend`
+- 覆盖的冻结文档条目：`docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（submit/product 相关冻结接口）、`docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建与提交审核流程）、`docs/数据库设计/V1/upgrade/025_review_workflow.sql`（审核任务与步骤表结构）、`docs/权限设计/接口权限校验清单.md`（submit/review/suspend 权限口径）。
+- 覆盖的任务清单条目：`CAT-016`, `CAT-017`, `CAT-018`, `CAT-019`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：通过（按“每 4~6 个 tasks 集中审批”节奏，当前批次已完成，等待集中审批）
+- 备注：本批仍保持测试代码按功能拆分，不把新增逻辑持续堆积在单一文件。

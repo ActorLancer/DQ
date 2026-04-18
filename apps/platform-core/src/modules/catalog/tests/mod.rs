@@ -1,7 +1,9 @@
 mod asset_objects;
 mod data_contracts;
+mod listing_submit_review;
 mod processing_jobs;
 mod release_policy;
+mod suspend;
 
 #[cfg(test)]
 mod tests {
@@ -367,6 +369,48 @@ mod tests {
                   "update_frequency":"daily"
                 }"#,
             ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_submit_product_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/submit")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(r#"{"submission_note":"ready"}"#))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_review_product_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/review/products/00000000-0000-0000-0000-000000000001")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(r#"{"action_name":"approve"}"#))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_suspend_product_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/suspend")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(r#"{"suspend_mode":"freeze"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);

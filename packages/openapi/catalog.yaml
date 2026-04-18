@@ -44,6 +44,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataProduct"
+  /api/v1/products/{id}/submit:
+    post:
+      summary: Submit product for review
+      operationId: submitProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitProductRequest"
+      responses:
+        "200":
+          description: Product submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSubmit"
+  /api/v1/products/{id}/suspend:
+    post:
+      summary: Suspend product by delist or freeze
+      operationId: suspendProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuspendProductRequest"
+      responses:
+        "200":
+          description: Product status transitioned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductLifecycle"
   /api/v1/products/{id}/metadata-profile:
     put:
       summary: Upsert metadata profile for product
@@ -92,6 +140,78 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductSku"
+  /api/v1/review/subjects/{id}:
+    post:
+      summary: Subject review decision
+      operationId: reviewSubject
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionRequest"
+      responses:
+        "200":
+          description: Subject review recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewDecision"
+  /api/v1/review/products/{id}:
+    post:
+      summary: Product review decision
+      operationId: reviewProduct
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionRequest"
+      responses:
+        "200":
+          description: Product reviewed and status transitioned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductSubmit"
+  /api/v1/review/compliance/{id}:
+    post:
+      summary: Compliance review decision
+      operationId: reviewCompliance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionRequest"
+      responses:
+        "200":
+          description: Compliance review recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewDecision"
   /api/v1/skus/{id}:
     patch:
       summary: Patch draft SKU
@@ -486,6 +606,38 @@ components:
         status:
           type: string
           nullable: true
+    SubmitProductRequest:
+      type: object
+      properties:
+        submission_note:
+          type: string
+          nullable: true
+    SuspendProductRequest:
+      type: object
+      properties:
+        suspend_mode:
+          type: string
+          enum:
+            - delist
+            - freeze
+        reason:
+          type: string
+          nullable: true
+      required:
+        - suspend_mode
+    ReviewDecisionRequest:
+      type: object
+      properties:
+        action_name:
+          type: string
+          enum:
+            - approve
+            - reject
+        action_reason:
+          type: string
+          nullable: true
+      required:
+        - action_name
     PutProductMetadataProfileRequest:
       type: object
       properties:
@@ -1812,6 +1964,56 @@ components:
         - delivery_type
         - created_at
         - updated_at
+    ProductSubmit:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        review_task_id:
+          type: string
+          format: uuid
+      required:
+        - product_id
+        - status
+        - review_task_id
+    ProductLifecycle:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        previous_status:
+          type: string
+        status:
+          type: string
+      required:
+        - product_id
+        - previous_status
+        - status
+    ReviewDecision:
+      type: object
+      properties:
+        review_task_id:
+          type: string
+          format: uuid
+        review_type:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+      required:
+        - review_task_id
+        - review_type
+        - ref_type
+        - ref_id
+        - status
     ProductSku:
       type: object
       properties:

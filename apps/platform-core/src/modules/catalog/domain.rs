@@ -695,3 +695,43 @@ pub struct AssetReleasePolicyView {
     pub latest_asset_version_id: String,
     pub latest_version_no: i32,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SubmitProductRequest {
+    pub submission_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProductSubmitView {
+    pub product_id: String,
+    pub status: String,
+    pub review_task_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReviewDecisionRequest {
+    pub action_name: String,
+    pub action_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReviewDecisionView {
+    pub review_task_id: String,
+    pub review_type: String,
+    pub ref_type: String,
+    pub ref_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SuspendProductRequest {
+    pub suspend_mode: String,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProductLifecycleView {
+    pub product_id: String,
+    pub previous_status: String,
+    pub status: String,
+}

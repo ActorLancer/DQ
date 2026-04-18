@@ -4,6 +4,10 @@ use crate::modules::catalog::domain::{is_supported_trade_mode, is_trade_mode_com
 pub enum CatalogPermission {
     ProductDraftWrite,
     RawIngestWrite,
+    ProductSubmit,
+    ReviewWrite,
+    ProductSuspend,
+    RiskProductFreeze,
 }
 
 pub fn is_allowed(role: &str, permission: CatalogPermission) -> bool {
@@ -14,11 +18,41 @@ pub fn is_allowed(role: &str, permission: CatalogPermission) -> bool {
         CatalogPermission::RawIngestWrite => {
             matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
         }
+        CatalogPermission::ProductSubmit => {
+            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+        }
+        CatalogPermission::ReviewWrite => matches!(role, "platform_admin" | "tenant_admin"),
+        CatalogPermission::ProductSuspend => {
+            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+        }
+        CatalogPermission::RiskProductFreeze => matches!(role, "platform_admin"),
     }
 }
 
 pub fn is_valid_sku_trade_mode_pair(sku_type: &str, trade_mode: &str) -> bool {
     is_supported_trade_mode(trade_mode) && is_trade_mode_compatible_with_sku(sku_type, trade_mode)
+}
+
+pub fn is_valid_listing_status(status: &str) -> bool {
+    matches!(
+        status,
+        "draft" | "pending_review" | "listed" | "delisted" | "frozen"
+    )
+}
+
+pub fn can_transition_listing_status(from: &str, to: &str) -> bool {
+    matches!(
+        (from, to),
+        ("draft", "pending_review")
+            | ("pending_review", "listed")
+            | ("pending_review", "draft")
+            | ("pending_review", "frozen")
+            | ("listed", "delisted")
+            | ("listed", "frozen")
+            | ("delisted", "listed")
+            | ("delisted", "frozen")
+            | ("frozen", "delisted")
+    )
 }
 
 #[cfg(test)]
@@ -68,5 +102,16 @@ mod tests {
             CatalogPermission::RawIngestWrite
         ));
         assert!(!is_allowed("developer", CatalogPermission::RawIngestWrite));
+    }
+
+    #[test]
+    fn listing_status_machine_is_frozen() {
+        assert!(is_valid_listing_status("pending_review"));
+        assert!(can_transition_listing_status("draft", "pending_review"));
+        assert!(can_transition_listing_status("pending_review", "listed"));
+        assert!(can_transition_listing_status("listed", "delisted"));
+        assert!(can_transition_listing_status("listed", "frozen"));
+        assert!(!can_transition_listing_status("draft", "listed"));
+        assert!(!can_transition_listing_status("frozen", "listed"));
     }
 }
