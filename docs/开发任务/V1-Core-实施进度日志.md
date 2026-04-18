@@ -2703,43 +2703,9 @@
 - 待人工审批结论：待审批
 - 备注：按你的新流程，本批为连续 4 个任务集中提审；实现中保持按功能拆分，新增样例逻辑独立到 `standard_scenarios.rs`，避免单文件持续膨胀。
 
-### BATCH-103（计划中）
-
-- 状态：计划中
-- 当前任务编号：CAT-020（返工重做，单任务批次）
-- 当前批次目标：严格按 CAT-020 冻结范围重审并补齐 `GET /api/v1/products/{id}`、`GET /api/v1/sellers/{orgId}/profile` 的成功链路验证证据（含审计落库痕迹），不混入 CAT-021+ 内容。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已在历史批次完成并获审批通过；`BATCH-101` 已通过；当前按用户指令从 CAT-020 重新起步。
-- 已阅读证据（文件+要点）：
-  1. `docs/开发任务/v1-core-开发任务清单.csv`：CAT-020 DoD/acceptance/technical_reference 为本批唯一执行基准。
-  2. `docs/开发任务/v1-core-开发任务清单.md`：CAT-020 阅读版条目与 CSV 一致。
-  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：先“计划中”再编码；每批必须验证并产出固定字段。
-  4. `docs/开发任务/AI-Agent-执行提示词.md`：CSV 优先、冲突需暂停、TODO 注释格式冻结。
-  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用批次模板与审计追溯结构。
-  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保留 `TODO-PROC-BIL-001` 追溯约束。
-  7. `docs/开发任务/V1-Core-人工审批记录.md`：由人工手工维护（仅读取状态，不自动写入）。
-  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：`Product` 为目录/展示事实源，搜索读模型与主库职责分离。
-  9. `docs/开发准备/服务清单与服务边界正式版.md`：`catalog` 负责商品详情与卖方主页；OpenSearch 非主数据源。
-  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结包含 `GET /api/v1/products/{id}`、`GET /api/v1/sellers/{orgId}/profile`。
-  11. `docs/开发准备/事件模型与Topic清单正式版.md`：目录读链路审计/事件需遵循统一版本语义与 outbox 约束。
-  12. `docs/开发准备/统一错误码字典正式版.md`：未认证/无权限/不存在口径必须统一。
-  13. `docs/开发准备/测试用例矩阵正式版.md`：接口需具备可执行验证与可追溯证据。
-  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按功能模块拆分测试文件，避免单文件膨胀。
-  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本地 API 联调依赖 core 栈与 `DATABASE_URL`。
-  16. `docs/开发准备/配置项与密钥管理清单.md`：数据库/中间件配置走环境变量，不写死敏感信息。
-  17. `docs/开发准备/技术选型正式版.md`：主状态回 PostgreSQL 校验，Rust 为核心后端实现。
-  18. `docs/开发准备/平台总体架构设计草案.md`：`platform-core` 为唯一业务 API 出口，审计与一致性强约束。
-- CAT-020 technical_reference 约束映射：
-  - `docs/领域模型/全量领域模型与对象关系说明.md:L200`：`Product` 承接详情展示事实源；卖方聚合与搜索投影分层。
-  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：V1 冻结接口必须覆盖上述两个 GET 路径。
-  - `docs/业务流程/业务流程图-V1-完整版.md:L86`：商品从创建到上架流程中的读取链路需可回查审计。
-- 预计验证方式：
-  1. `cargo fmt --all`
-  2. `cargo test -p platform-core`
-  3. `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat020_ -- --nocapture`（插入测试数据 + API 调用 + 审计核验）
-
 ### BATCH-103（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-020
 - 当前批次目标：按冻结文档完成并核验商品详情与卖方主页读接口，补齐成功链路 + 审计痕迹证据，且仅覆盖单任务范围。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-101` 已通过；本批不跨任务。
@@ -2771,5 +2737,5 @@
 - 覆盖的任务清单条目：`CAT-020`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：按你的最新流程，本批为“单 task 自检完成后再提审”；`V1-Core-人工审批记录.md` 继续由人工手工维护，本批未自动写入。
