@@ -68,6 +68,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CancelOrderResponse'
+  /api/v1/orders/{id}/contract-confirm:
+    post:
+      summary: Confirm order contract with contract snapshot and signer role
+      operationId: confirmOrderContract
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmOrderContractRequest'
+      responses:
+        '200':
+          description: Contract confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmOrderContractResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -377,6 +402,58 @@ components:
         reason_code:
           type: string
         canceled_at:
+          type: string
+          format: date-time
+    ConfirmOrderContractRequest:
+      type: object
+      required: [contract_template_id, contract_digest, signer_role]
+      properties:
+        contract_template_id:
+          type: string
+          format: uuid
+        contract_digest:
+          type: string
+        variables_json:
+          type: object
+          additionalProperties: true
+        signer_role:
+          type: string
+          enum: [buyer_signatory, buyer_operator, legal_reviewer]
+    ConfirmOrderContractResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/ConfirmOrderContractResponseData'
+    ConfirmOrderContractResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          contract_id,
+          contract_status,
+          order_status,
+          signer_role,
+          signed_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        contract_id:
+          type: string
+          format: uuid
+        contract_status:
+          type: string
+        order_status:
+          type: string
+        signer_role:
+          type: string
+        signed_at:
           type: string
           format: date-time
     TradePreRequestResponse:

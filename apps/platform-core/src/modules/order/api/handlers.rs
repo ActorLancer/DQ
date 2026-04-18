@@ -1,13 +1,14 @@
 use crate::modules::order::dto::{
-    CancelOrderResponse, CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData,
-    CreateTradePreRequestRequest, FreezeOrderPriceSnapshotResponse,
-    FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse, TradePreRequestResponse,
-    TradePreRequestResponseData,
+    CancelOrderResponse, ConfirmOrderContractRequest, ConfirmOrderContractResponse,
+    CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData, CreateTradePreRequestRequest,
+    FreezeOrderPriceSnapshotResponse, FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
+    TradePreRequestResponse, TradePreRequestResponseData,
 };
 use crate::modules::order::repo::{
-    cancel_order_with_state_machine, create_order_with_snapshot, find_order_by_idempotency,
-    freeze_order_price_snapshot, insert_trade_pre_request, load_order_cancel_context,
-    load_order_detail, load_trade_pre_request, write_trade_audit_event,
+    cancel_order_with_state_machine, confirm_order_contract, create_order_with_snapshot,
+    find_order_by_idempotency, freeze_order_price_snapshot, insert_trade_pre_request,
+    load_order_cancel_context, load_order_contract_confirm_context, load_order_detail,
+    load_trade_pre_request, write_trade_audit_event,
 };
 use axum::Json;
 use axum::extract::Path;
@@ -169,6 +170,72 @@ pub async fn cancel_order_api(
     Ok(ApiResponse::ok(CancelOrderResponse { data: canceled }))
 }
 
+pub async fn confirm_order_contract_api(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+    Json(payload): Json<ConfirmOrderContractRequest>,
+) -> Result<Json<ApiResponse<ConfirmOrderContractResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        TradePermission::ConfirmContract,
+        "order contract confirm",
+    )?;
+    validate_signer_role(&payload.signer_role)?;
+    let signer_id = header(&headers, "x-user-id").ok_or_else(|| {
+        (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: "contract confirm requires x-user-id".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        )
+    })?;
+
+    let dsn = database_dsn()?;
+    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let Some(order_scope) = load_order_contract_confirm_context(&client, &order_id).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+    enforce_order_create_scope(&headers, &order_scope.buyer_org_id)?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let confirmed = confirm_order_contract(
+        &mut client,
+        &order_id,
+        &payload,
+        &signer_id,
+        &actor_role,
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+
+    info!(
+        action = "trade.contract.confirm",
+        order_id = %confirmed.order_id,
+        contract_id = %confirmed.contract_id,
+        signer_role = %confirmed.signer_role,
+        "order contract confirmed"
+    );
+    Ok(ApiResponse::ok(ConfirmOrderContractResponse {
+        data: confirmed,
+    }))
+}
+
 pub async fn create_trade_pre_request(
     headers: HeaderMap,
     Json(payload): Json<CreateTradePreRequestRequest>,
@@ -317,6 +384,7 @@ enum TradePermission {
     CreateOrder,
     ReadOrder,
     CancelOrder,
+    ConfirmContract,
     CreatePreRequest,
     ReadPreRequest,
 }
@@ -341,12 +409,32 @@ fn is_allowed(role: &str, permission: TradePermission) -> bool {
             role,
             "buyer_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
         ),
+        TradePermission::ConfirmContract => {
+            matches!(role, "buyer_operator" | "tenant_admin" | "platform_admin")
+        }
         TradePermission::CreatePreRequest => matches!(role, "buyer_operator" | "tenant_admin"),
         TradePermission::ReadPreRequest => matches!(
             role,
             "buyer_operator" | "seller_operator" | "tenant_admin" | "auditor"
         ),
     }
+}
+
+fn validate_signer_role(signer_role: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if matches!(
+        signer_role,
+        "buyer_signatory" | "buyer_operator" | "legal_reviewer"
+    ) {
+        return Ok(());
+    }
+    Err((
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            code: ErrorCode::TrdStateConflict.as_str().to_string(),
+            message: format!("unsupported signer_role: {signer_role}"),
+            request_id: None,
+        }),
+    ))
 }
 
 fn require_permission(

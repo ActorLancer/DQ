@@ -3272,7 +3272,7 @@
 
 ### BATCH-112（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：TRADE-003
 - 当前批次目标：实现 `POST /api/v1/orders`，完成商品状态校验、价格快照固化、权限校验、风险阻断与审计留痕，并完成 API 联调与数据库证据验证。
 - 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 均已完成且通过审批；上一批 `BATCH-111` 已通过，可继续执行。
@@ -3352,12 +3352,12 @@
 - 覆盖的任务清单条目：`TRADE-003`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 按你的要求继续由你手工维护，本批未自动写入。
 
 ### BATCH-113（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：TRADE-004
 - 当前批次目标：实现 `GET /api/v1/orders/{id}`，返回订单主状态与分层子状态（payment/delivery/acceptance/settlement/dispute），并完成权限、审计与联调验证。
 - 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`BATCH-112` 已通过，可继续执行。
@@ -3433,25 +3433,12 @@
 - 覆盖的任务清单条目：`TRADE-004`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 继续由你手工维护，本批未自动写入。
-
-### BATCH-114（计划中）
-
-- 状态：计划中
-- 当前任务编号：TRADE-005
-- 当前批次目标：实现订单取消接口 `POST /api/v1/orders/{id}/cancel`，按状态机限制可取消阶段并落地退款分支、权限、审计与 OpenAPI 一致性。
-- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`BATCH-113` 已通过，可继续执行。
-- 计划验证步骤：
-  1. `cargo fmt --all`
-  2. `cargo test -p platform-core`
-  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
-  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade005_order_cancel_db_smoke -- --nocapture`
-  5. `cargo run -p platform-core` + `curl` + `psql` 联调取证
 
 ### BATCH-114（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：TRADE-005
 - 当前批次目标：实现 `POST /api/v1/orders/{id}/cancel`，满足可取消阶段约束、退款分支处理、权限与审计要求。
 - 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`BATCH-113` 已通过。
@@ -3527,5 +3514,101 @@
 - 覆盖的任务清单条目：`TRADE-005`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 按你的规则由你手工维护，本批未自动写入。
+
+### BATCH-115（计划中）
+
+- 状态：计划中
+- 当前任务编号：TRADE-006
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/contract-confirm`，关联数字合约快照与签署角色，补齐权限、审计与 OpenAPI。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`BATCH-114` 已通过，可继续执行。
+- 计划验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade006_contract_confirm_db_smoke -- --nocapture`
+  5. `cargo run -p platform-core` + `curl` + `psql` 联调取证
+
+### BATCH-115（待审批）
+
+- 状态：待审批
+- 当前任务编号：TRADE-006
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/contract-confirm`，关联数字合约快照与签署角色。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`BATCH-114` 已通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-006` 交付件、DoD、验收与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对任务解释与约束一致。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：遵循计划中→编码→验证→待审批。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：执行源与冻结边界。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：记录本批计划与结果。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步 TODO 追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，按规则不写。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：合同与授权位于核心链路步骤 5。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：交易编排与合同落库边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：Trade 接口冻结口径对齐。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：主状态机与审计职责边界。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：覆盖合同确认正反路径与审计留痕。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按 DTO/Repo/Test 分拆实现。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：按 `datab-postgres:5432` 联调。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：使用 `DATABASE_URL/KAFKA_BROKERS` 运行口径。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 为状态权威。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化边界。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L530`：`DigitalContract` 需承接合同快照与签署结果。
+  2. `docs/页面说明书/页面说明书-V1-完整版.md:L522`：合同确认页需呈现合同摘要并执行确认签署动作。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：合同确认处于核心交易链路步骤 5，并需可审计。
+- 已实现功能：
+  1. 新增接口 `POST /api/v1/orders/{id}/contract-confirm`。
+  2. 新增请求/响应 DTO：`ConfirmOrderContractRequest/Response`。
+  3. 新增仓储事务：锁定订单、校验可确认状态、写入/更新 `contract.digital_contract` 合同快照、写入 `contract.contract_signer` 签署角色、回填 `trade.order_main.contract_id` 并推进状态到 `contract_effective`。
+  4. 新增校验：权限 `trade.contract.confirm`、租户作用域、`x-user-id` 必填、签署角色白名单。
+  5. 新增审计动作：`trade.contract.confirm`。
+  6. 新增最小回归测试：权限拒绝 + DB smoke（成功/冲突分支）。
+  7. 更新 OpenAPI：新增 `contract-confirm` path 与 schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/dto/order_contract_confirm.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_contract_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade006_contract_confirm_db.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade006_contract_confirm_db_smoke -- --nocapture`
+  5. 启动服务并联调：
+     `APP_PORT=18080 APP_HOST=127.0.0.1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core`
+  6. `curl -X POST /api/v1/orders/{id}/contract-confirm`（可确认订单）。
+  7. `curl -X POST /api/v1/orders/{id}/contract-confirm`（不可确认状态订单）。
+  8. `psql` 校验 `trade.order_main`、`contract.digital_contract`、`contract.contract_signer`、`audit.audit_event`。
+- 验证结果：
+  - `cargo test -p platform-core`：通过（`96 passed, 0 failed, 1 ignored`）。
+  - `trade006_contract_confirm_db_smoke`：通过。
+  - API 联调通过：
+    - 成功分支 `req-trade006-api-1` 返回 `200`，`contract_status=signed`、`order_status=contract_effective`、`signer_role=buyer_operator`。
+    - 冲突分支 `req-trade006-api-2` 返回 `409`，`ORDER_CONTRACT_CONFIRM_FORBIDDEN`。
+  - DB 证据：
+    - `trade.order_main`：`status=contract_effective`，`contract_id` 已关联，`last_reason_code=TRADE-006`。
+    - `contract.digital_contract`：`status=signed`，`contract_digest=sha256:trade006-api-1`。
+    - `contract.contract_signer`：存在 `signer_role=buyer_operator` 与签署人。
+    - `audit.audit_event`：存在 `action_name=trade.contract.confirm`，`request_id=req-trade006-api-1`。
+  - 清理：临时业务测试数据已删除；审计表 append-only，测试审计记录保留。
+- 覆盖的冻结文档条目：
+  - `docs/领域模型/全量领域模型与对象关系说明.md`（4.3 合同与策略聚合）
+  - `docs/页面说明书/页面说明书-V1-完整版.md`（6.2 合同确认页）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（15 核心交易链路）
+  - `docs/权限设计/接口权限校验清单.md`（3.4 `POST /api/v1/orders/{id}/contract-confirm`）
+  - `docs/权限设计/角色权限矩阵正式版.md`（`trade.contract.confirm` 角色口径）
+- 覆盖的任务清单条目：`TRADE-006`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 继续由你手工维护，本批未写入。
