@@ -2985,21 +2985,9 @@
 - 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 按你的要求继续由你手工维护，本批未自动写入。
 
-### BATCH-108（计划中）
-
-- 状态：计划中
-- 当前任务编号：CAT-025
-- 当前批次目标：生成 `docs/02-openapi/catalog.yaml` 第一版并完成与 Catalog 当前实现的路径/方法一致性校验及 API 联调验证。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-107` 已通过，可继续执行。
-- 预计涉及文件：
-  - `docs/02-openapi/catalog.yaml`
-  - `docs/开发任务/V1-Core-实施进度日志.md`
-  - `docs/开发任务/V1-Core-TODO与预留清单.md`
-- 待人工审批结论：待审批
-
 ### BATCH-108（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-025
 - 当前批次目标：生成 `docs/02-openapi/catalog.yaml` 第一版并与当前 Catalog 实现完成一致性校验。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-107` 已通过，可继续执行。
@@ -3053,5 +3041,74 @@
 - 覆盖的任务清单条目：`CAT-025`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`audit.audit_event` 为 append-only，联调验证后未执行审计数据删除；`V1-Core-人工审批记录.md` 继续由你手工维护。
+
+### BATCH-109（计划中）
+
+- 状态：计划中
+- 当前任务编号：CAT-026
+- 当前批次目标：生成 `docs/05-test-cases/catalog-review-cases.md`，覆盖上架规则、字段缺失、模板不匹配、风险阻断，并补齐接口联调验证证据。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-108` 已通过，可继续执行。
+- 预计涉及文件：
+  - `docs/05-test-cases/catalog-review-cases.md`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 待人工审批结论：待审批
+
+### BATCH-109（待审批）
+
+- 状态：待审批
+- 当前任务编号：CAT-026
+- 当前批次目标：生成 `docs/05-test-cases/catalog-review-cases.md`，覆盖上架规则、字段缺失、模板不匹配、风险阻断，并提供联调验证证据。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-108` 已通过，可继续执行。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `CAT-026` 的 DoD/acceptance/technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版任务描述与 CSV 一致。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中 -> 编码 -> 验证 -> 待审批”流程执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持 V1 边界，不扩展任务。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：先记录计划中，再追加待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步批次更新，无新增 TODO。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：仅读规则，继续由人工维护。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认目录与审核主流程口径。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 catalog 模块职责边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认接口冻结面与请求头约束。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：保持事件与主状态边界不变。
+  12. `docs/开发准备/统一错误码字典正式版.md`：校验错误码口径（`CAT_VALIDATION_FAILED` / `TRD_STATE_CONFLICT`）。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：按用例矩阵方式组织场景。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：文档落盘于 `docs/05-test-cases`。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：使用 core 栈联调。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：使用环境变量启动应用。
+  17. `docs/开发准备/技术选型正式版.md`：沿用 Rust + PostgreSQL + Axum + Kafka。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体，不新增架构动作。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L200`：用例覆盖 DataAsset/DataAssetVersion/Product/SKU 关联前置关系。
+  2. `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：用例覆盖 V1 商品/SKU/模板绑定/提交审核关键接口与错误路径。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L86`：用例覆盖“保存草稿 -> 提交审核 -> 审核通过/驳回 -> 风险阻断”流程节点。
+- 已实现功能：
+  1. 新增文档 `docs/05-test-cases/catalog-review-cases.md`。
+  2. 文档包含 8 条核心用例，覆盖：上架规则、字段缺失、模板不匹配、风险阻断。
+  3. 文档明确了断言细则（状态机、模板族校验、风险阻断）与建议执行顺序。
+  4. 补充联调验证：执行风险阻断场景，确认 `submit` 返回 `TRD_STATE_CONFLICT`，且不产生 `catalog.product.submit` 成功审计事件。
+- 涉及文件：
+  - `docs/05-test-cases/catalog-review-cases.md`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务：`APP_PORT=18080 ... KAFKA_BROKERS=127.0.0.1:9094 ... cargo run -p platform-core`
+  4. `curl` + `psql` 执行风险阻断联调：构造 `metadata.risk_blocked=true` 商品并调用 `POST /api/v1/products/{id}/submit`。
+- 验证结果：
+  - `cargo test -p platform-core`：通过（`82 passed, 0 failed, 1 ignored`）。
+  - 风险阻断联调：`error_code=TRD_STATE_CONFLICT`，`message=product is blocked by risk policy`。
+  - 审计校验：`audit_submit_count=0`（风险阻断下未产生成功提交审计）。
+- 覆盖的冻结文档条目：
+  - `docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5. V1 接口）
+  - `docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）
+- 覆盖的任务清单条目：`CAT-026`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 继续由你手工维护，本批未自动写入。
