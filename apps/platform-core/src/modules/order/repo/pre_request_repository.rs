@@ -138,7 +138,7 @@ fn default_rfq_payload() -> InquiryPayloadV1 {
 }
 
 pub async fn write_trade_audit_event(
-    client: &tokio_postgres::Client,
+    client: &(impl tokio_postgres::GenericClient + Sync),
     ref_type: &str,
     ref_id: &str,
     actor_role: &str,

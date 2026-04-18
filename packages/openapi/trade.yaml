@@ -6,11 +6,30 @@ info:
     V1 trade baseline currently includes:
     - TRADE-001 minimal pre-order request model for RFQ / sample / POC
     - TRADE-002 order price snapshot freeze model
+    - TRADE-003 order creation with product state / risk / price snapshot validation
     - TRADE-030 payment-result transition mapping:
       - payment succeeded -> order status buyer_locked (delivery pending)
       - payment failed -> order status payment_failed_pending_resolution
       - payment timeout -> order status payment_timeout_pending_compensation_cancel
 paths:
+  /api/v1/orders:
+    post:
+      summary: Create an order from listed product and sku
+      operationId: createOrder
+      tags: [trade]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrderResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -136,6 +155,77 @@ components:
           $ref: '#/components/schemas/ContractExpectationSnapshot'
         authorization_expectation:
           $ref: '#/components/schemas/AuthorizationExpectationSnapshot'
+    CreateOrderRequest:
+      type: object
+      required: [buyer_org_id, product_id, sku_id]
+      properties:
+        buyer_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        inquiry_id:
+          type: string
+          format: uuid
+    CreateOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/CreateOrderResponseData'
+    CreateOrderResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          buyer_org_id,
+          seller_org_id,
+          product_id,
+          sku_id,
+          status,
+          payment_status,
+          amount,
+          currency_code,
+          price_snapshot,
+          created_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        buyer_org_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        payment_status:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        price_snapshot:
+          $ref: '#/components/schemas/OrderPriceSnapshot'
+        created_at:
+          type: string
+          format: date-time
     TradePreRequestResponse:
       type: object
       required: [data]
