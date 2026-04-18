@@ -268,6 +268,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SbxStdTransitionResponse'
+  /api/v1/orders/{id}/rpt-std/transition:
+    post:
+      summary: Transition RPT_STD order state under report delivery state-machine rules
+      operationId: transitionRptStdOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RptStdTransitionRequest'
+      responses:
+        '200':
+          description: RPT_STD transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RptStdTransitionResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -759,6 +784,22 @@ components:
             ]
         reason_note:
           type: string
+    RptStdTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              create_report_task,
+              generate_report,
+              deliver_report,
+              accept_report,
+              settle_report,
+            ]
+        reason_note:
+          type: string
     FileStdTransitionResponse:
       type: object
       required: [data]
@@ -829,6 +870,16 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/SbxStdTransitionResponseData'
+    RptStdTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/RptStdTransitionResponseData'
     FileStdTransitionResponseData:
       type: object
       required:
@@ -1076,6 +1127,47 @@ components:
           type: string
           format: date-time
     SbxStdTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    RptStdTransitionResponseData:
       type: object
       required:
         [

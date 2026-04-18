@@ -5,9 +5,9 @@ use crate::modules::order::dto::{
     CreateTradePreRequestRequest, FileStdTransitionRequest, FileStdTransitionResponse,
     FileSubTransitionRequest, FileSubTransitionResponse, FreezeOrderPriceSnapshotResponse,
     FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse, QryLiteTransitionRequest,
-    QryLiteTransitionResponse, SbxStdTransitionRequest, SbxStdTransitionResponse,
-    ShareRoTransitionRequest, ShareRoTransitionResponse, TradePreRequestResponse,
-    TradePreRequestResponseData,
+    QryLiteTransitionResponse, RptStdTransitionRequest, RptStdTransitionResponse,
+    SbxStdTransitionRequest, SbxStdTransitionResponse, ShareRoTransitionRequest,
+    ShareRoTransitionResponse, TradePreRequestResponse, TradePreRequestResponseData,
 };
 use crate::modules::order::repo::{
     cancel_order_with_state_machine, confirm_order_contract, create_order_with_snapshot,
@@ -15,7 +15,8 @@ use crate::modules::order::repo::{
     load_order_cancel_context, load_order_contract_confirm_context, load_order_detail,
     load_trade_pre_request, transition_api_ppu_order, transition_api_sub_order,
     transition_file_std_order, transition_file_sub_order, transition_qry_lite_order,
-    transition_sbx_std_order, transition_share_ro_order, write_trade_audit_event,
+    transition_rpt_std_order, transition_sbx_std_order, transition_share_ro_order,
+    write_trade_audit_event,
 };
 use axum::Json;
 use axum::extract::Path;
@@ -635,6 +636,62 @@ pub async fn transition_sbx_std_order_api(
     }))
 }
 
+pub async fn transition_rpt_std_order_api(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+    Json(payload): Json<RptStdTransitionRequest>,
+) -> Result<Json<ApiResponse<RptStdTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        TradePermission::TransitionRptStd,
+        "rpt std state transition",
+    )?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+    enforce_order_read_scope(
+        &headers,
+        &order_scope.buyer_org_id,
+        &order_scope.seller_org_id,
+    )?;
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let transitioned = transition_rpt_std_order(
+        &mut client,
+        &order_id,
+        &payload,
+        &actor_role,
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+
+    info!(
+        action = "trade.order.rpt_std.transition",
+        order_id = %transitioned.order_id,
+        transition_action = %transitioned.action,
+        previous_state = %transitioned.previous_state,
+        current_state = %transitioned.current_state,
+        "rpt std order state transitioned"
+    );
+    Ok(ApiResponse::ok(RptStdTransitionResponse {
+        data: transitioned,
+    }))
+}
+
 pub async fn create_trade_pre_request(
     headers: HeaderMap,
     Json(payload): Json<CreateTradePreRequestRequest>,
@@ -791,6 +848,7 @@ enum TradePermission {
     TransitionShareRo,
     TransitionQryLite,
     TransitionSbxStd,
+    TransitionRptStd,
     CreatePreRequest,
     ReadPreRequest,
 }
@@ -867,6 +925,14 @@ fn is_allowed(role: &str, permission: TradePermission) -> bool {
                 | "platform_risk_settlement"
         ),
         TradePermission::TransitionSbxStd => matches!(
+            role,
+            "buyer_operator"
+                | "seller_operator"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        TradePermission::TransitionRptStd => matches!(
             role,
             "buyer_operator"
                 | "seller_operator"

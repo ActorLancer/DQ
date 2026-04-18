@@ -7,6 +7,7 @@ mod order_file_std_transition;
 mod order_file_sub_transition;
 mod order_qry_lite_transition;
 mod order_read;
+mod order_rpt_std_transition;
 mod order_sbx_std_transition;
 mod order_share_ro_transition;
 mod pre_request;
@@ -33,6 +34,9 @@ pub use order_qry_lite_transition::{
     QryLiteTransitionRequest, QryLiteTransitionResponse, QryLiteTransitionResponseData,
 };
 pub use order_read::{GetOrderDetailResponse, GetOrderDetailResponseData};
+pub use order_rpt_std_transition::{
+    RptStdTransitionRequest, RptStdTransitionResponse, RptStdTransitionResponseData,
+};
 pub use order_sbx_std_transition::{
     SbxStdTransitionRequest, SbxStdTransitionResponse, SbxStdTransitionResponseData,
 };
