@@ -2739,3 +2739,62 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 待人工审批结论：通过
 - 备注：按你的最新流程，本批为“单 task 自检完成后再提审”；`V1-Core-人工审批记录.md` 继续由人工手工维护，本批未自动写入。
+
+### BATCH-104（待审批）
+
+- 状态：待审批
+- 当前任务编号：CAT-021
+- 当前批次目标：按冻结文档完成模板绑定与策略更新接口的单任务闭环，并补齐 API 调用级 DB smoke 验证（含审计落库证据）。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已在历史批次完成并审批通过；`BATCH-103` 已通过，满足执行条件。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `CAT-021` 的 DoD / acceptance / technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对 `CAT-021` 说明与 CSV 一致，按单任务执行。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：执行“计划中 -> 编码 -> 验证 -> 待审批”顺序。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：遵循 V1 范围与冻结边界，不扩展 V2/V3。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：按批次模板登记，先写计划中后实现。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：维护批次更新记录，追溯 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：已读取规则；按你要求本批不自动写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：读取 5.3.2A SKU/模板映射（L229 附近）。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 catalog 模块职责边界不越界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认冻结接口路径口径。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本任务以 DB 审计闭环为主，无新增 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：错误响应沿用统一 `ErrorResponse`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：补充最小 API+DB smoke 集成验证。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：测试按功能拆分为独立文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：验证使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：使用标准 `DATABASE_URL` 注入。
+  17. `docs/开发准备/技术选型正式版.md`：沿用 Rust + PostgreSQL + Axum 既有栈。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体，不做跨边界重构。
+- technical_reference 约束映射：
+  1. `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：覆盖 `POST /api/v1/products/{id}/bind-template`、`POST /api/v1/skus/{id}/bind-template`、`PATCH /api/v1/policies/{id}` 与模板绑定规则。
+  2. `docs/原始PRD/数据对象产品族与交付模式增强设计.md:L292`：沿用七类标准交易方式，模板与 `sku_type` 强匹配，不接受泛化 API 模板族。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：按首批标准场景与 V1 SKU 模板映射口径校验绑定行为。
+- 已实现功能：
+  1. 新增 `CAT-021` API 级 DB smoke 用例 `cat021_template_bind_and_policy_patch_db_smoke`，真实调用三条接口并验证响应字段。
+  2. 在同一用例中校验模板绑定写入：`contract.template_binding` 至少落两条（product 绑定 + sku 绑定）。
+  3. 校验 SKU 元数据回写：`catalog.product_sku.metadata.draft_template_id` 随 sku 绑定更新。
+  4. 校验策略更新落库：`contract.usage_policy` 的 `policy_name/status/exportable` 与请求一致。
+  5. 校验审计痕迹：`audit.audit_event` 命中 `template.product.bind`、`template.sku.bind`、`template.policy.update`。
+- 涉及文件：
+  - `apps/platform-core/src/modules/catalog/tests/cat021_template_policy_db.rs`
+  - `apps/platform-core/src/modules/catalog/tests/mod.rs`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core cat021_ -- --nocapture`
+  3. `cargo test -p platform-core`
+  4. `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat021_ -- --nocapture`
+- 验证结果：
+  - `cargo test -p platform-core cat021_ -- --nocapture`：通过（`1 passed`，未开启 DB smoke 时走开关短路）。
+  - `cargo test -p platform-core`：通过（`79 passed, 0 failed, 1 ignored`）。
+  - DB smoke：沙箱内因 socket 权限限制报 `Operation not permitted`，提权后同命令通过（`1 passed, 0 failed`）。
+- 覆盖的冻结文档条目：
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5.1~5.3 模板绑定路径与规则）
+  - `docs/原始PRD/数据对象产品族与交付模式增强设计.md`（4. 七类标准交易方式）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（5.3.2A 首批场景到 V1 SKU 与模板映射）
+- 覆盖的任务清单条目：`CAT-021`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 按你的要求继续由人工维护，本批未自动写入。

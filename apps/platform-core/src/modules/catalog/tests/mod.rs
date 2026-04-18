@@ -1,5 +1,6 @@
 mod asset_objects;
 mod cat020_read_db;
+mod cat021_template_policy_db;
 mod data_contracts;
 mod listing_submit_review;
 mod processing_jobs;
