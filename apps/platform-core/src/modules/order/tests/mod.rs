@@ -11,6 +11,7 @@ mod trade010_api_sub_state_machine_db;
 mod trade011_api_ppu_state_machine_db;
 mod trade012_share_ro_state_machine_db;
 mod trade013_qry_lite_state_machine_db;
+mod trade014_sbx_std_state_machine_db;
 
 #[cfg(test)]
 mod tests {
@@ -278,6 +279,29 @@ mod tests {
                     .body(Body::from(
                         r#"{
                           "action":"authorize_template"
+                        }"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_sbx_std_transition_without_permission() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/orders/30000000-0000-0000-0000-000000000101/sbx-std/transition")
+                    .header("x-role", "developer")
+                    .header("x-tenant-id", "10000000-0000-0000-0000-000000000102")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "action":"enable_workspace"
                         }"#,
                     ))
                     .expect("request should build"),

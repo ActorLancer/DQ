@@ -243,6 +243,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QryLiteTransitionResponse'
+  /api/v1/orders/{id}/sbx-std/transition:
+    post:
+      summary: Transition SBX_STD order state under sandbox state-machine rules
+      operationId: transitionSbxStdOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SbxStdTransitionRequest'
+      responses:
+        '200':
+          description: SBX_STD transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SbxStdTransitionResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -717,6 +742,23 @@ components:
             ]
         reason_note:
           type: string
+    SbxStdTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              enable_workspace,
+              issue_account_seat,
+              execute_sandbox_query,
+              export_limited_result,
+              expire_sandbox,
+              revoke_sandbox,
+            ]
+        reason_note:
+          type: string
     FileStdTransitionResponse:
       type: object
       required: [data]
@@ -777,6 +819,16 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/QryLiteTransitionResponseData'
+    SbxStdTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SbxStdTransitionResponseData'
     FileStdTransitionResponseData:
       type: object
       required:
@@ -983,6 +1035,47 @@ components:
           type: string
           format: date-time
     QryLiteTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    SbxStdTransitionResponseData:
       type: object
       required:
         [

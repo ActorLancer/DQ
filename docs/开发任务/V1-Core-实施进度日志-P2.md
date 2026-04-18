@@ -555,3 +555,86 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按你的约定由你手工维护，本批未写入。
+
+### BATCH-123（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-014
+- 当前批次目标：实现查询沙箱状态机 `SBX_STD`：空间开通、账号/席位下发、执行、受限导出、到期或撤权，并补齐权限、审计、OpenAPI、测试与 API 联调闭环。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-013` 已审批通过。
+
+### BATCH-123（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-014
+- 当前批次目标：实现查询沙箱状态机 `SBX_STD`：空间开通、账号/席位下发、执行、受限导出、到期或撤权，并完成权限、审计、OpenAPI、测试与 API 联调闭环。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-013` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-014` 描述、DoD、验收、technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对 `TRADE-014` 详细语义与依赖关系。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：遵循“计划中→编码→验证→待审批”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：遵循单任务批次、不可跳步。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批计划与结果记录载体。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `SBX_STD` 独立 SKU 语义与 15.3.6 状态机要求。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认交易状态编排边界在 `platform-core`。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认接口契约与统一响应结构。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认状态迁移审计留痕边界。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：对齐 `SKU-007`（沙箱席位开通、环境可用、导出限制）与 `AUTHZ-005`。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按 dto/repo/api/tests 分层实现。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432` 与本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：按环境变量启动服务联调。
+  17. `docs/开发准备/技术选型正式版.md`：保持 PostgreSQL 为状态真值源。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块边界与职责收敛。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L1445`：订单生命周期需要可追溯的状态推进与闭环。
+  2. `docs/data_trading_blockchain_system_design_split/06-Phase 1：最小可信交易闭环系统设计.md:L65`：迁移幂等、不可并发矛盾、不可非法倒退。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：`SBX_STD` 是首批标准 SKU 独立链路，不得并入 `QRY_LITE` 或其他类型。
+- 已实现功能：
+  1. 新增 `POST /api/v1/orders/{id}/sbx-std/transition`。
+  2. 实现 `SBX_STD` 状态机动作：`enable_workspace`、`issue_account_seat`、`execute_sandbox_query`、`export_limited_result`、`expire_sandbox`、`revoke_sandbox`。
+  3. 强制 `sku_type=SBX_STD` 校验；非 `SBX_STD` 订单拒绝迁移。
+  4. 每次迁移同事务更新 `trade.order_main`（主状态/分层状态）并写审计 `trade.order.sbx_std.transition`。
+  5. 新增 DTO/repo/router 接线、权限拒绝测试、DB smoke 测试与 OpenAPI schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_sbx_std_transition.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_sbx_std_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade014_sbx_std_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade014_sbx_std_state_machine_db_smoke -- --nocapture`
+  5. 启动服务：`APP_PORT=18082 ... cargo run -p platform-core`
+  6. `psql` 插入 `SBX_STD` 联调数据。
+  7. `curl` 依次调用 `enable_workspace -> issue_account_seat -> execute_sandbox_query -> export_limited_result -> expire_sandbox`，并校验非法重复执行。
+  8. `psql` 回查订单终态与审计计数。
+  9. 清理临时业务测试数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`127 passed, 0 failed, 1 ignored`）。
+  - `check-local-stack core`：脚本失败（报告 `5432` 不可达）；但后续 DB smoke、psql、curl 均连通成功，记录为环境脚本兼容性噪声。
+  - `trade014_sbx_std_state_machine_db_smoke`：通过（`1 passed`，外部权限运行）。
+  - API 联调通过（`18082` 当前代码服务实例）：5 个合法动作均 `HTTP 200`。
+  - 非法迁移校验：`execute_sandbox_query` 在 `expired` 后再次执行返回 `HTTP 409`，消息包含 `SBX_STD_TRANSITION_FORBIDDEN`。
+  - DB 终态：`expired|paid|expired|expired|expired|none`。
+  - 审计证据：`audit.audit_event` 中 `action_name='trade.order.sbx_std.transition'` 计数 `5`。
+  - 清理结果：临时业务数据已删除；审计记录保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 7.2 生命周期总表（订单主状态闭环）
+  - `Phase1 设计` 6.5 订单状态机（幂等与冲突约束）
+  - `全集成基线 V1` 5.3.2A（标准场景与 `SBX_STD` 映射）
+  - `全集成基线 V1` 15.3.6（查询沙箱交付/验收条件）
+  - `业务流程图 V1` 4.4.3（沙箱交付主流程）
+- 覆盖的任务清单条目：`TRADE-014`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按你的约定由你手工维护，本批未写入。

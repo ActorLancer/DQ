@@ -7,6 +7,7 @@ mod order_file_std_repository;
 mod order_file_sub_repository;
 mod order_qry_lite_repository;
 mod order_read_repository;
+mod order_sbx_std_repository;
 mod order_share_ro_repository;
 mod pre_request_repository;
 mod price_snapshot_repository;
@@ -20,6 +21,7 @@ pub use order_file_std_repository::transition_file_std_order;
 pub use order_file_sub_repository::transition_file_sub_order;
 pub use order_qry_lite_repository::transition_qry_lite_order;
 pub use order_read_repository::load_order_detail;
+pub use order_sbx_std_repository::transition_sbx_std_order;
 pub use order_share_ro_repository::transition_share_ro_order;
 pub use pre_request_repository::{
     insert_trade_pre_request, load_trade_pre_request, write_trade_audit_event,
