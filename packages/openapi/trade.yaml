@@ -93,6 +93,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConfirmOrderContractResponse'
+  /api/v1/orders/{id}/file-std/transition:
+    post:
+      summary: Transition FILE_STD order state under state-machine rules
+      operationId: transitionFileStdOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileStdTransitionRequest'
+      responses:
+        '200':
+          description: FILE_STD transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileStdTransitionResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -454,6 +479,78 @@ components:
         signer_role:
           type: string
         signed_at:
+          type: string
+          format: date-time
+    FileStdTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              lock_funds,
+              start_delivery,
+              mark_delivered,
+              accept_delivery,
+              settle_order,
+              close_completed,
+              request_refund,
+              open_dispute,
+              resolve_dispute_refund,
+              resolve_dispute_complete,
+            ]
+        reason_note:
+          type: string
+    FileStdTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/FileStdTransitionResponseData'
+    FileStdTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
           type: string
           format: date-time
     TradePreRequestResponse:

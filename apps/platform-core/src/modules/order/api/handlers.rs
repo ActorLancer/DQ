@@ -1,14 +1,15 @@
 use crate::modules::order::dto::{
     CancelOrderResponse, ConfirmOrderContractRequest, ConfirmOrderContractResponse,
     CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData, CreateTradePreRequestRequest,
-    FreezeOrderPriceSnapshotResponse, FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
-    TradePreRequestResponse, TradePreRequestResponseData,
+    FileStdTransitionRequest, FileStdTransitionResponse, FreezeOrderPriceSnapshotResponse,
+    FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse, TradePreRequestResponse,
+    TradePreRequestResponseData,
 };
 use crate::modules::order::repo::{
     cancel_order_with_state_machine, confirm_order_contract, create_order_with_snapshot,
     find_order_by_idempotency, freeze_order_price_snapshot, insert_trade_pre_request,
     load_order_cancel_context, load_order_contract_confirm_context, load_order_detail,
-    load_trade_pre_request, write_trade_audit_event,
+    load_trade_pre_request, transition_file_std_order, write_trade_audit_event,
 };
 use axum::Json;
 use axum::extract::Path;
@@ -236,6 +237,62 @@ pub async fn confirm_order_contract_api(
     }))
 }
 
+pub async fn transition_file_std_order_api(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+    Json(payload): Json<FileStdTransitionRequest>,
+) -> Result<Json<ApiResponse<FileStdTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        TradePermission::TransitionFileStd,
+        "file std state transition",
+    )?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+    enforce_order_read_scope(
+        &headers,
+        &order_scope.buyer_org_id,
+        &order_scope.seller_org_id,
+    )?;
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let transitioned = transition_file_std_order(
+        &mut client,
+        &order_id,
+        &payload,
+        &actor_role,
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+
+    info!(
+        action = "trade.order.file_std.transition",
+        order_id = %transitioned.order_id,
+        transition_action = %transitioned.action,
+        previous_state = %transitioned.previous_state,
+        current_state = %transitioned.current_state,
+        "file std order state transitioned"
+    );
+    Ok(ApiResponse::ok(FileStdTransitionResponse {
+        data: transitioned,
+    }))
+}
+
 pub async fn create_trade_pre_request(
     headers: HeaderMap,
     Json(payload): Json<CreateTradePreRequestRequest>,
@@ -385,6 +442,7 @@ enum TradePermission {
     ReadOrder,
     CancelOrder,
     ConfirmContract,
+    TransitionFileStd,
     CreatePreRequest,
     ReadPreRequest,
 }
@@ -412,6 +470,14 @@ fn is_allowed(role: &str, permission: TradePermission) -> bool {
         TradePermission::ConfirmContract => {
             matches!(role, "buyer_operator" | "tenant_admin" | "platform_admin")
         }
+        TradePermission::TransitionFileStd => matches!(
+            role,
+            "buyer_operator"
+                | "seller_operator"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
         TradePermission::CreatePreRequest => matches!(role, "buyer_operator" | "tenant_admin"),
         TradePermission::ReadPreRequest => matches!(
             role,

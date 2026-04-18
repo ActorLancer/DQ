@@ -91,3 +91,85 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按你的约定由你手工维护，本批未写入。
+
+### BATCH-117（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-008
+- 当前批次目标：实现 `FILE_STD` 状态机路径（创建、待锁资、待交付、待验收、已完成、已退款/争议）并完成 API 联调与审计验证。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-007` 已审批通过。
+
+### BATCH-117（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-008
+- 当前批次目标：实现文件交易状态机 `FILE_STD`：创建、待锁资、待交付、待验收、已完成、已退款/争议等路径。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-007` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-008` 描述、DoD、验收、technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对 `TRADE-008` 详细口径与顺序。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：执行“计划中→编码→验证→待审批”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：遵循单任务批次、不可跳步。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：记录本批计划与结果。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `FILE_STD` 属于首批标准链路主 SKU。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认交易状态编排边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认 Trade API 冻结风格与约束。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认状态变更的审计/事件留痕口径。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：补齐 FILE_STD 正常链路与争议退款链路测试。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按 dto/repo/api/tests 逻辑分层。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：使用 `datab-postgres:5432` 联调。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：按环境变量启动服务联调。
+  17. `docs/开发准备/技术选型正式版.md`：维持 PostgreSQL 业务状态权威。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块边界稳定。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L1445`：订单生命周期需要覆盖正常与争议分支。
+  2. `docs/data_trading_blockchain_system_design_split/06-Phase 1：最小可信交易闭环系统设计.md:L65`：迁移需幂等、不可并发矛盾、不可倒退。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：`FILE_STD` 在首批场景中是独立主 SKU，状态快照需对象化。
+- 已实现功能：
+  1. 新增 `POST /api/v1/orders/{id}/file-std/transition`，支持 `FILE_STD` 状态迁移动作集。
+  2. 新增 `FILE_STD` 转换规则：`lock_funds -> start_delivery -> mark_delivered -> accept_delivery -> settle_order -> close_completed`。
+  3. 新增争议/退款分支：`open_dispute`、`resolve_dispute_refund`、`resolve_dispute_complete`、`request_refund`。
+  4. 强校验仅允许 `sku_type=FILE_STD` 执行该状态机转换。
+  5. 每次状态迁移同事务落库：主状态 + 分层子状态 + `last_reason_code` + 审计动作 `trade.order.file_std.transition`。
+  6. 新增 DTO、repo、权限拒绝测试、DB smoke 测试；更新 OpenAPI。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/dto/order_file_std_transition.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_file_std_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade008_file_std_state_machine_db.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade008_file_std_state_machine_db_smoke -- --nocapture`
+  5. 启动服务联调：
+     `APP_PORT=18080 APP_HOST=127.0.0.1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core`
+  6. `curl` 联调：`POST /api/v1/orders` + `POST /api/v1/orders/{id}/file-std/transition`（链路+争议退款分支）。
+  7. `psql` 校验 `trade.order_main` 最终状态与 `audit.audit_event` 审计记录。
+- 验证结果：
+  - `cargo test -p platform-core`：通过（`103 passed, 0 failed, 1 ignored`）。
+  - `trade008_file_std_state_machine_db_smoke`：通过。
+  - API 联调通过：
+    - `lock_funds` 后状态 `buyer_locked`；
+    - `start_delivery` 后状态 `seller_delivering`；
+    - `mark_delivered` 后状态 `delivered`；
+    - `open_dispute` 后状态 `dispute_opened`；
+    - `resolve_dispute_refund` 后状态 `closed + refunded`。
+  - DB 证据：`status=closed, payment_status=refunded, delivery_status=refunded, acceptance_status=refunded, settlement_status=refunded, dispute_status=resolved`。
+  - 审计证据：`trade.order.create` 与多条 `trade.order.file_std.transition` 均存在。
+  - 清理：临时业务测试数据已清理；审计表 append-only 记录保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 7.2 交易对象生命周期
+  - `Phase1 设计` 6.5 订单状态机
+  - `全集成基线 V1` 5.3.2A `FILE_STD` 主路径语义
+- 覆盖的任务清单条目：`TRADE-008`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 由你手工维护，本批未写入。
