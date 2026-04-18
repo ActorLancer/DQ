@@ -16,9 +16,8 @@ pub(in crate::modules::catalog) use handlers::asset_pipeline::{
     patch_asset_release_policy,
 };
 pub(in crate::modules::catalog) use handlers::product_and_review::{
-    create_product_draft, get_standard_scenario_templates, patch_product_draft,
-    put_product_metadata_profile, review_compliance, review_product, review_subject,
-    submit_product, suspend_product,
+    create_product_draft, patch_product_draft, put_product_metadata_profile, review_compliance,
+    review_product, review_subject, submit_product, suspend_product,
 };
 pub(in crate::modules::catalog) use handlers::product_read::{
     get_product_detail, get_seller_profile,
@@ -26,6 +25,7 @@ pub(in crate::modules::catalog) use handlers::product_read::{
 pub(in crate::modules::catalog) use handlers::sku_contract::{
     create_data_contract, create_product_sku, get_data_contract, patch_product_sku,
 };
+pub(in crate::modules::catalog) use handlers::standard_scenarios::get_standard_scenario_templates;
 pub(in crate::modules::catalog) use handlers::template_policy::{
     bind_product_template, bind_sku_template, patch_usage_policy,
 };

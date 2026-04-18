@@ -8,14 +8,12 @@ use tracing::info;
 use crate::modules::catalog::domain::{
     CreateDataProductRequest, DataProductView, PatchDataProductRequest, ProductLifecycleView,
     ProductMetadataProfileView, ProductSubmitView, PutProductMetadataProfileRequest,
-    ReviewDecisionRequest, ReviewDecisionView, StandardScenarioTemplateView, SubmitProductRequest,
-    SuspendProductRequest,
+    ReviewDecisionRequest, ReviewDecisionView, SubmitProductRequest, SuspendProductRequest,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
     CatalogPermission, can_transition_listing_status, is_valid_listing_status,
 };
-use crate::modules::catalog::standard_scenarios::standard_scenario_templates;
 
 use super::super::support::*;
 use super::super::validators::*;
@@ -73,18 +71,6 @@ pub(in crate::modules::catalog) async fn create_product_draft(
         "catalog product draft created"
     );
     Ok(ApiResponse::ok(view))
-}
-
-pub(in crate::modules::catalog) async fn get_standard_scenario_templates(
-    headers: HeaderMap,
-) -> Result<Json<ApiResponse<Vec<StandardScenarioTemplateView>>>, (StatusCode, Json<ErrorResponse>)>
-{
-    require_permission(
-        &headers,
-        CatalogPermission::ProductRead,
-        "catalog standard scenario template read",
-    )?;
-    Ok(ApiResponse::ok(standard_scenario_templates()))
 }
 
 pub(in crate::modules::catalog) async fn patch_product_draft(

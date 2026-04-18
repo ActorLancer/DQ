@@ -2801,7 +2801,7 @@
 
 ### BATCH-105（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-022
 - 当前批次目标：实现“商品与卖方搜索可见性字段”闭环，补齐搜索同步事件、搜索可见性读回与 API 级 DB smoke 证据。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-104` 已通过，可执行。
@@ -2857,5 +2857,67 @@
 - 覆盖的任务清单条目：`CAT-022`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 继续按你的要求由人工维护，本批未自动写入。
+
+### BATCH-106（计划中）
+
+- 状态：待审批
+- 当前任务编号：CAT-023
+- 当前批次目标：按 `CAT-023` 冻结要求完成五条标准链路模板接口闭环，补齐接口调用、审计落库与可重复 DB 联调验证证据。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-105` 已通过，可继续执行。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `CAT-023` 的 DoD、acceptance、technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版任务描述与 CSV 一致，以 CSV 为准执行。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：执行“计划中 -> 编码 -> 验证 -> 待审批”固定流程。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：遵循 V1 冻结边界，不引入 V2/V3 功能。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：先登记计划中，再追加待审批结果。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步批次记录，保持 TODO 追溯完整。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：仅读取规则，按人工要求不自动写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：读取 5.3.2 与 5.3.2A 场景与 SKU 模板映射。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 catalog 模块内实现，不跨服务边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认接口路径冻结不变。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本任务不新增 topic，仅补齐审计证据。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用统一错误响应结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：补齐接口级 smoke + 审计校验。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增独立 handler 与测试文件，避免单文件膨胀。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调库使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：通过 `DATABASE_URL` 注入连接参数。
+  17. `docs/开发准备/技术选型正式版.md`：维持 Rust + PostgreSQL + Axum 栈不变。
+  18. `docs/开发准备/平台总体架构设计草案.md`：维持模块化单体边界，不做架构外扩。
+- technical_reference 约束映射：
+  1. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L216`：接口返回的 5 条场景与名称严格对应首批标准链路。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：`primary_sku / supplementary_skus / 合同/验收/退款模板` 与映射表一致。
+  3. `docs/原始PRD/数据产品分类与交易模式详细稿.md:L155`：仅使用 8 个标准 SKU 真值，不引入非冻结 SKU。
+- 已实现功能：
+  1. 新增独立 handler：`standard_scenarios.rs`，承载 `GET /api/v1/catalog/standard-scenarios`，避免继续膨胀 `product_and_review.rs`。
+  2. 在 `standard-scenarios` 读取接口增加审计事件：`catalog.standard.scenarios.read`，`ref_type=catalog_standard_scenarios`，固定 `ref_id=00000000-0000-0000-0000-000000000023`。
+  3. 保持无数据库环境可读：当未配置 `DATABASE_URL` 时不阻断场景模板返回；有库时写审计。
+  4. 新增 `CAT-023` 专用 DB smoke：真实调用接口并验证响应含 `S1~S5`，同时校验审计落库。
+  5. 维持既有路由与 OpenAPI 路径不变，不新增业务功能。
+- 涉及文件：
+  - `apps/platform-core/src/modules/catalog/api/handlers/standard_scenarios.rs`
+  - `apps/platform-core/src/modules/catalog/api/handlers/mod.rs`
+  - `apps/platform-core/src/modules/catalog/api/handlers/product_and_review.rs`
+  - `apps/platform-core/src/modules/catalog/api/mod.rs`
+  - `apps/platform-core/src/modules/catalog/tests/cat023_standard_scenarios_db.rs`
+  - `apps/platform-core/src/modules/catalog/tests/mod.rs`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat023_ -- --nocapture`
+- 验证结果：
+  - `cargo test -p platform-core`：通过（`81 passed, 0 failed, 1 ignored`）。
+  - `CAT-023` DB smoke：沙箱内首次因 socket 权限限制失败（`Operation not permitted`）；提权重跑通过（`1 passed, 0 failed`）。
+  - DB smoke 用例已完成接口调用与审计落库核验，并在测试结束清理本次 `request_id` 审计数据。
+- 覆盖的冻结文档条目：
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（5.3.2 首批 5 条标准链路）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（5.3.2A 首批标准场景到 V1 SKU 与模板映射）
+  - `docs/原始PRD/数据产品分类与交易模式详细稿.md`（6. V1 标准数据产品目录）
+- 覆盖的任务清单条目：`CAT-023`
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 继续由人工维护，本批未自动写入。

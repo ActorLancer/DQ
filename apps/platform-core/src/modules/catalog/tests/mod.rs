@@ -2,6 +2,7 @@ mod asset_objects;
 mod cat020_read_db;
 mod cat021_template_policy_db;
 mod cat022_search_visibility_db;
+mod cat023_standard_scenarios_db;
 mod data_contracts;
 mod listing_submit_review;
 mod processing_jobs;
