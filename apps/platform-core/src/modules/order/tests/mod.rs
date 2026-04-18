@@ -1,0 +1,34 @@
+mod trade001_pre_request_db;
+
+#[cfg(test)]
+mod tests {
+    use super::super::api::router;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::util::ServiceExt;
+
+    #[tokio::test]
+    async fn rejects_trade_pre_request_create_without_permission() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/trade/pre-requests")
+                    .header("x-role", "developer")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{
+                          "buyer_org_id":"10000000-0000-0000-0000-000000000102",
+                          "product_id":"20000000-0000-0000-0000-000000000301",
+                          "request_kind":"rfq",
+                          "details":{"title":"need quote"}
+                        }"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+}

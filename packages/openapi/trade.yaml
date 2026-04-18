@@ -3,14 +3,174 @@ info:
   title: Trade API
   version: v1
   description: |
-    V1 currently uses event-driven order orchestration for payment-result transitions.
-    TRADE-030 baseline mapping:
-    - payment succeeded -> order status buyer_locked (delivery pending)
-    - payment failed -> order status payment_failed_pending_resolution
-    - payment timeout -> order status payment_timeout_pending_compensation_cancel
-paths: {}
+    V1 trade baseline currently includes:
+    - TRADE-001 minimal pre-order request model for RFQ / sample / POC
+    - TRADE-030 payment-result transition mapping:
+      - payment succeeded -> order status buyer_locked (delivery pending)
+      - payment failed -> order status payment_failed_pending_resolution
+      - payment timeout -> order status payment_timeout_pending_compensation_cancel
+paths:
+  /api/v1/trade/pre-requests:
+    post:
+      summary: Create a trade pre-request (RFQ/sample/POC)
+      operationId: createTradePreRequest
+      tags: [trade]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTradePreRequestRequest'
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradePreRequestResponse'
+  /api/v1/trade/pre-requests/{id}:
+    get:
+      summary: Get a trade pre-request
+      operationId: getTradePreRequest
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Query success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradePreRequestResponse'
 components:
   schemas:
+    ContractExpectationSnapshot:
+      type: object
+      properties:
+        contract_template_id:
+          type: string
+          format: uuid
+        expected_term_days:
+          type: integer
+          minimum: 1
+        expected_sla_tier:
+          type: string
+        custom_terms_note:
+          type: string
+    AuthorizationExpectationSnapshot:
+      type: object
+      properties:
+        grant_scope:
+          type: string
+        access_mode:
+          type: string
+        expected_valid_days:
+          type: integer
+          minimum: 1
+        export_allowed:
+          type: boolean
+        requires_poc_environment:
+          type: boolean
+    TradePreRequestDetails:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        expected_budget_range:
+          type: string
+        sample_field_scope:
+          type: array
+          items:
+            type: string
+        poc_goal:
+          type: string
+        expected_start_date:
+          type: string
+          format: date
+    CreateTradePreRequestRequest:
+      type: object
+      required: [buyer_org_id, request_kind, details]
+      properties:
+        buyer_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        request_kind:
+          type: string
+          enum: [rfq, sample_request, poc_request]
+        details:
+          $ref: '#/components/schemas/TradePreRequestDetails'
+        contract_expectation:
+          $ref: '#/components/schemas/ContractExpectationSnapshot'
+        authorization_expectation:
+          $ref: '#/components/schemas/AuthorizationExpectationSnapshot'
+    TradePreRequestResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/TradePreRequestResponseData'
+    TradePreRequestResponseData:
+      type: object
+      required:
+        [
+          inquiry_id,
+          buyer_org_id,
+          status,
+          request_kind,
+          details,
+          contract_expectation,
+          authorization_expectation,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        inquiry_id:
+          type: string
+          format: uuid
+        buyer_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [open, submitted, closed]
+        request_kind:
+          type: string
+          enum: [rfq, sample_request, poc_request]
+        details:
+          $ref: '#/components/schemas/TradePreRequestDetails'
+        contract_expectation:
+          $ref: '#/components/schemas/ContractExpectationSnapshot'
+        authorization_expectation:
+          $ref: '#/components/schemas/AuthorizationExpectationSnapshot'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     OrderPaymentOrchestrationTransition:
       type: object
       required: [payment_result, from_order_status, to_order_status, non_regression_guard]

@@ -3112,3 +3112,105 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 待人工审批结论：待审批
 - 备注：`V1-Core-人工审批记录.md` 继续由你手工维护，本批未自动写入。
+
+### BATCH-110（计划中）
+
+- 状态：计划中
+- 当前任务编号：TRADE-001
+- 当前批次目标：实现询报价/样例申请/POC 申请最小数据模型（order/contract/authorization）并补齐 `packages/openapi/trade.yaml`，提供最小 API 联调与审计留痕验证。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已在历史批次完成并通过审批；`BATCH-109` 已通过，可继续执行。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/order/**`
+  - `apps/platform-core/src/modules/contract/**`
+  - `apps/platform-core/src/modules/authorization/**`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 待人工审批结论：待审批
+
+### BATCH-110（待审批）
+
+- 状态：待审批
+- 当前任务编号：TRADE-001
+- 当前批次目标：实现询报价/样例申请/POC 申请最小数据模型（order/contract/authorization）并补齐 `packages/openapi/trade.yaml`，提供最小 API 联调与审计留痕验证。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成并通过审批；`BATCH-109` 已通过，可继续执行。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `TRADE-001` 描述、DoD、acceptance、`technical_reference`。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版说明与 CSV 对齐。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：执行“计划中 -> 编码 -> 验证 -> TODO -> 待审批”闭环。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持 V1 范围，不抢跑 `TRADE-003` 下单接口。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：已先写计划中，再补待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：已同步 `BATCH-110`，无新增 TODO。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：仅读规则；继续由人工维护。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对核心交易链路步骤（发现/撮合 -> 合同/授权 -> 下单前置）。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 trade/order/contract/authorization 在 `platform-core` 边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：核对 Trade 子域接口风格与 `/api/v1` 约束。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认事件非主状态、审计与 outbox 边界不变。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + 接口联调 + DB 证据三层验证。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按模块目录拆分实现，避免单文件膨胀。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432` 与 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：使用 `DATABASE_URL/KAFKA_BROKERS/MINIO_ENDPOINT/OPENSEARCH_ENDPOINT` 启动联调。
+  17. `docs/开发准备/技术选型正式版.md`：遵循 PostgreSQL 主状态、Kafka 事件分发原则。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体，交易对象围绕 Order/Contract/Authorization。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：在订单前置对象层引入 `rfq/sample_request/poc_request` typed payload，保留 Inquiry->Order 前置结构。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：对齐“步骤4发现与撮合”到“步骤5合同与授权”前的交易前置请求语义。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：对齐“买方搜索、选购与下单流程”中的询价/样例/POC 前置动作。
+- 已实现功能：
+  1. 在 `order` 模块实现 `PreOrderRequestKind`（`rfq/sample_request/poc_request`）、细节对象、前置请求聚合对象。
+  2. 在 `contract` 模块补齐 `ContractExpectationSnapshot` 最小模型；在 `authorization` 模块补齐 `AuthorizationExpectationSnapshot` 最小模型。
+  3. 新增 `POST /api/v1/trade/pre-requests`、`GET /api/v1/trade/pre-requests/{id}`，落库到 `trade.inquiry` 并写入 `audit.audit_event`。
+  4. 新增 `order` 仓储读写层：把 typed payload 序列化到 `trade.inquiry.message_text`，读取时反序列化回领域对象。
+  5. 更新 `packages/openapi/trade.yaml`：新增 pre-request 路径与 schema，并保留 `TRADE-030` 现有结构。
+  6. 新增测试：权限拒绝测试 + `TRADE_DB_SMOKE` 条件下的 DB 烟测（创建/查询/落库/审计）。
+- 涉及文件：
+  - `apps/platform-core/src/lib.rs`
+  - `apps/platform-core/src/modules/order/mod.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/domain/mod.rs`
+  - `apps/platform-core/src/modules/order/domain/payment_state.rs`
+  - `apps/platform-core/src/modules/order/domain/pre_request.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/dto/pre_request.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/pre_request_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade001_pre_request_db.rs`
+  - `apps/platform-core/src/modules/contract/mod.rs`
+  - `apps/platform-core/src/modules/contract/domain/mod.rs`
+  - `apps/platform-core/src/modules/authorization/mod.rs`
+  - `apps/platform-core/src/modules/authorization/domain/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动联调服务：
+     `APP_PORT=18080 APP_HOST=127.0.0.1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core`
+  4. `curl` 创建前置请求（`POST /api/v1/trade/pre-requests`）
+  5. `curl` 查询前置请求（`GET /api/v1/trade/pre-requests/{id}`）
+  6. `psql` 校验 `trade.inquiry` 落库与 `audit.audit_event` 审计记录。
+- 验证结果：
+  - `cargo test -p platform-core`：通过（`84 passed, 0 failed, 1 ignored`）。
+  - API 联调：创建与查询均返回 `success=true`。
+  - 样例联调证据：
+    - `request_id=req-trade001-1776513669`
+    - `inquiry_id=97429e46-16af-4ec6-8d41-76ac5a04e64b`
+    - `request_kind=poc_request`
+    - `trade.inquiry.status=open`
+    - `trade.inquiry.message_text` 包含 `request_kind/details/contract_expectation/authorization_expectation` 完整 JSON
+    - `audit.audit_event` 计数（create+read）=`2`
+  - 说明：首次联调使用了不存在的产品/用户种子 ID 导致 `TRD_STATE_CONFLICT`，已切换到现有有效 seed 数据并完成通过验证。
+- 覆盖的冻结文档条目：
+  - `docs/领域模型/全量领域模型与对象关系说明.md`（4.4 交易与订单聚合）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（15 核心交易链路）
+  - `docs/业务流程/业务流程图-V1-完整版.md`（4.3 买方搜索、选购与下单流程）
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（Trade 接口风格与版本路径）
+- 覆盖的任务清单条目：`TRADE-001`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 按你的要求继续由你手工维护，本批未自动写入。
