@@ -1,21 +1,24 @@
 use crate::modules::catalog::domain::{
     AssetFieldDefinitionView, AssetObjectView, AssetProcessingJobView, AssetQualityReportView,
-    AssetReleasePolicyView, CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest,
-    CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest, CreateDataContractRequest,
-    CreateDataProductRequest, CreateExtractionJobRequest, CreateFormatDetectionRequest,
-    CreatePreviewArtifactRequest, CreateProductSkuRequest, CreateRawIngestBatchRequest,
-    CreateRawObjectManifestRequest, DataContractView, DataProductView, ExtractionJobView,
-    FormatDetectionResultView, PatchAssetReleasePolicyRequest, PatchDataProductRequest,
-    PatchProductSkuRequest, PreviewArtifactView, ProductLifecycleView, ProductMetadataProfileView,
-    ProductSkuView, ProductSubmitView, PutProductMetadataProfileRequest, RawIngestBatchView,
-    RawObjectManifestView, ReviewDecisionRequest, ReviewDecisionView, SubmitProductRequest,
-    SuspendProductRequest, default_trade_mode_for_sku_type, is_standard_sku_type,
+    AssetReleasePolicyView, BindTemplateRequest, CreateAssetFieldDefinitionRequest,
+    CreateAssetObjectRequest, CreateAssetProcessingJobRequest, CreateAssetQualityReportRequest,
+    CreateDataContractRequest, CreateDataProductRequest, CreateExtractionJobRequest,
+    CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
+    CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataContractView, DataProductView,
+    ExtractionJobView, FormatDetectionResultView, PatchAssetReleasePolicyRequest,
+    PatchDataProductRequest, PatchProductSkuRequest, PatchUsagePolicyRequest, PreviewArtifactView,
+    ProductDetailView, ProductLifecycleView, ProductMetadataProfileView, ProductSkuView,
+    ProductSubmitView, PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
+    ReviewDecisionRequest, ReviewDecisionView, SellerProfileView, StandardScenarioTemplateView,
+    SubmitProductRequest, SuspendProductRequest, TemplateBindingView, UsagePolicyView,
+    default_trade_mode_for_sku_type, is_standard_sku_type,
 };
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{
     CatalogPermission, can_transition_listing_status, is_allowed, is_valid_listing_status,
     is_valid_sku_trade_mode_pair,
 };
+use crate::modules::catalog::standard_scenarios::standard_scenario_templates;
 use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, patch, post, put};
@@ -28,9 +31,23 @@ use tracing::info;
 pub fn router() -> Router {
     Router::new()
         .route("/api/v1/products", post(create_product_draft))
-        .route("/api/v1/products/{id}", patch(patch_product_draft))
+        .route(
+            "/api/v1/catalog/standard-scenarios",
+            get(get_standard_scenario_templates),
+        )
+        .route(
+            "/api/v1/products/{id}",
+            get(get_product_detail).patch(patch_product_draft),
+        )
+        .route("/api/v1/sellers/{orgId}/profile", get(get_seller_profile))
         .route("/api/v1/products/{id}/submit", post(submit_product))
+        .route(
+            "/api/v1/products/{id}/bind-template",
+            post(bind_product_template),
+        )
         .route("/api/v1/products/{id}/suspend", post(suspend_product))
+        .route("/api/v1/skus/{id}/bind-template", post(bind_sku_template))
+        .route("/api/v1/policies/{id}", patch(patch_usage_policy))
         .route(
             "/api/v1/products/{id}/metadata-profile",
             put(put_product_metadata_profile),
@@ -90,6 +107,100 @@ pub fn router() -> Router {
         )
 }
 
+async fn get_product_detail(
+    headers: HeaderMap,
+    Path(product_id): Path<String>,
+) -> Result<Json<ApiResponse<ProductDetailView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::ProductRead,
+        "catalog product detail read",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let mut detail = PostgresCatalogRepository::get_product_detail(&client, &product_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    if detail.status != "listed" {
+        enforce_product_scope(
+            &headers,
+            &detail.seller_org_id,
+            "catalog product detail read",
+        )?;
+    }
+    detail.skus = PostgresCatalogRepository::list_product_skus(&client, &product_id)
+        .await
+        .map_err(map_db_error)?;
+    write_audit_event(
+        &client,
+        "product",
+        &product_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.product.read",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(detail))
+}
+
+async fn get_seller_profile(
+    headers: HeaderMap,
+    Path(org_id): Path<String>,
+) -> Result<Json<ApiResponse<SellerProfileView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::SellerProfileRead,
+        "catalog seller profile read",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let view = PostgresCatalogRepository::get_seller_profile(&client, &org_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "seller does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    write_audit_event(
+        &client,
+        "seller",
+        &org_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "catalog.seller.profile.read",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    Ok(ApiResponse::ok(view))
+}
+
 async fn create_product_draft(
     headers: HeaderMap,
     Json(payload): Json<CreateDataProductRequest>,
@@ -127,6 +238,221 @@ async fn create_product_draft(
         product_id = %view.product_id,
         "catalog product draft created"
     );
+    Ok(ApiResponse::ok(view))
+}
+
+async fn get_standard_scenario_templates(
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<StandardScenarioTemplateView>>>, (StatusCode, Json<ErrorResponse>)>
+{
+    require_permission(
+        &headers,
+        CatalogPermission::ProductRead,
+        "catalog standard scenario template read",
+    )?;
+    Ok(ApiResponse::ok(standard_scenario_templates()))
+}
+
+async fn bind_product_template(
+    headers: HeaderMap,
+    Path(product_id): Path<String>,
+    Json(payload): Json<BindTemplateRequest>,
+) -> Result<Json<ApiResponse<TemplateBindingView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::TemplateBind,
+        "catalog product template bind",
+    )?;
+    validate_bind_template_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let product = PostgresCatalogRepository::get_data_product(&client, &product_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    enforce_product_scope(
+        &headers,
+        &product.seller_org_id,
+        "catalog product template bind",
+    )?;
+    let skus = PostgresCatalogRepository::list_product_skus(&client, &product_id)
+        .await
+        .map_err(map_db_error)?;
+    for sku in &skus {
+        validate_template_compatibility(
+            &client,
+            Some(payload.template_id.as_str()),
+            &sku.sku_type,
+            &headers,
+        )
+        .await?;
+    }
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    PostgresCatalogRepository::set_product_default_template(&tx, &product_id, &payload.template_id)
+        .await
+        .map_err(map_db_error)?;
+    for sku in &skus {
+        PostgresCatalogRepository::bind_template_to_sku(&tx, &sku.sku_id, &payload)
+            .await
+            .map_err(map_db_error)?;
+    }
+    write_audit_event(
+        &tx,
+        "product",
+        &product_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "template.product.bind",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    let view = PostgresCatalogRepository::build_template_binding_view(
+        &tx,
+        "product",
+        &product_id,
+        &payload,
+        skus.len() as i32,
+    )
+    .await
+    .map_err(map_db_error)?;
+    tx.commit().await.map_err(map_db_error)?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn bind_sku_template(
+    headers: HeaderMap,
+    Path(sku_id): Path<String>,
+    Json(payload): Json<BindTemplateRequest>,
+) -> Result<Json<ApiResponse<TemplateBindingView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::TemplateBind,
+        "catalog sku template bind",
+    )?;
+    validate_bind_template_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let sku = PostgresCatalogRepository::get_product_sku(&client, &sku_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "sku does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    let product = PostgresCatalogRepository::get_data_product(&client, &sku.product_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    enforce_product_scope(
+        &headers,
+        &product.seller_org_id,
+        "catalog sku template bind",
+    )?;
+    validate_template_compatibility(
+        &client,
+        Some(payload.template_id.as_str()),
+        &sku.sku_type,
+        &headers,
+    )
+    .await?;
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    PostgresCatalogRepository::bind_template_to_sku(&tx, &sku_id, &payload)
+        .await
+        .map_err(map_db_error)?;
+    write_audit_event(
+        &tx,
+        "sku",
+        &sku_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "template.sku.bind",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    let view =
+        PostgresCatalogRepository::build_template_binding_view(&tx, "sku", &sku_id, &payload, 1)
+            .await
+            .map_err(map_db_error)?;
+    tx.commit().await.map_err(map_db_error)?;
+    Ok(ApiResponse::ok(view))
+}
+
+async fn patch_usage_policy(
+    headers: HeaderMap,
+    Path(policy_id): Path<String>,
+    Json(payload): Json<PatchUsagePolicyRequest>,
+) -> Result<Json<ApiResponse<UsagePolicyView>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        CatalogPermission::PolicyUpdate,
+        "catalog usage policy patch",
+    )?;
+    validate_patch_usage_policy_payload(&payload, &headers)?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = connect_db(&dsn).await?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let view = PostgresCatalogRepository::patch_usage_policy(&tx, &policy_id, &payload)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "policy does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    write_audit_event(
+        &tx,
+        "usage_policy",
+        &policy_id,
+        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        "template.policy.update",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
     Ok(ApiResponse::ok(view))
 }
 
@@ -1782,6 +2108,11 @@ fn validate_patch_product_payload(
         || payload.currency_code.is_some()
         || payload.delivery_type.is_some()
         || payload.searchable_text.is_some()
+        || payload.subtitle.is_some()
+        || payload.industry.is_some()
+        || payload.use_cases.is_some()
+        || payload.data_classification.is_some()
+        || payload.quality_score.is_some()
         || payload.status.is_some();
     if has_change {
         return Ok(());
@@ -2020,6 +2351,76 @@ fn validate_patch_sku_payload(
             request_id: header(headers, "x-request-id"),
         }),
     ))
+}
+
+fn validate_bind_template_payload(
+    payload: &BindTemplateRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if payload.template_id.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "template_id is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .binding_type
+        .as_deref()
+        .is_some_and(|v| !matches!(v, "contract" | "acceptance" | "refund" | "license"))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "binding_type is invalid".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_patch_usage_policy_payload(
+    payload: &PatchUsagePolicyRequest,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let has_change = payload.policy_name.is_some()
+        || payload.subject_constraints.is_some()
+        || payload.usage_constraints.is_some()
+        || payload.time_constraints.is_some()
+        || payload.region_constraints.is_some()
+        || payload.output_constraints.is_some()
+        || payload.exportable.is_some()
+        || payload.status.is_some();
+    if !has_change {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "at least one policy patch field is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if payload
+        .status
+        .as_deref()
+        .is_some_and(|status| !matches!(status, "draft" | "active" | "disabled" | "archived"))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "policy status is invalid".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_create_raw_ingest_batch_payload(
@@ -2532,7 +2933,7 @@ async fn validate_template_compatibility(
     };
     let row = client
         .query_opt(
-            "SELECT applicable_sku_types::text[]
+            "SELECT template_name, applicable_sku_types::text[]
              FROM contract.template_definition
              WHERE template_id = $1::text::uuid
                AND status = 'active'",
@@ -2550,18 +2951,54 @@ async fn validate_template_compatibility(
             }),
         ));
     };
-    let applicable_sku_types: Vec<String> = row.get(0);
-    if applicable_sku_types.iter().any(|v| v == sku_type) {
-        return Ok(());
+    let template_name: String = row.get(0);
+    let applicable_sku_types: Vec<String> = row.get(1);
+    if !applicable_sku_types.iter().any(|v| v == sku_type) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "template is not compatible with sku_type".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
     }
-    Err((
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            code: ErrorCode::CatValidationFailed.as_str().to_string(),
-            message: "template is not compatible with sku_type".to_string(),
-            request_id: header(headers, "x-request-id"),
-        }),
-    ))
+    let template_name_upper = template_name.to_uppercase();
+    let uses_legacy_api_name = matches!(
+        template_name_upper.as_str(),
+        "CONTRACT_API_V1" | "LICENSE_API_USE_V1" | "ACCEPT_API_V1" | "REFUND_API_V1"
+    );
+    if uses_legacy_api_name {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "legacy generic API templates are not allowed".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if sku_type == "API_SUB" && !template_name_upper.contains("API_SUB") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "API_SUB can only bind API_SUB template family".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if sku_type == "API_PPU" && !template_name_upper.contains("API_PPU") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "API_PPU can only bind API_PPU template family".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    Ok(())
 }
 
 async fn ensure_product_submit_ready(

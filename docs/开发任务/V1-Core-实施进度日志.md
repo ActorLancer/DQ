@@ -2684,3 +2684,85 @@
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`。
 - 待人工审批结论：通过
 - 备注：`docs/开发任务/V1-Core-人工审批记录.md` 继续由人工手工维护，本批未自动写入。
+
+### BATCH-102
+
+- 状态：计划中
+- 当前任务编号：CAT-020
+- 当前批次目标：实现卖方主页接口 `GET /api/v1/sellers/{orgId}/profile` 与商品详情接口 `GET /api/v1/products/{id}`，补齐权限、审计、OpenAPI 与最小测试。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-101` 已完成。
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `CAT-020` 任务描述、DoD、acceptance 与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认 `CAT-020` 在 `CAT-016~026` 连续区间中的顺序位置。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中→编码→验证→待审批→本地 commit”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：不引入 V2/V3 正式能力。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：沿用固定字段模板。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯信息。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：按当前协作规则由人工手工维护。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：目录与卖方主页接口属于 V1 冻结接口面。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：接口归属 `catalog`。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口含 `GET /api/v1/products/{id}` 与 `GET /api/v1/sellers/{orgId}/profile`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本任务不新增 topic。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `CAT_VALIDATION_FAILED / IAM_UNAUTHORIZED / OPS_INTERNAL`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测 + API 联调 + 审计痕迹核验。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：测试代码按功能拆分。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用 `x-request-id/x-trace-id`。
+  17. `docs/开发准备/技术选型正式版.md`：读接口仍以 PostgreSQL 主库为真值源。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模块化单体内完成 catalog 读接口闭环。
+- technical_reference 约束映射：
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L200`：商品聚合与卖方主体关系。
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：V1 接口集合包含商品详情与卖方主页。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L86`：商品主流程中详情展示与上架后可见性语义。
+- 预计涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/domain.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/service.rs`、`apps/platform-core/src/modules/catalog/tests/mod.rs`、`apps/platform-core/src/modules/catalog/tests/product_and_seller_read.rs`、`packages/openapi/catalog.yaml`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+
+### BATCH-102（待审批）
+
+- 状态：待审批
+- 当前任务编号：CAT-020, CAT-021, CAT-022, CAT-023
+- 当前批次目标：按顺序完成商品详情/卖方主页读接口、模板绑定与策略更新、搜索可见性字段打底、五条标准链路样例模板固化。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-101` 已完成。
+- 已实现功能：
+  1. `CAT-020`：实现 `GET /api/v1/products/{id}` 与 `GET /api/v1/sellers/{orgId}/profile`，补齐权限校验、审计事件（`catalog.product.read`/`catalog.seller.profile.read`）、OpenAPI schema 与权限拒绝测试。
+  2. `CAT-021`：实现 `POST /api/v1/products/{id}/bind-template`、`POST /api/v1/skus/{id}/bind-template`、`PATCH /api/v1/policies/{id}`；落地模板绑定写入（`contract.template_binding` + `catalog.product_sku.metadata.draft_template_id`）、策略更新（`contract.usage_policy`）、审计事件（`template.product.bind`/`template.sku.bind`/`template.policy.update`）、权限矩阵与 OpenAPI。
+  3. `CAT-022`：在商品创建/编辑 DTO 与仓储层增加搜索可见性打底字段（`subtitle/industry/use_cases/data_classification/quality_score`）；在商品详情与卖方主页返回 `search_document_version/index_sync_status`，并接入 `search.product_search_document`、`search.seller_search_document` 读侧状态回显。
+  4. `CAT-023`：新增五条标准链路样例模板中心 `GET /api/v1/catalog/standard-scenarios`，固化每条链路的标准商品模板、元信息模板、契约模板、审核样例；新增独立模块 `standard_scenarios.rs`，避免继续膨胀主 API 文件。
+  5. 补充 DB smoke 测试：`repository_bind_template_to_sku_smoke`、`repository_patch_usage_policy_smoke`（受 `CATALOG_DB_SMOKE=1` 开关控制）。
+- 涉及文件：
+  - `apps/platform-core/src/modules/catalog/api.rs`
+  - `apps/platform-core/src/modules/catalog/domain.rs`
+  - `apps/platform-core/src/modules/catalog/mod.rs`
+  - `apps/platform-core/src/modules/catalog/repository.rs`
+  - `apps/platform-core/src/modules/catalog/service.rs`
+  - `apps/platform-core/src/modules/catalog/standard_scenarios.rs`
+  - `apps/platform-core/src/modules/catalog/tests/mod.rs`
+  - `apps/platform-core/src/modules/catalog/tests/template_policy_db.rs`
+  - `packages/openapi/catalog.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `psql postgres://datab:datab_local_pass@127.0.0.1:5432/datab -c "select 1"`（数据库连通）
+  4. `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core repository_ -- --nocapture`（模板绑定/策略更新 DB smoke）
+  5. `cargo run -p platform-core` 手工 API 联调尝试（受运行环境 socket 权限限制，启动阶段 Kafka metadata 探测失败，见下方“未覆盖项”）。
+- 验证结果：
+  - `cargo test -p platform-core`：`83 passed, 0 failed, 1 ignored`
+  - DB smoke：`2 passed, 0 failed`
+  - `psql` 连通性：通过
+  - 运行时手工 API：受限于环境 `Operation not permitted`（rdkafka socket 创建失败），未能完成在线 HTTP 调用链路。
+- 覆盖的冻结文档条目：
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L200`（商品/卖方聚合）
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`（商品详情、卖方主页、模板绑定）
+  - `docs/原始PRD/数据对象产品族与交付模式增强设计.md:L292`（七类交易方式与模板绑定约束）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`（首批场景到 SKU/模板映射）
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md:L164`（搜索投影字段）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L4824`（搜索架构与投影对象）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L216`（首批五条标准链路）
+  - `docs/原始PRD/数据产品分类与交易模式详细稿.md:L155`（V1 标准数据产品目录）
+- 覆盖的任务清单条目：`CAT-020`, `CAT-021`, `CAT-022`, `CAT-023`
+- 未覆盖项：
+  - 运行态手工 HTTP 联调（服务启动被 Kafka metadata socket 权限限制阻塞）；已用 DB smoke + 单测 + OpenAPI 对齐补齐可执行验证证据。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)`/`TODO(V2-reserved)`/`TODO(V3-reserved)` 代码注释项；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：按你的新流程，本批为连续 4 个任务集中提审；实现中保持按功能拆分，新增样例逻辑独立到 `standard_scenarios.rs`，避免单文件持续膨胀。

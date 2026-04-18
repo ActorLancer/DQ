@@ -4,6 +4,7 @@ mod listing_submit_review;
 mod processing_jobs;
 mod release_policy;
 mod suspend;
+mod template_policy_db;
 
 #[cfg(test)]
 mod tests {
@@ -79,6 +80,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_get_product_detail_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
+            .header("x-role", "developer")
+            .body(Body::empty())
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn returns_standard_scenario_templates_for_read_role() {
+        let app = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/catalog/standard-scenarios")
+            .header("x-role", "tenant_admin")
+            .body(Body::empty())
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn rejects_get_seller_profile_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/sellers/00000000-0000-0000-0000-000000000100/profile")
+            .header("x-role", "developer")
+            .body(Body::empty())
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
     async fn rejects_put_product_metadata_profile_without_permission() {
         let app = router();
         let req = Request::builder()
@@ -136,6 +176,52 @@ mod tests {
             .header("content-type", "application/json")
             .header("x-role", "developer")
             .body(Body::from(r#"{"trade_mode":"snapshot_sale"}"#))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_bind_product_template_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/bind-template")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{"template_id":"00000000-0000-0000-0000-000000000010"}"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_bind_sku_template_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/bind-template")
+            .header("content-type", "application/json")
+            .header("x-role", "developer")
+            .body(Body::from(
+                r#"{"template_id":"00000000-0000-0000-0000-000000000010"}"#,
+            ))
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_patch_usage_policy_without_permission() {
+        let app = router();
+        let req = Request::builder()
+            .method("PATCH")
+            .uri("/api/v1/policies/00000000-0000-0000-0000-000000000001")
+            .header("content-type", "application/json")
+            .header("x-role", "tenant_operator")
+            .body(Body::from(r#"{"status":"active"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);

@@ -1,15 +1,16 @@
 use crate::modules::catalog::domain::{
     AssetFieldDefinitionView, AssetObjectView, AssetProcessingInputView, AssetProcessingJobView,
-    AssetQualityReportView, AssetReleasePolicyView, AssetVersionView,
+    AssetQualityReportView, AssetReleasePolicyView, AssetVersionView, BindTemplateRequest,
     CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest, CreateAssetProcessingJobRequest,
     CreateAssetQualityReportRequest, CreateAssetVersionRequest, CreateDataContractRequest,
     CreateDataProductRequest, CreateDataResourceRequest, CreateExtractionJobRequest,
     CreateFormatDetectionRequest, CreatePreviewArtifactRequest, CreateProductSkuRequest,
     CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataContractView, DataProductView,
     DataResourceView, ExtractionJobView, FormatDetectionResultView, PatchAssetReleasePolicyRequest,
-    PatchDataProductRequest, PatchProductSkuRequest, PreviewArtifactView,
-    ProductMetadataProfileView, ProductSkuView, PutProductMetadataProfileRequest,
-    RawIngestBatchView, RawObjectManifestView, ReviewDecisionView,
+    PatchDataProductRequest, PatchProductSkuRequest, PatchUsagePolicyRequest, PreviewArtifactView,
+    ProductDetailView, ProductMetadataProfileView, ProductSkuView,
+    PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
+    ReviewDecisionView, SellerProfileView, TemplateBindingView, UsagePolicyView,
 };
 use serde_json::{Value, json};
 use tokio_postgres::{GenericClient, Row};
@@ -425,6 +426,14 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         payload: &CreateDataProductRequest,
     ) -> Result<DataProductView, tokio_postgres::Error> {
+        let metadata = compose_product_metadata(
+            &payload.metadata,
+            payload.subtitle.as_deref(),
+            payload.industry.as_deref(),
+            Some(&payload.use_cases),
+            payload.data_classification.as_deref(),
+            payload.quality_score.as_deref(),
+        );
         let row = client
             .query_one(
                 "INSERT INTO catalog.product (
@@ -469,7 +478,7 @@ impl PostgresCatalogRepository {
                     &payload.delivery_type,
                     &payload.allowed_usage,
                     &payload.searchable_text,
-                    &payload.metadata,
+                    &metadata,
                 ],
             )
             .await?;
@@ -505,6 +514,94 @@ impl PostgresCatalogRepository {
         Ok(row.map(|row| parse_data_product_row(&row)))
     }
 
+    pub async fn get_product_detail(
+        client: &impl GenericClient,
+        id: &str,
+    ) -> Result<Option<ProductDetailView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "SELECT
+                   product_id::text,
+                   asset_id::text,
+                   asset_version_id::text,
+                   seller_org_id::text,
+                   title,
+                   category,
+                   product_type,
+                   status,
+                   description,
+                   price_mode,
+                   price::text,
+                   currency_code,
+                   delivery_type,
+                   allowed_usage::text[],
+                   searchable_text,
+                   metadata,
+                   COALESCE(spd.document_version, 0)::int,
+                   COALESCE(spd.index_sync_status, 'pending'),
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 FROM catalog.product
+                 LEFT JOIN search.product_search_document spd ON spd.product_id = catalog.product.product_id
+                 WHERE catalog.product.product_id = $1::text::uuid",
+                &[&id],
+            )
+            .await?;
+        Ok(row.map(|row| {
+            let metadata: Value = row.get(15);
+            ProductDetailView {
+                product_id: row.get(0),
+                asset_id: row.get(1),
+                asset_version_id: row.get(2),
+                seller_org_id: row.get(3),
+                title: row.get(4),
+                category: row.get(5),
+                product_type: row.get(6),
+                status: row.get(7),
+                description: row.get(8),
+                price_mode: row.get(9),
+                price: row.get(10),
+                currency_code: row.get(11),
+                delivery_type: row.get(12),
+                allowed_usage: row.get(13),
+                searchable_text: row.get(14),
+                subtitle: metadata
+                    .get("subtitle")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                industry: metadata
+                    .get("industry")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                use_cases: metadata
+                    .get("use_cases")
+                    .and_then(Value::as_array)
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(ToString::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                data_classification: metadata
+                    .get("data_classification")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                quality_score: metadata
+                    .get("quality_score")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                metadata,
+                search_document_version: row.get(16),
+                index_sync_status: row.get(17),
+                skus: Vec::new(),
+                created_at: row.get(18),
+                updated_at: row.get(19),
+            }
+        }))
+    }
+
     pub async fn patch_data_product(
         client: &impl GenericClient,
         id: &str,
@@ -524,6 +621,18 @@ impl PostgresCatalogRepository {
                    delivery_type = COALESCE($9, delivery_type),
                    searchable_text = COALESCE($10, searchable_text),
                    status = COALESCE($11, status),
+                   metadata = jsonb_strip_nulls(
+                     metadata || jsonb_build_object(
+                       'subtitle', $12::text,
+                       'industry', $13::text,
+                       'use_cases', CASE
+                         WHEN $14::text[] IS NULL THEN NULL
+                         ELSE to_jsonb($14::text[])
+                       END,
+                       'data_classification', $15::text,
+                       'quality_score', $16::text
+                     )
+                   ),
                    updated_at = now()
                  WHERE product_id = $1::text::uuid
                    AND status = 'draft'
@@ -554,6 +663,11 @@ impl PostgresCatalogRepository {
                     &payload.delivery_type,
                     &payload.searchable_text,
                     &payload.status,
+                    &payload.subtitle,
+                    &payload.industry,
+                    &payload.use_cases,
+                    &payload.data_classification,
+                    &payload.quality_score,
                 ],
             )
             .await?;
@@ -727,6 +841,65 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(row.get(0))
+    }
+
+    pub async fn get_seller_profile(
+        client: &impl GenericClient,
+        org_id: &str,
+    ) -> Result<Option<SellerProfileView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "SELECT
+                   org.org_id::text,
+                   org.org_name,
+                   org.org_type,
+                   org.status,
+                   org.country_code,
+                   org.region_code,
+                   COALESCE(org.industry_tags, '{}')::text[],
+                   COALESCE(rep.credit_level, org.credit_level, 0),
+                   COALESCE(rep.risk_level, org.risk_level, 0),
+                   COALESCE(rep.score, 0)::text,
+                   COALESCE(listed.listing_product_count, 0)::bigint,
+                   NULLIF(org.metadata ->> 'description', ''),
+                   COALESCE(ssd.document_version, 0)::int,
+                   COALESCE(ssd.index_sync_status, 'pending')
+                 FROM core.organization org
+                 LEFT JOIN LATERAL (
+                   SELECT rs.score, rs.credit_level, rs.risk_level
+                   FROM risk.reputation_snapshot rs
+                   WHERE rs.subject_type = 'organization'
+                     AND rs.subject_id = org.org_id
+                   ORDER BY rs.effective_at DESC
+                   LIMIT 1
+                 ) AS rep ON true
+                 LEFT JOIN LATERAL (
+                   SELECT COUNT(*)::bigint AS listing_product_count
+                   FROM catalog.product p
+                   WHERE p.seller_org_id = org.org_id
+                     AND p.status = 'listed'
+                 ) AS listed ON true
+                 LEFT JOIN search.seller_search_document ssd ON ssd.org_id = org.org_id
+                 WHERE org.org_id = $1::text::uuid",
+                &[&org_id],
+            )
+            .await?;
+        Ok(row.map(|row| SellerProfileView {
+            org_id: row.get(0),
+            org_name: row.get(1),
+            org_type: row.get(2),
+            status: row.get(3),
+            country_code: row.get(4),
+            region_code: row.get(5),
+            industry_tags: row.get(6),
+            credit_level: row.get(7),
+            risk_level: row.get(8),
+            reputation_score: row.get(9),
+            listed_product_count: row.get(10),
+            description: row.get(11),
+            search_document_version: row.get(12),
+            index_sync_status: row.get(13),
+        }))
     }
 
     pub async fn create_review_task_with_initial_step(
@@ -1451,6 +1624,129 @@ impl PostgresCatalogRepository {
         Ok(rows.iter().map(parse_product_sku_row).collect())
     }
 
+    pub async fn set_product_default_template(
+        client: &impl GenericClient,
+        product_id: &str,
+        template_id: &str,
+    ) -> Result<(), tokio_postgres::Error> {
+        client
+            .execute(
+                "UPDATE catalog.product
+                 SET metadata = jsonb_set(metadata, '{draft_template_id}', to_jsonb($2::text), true),
+                     updated_at = now()
+                 WHERE product_id = $1::text::uuid",
+                &[&product_id, &template_id],
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn bind_template_to_sku(
+        client: &impl GenericClient,
+        sku_id: &str,
+        payload: &BindTemplateRequest,
+    ) -> Result<(), tokio_postgres::Error> {
+        let binding_type = payload.binding_type.as_deref().unwrap_or("contract");
+        client
+            .execute(
+                "INSERT INTO contract.template_binding (
+                   sku_id, template_id, binding_type, status
+                 ) VALUES (
+                   $1::text::uuid, $2::text::uuid, $3, 'active'
+                 )
+                 ON CONFLICT (sku_id, template_id, binding_type)
+                 DO UPDATE SET status = 'active'",
+                &[&sku_id, &payload.template_id, &binding_type],
+            )
+            .await?;
+        client
+            .execute(
+                "UPDATE catalog.product_sku
+                 SET metadata = jsonb_set(metadata, '{draft_template_id}', to_jsonb($2::text), true),
+                     updated_at = now()
+                 WHERE sku_id = $1::text::uuid",
+                &[&sku_id, &payload.template_id],
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn build_template_binding_view(
+        client: &impl GenericClient,
+        binding_scope: &str,
+        target_id: &str,
+        payload: &BindTemplateRequest,
+        bound_sku_count: i32,
+    ) -> Result<TemplateBindingView, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[],
+            )
+            .await?;
+        Ok(TemplateBindingView {
+            binding_scope: binding_scope.to_string(),
+            target_id: target_id.to_string(),
+            template_id: payload.template_id.clone(),
+            binding_type: payload
+                .binding_type
+                .clone()
+                .unwrap_or_else(|| "contract".to_string()),
+            status: "active".to_string(),
+            bound_sku_count,
+            updated_at: row.get(0),
+        })
+    }
+
+    pub async fn patch_usage_policy(
+        client: &impl GenericClient,
+        policy_id: &str,
+        payload: &PatchUsagePolicyRequest,
+    ) -> Result<Option<UsagePolicyView>, tokio_postgres::Error> {
+        let row = client
+            .query_opt(
+                "UPDATE contract.usage_policy
+                 SET
+                   policy_name = COALESCE($2, policy_name),
+                   subject_constraints = COALESCE($3::jsonb, subject_constraints),
+                   usage_constraints = COALESCE($4::jsonb, usage_constraints),
+                   time_constraints = COALESCE($5::jsonb, time_constraints),
+                   region_constraints = COALESCE($6::jsonb, region_constraints),
+                   output_constraints = COALESCE($7::jsonb, output_constraints),
+                   exportable = COALESCE($8, exportable),
+                   status = COALESCE($9, status),
+                   updated_at = now()
+                 WHERE policy_id = $1::text::uuid
+                 RETURNING
+                   policy_id::text,
+                   owner_org_id::text,
+                   policy_name,
+                   stage_from,
+                   subject_constraints,
+                   usage_constraints,
+                   time_constraints,
+                   region_constraints,
+                   output_constraints,
+                   exportable,
+                   status,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+                &[
+                    &policy_id,
+                    &payload.policy_name,
+                    &payload.subject_constraints,
+                    &payload.usage_constraints,
+                    &payload.time_constraints,
+                    &payload.region_constraints,
+                    &payload.output_constraints,
+                    &payload.exportable,
+                    &payload.status,
+                ],
+            )
+            .await?;
+        Ok(row.map(|row| parse_usage_policy_row(&row)))
+    }
+
     pub async fn create_data_contract(
         client: &impl GenericClient,
         sku_id: &str,
@@ -1649,6 +1945,53 @@ fn parse_data_resource_row(row: &Row) -> DataResourceView {
         description: row.get(6),
         created_at: row.get(7),
         updated_at: row.get(8),
+    }
+}
+
+fn compose_product_metadata(
+    metadata: &Value,
+    subtitle: Option<&str>,
+    industry: Option<&str>,
+    use_cases: Option<&Vec<String>>,
+    data_classification: Option<&str>,
+    quality_score: Option<&str>,
+) -> Value {
+    let mut merged = normalize_object_json(metadata);
+    if let Some(subtitle) = subtitle {
+        merged["subtitle"] = Value::String(subtitle.to_string());
+    }
+    if let Some(industry) = industry {
+        merged["industry"] = Value::String(industry.to_string());
+    }
+    if let Some(use_cases) = use_cases
+        && !use_cases.is_empty()
+    {
+        merged["use_cases"] = json!(use_cases);
+    }
+    if let Some(data_classification) = data_classification {
+        merged["data_classification"] = Value::String(data_classification.to_string());
+    }
+    if let Some(quality_score) = quality_score {
+        merged["quality_score"] = Value::String(quality_score.to_string());
+    }
+    merged
+}
+
+fn parse_usage_policy_row(row: &Row) -> UsagePolicyView {
+    UsagePolicyView {
+        policy_id: row.get(0),
+        owner_org_id: row.get(1),
+        policy_name: row.get(2),
+        stage_from: row.get(3),
+        subject_constraints: row.get(4),
+        usage_constraints: row.get(5),
+        time_constraints: row.get(6),
+        region_constraints: row.get(7),
+        output_constraints: row.get(8),
+        exportable: row.get(9),
+        status: row.get(10),
+        created_at: row.get(11),
+        updated_at: row.get(12),
     }
 }
 

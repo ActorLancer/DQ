@@ -120,6 +120,12 @@ pub struct CreateDataProductRequest {
     #[serde(default)]
     pub allowed_usage: Vec<String>,
     pub searchable_text: Option<String>,
+    pub subtitle: Option<String>,
+    pub industry: Option<String>,
+    #[serde(default)]
+    pub use_cases: Vec<String>,
+    pub data_classification: Option<String>,
+    pub quality_score: Option<String>,
     #[serde(default)]
     pub metadata: Value,
 }
@@ -135,6 +141,11 @@ pub struct PatchDataProductRequest {
     pub currency_code: Option<String>,
     pub delivery_type: Option<String>,
     pub searchable_text: Option<String>,
+    pub subtitle: Option<String>,
+    pub industry: Option<String>,
+    pub use_cases: Option<Vec<String>>,
+    pub data_classification: Option<String>,
+    pub quality_score: Option<String>,
     pub status: Option<String>,
 }
 
@@ -154,6 +165,54 @@ pub struct DataProductView {
     pub delivery_type: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ProductDetailView {
+    pub product_id: String,
+    pub asset_id: String,
+    pub asset_version_id: String,
+    pub seller_org_id: String,
+    pub title: String,
+    pub category: String,
+    pub product_type: String,
+    pub status: String,
+    pub description: Option<String>,
+    pub price_mode: String,
+    pub price: String,
+    pub currency_code: String,
+    pub delivery_type: String,
+    pub allowed_usage: Vec<String>,
+    pub searchable_text: Option<String>,
+    pub subtitle: Option<String>,
+    pub industry: Option<String>,
+    pub use_cases: Vec<String>,
+    pub data_classification: Option<String>,
+    pub quality_score: Option<String>,
+    pub metadata: Value,
+    pub search_document_version: i32,
+    pub index_sync_status: String,
+    pub skus: Vec<ProductSkuView>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SellerProfileView {
+    pub org_id: String,
+    pub org_name: String,
+    pub org_type: String,
+    pub status: String,
+    pub country_code: Option<String>,
+    pub region_code: Option<String>,
+    pub industry_tags: Vec<String>,
+    pub credit_level: i32,
+    pub risk_level: i32,
+    pub reputation_score: String,
+    pub listed_product_count: i64,
+    pub description: Option<String>,
+    pub search_document_version: i32,
+    pub index_sync_status: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -210,6 +269,52 @@ pub struct PatchProductSkuRequest {
     pub acceptance_mode: Option<String>,
     pub refund_mode: Option<String>,
     pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BindTemplateRequest {
+    pub template_id: String,
+    pub binding_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TemplateBindingView {
+    pub binding_scope: String,
+    pub target_id: String,
+    pub template_id: String,
+    pub binding_type: String,
+    pub status: String,
+    pub bound_sku_count: i32,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PatchUsagePolicyRequest {
+    pub policy_name: Option<String>,
+    pub subject_constraints: Option<Value>,
+    pub usage_constraints: Option<Value>,
+    pub time_constraints: Option<Value>,
+    pub region_constraints: Option<Value>,
+    pub output_constraints: Option<Value>,
+    pub exportable: Option<bool>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct UsagePolicyView {
+    pub policy_id: String,
+    pub owner_org_id: String,
+    pub policy_name: String,
+    pub stage_from: String,
+    pub subject_constraints: Value,
+    pub usage_constraints: Value,
+    pub time_constraints: Value,
+    pub region_constraints: Value,
+    pub output_constraints: Value,
+    pub exportable: bool,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -734,4 +839,18 @@ pub struct ProductLifecycleView {
     pub product_id: String,
     pub previous_status: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct StandardScenarioTemplateView {
+    pub scenario_code: String,
+    pub scenario_name: String,
+    pub primary_sku: String,
+    pub supplementary_skus: Vec<String>,
+    pub product_template: Value,
+    pub metadata_template: Value,
+    pub contract_template: String,
+    pub acceptance_template: String,
+    pub refund_template: String,
+    pub review_sample: Value,
 }
