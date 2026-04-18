@@ -1,4 +1,4 @@
-use crate::modules::catalog::api::router;
+use crate::modules::catalog::router::router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
@@ -338,8 +338,8 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
                      FROM ops.outbox_event
                      WHERE request_id = $1
                        AND event_type = 'search.product.changed'
-                       AND ref_type = 'product'
-                       AND ref_id = $2::text::uuid",
+                       AND aggregate_type = 'product'
+                       AND aggregate_id = $2::text::uuid",
                     &[request_id, &product_id],
                 )
                 .await

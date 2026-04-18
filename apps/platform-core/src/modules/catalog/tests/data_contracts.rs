@@ -1,4 +1,4 @@
-use crate::modules::catalog::api::router;
+use crate::modules::catalog::router::router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
