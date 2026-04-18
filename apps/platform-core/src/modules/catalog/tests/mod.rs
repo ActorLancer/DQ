@@ -1,4 +1,5 @@
 mod asset_objects;
+mod cat020_read_db;
 mod data_contracts;
 mod listing_submit_review;
 mod processing_jobs;

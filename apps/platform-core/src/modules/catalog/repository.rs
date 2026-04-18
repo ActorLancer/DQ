@@ -521,29 +521,29 @@ impl PostgresCatalogRepository {
         let row = client
             .query_opt(
                 "SELECT
-                   product_id::text,
-                   asset_id::text,
-                   asset_version_id::text,
-                   seller_org_id::text,
-                   title,
-                   category,
-                   product_type,
-                   status,
-                   description,
-                   price_mode,
-                   price::text,
-                   currency_code,
-                   delivery_type,
-                   allowed_usage::text[],
-                   searchable_text,
-                   metadata,
+                   p.product_id::text,
+                   p.asset_id::text,
+                   p.asset_version_id::text,
+                   p.seller_org_id::text,
+                   p.title,
+                   p.category,
+                   p.product_type,
+                   p.status,
+                   p.description,
+                   p.price_mode,
+                   p.price::text,
+                   p.currency_code,
+                   p.delivery_type,
+                   p.allowed_usage::text[],
+                   p.searchable_text,
+                   p.metadata,
                    COALESCE(spd.document_version, 0)::int,
                    COALESCE(spd.index_sync_status, 'pending'),
-                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
-                 FROM catalog.product
-                 LEFT JOIN search.product_search_document spd ON spd.product_id = catalog.product.product_id
-                 WHERE catalog.product.product_id = $1::text::uuid",
+                   to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(p.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 FROM catalog.product p
+                 LEFT JOIN search.product_search_document spd ON spd.product_id = p.product_id
+                 WHERE p.product_id = $1::text::uuid",
                 &[&id],
             )
             .await?;
