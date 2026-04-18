@@ -319,6 +319,25 @@ async fn submit_product(
             }),
         ));
     }
+    enforce_product_scope(&headers, &product.seller_org_id, "catalog product submit")?;
+    let has_pending_task = PostgresCatalogRepository::has_pending_review_task(
+        &client,
+        "product_review",
+        "product",
+        &product_id,
+    )
+    .await
+    .map_err(map_db_error)?;
+    if has_pending_task {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "product already has a pending review task".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
     ensure_product_submit_ready(&client, &product_id, &headers).await?;
 
     let tx = client.transaction().await.map_err(map_db_error)?;
@@ -340,17 +359,27 @@ async fn submit_product(
             }),
         )
     })?;
-    let review = PostgresCatalogRepository::create_review_decision(
+    let review = PostgresCatalogRepository::create_review_task_with_initial_step(
         &tx,
-        "product_submit",
+        "product_review",
         "product",
         &product_id,
         "submit",
         payload.submission_note.as_deref(),
-        "pending",
     )
     .await
     .map_err(map_db_error)?;
+    write_outbox_event(
+        &tx,
+        "product",
+        &product_id,
+        "catalog.product.submitted",
+        &serde_json::json!({
+            "product_id": product_id,
+            "status": "pending_review"
+        }),
+    )
+    .await?;
     write_audit_event(
         &tx,
         "product",
@@ -393,6 +422,20 @@ async fn review_subject(
     tokio::spawn(async move {
         let _ = connection.await;
     });
+    let org_exists = PostgresCatalogRepository::organization_exists(&client, &subject_id)
+        .await
+        .map_err(map_db_error)?;
+    if !org_exists {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "subject does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
+    enforce_subject_scope(&headers, &subject_id, "catalog subject review")?;
     let review_status = decision_to_review_status(&payload.action_name);
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresCatalogRepository::create_review_decision(
@@ -451,6 +494,17 @@ async fn review_product(
                 }),
             )
         })?;
+    enforce_product_scope(&headers, &current.seller_org_id, "catalog product review")?;
+    if current.status != "pending_review" {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "only pending_review product can be reviewed".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    }
     let next_status = match payload.action_name.as_str() {
         "approve" => "listed",
         "reject" => "draft",
@@ -496,7 +550,7 @@ async fn review_product(
             }),
         )
     })?;
-    let review = PostgresCatalogRepository::create_review_decision(
+    let review = PostgresCatalogRepository::append_review_step_and_close_task(
         &tx,
         "product_review",
         "product",
@@ -506,7 +560,29 @@ async fn review_product(
         decision_to_review_status(&payload.action_name),
     )
     .await
-    .map_err(map_db_error)?;
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: "pending review task does not exist".to_string(),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        )
+    })?;
+    write_outbox_event(
+        &tx,
+        "product",
+        &product_id,
+        "catalog.product.status.changed",
+        &serde_json::json!({
+            "product_id": product_id,
+            "status": updated.status,
+            "review_action": payload.action_name
+        }),
+    )
+    .await?;
     write_audit_event(
         &tx,
         "product",
@@ -542,6 +618,24 @@ async fn review_compliance(
     tokio::spawn(async move {
         let _ = connection.await;
     });
+    let product = PostgresCatalogRepository::get_data_product(&client, &compliance_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                    message: "compliance target product does not exist".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+    enforce_product_scope(
+        &headers,
+        &product.seller_org_id,
+        "catalog compliance review",
+    )?;
     let review_status = decision_to_review_status(&payload.action_name);
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresCatalogRepository::create_review_decision(
@@ -585,6 +679,26 @@ async fn suspend_product(
             ],
             "catalog product freeze",
         )?;
+        let _ = header(&headers, "x-step-up-challenge-id").ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                    message: "x-step-up-challenge-id is required for freeze action".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
+        let _ = header(&headers, "x-user-id").ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                    message: "x-user-id is required for freeze action".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            )
+        })?;
     } else {
         require_permission(
             &headers,
@@ -611,6 +725,32 @@ async fn suspend_product(
                 }),
             )
         })?;
+    enforce_product_scope(&headers, &existing.seller_org_id, "catalog product suspend")?;
+    if payload.suspend_mode == "freeze" {
+        let challenge_id = header(&headers, "x-step-up-challenge-id")
+            .expect("x-step-up-challenge-id checked before db access");
+        let user_id = header(&headers, "x-user-id").expect("x-user-id checked before db access");
+        let step_up_ok = PostgresCatalogRepository::is_verified_step_up_challenge(
+            &client,
+            &challenge_id,
+            &user_id,
+            "risk.product.freeze",
+            "product",
+            &product_id,
+        )
+        .await
+        .map_err(map_db_error)?;
+        if !step_up_ok {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(ErrorResponse {
+                    code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                    message: "verified step-up challenge is required for freeze action".to_string(),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            ));
+        }
+    }
     let next_status = if payload.suspend_mode == "freeze" {
         "frozen"
     } else {
@@ -665,6 +805,18 @@ async fn suspend_product(
         "success",
         header(&headers, "x-request-id").as_deref(),
         header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    write_outbox_event(
+        &tx,
+        "product",
+        &product_id,
+        "catalog.product.status.changed",
+        &serde_json::json!({
+            "product_id": product_id,
+            "status": updated.status,
+            "suspend_mode": payload.suspend_mode
+        }),
     )
     .await?;
     tx.commit().await.map_err(map_db_error)?;
@@ -2473,6 +2625,92 @@ fn decision_to_review_status(action_name: &str) -> &'static str {
     } else {
         "rejected"
     }
+}
+
+fn enforce_product_scope(
+    headers: &HeaderMap,
+    seller_org_id: &str,
+    action: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let role = header(headers, "x-role").unwrap_or_default();
+    if role.starts_with("platform_") {
+        return Ok(());
+    }
+    let tenant_id = header(headers, "x-tenant-id").ok_or_else(|| {
+        (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: format!("{action} requires x-tenant-id"),
+                request_id: header(headers, "x-request-id"),
+            }),
+        )
+    })?;
+    if tenant_id == seller_org_id {
+        return Ok(());
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            message: format!("{action} is forbidden for tenant scope"),
+            request_id: header(headers, "x-request-id"),
+        }),
+    ))
+}
+
+fn enforce_subject_scope(
+    headers: &HeaderMap,
+    subject_id: &str,
+    action: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let role = header(headers, "x-role").unwrap_or_default();
+    if role.starts_with("platform_") {
+        return Ok(());
+    }
+    let tenant_id = header(headers, "x-tenant-id").ok_or_else(|| {
+        (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: format!("{action} requires x-tenant-id"),
+                request_id: header(headers, "x-request-id"),
+            }),
+        )
+    })?;
+    if tenant_id == subject_id {
+        return Ok(());
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            message: format!("{action} is forbidden for tenant scope"),
+            request_id: header(headers, "x-request-id"),
+        }),
+    ))
+}
+
+async fn write_outbox_event(
+    client: &(impl GenericClient + Sync),
+    aggregate_type: &str,
+    aggregate_id: &str,
+    event_type: &str,
+    payload: &serde_json::Value,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    client
+        .query_one(
+            "INSERT INTO ops.outbox_event (
+               aggregate_type, aggregate_id, event_type, payload, status
+             ) VALUES (
+               $1, $2::text::uuid, $3, $4::jsonb, 'pending'
+             )
+             RETURNING outbox_event_id::text",
+            &[&aggregate_type, &aggregate_id, &event_type, payload],
+        )
+        .await
+        .map_err(map_db_error)?;
+    Ok(())
 }
 
 async fn write_audit_event(

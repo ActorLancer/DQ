@@ -2641,3 +2641,46 @@
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 待人工审批结论：通过（按“每 4~6 个 tasks 集中审批”节奏，当前批次已完成，等待集中审批）
 - 备注：本批仍保持测试代码按功能拆分，不把新增逻辑持续堆积在单一文件。
+
+### BATCH-101（待审批）
+
+- 状态：通过
+- 当前任务编号：CAT-016, CAT-017, CAT-018, CAT-019（审计修复批）
+- 当前批次目标：修复上一版实现与冻结约束之间的缺口，补齐高风险 step-up、tenant 作用域、审核任务推进一致性、模板有效性强校验与事件闭环。
+- 前置依赖核对结果：延续 `CAT-016~CAT-019` 依赖（`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005`）均已完成并审批通过；本批为同任务段审计返修。
+- 已实现功能：
+  1. 补齐 tenant + resource 作用域：对 `submit/review(compliance+product)/suspend` 增加 `x-tenant-id` 与 `seller_org_id/subject_id` 一致性校验（平台角色豁免）。
+  2. 补齐冻结高风险二次认证：`suspend_mode=freeze` 强制 `x-step-up-challenge-id + x-user-id`，并校验 `iam.step_up_challenge` 为 `verified` 且未过期，且 action/ref 精确匹配 `risk.product.freeze + product + product_id`。
+  3. 强化提审“模板齐全”校验：由“仅检查 sku metadata 非空”升级为“模板 UUID 合法 + `contract.template_definition` 存在且 `status=active` + `sku_type` 与 `applicable_sku_types` 兼容”。
+  4. 修复产品审核任务推进：`submit` 创建 `product_review` pending 任务并写首步 `submit`；`review/products` 在同一 pending 任务追加审批 step 并闭合任务状态为 `approved/rejected`，不再新建平行任务。
+  5. 补齐实体存在性校验：`review/subjects` 校验 `core.organization` 存在；`review/compliance` 校验目标 `product` 存在。
+  6. 补齐事件闭环：在提审、状态变更（审核通过/驳回、下架/冻结）写入 `ops.outbox_event`。
+  7. 新增测试：`rejects_freeze_without_step_up_header`（无 step-up 头直接拒绝）。
+- 涉及文件：`apps/platform-core/src/modules/catalog/api.rs`、`apps/platform-core/src/modules/catalog/repository.rs`、`apps/platform-core/src/modules/catalog/tests/suspend.rs`、`docs/开发任务/V1-Core-实施进度日志.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 修复版联调（`APP_PORT=18096`，`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`）：
+     - 预置 `organization/user/data_asset/asset_version/product/profile/sku/template_definition`
+     - 调用 submit -> subject/compliance/product review -> suspend delist
+     - 调用 IAM step-up check + verify
+     - 携带 `x-step-up-challenge-id` 调用 suspend freeze
+     - 回查 `catalog.product`、`review.review_task/review.review_step`、`ops.outbox_event`、`audit.audit_event`
+     - 清理测试业务数据并核对残留
+- 验证结果：通过。
+  - 单测：`73 passed, 0 failed, 1 ignored`
+  - 联调：
+    - `submit` 后 `status=pending_review`
+    - `review/products approve` 后 `status=listed`
+    - `suspend delist` 后 `status=delisted`
+    - `step-up verified + suspend freeze` 后 `status=frozen`
+    - `product_review` 任务同一 `review_task_id`，`review_step` 数量为 `2`（submit + approve）
+    - `ops.outbox_event` 命中 `catalog.product.submitted` 与 `catalog.product.status.changed`
+    - 审计命中 `catalog.product.submit / catalog.review.subject / catalog.review.compliance / catalog.review.product / catalog.product.suspend`
+  - 清理后残留：`catalog.product|catalog.product_sku|review.review_task|ops.outbox_event = 0|0|0|0`
+- 覆盖的冻结文档条目：`docs/开发任务/v1-core-开发任务清单.csv`（CAT-016~019 DoD/acceptance）、`docs/权限设计/接口权限校验清单.md`（tenant+resource、risk freeze + step-up）、`docs/业务流程/业务流程图-V1-完整版.md`（提审->审核->上架->下架/冻结）、`docs/数据库设计/V1/upgrade/025_review_workflow.sql`（review task/step 模型）、`docs/数据库设计/V1/upgrade/050_audit_search_dev_ops.sql`（ops.outbox_event）。
+- 覆盖的任务清单条目：`CAT-016`, `CAT-017`, `CAT-018`, `CAT-019`（审计修复）
+- 未覆盖项：无
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt`。
+- 待人工审批结论：通过
+- 备注：`docs/开发任务/V1-Core-人工审批记录.md` 继续由人工手工维护，本批未自动写入。

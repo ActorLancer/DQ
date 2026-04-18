@@ -602,9 +602,21 @@ impl PostgresCatalogRepository {
             .query_one(
                 "SELECT NOT EXISTS (
                    SELECT 1
-                   FROM catalog.product_sku
-                   WHERE product_id = $1::text::uuid
-                     AND coalesce(nullif(metadata->>'draft_template_id', ''), '') = ''
+                   FROM catalog.product_sku sku
+                   WHERE sku.product_id = $1::text::uuid
+                     AND (
+                       coalesce(nullif(sku.metadata->>'draft_template_id', ''), '') = ''
+                       OR NOT (
+                         (sku.metadata->>'draft_template_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                         AND EXISTS (
+                           SELECT 1
+                           FROM contract.template_definition t
+                           WHERE t.template_id = (sku.metadata->>'draft_template_id')::uuid
+                             AND t.status = 'active'
+                             AND sku.sku_type = ANY(t.applicable_sku_types)
+                         )
+                       )
+                     )
                  )",
                 &[&product_id],
             )
@@ -700,6 +712,167 @@ impl PostgresCatalogRepository {
             )
             .await?;
         Ok(parse_review_decision_row(&task_row))
+    }
+
+    pub async fn organization_exists(
+        client: &impl GenericClient,
+        org_id: &str,
+    ) -> Result<bool, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT EXISTS (
+                   SELECT 1 FROM core.organization WHERE org_id = $1::text::uuid
+                 )",
+                &[&org_id],
+            )
+            .await?;
+        Ok(row.get(0))
+    }
+
+    pub async fn create_review_task_with_initial_step(
+        client: &impl GenericClient,
+        review_type: &str,
+        ref_type: &str,
+        ref_id: &str,
+        initial_action: &str,
+        initial_reason: Option<&str>,
+    ) -> Result<ReviewDecisionView, tokio_postgres::Error> {
+        let task_row = client
+            .query_one(
+                "INSERT INTO review.review_task (
+                   review_type, ref_type, ref_id, status
+                 ) VALUES (
+                   $1, $2, $3::text::uuid, 'pending'
+                 )
+                 RETURNING review_task_id::text, review_type, ref_type, ref_id::text, status",
+                &[&review_type, &ref_type, &ref_id],
+            )
+            .await?;
+        let review_task_id: String = task_row.get(0);
+        client
+            .query_one(
+                "INSERT INTO review.review_step (
+                   review_task_id, step_no, action_name, action_reason, action_at
+                 ) VALUES (
+                   $1::text::uuid, 1, $2, $3, now()
+                 )
+                 RETURNING review_step_id::text",
+                &[&review_task_id, &initial_action, &initial_reason],
+            )
+            .await?;
+        Ok(parse_review_decision_row(&task_row))
+    }
+
+    pub async fn has_pending_review_task(
+        client: &impl GenericClient,
+        review_type: &str,
+        ref_type: &str,
+        ref_id: &str,
+    ) -> Result<bool, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT EXISTS (
+                   SELECT 1
+                   FROM review.review_task
+                   WHERE review_type = $1
+                     AND ref_type = $2
+                     AND ref_id = $3::text::uuid
+                     AND status = 'pending'
+                 )",
+                &[&review_type, &ref_type, &ref_id],
+            )
+            .await?;
+        Ok(row.get(0))
+    }
+
+    pub async fn append_review_step_and_close_task(
+        client: &impl GenericClient,
+        review_type: &str,
+        ref_type: &str,
+        ref_id: &str,
+        action_name: &str,
+        action_reason: Option<&str>,
+        next_status: &str,
+    ) -> Result<Option<ReviewDecisionView>, tokio_postgres::Error> {
+        let task_row = client
+            .query_opt(
+                "SELECT review_task_id::text
+                 FROM review.review_task
+                 WHERE review_type = $1
+                   AND ref_type = $2
+                   AND ref_id = $3::text::uuid
+                   AND status = 'pending'
+                 ORDER BY created_at DESC
+                 LIMIT 1",
+                &[&review_type, &ref_type, &ref_id],
+            )
+            .await?;
+        let Some(task_row) = task_row else {
+            return Ok(None);
+        };
+        let task_id: String = task_row.get(0);
+        client
+            .query_one(
+                "INSERT INTO review.review_step (
+                   review_task_id, step_no, action_name, action_reason, action_at
+                 ) VALUES (
+                   $1::text::uuid,
+                   COALESCE((
+                     SELECT max(step_no) + 1
+                     FROM review.review_step
+                     WHERE review_task_id = $1::text::uuid
+                   ), 1),
+                   $2,
+                   $3,
+                   now()
+                 )
+                 RETURNING review_step_id::text",
+                &[&task_id, &action_name, &action_reason],
+            )
+            .await?;
+        let updated_row = client
+            .query_one(
+                "UPDATE review.review_task
+                 SET status = $2, updated_at = now()
+                 WHERE review_task_id = $1::text::uuid
+                 RETURNING review_task_id::text, review_type, ref_type, ref_id::text, status",
+                &[&task_id, &next_status],
+            )
+            .await?;
+        Ok(Some(parse_review_decision_row(&updated_row)))
+    }
+
+    pub async fn is_verified_step_up_challenge(
+        client: &impl GenericClient,
+        challenge_id: &str,
+        user_id: &str,
+        target_action: &str,
+        target_ref_type: &str,
+        target_ref_id: &str,
+    ) -> Result<bool, tokio_postgres::Error> {
+        let row = client
+            .query_one(
+                "SELECT EXISTS (
+                   SELECT 1
+                   FROM iam.step_up_challenge
+                   WHERE step_up_challenge_id = $1::text::uuid
+                     AND user_id = $2::text::uuid
+                     AND target_action = $3
+                     AND target_ref_type = $4
+                     AND target_ref_id = $5::text::uuid
+                     AND challenge_status = 'verified'
+                     AND expires_at > now()
+                 )",
+                &[
+                    &challenge_id,
+                    &user_id,
+                    &target_action,
+                    &target_ref_type,
+                    &target_ref_id,
+                ],
+            )
+            .await?;
+        Ok(row.get(0))
     }
 
     pub async fn upsert_product_metadata_profile(
