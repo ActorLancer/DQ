@@ -49,6 +49,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetOrderDetailResponse'
+  /api/v1/orders/{id}/cancel:
+    post:
+      summary: Cancel order under state-machine constraints and refund branch
+      operationId: cancelOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelOrderResponse'
   /api/v1/trade/pre-requests:
     post:
       summary: Create a trade pre-request (RFQ/sample/POC)
@@ -314,6 +333,50 @@ components:
           type: string
           format: date-time
         updated_at:
+          type: string
+          format: date-time
+    CancelOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/CancelOrderResponseData'
+    CancelOrderResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          previous_state,
+          current_state,
+          payment_status,
+          refund_branch,
+          refund_required,
+          reason_code,
+          canceled_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        previous_state:
+          type: string
+        current_state:
+          type: string
+          enum: [closed]
+        payment_status:
+          type: string
+        refund_branch:
+          type: string
+          enum: [no_refund, refund_required]
+        refund_required:
+          type: boolean
+        reason_code:
+          type: string
+        canceled_at:
           type: string
           format: date-time
     TradePreRequestResponse:

@@ -179,3 +179,4 @@
 - `BATCH-111`（`TRADE-002`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - `BATCH-112`（`TRADE-003`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - `BATCH-113`（`TRADE-004`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- `BATCH-114`（`TRADE-005`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。

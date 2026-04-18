@@ -1,11 +1,13 @@
 use crate::modules::order::dto::{
-    CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData, CreateTradePreRequestRequest,
-    FreezeOrderPriceSnapshotResponse, FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
-    TradePreRequestResponse, TradePreRequestResponseData,
+    CancelOrderResponse, CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData,
+    CreateTradePreRequestRequest, FreezeOrderPriceSnapshotResponse,
+    FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse, TradePreRequestResponse,
+    TradePreRequestResponseData,
 };
 use crate::modules::order::repo::{
-    create_order_with_snapshot, find_order_by_idempotency, freeze_order_price_snapshot,
-    insert_trade_pre_request, load_order_detail, load_trade_pre_request, write_trade_audit_event,
+    cancel_order_with_state_machine, create_order_with_snapshot, find_order_by_idempotency,
+    freeze_order_price_snapshot, insert_trade_pre_request, load_order_cancel_context,
+    load_order_detail, load_trade_pre_request, write_trade_audit_event,
 };
 use axum::Json;
 use axum::extract::Path;
@@ -116,6 +118,55 @@ pub async fn get_order_detail_api(
     );
 
     Ok(ApiResponse::ok(GetOrderDetailResponse { data: order }))
+}
+
+pub async fn cancel_order_api(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+) -> Result<Json<ApiResponse<CancelOrderResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, TradePermission::CancelOrder, "order cancel")?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+    enforce_order_read_scope(
+        &headers,
+        &order_scope.buyer_org_id,
+        &order_scope.seller_org_id,
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let canceled = cancel_order_with_state_machine(
+        &mut client,
+        &order_id,
+        &actor_role,
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    info!(
+        action = "trade.order.cancel",
+        order_id = %canceled.order_id,
+        previous_state = %canceled.previous_state,
+        current_state = %canceled.current_state,
+        refund_branch = %canceled.refund_branch,
+        "order canceled"
+    );
+    Ok(ApiResponse::ok(CancelOrderResponse { data: canceled }))
 }
 
 pub async fn create_trade_pre_request(
@@ -265,6 +316,7 @@ pub async fn freeze_order_price_snapshot_api(
 enum TradePermission {
     CreateOrder,
     ReadOrder,
+    CancelOrder,
     CreatePreRequest,
     ReadPreRequest,
 }
@@ -284,6 +336,10 @@ fn is_allowed(role: &str, permission: TradePermission) -> bool {
                 | "platform_admin"
                 | "platform_audit_security"
                 | "platform_risk_settlement"
+        ),
+        TradePermission::CancelOrder => matches!(
+            role,
+            "buyer_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
         ),
         TradePermission::CreatePreRequest => matches!(role, "buyer_operator" | "tenant_admin"),
         TradePermission::ReadPreRequest => matches!(

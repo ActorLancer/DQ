@@ -2,6 +2,7 @@ mod trade001_pre_request_db;
 mod trade002_price_snapshot_db;
 mod trade003_create_order_db;
 mod trade004_order_detail_db;
+mod trade005_order_cancel_db;
 
 #[cfg(test)]
 mod tests {
@@ -85,6 +86,24 @@ mod tests {
                 Request::builder()
                     .method("GET")
                     .uri("/api/v1/orders/30000000-0000-0000-0000-000000000101")
+                    .header("x-role", "developer")
+                    .header("x-tenant-id", "10000000-0000-0000-0000-000000000102")
+                    .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_order_cancel_without_permission() {
+        let app = router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/orders/30000000-0000-0000-0000-000000000101/cancel")
                     .header("x-role", "developer")
                     .header("x-tenant-id", "10000000-0000-0000-0000-000000000102")
                     .body(Body::empty())
