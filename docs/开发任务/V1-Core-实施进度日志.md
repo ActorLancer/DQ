@@ -2796,5 +2796,66 @@
 - 覆盖的任务清单条目：`CAT-021`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 按你的要求继续由人工维护，本批未自动写入。
+
+### BATCH-105（待审批）
+
+- 状态：待审批
+- 当前任务编号：CAT-022
+- 当前批次目标：实现“商品与卖方搜索可见性字段”闭环，补齐搜索同步事件、搜索可见性读回与 API 级 DB smoke 证据。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-104` 已通过，可执行。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `CAT-022` DoD/acceptance/technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对 `CAT-022` 单任务执行口径。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中 -> 编码 -> 验证 -> 待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持 V1 范围，避免扩展。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：先登记计划中再编码。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步批次更新，无遗漏。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读规则，继续人工维护。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：读取第 44 章搜索同步边界。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认搜索同步由外围进程消费事件。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：核对 catalog 接口冻结范围。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认 `dtp.outbox.domain-events` 与搜索同步 topic 边界。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用统一错误结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：补齐最小集成验证证据。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增测试文件，避免单文件膨胀。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调库使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：使用 `DATABASE_URL` 注入。
+  17. `docs/开发准备/技术选型正式版.md`：沿用 Rust + PostgreSQL + outbox。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体 + 外围索引进程模式。
+- technical_reference 约束映射：
+  1. `docs/原始PRD/商品搜索、排序与索引同步设计.md:L164`：搜索投影至少承载 subtitle/industry/use_cases/data_classification/quality_score 与 `document_version/index_sync_status`。
+  2. `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：catalog 接口沿既有路径，不新增路径；字段通过商品创建/编辑与详情读取闭环。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L4824`：遵循“主数据写库 -> outbox 事件 -> 索引同步”的 V1 主链路。
+- 已实现功能：
+  1. 在 `create_product_draft` 与 `patch_product_draft` 中新增搜索同步 outbox 事件 `search.product.changed`（topic：`dtp.outbox.domain-events`）。
+  2. 新增 `CAT-022` API 级 DB smoke：`cat022_search_visibility_fields_and_events_db_smoke`。
+  3. smoke 用例覆盖创建商品 + 编辑搜索可见性字段（`searchable_text/subtitle/industry/use_cases/data_classification/quality_score`）。
+  4. smoke 用例验证 `GET /api/v1/products/{id}` 与 `GET /api/v1/sellers/{orgId}/profile` 返回 `search_document_version/index_sync_status`。
+  5. smoke 用例验证 outbox（`search.product.changed`）与审计（`catalog.product.patch`）落库。
+- 涉及文件：
+  - `apps/platform-core/src/modules/catalog/api/handlers/product_and_review.rs`
+  - `apps/platform-core/src/modules/catalog/tests/mod.rs`
+  - `apps/platform-core/src/modules/catalog/tests/cat022_search_visibility_db.rs`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core cat022_ -- --nocapture`
+  3. `cargo test -p platform-core`
+  4. `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat022_ -- --nocapture`
+- 验证结果：
+  - `cargo test -p platform-core cat022_ -- --nocapture`：通过（未开启 DB smoke 时走开关短路）。
+  - `cargo test -p platform-core`：通过（`80 passed, 0 failed, 1 ignored`）。
+  - DB smoke：沙箱内因权限限制返回 `Operation not permitted`；提权后通过（`1 passed, 0 failed`）。
+- 覆盖的冻结文档条目：
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`（6. 搜索投影设计）
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5. V1 接口）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（44. 商品搜索、排序与索引同步设计）
+  - `docs/业务流程/业务流程图-V1-完整版.md`（6.3.1/6.3.2 搜索同步事件语义）
+- 覆盖的任务清单条目：`CAT-022`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 继续按你的要求由人工维护，本批未自动写入。

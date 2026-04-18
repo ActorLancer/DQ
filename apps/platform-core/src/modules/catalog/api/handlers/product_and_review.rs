@@ -40,6 +40,21 @@ pub(in crate::modules::catalog) async fn create_product_draft(
     let view = PostgresCatalogRepository::create_data_product(&tx, &payload)
         .await
         .map_err(map_db_error)?;
+    write_outbox_event(
+        &tx,
+        &headers,
+        "product",
+        &view.product_id,
+        "search.product.changed",
+        "dtp.outbox.domain-events",
+        &serde_json::json!({
+            "product_id": view.product_id,
+            "seller_org_id": view.seller_org_id,
+            "change_type": "create",
+            "status": view.status
+        }),
+    )
+    .await?;
     write_audit_event(
         &tx,
         "product",
@@ -130,6 +145,21 @@ pub(in crate::modules::catalog) async fn patch_product_draft(
                 }),
             )
         })?;
+    write_outbox_event(
+        &tx,
+        &headers,
+        "product",
+        &view.product_id,
+        "search.product.changed",
+        "dtp.outbox.domain-events",
+        &serde_json::json!({
+            "product_id": view.product_id,
+            "seller_org_id": view.seller_org_id,
+            "change_type": "patch",
+            "status": view.status
+        }),
+    )
+    .await?;
     write_audit_event(
         &tx,
         "product",
