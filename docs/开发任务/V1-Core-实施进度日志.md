@@ -2862,7 +2862,7 @@
 
 ### BATCH-106（计划中）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-023
 - 当前批次目标：按 `CAT-023` 冻结要求完成五条标准链路模板接口闭环，补齐接口调用、审计落库与可重复 DB 联调验证证据。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-105` 已通过，可继续执行。
@@ -2919,5 +2919,81 @@
 - 覆盖的任务清单条目：`CAT-023`
 - 未覆盖项：无
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 继续由人工维护，本批未自动写入。
+
+### BATCH-107（计划中）
+
+- 状态：计划中
+- 当前任务编号：CAT-024
+- 当前批次目标：按冻结清单完成 Catalog/Listing/Review 全链路集成验证，覆盖商品创建、SKU 创建、质量报告、契约发布、提交审核、审核通过/驳回、冻结（含 step-up）并补齐 API 联调证据。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-106` 已通过，可继续执行。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/catalog/tests/mod.rs`
+  - `apps/platform-core/src/modules/catalog/tests/cat024_catalog_listing_review_db.rs`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 待人工审批结论：待审批
+
+### BATCH-107（待审批）
+
+- 状态：待审批
+- 当前任务编号：CAT-024
+- 当前批次目标：按冻结文档完成 Catalog/Listing/Review 集成验证：商品创建、SKU 创建、质量报告、契约发布、提交审核、审核通过/驳回、冻结（step-up）。
+- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并审批通过；`BATCH-106` 已通过，可执行。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `CAT-024` DoD/acceptance/technical_reference，按单任务执行。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版描述与 CSV 一致，以 CSV 为准。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：执行“计划中 -> 编码 -> 验证 -> 待审批”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：遵循 V1 边界，不扩展 V2/V3。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：先写计划中，再补待审批结果。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：同步批次更新记录，保持 TODO 追溯。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：仅读规则，按你的要求不自动写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对目录/商品主流程与审核上架链路。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 catalog 模块边界，不跨服务扩展。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：核对 V1 路径与请求头约束。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：核对 outbox 事件口径，不把事件作为主状态。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用统一错误结构与状态码口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：补齐 API+DB+curl 联调证据。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增独立测试文件，避免继续膨胀旧文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：使用环境变量注入 `DATABASE_URL`。
+  17. `docs/开发准备/技术选型正式版.md`：保持 Rust + PostgreSQL + Axum + Kafka 边界。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体，不做额外拆分。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L200`：覆盖目录与商品聚合（asset/product/sku/metadata_profile/contract）。
+  2. `docs/数据库设计/接口协议/目录与商品接口协议正式版.md:L82`：覆盖 `POST /api/v1/products`、`POST /api/v1/products/{id}/skus`、`POST /api/v1/assets/{versionId}/quality-reports`、`POST /api/v1/skus/{id}/data-contracts`、`POST /api/v1/products/{id}/submit`、`POST /api/v1/review/products/{id}`、`POST /api/v1/products/{id}/suspend`。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L86`：覆盖“创建 -> 元信息/质量/契约 -> 提交审核 -> 通过/驳回 -> 冻结”链路。
+- 已实现功能：
+  1. 新增 `CAT-024` 专用 DB smoke：`cat024_catalog_listing_review_end_to_end_db_smoke`（单测内真实 HTTP 路由调用 + 数据库断言 + 清理）。
+  2. 覆盖主链路（approve+freeze）与分支链路（reject）双路径状态机断言：`pending_review -> listed -> frozen` 与 `pending_review -> draft`。
+  3. 覆盖 step-up 冻结校验：插入 `core.user_account` + `iam.step_up_challenge(verified)` 后调用冻结接口。
+  4. 覆盖审计/事件证据：`catalog.product.*`、`catalog.review.product`、`catalog.asset_quality_report.create`、`catalog.data_contract.create`、`ops.outbox_event(catalog.product.status.changed)`。
+  5. 额外完成 `curl` 实测联调：真实启动 `platform-core`（本机 endpoint 覆盖）后执行 CAT-024 HTTP 链路并校验数据库计数，再清理测试数据。
+- 涉及文件：
+  - `apps/platform-core/src/modules/catalog/tests/cat024_catalog_listing_review_db.rs`
+  - `apps/platform-core/src/modules/catalog/tests/mod.rs`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat024_ -- --nocapture`
+  4. `make up-local`
+  5. `APP_PORT=18080 APP_HOST=127.0.0.1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9092 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core`
+  6. `curl` 联调链路（创建商品/sku、metadata-profile、quality-report、data-contract、submit、review approve/reject、freeze）+ `psql` 数据库证据校验。
+- 验证结果：
+  - `cargo test -p platform-core`：通过（`82 passed, 0 failed, 1 ignored`）。
+  - `cat024_` DB smoke：通过（`1 passed, 0 failed`）。
+  - `curl` 联调结果：`submit_a=pending_review review_a=listed freeze_a=frozen submit_b=pending_review review_b=draft`。
+  - DB 证据：`quality_count=1 contract_count=1 audit_submit=2 audit_review=2 audit_suspend=1`。
+- 覆盖的冻结文档条目：
+  - `docs/领域模型/全量领域模型与对象关系说明.md`（4.2 目录与商品聚合）
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md`（5. V1 接口）
+  - `docs/业务流程/业务流程图-V1-完整版.md`（4.2 商品创建、模板绑定与上架流程）
+  - `docs/开发准备/测试用例矩阵正式版.md`（接口 + 集成 + 联调证据）
+- 覆盖的任务清单条目：`CAT-024`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 按你的要求继续由你手工维护，本批未自动写入。
