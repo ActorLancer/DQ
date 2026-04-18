@@ -811,7 +811,7 @@ impl PostgresCatalogRepository {
             return Ok(None);
         };
         let task_id: String = task_row.get(0);
-        client
+        let inserted_step_row = client
             .query_one(
                 "INSERT INTO review.review_step (
                    review_task_id, step_no, action_name, action_reason, action_at
@@ -826,17 +826,20 @@ impl PostgresCatalogRepository {
                    $3,
                    now()
                  )
-                 RETURNING review_step_id::text",
+                 RETURNING step_no",
                 &[&task_id, &action_name, &action_reason],
             )
             .await?;
+        let current_step_no: i32 = inserted_step_row.get(0);
         let updated_row = client
             .query_one(
                 "UPDATE review.review_task
-                 SET status = $2, updated_at = now()
+                 SET status = $2,
+                     current_step_no = $3,
+                     updated_at = now()
                  WHERE review_task_id = $1::text::uuid
                  RETURNING review_task_id::text, review_type, ref_type, ref_id::text, status",
-                &[&task_id, &next_status],
+                &[&task_id, &next_status, &current_step_no],
             )
             .await?;
         Ok(Some(parse_review_decision_row(&updated_row)))

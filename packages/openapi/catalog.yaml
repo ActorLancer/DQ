@@ -79,6 +79,20 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: x-step-up-challenge-id
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Required when `suspend_mode=freeze`.
+        - name: x-user-id
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Required when `suspend_mode=freeze`.
       requestBody:
         required: true
         content:

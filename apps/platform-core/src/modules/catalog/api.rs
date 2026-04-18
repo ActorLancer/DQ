@@ -371,9 +371,11 @@ async fn submit_product(
     .map_err(map_db_error)?;
     write_outbox_event(
         &tx,
+        &headers,
         "product",
         &product_id,
         "catalog.product.submitted",
+        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": product_id,
             "status": "pending_review"
@@ -573,9 +575,11 @@ async fn review_product(
     })?;
     write_outbox_event(
         &tx,
+        &headers,
         "product",
         &product_id,
         "catalog.product.status.changed",
+        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": product_id,
             "status": updated.status,
@@ -809,9 +813,11 @@ async fn suspend_product(
     .await?;
     write_outbox_event(
         &tx,
+        &headers,
         "product",
         &product_id,
         "catalog.product.status.changed",
+        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": product_id,
             "status": updated.status,
@@ -2693,20 +2699,36 @@ fn enforce_subject_scope(
 
 async fn write_outbox_event(
     client: &(impl GenericClient + Sync),
+    headers: &HeaderMap,
     aggregate_type: &str,
     aggregate_id: &str,
     event_type: &str,
+    target_topic: &str,
     payload: &serde_json::Value,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = header(headers, "x-request-id");
+    let trace_id = header(headers, "x-trace-id");
+    let idempotency_key = header(headers, "x-idempotency-key");
     client
         .query_one(
             "INSERT INTO ops.outbox_event (
-               aggregate_type, aggregate_id, event_type, payload, status
+               aggregate_type, aggregate_id, event_type, payload,
+               request_id, trace_id, idempotency_key, target_topic, status
              ) VALUES (
-               $1, $2::text::uuid, $3, $4::jsonb, 'pending'
+               $1, $2::text::uuid, $3, $4::jsonb,
+               $5, $6, $7, $8, 'pending'
              )
              RETURNING outbox_event_id::text",
-            &[&aggregate_type, &aggregate_id, &event_type, payload],
+            &[
+                &aggregate_type,
+                &aggregate_id,
+                &event_type,
+                payload,
+                &request_id,
+                &trace_id,
+                &idempotency_key,
+                &target_topic,
+            ],
         )
         .await
         .map_err(map_db_error)?;
