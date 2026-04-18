@@ -5,6 +5,7 @@ info:
   description: |
     V1 trade baseline currently includes:
     - TRADE-001 minimal pre-order request model for RFQ / sample / POC
+    - TRADE-002 order price snapshot freeze model
     - TRADE-030 payment-result transition mapping:
       - payment succeeded -> order status buyer_locked (delivery pending)
       - payment failed -> order status payment_failed_pending_resolution
@@ -47,6 +48,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TradePreRequestResponse'
+  /api/v1/trade/orders/{id}/price-snapshot/freeze:
+    post:
+      summary: Freeze order price snapshot from catalog SKU metadata
+      operationId: freezeOrderPriceSnapshot
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Snapshot frozen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FreezeOrderPriceSnapshotResponse'
 components:
   schemas:
     ContractExpectationSnapshot:
@@ -171,6 +191,88 @@ components:
         updated_at:
           type: string
           format: date-time
+    SettlementTermsSnapshot:
+      type: object
+      required: [settlement_basis, settlement_mode]
+      properties:
+        settlement_basis:
+          type: string
+        settlement_mode:
+          type: string
+    TaxTermsSnapshot:
+      type: object
+      required: [tax_policy, tax_code, tax_inclusive]
+      properties:
+        tax_policy:
+          type: string
+        tax_code:
+          type: string
+        tax_inclusive:
+          type: boolean
+    OrderPriceSnapshot:
+      type: object
+      required:
+        [
+          product_id,
+          sku_id,
+          sku_code,
+          sku_type,
+          pricing_mode,
+          unit_price,
+          currency_code,
+          billing_mode,
+          refund_mode,
+          settlement_terms,
+          tax_terms,
+          captured_at,
+          source,
+        ]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_code:
+          type: string
+        sku_type:
+          type: string
+        pricing_mode:
+          type: string
+        unit_price:
+          type: string
+        currency_code:
+          type: string
+        billing_mode:
+          type: string
+        refund_mode:
+          type: string
+        settlement_terms:
+          $ref: '#/components/schemas/SettlementTermsSnapshot'
+        tax_terms:
+          $ref: '#/components/schemas/TaxTermsSnapshot'
+        captured_at:
+          type: string
+        source:
+          type: string
+    FreezeOrderPriceSnapshotResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required: [order_id, snapshot]
+              properties:
+                order_id:
+                  type: string
+                  format: uuid
+                snapshot:
+                  $ref: '#/components/schemas/OrderPriceSnapshot'
     OrderPaymentOrchestrationTransition:
       type: object
       required: [payment_result, from_order_status, to_order_status, non_regression_guard]

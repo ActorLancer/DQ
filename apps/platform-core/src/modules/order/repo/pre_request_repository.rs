@@ -139,7 +139,8 @@ fn default_rfq_payload() -> InquiryPayloadV1 {
 
 pub async fn write_trade_audit_event(
     client: &tokio_postgres::Client,
-    inquiry_id: &str,
+    ref_type: &str,
+    ref_id: &str,
     actor_role: &str,
     action_name: &str,
     result_code: &str,
@@ -148,7 +149,7 @@ pub async fn write_trade_audit_event(
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let metadata = serde_json::json!({
         "actor_role": actor_role,
-        "request_kind_object": "trade_pre_request",
+        "request_kind_object": ref_type,
     });
     client
         .execute(
@@ -164,17 +165,18 @@ pub async fn write_trade_audit_event(
                metadata
              ) VALUES (
                'trade',
-               'inquiry',
+               $2,
                $1::text::uuid,
                'role',
-               $2,
                $3,
                $4,
                $5,
-               $6::jsonb
+               $6,
+               $7::jsonb
              )",
             &[
-                &inquiry_id,
+                &ref_id,
+                &ref_type,
                 &action_name,
                 &result_code,
                 &request_id,

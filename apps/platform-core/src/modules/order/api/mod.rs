@@ -2,7 +2,9 @@ mod handlers;
 
 use axum::Router;
 use axum::routing::{get, post};
-pub use handlers::{create_trade_pre_request, get_trade_pre_request};
+pub use handlers::{
+    create_trade_pre_request, freeze_order_price_snapshot_api, get_trade_pre_request,
+};
 
 pub fn router() -> Router {
     Router::new()
@@ -10,5 +12,9 @@ pub fn router() -> Router {
         .route(
             "/api/v1/trade/pre-requests/{id}",
             get(get_trade_pre_request),
+        )
+        .route(
+            "/api/v1/trade/orders/{id}/price-snapshot/freeze",
+            post(freeze_order_price_snapshot_api),
         )
 }

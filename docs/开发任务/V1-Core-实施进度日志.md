@@ -3044,21 +3044,9 @@
 - 待人工审批结论：通过
 - 备注：`audit.audit_event` 为 append-only，联调验证后未执行审计数据删除；`V1-Core-人工审批记录.md` 继续由你手工维护。
 
-### BATCH-109（计划中）
-
-- 状态：计划中
-- 当前任务编号：CAT-026
-- 当前批次目标：生成 `docs/05-test-cases/catalog-review-cases.md`，覆盖上架规则、字段缺失、模板不匹配、风险阻断，并补齐接口联调验证证据。
-- 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-108` 已通过，可继续执行。
-- 预计涉及文件：
-  - `docs/05-test-cases/catalog-review-cases.md`
-  - `docs/开发任务/V1-Core-实施进度日志.md`
-  - `docs/开发任务/V1-Core-TODO与预留清单.md`
-- 待人工审批结论：待审批
-
 ### BATCH-109（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：CAT-026
 - 当前批次目标：生成 `docs/05-test-cases/catalog-review-cases.md`，覆盖上架规则、字段缺失、模板不匹配、风险阻断，并提供联调验证证据。
 - 前置依赖核对结果：`CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005` 已完成并通过审批；`BATCH-108` 已通过，可继续执行。
@@ -3110,27 +3098,12 @@
 - 覆盖的任务清单条目：`CAT-026`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 继续由你手工维护，本批未自动写入。
-
-### BATCH-110（计划中）
-
-- 状态：计划中
-- 当前任务编号：TRADE-001
-- 当前批次目标：实现询报价/样例申请/POC 申请最小数据模型（order/contract/authorization）并补齐 `packages/openapi/trade.yaml`，提供最小 API 联调与审计留痕验证。
-- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已在历史批次完成并通过审批；`BATCH-109` 已通过，可继续执行。
-- 预计涉及文件：
-  - `apps/platform-core/src/modules/order/**`
-  - `apps/platform-core/src/modules/contract/**`
-  - `apps/platform-core/src/modules/authorization/**`
-  - `packages/openapi/trade.yaml`
-  - `docs/开发任务/V1-Core-实施进度日志.md`
-  - `docs/开发任务/V1-Core-TODO与预留清单.md`
-- 待人工审批结论：待审批
 
 ### BATCH-110（待审批）
 
-- 状态：待审批
+- 状态：通过
 - 当前任务编号：TRADE-001
 - 当前批次目标：实现询报价/样例申请/POC 申请最小数据模型（order/contract/authorization）并补齐 `packages/openapi/trade.yaml`，提供最小 API 联调与审计留痕验证。
 - 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成并通过审批；`BATCH-109` 已通过，可继续执行。
@@ -3212,5 +3185,102 @@
 - 覆盖的任务清单条目：`TRADE-001`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
-- 待人工审批结论：待审批
+- 待人工审批结论：通过
 - 备注：`V1-Core-人工审批记录.md` 按你的要求继续由你手工维护，本批未自动写入。
+
+### BATCH-111（计划中）
+
+- 状态：计划中
+- 当前任务编号：TRADE-002
+- 当前批次目标：实现订单价格快照模型（SKU 价格、计费模式、结算口径、退款口径、税务信息），并提供可通过 API 触发与校验的固化路径。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成并通过审批；`BATCH-110` 已通过，可继续执行。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/order/**`
+  - `apps/platform-core/src/modules/contract/**`
+  - `apps/platform-core/src/modules/authorization/**`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 待人工审批结论：待审批
+
+### BATCH-111（待审批）
+
+- 状态：待审批
+- 当前任务编号：TRADE-002
+- 当前批次目标：实现价格快照模型，在订单创建阶段可固化 SKU 价格、计费模式、结算口径、退款口径与税务信息快照，并提供可联调验证入口。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成并通过审批；`BATCH-110` 已通过，可继续执行。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：定位 `TRADE-002` 交付、DoD、acceptance 与 `technical_reference`。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版任务解释与 CSV 一致。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：遵循“计划中->编码->验证->待审批”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持 V1 范围，不抢跑后续功能。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：已记录计划中并追加待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：已同步批次记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：仅读规则；继续由人工维护。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对交易闭环步骤与订单前置/下单约束。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 trade/order/contract/authorization 边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认 `/api/v1` 接口风格与返回结构约束。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认事件非主状态、审计留痕要求。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：执行单测+联调+DB证据验证。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：按功能拆分 `order` 模块文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：使用 `datab-postgres:5432` 做 API 联调。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：按 `DATABASE_URL/KAFKA_BROKERS/...` 启动。
+  17. `docs/开发准备/技术选型正式版.md`：遵循 PostgreSQL 主状态权威原则。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体与生命周期对象口径。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：在 `Order` 聚合新增可复用价格快照对象 `OrderPriceSnapshot`。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：订单创建阶段的价格/结算/退款/税务要素可冻结并持久化。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：搜索选购后进入下单前，价格与交易口径需可固化追溯。
+- 已实现功能：
+  1. 新增领域模型 `OrderPriceSnapshot`（含 `pricing_mode/unit_price/currency_code/billing_mode/refund_mode/settlement_terms/tax_terms`）。
+  2. 新增结算口径派生规则 `derive_settlement_basis`。
+  3. 新增仓储逻辑：从 `catalog.product + catalog.product_sku` 读取价格与 SKU 交易属性，固化到 `trade.order_main.price_snapshot_json`，并同步 `fee_preview_snapshot`。
+  4. 新增 API：`POST /api/v1/trade/orders/{id}/price-snapshot/freeze`。
+  5. 新增审计动作：`trade.order.price_snapshot.freeze`。
+  6. 更新 OpenAPI：`packages/openapi/trade.yaml` 增补路径与快照 schema。
+  7. 新增测试：权限测试、快照口径单测、`TRADE_DB_SMOKE` 数据库烟测。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/domain/mod.rs`
+  - `apps/platform-core/src/modules/order/domain/price_snapshot.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/dto/price_snapshot.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/pre_request_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/price_snapshot_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade002_price_snapshot_db.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务：
+     `APP_PORT=18080 APP_HOST=127.0.0.1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 cargo run -p platform-core`
+  4. 准备联调测试订单（按你允许策略插入测试数据）。
+  5. `curl -X POST /api/v1/trade/orders/{id}/price-snapshot/freeze`
+  6. `psql` 校验 `price_snapshot_json/fee_preview_snapshot/audit.audit_event`。
+- 验证结果：
+  - `cargo test -p platform-core`：通过（`88 passed, 0 failed, 1 ignored`）。
+  - API 联调通过：
+    - `request_id=req-trade002-1776515593`
+    - `order_id=31111111-1111-1111-1111-111111111111`
+    - 返回快照字段：`pricing_mode=one_time`、`billing_mode=one_time`、`refund_mode=manual_refund`、`settlement_basis=one_time_final`、`tax_policy=platform_default`。
+  - DB 证据：
+    - `trade.order_main.price_snapshot_json` 已写入对应字段。
+    - `trade.order_main.fee_preview_snapshot.pricing_mode=one_time`。
+    - `audit.audit_event`（`action_name=trade.order.price_snapshot.freeze`）计数=`1`。
+  - 说明：联调库初始 `trade.order_main` 无数据，已按流程插入最小测试订单行后完成验证。
+- 覆盖的冻结文档条目：
+  - `docs/领域模型/全量领域模型与对象关系说明.md`（4.4 交易与订单聚合）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（15 核心交易链路）
+  - `docs/业务流程/业务流程图-V1-完整版.md`（4.3 买方搜索、选购与下单流程）
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（Trade 接口风格）
+- 覆盖的任务清单条目：`TRADE-002`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 待人工审批结论：待审批
+- 备注：`V1-Core-人工审批记录.md` 继续由你手工维护，本批未自动写入。
