@@ -959,3 +959,84 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-128（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-019
+- 当前批次目标：实现生命周期摘要接口 `GET /api/v1/orders/{id}/lifecycle-snapshots`，返回对象化字段名而不是拼装字符串。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-018` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-019` DoD、验收与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认 `TRADE-019` 的接口与对象化返回要求。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中→编码→验证→待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：单任务批次、不可跳步。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：延续批次记录格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认交易闭环中的订单生命周期观测需求。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认生命周期摘要接口归属 `order/platform-core`。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认 `GET /api/v1/orders/{id}/lifecycle-snapshots` 已冻结。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：读取类接口需留审计动作。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `IAM_UNAUTHORIZED` 与 `TRD_STATE_CONFLICT`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：覆盖生命周期状态读取与审计验证。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增 DTO/Repository 按模块职责拆分。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调继续使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 作为交易状态权威源。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体内聚实现。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：订单聚合需显式输出主状态与支付/交付/验收/结算/争议等子状态。
+  2. `docs/原始PRD/审计、证据链与回放设计.md:L93`：接口动作应写统一审计事件并带 request/trace 关联字段。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：交易闭环需可回放、可联查的生命周期摘要视图。
+
+### BATCH-128（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-019
+- 当前批次目标：实现生命周期摘要接口 `GET /api/v1/orders/{id}/lifecycle-snapshots`，返回对象化字段名而不是拼装字符串。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-018` 已审批通过。
+- 已实现功能：
+  1. 新增生命周期摘要接口：`GET /api/v1/orders/{id}/lifecycle-snapshots`。
+  2. 新增生命周期 DTO，按对象化结构拆分：`order/payment/acceptance/settlement/dispute/contract/authorization/delivery`。
+  3. 新增生命周期聚合查询仓储：从 `trade.order_main` + `contract.digital_contract` + `trade.authorization_grant` + `delivery.delivery_record` 组装摘要。
+  4. 新接口接入 `ReadOrder` 权限矩阵与租户范围校验（buyer/seller scope）。
+  5. 新增审计动作：`trade.order.lifecycle_snapshots.read`。
+  6. 新增 `TRADE-019` DB smoke，验证接口响应对象结构与审计留痕。
+  7. 更新 OpenAPI：新增 path 与对应 schema，保持字段语义与实现一致。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_lifecycle_snapshot.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_lifecycle_snapshot_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade019_lifecycle_snapshots_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade019_order_lifecycle_snapshots_db_smoke -- --nocapture`
+  4. 启动服务：`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+  5. `psql` 插入临时联调数据（org/asset/version/product/sku/order/contract/authorization/delivery）。
+  6. `curl` 调用 `GET /api/v1/orders/{id}/lifecycle-snapshots`。
+  7. `psql` 回查审计 `trade.order.lifecycle_snapshots.read` 与授权状态。
+  8. 清理临时业务测试数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`138 passed, 0 failed, 1 ignored`）。
+  - `trade019_order_lifecycle_snapshots_db_smoke`：通过（`1 passed`，连接 `datab-postgres:5432`）。
+  - API 联调：`GET /api/v1/orders/{id}/lifecycle-snapshots` 返回 `HTTP 200`，`order/contract/authorization/delivery` 对象均正确返回。
+  - 审计回查：`trade.order.lifecycle_snapshots.read = 1`。
+  - 状态回查：授权记录 `status=active` 与响应一致。
+  - 清理结果：临时业务数据已清理；审计记录保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.4（订单聚合主状态与子状态显式建模）
+  - `原始PRD/审计、证据链与回放设计` 4（统一审计事件模型）
+  - `全集成基线-V1` 15（交易闭环可观测、可回放）
+  - `接口清单与OpenAPI-Schema冻结表` 5.6（`GET /api/v1/orders/{id}/lifecycle-snapshots`）
+- 覆盖的任务清单条目：`TRADE-019`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

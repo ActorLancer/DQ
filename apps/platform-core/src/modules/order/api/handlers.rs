@@ -5,20 +5,20 @@ use crate::modules::order::dto::{
     CreateTradePreRequestRequest, FileStdTransitionRequest, FileStdTransitionResponse,
     FileSubTransitionRequest, FileSubTransitionResponse, FreezeOrderPriceSnapshotResponse,
     FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
-    OrderAuthorizationTransitionRequest, OrderAuthorizationTransitionResponse,
-    QryLiteTransitionRequest, QryLiteTransitionResponse, RptStdTransitionRequest,
-    RptStdTransitionResponse, SbxStdTransitionRequest, SbxStdTransitionResponse,
-    ShareRoTransitionRequest, ShareRoTransitionResponse, TradePreRequestResponse,
-    TradePreRequestResponseData,
+    GetOrderLifecycleSnapshotsResponse, OrderAuthorizationTransitionRequest,
+    OrderAuthorizationTransitionResponse, QryLiteTransitionRequest, QryLiteTransitionResponse,
+    RptStdTransitionRequest, RptStdTransitionResponse, SbxStdTransitionRequest,
+    SbxStdTransitionResponse, ShareRoTransitionRequest, ShareRoTransitionResponse,
+    TradePreRequestResponse, TradePreRequestResponseData,
 };
 use crate::modules::order::repo::{
     cancel_order_with_state_machine, confirm_order_contract, create_order_with_snapshot,
     find_order_by_idempotency, freeze_order_price_snapshot, insert_trade_pre_request,
     load_order_cancel_context, load_order_contract_confirm_context, load_order_detail,
-    load_trade_pre_request, transition_api_ppu_order, transition_api_sub_order,
-    transition_file_std_order, transition_file_sub_order, transition_order_authorization,
-    transition_qry_lite_order, transition_rpt_std_order, transition_sbx_std_order,
-    transition_share_ro_order, write_trade_audit_event,
+    load_order_lifecycle_snapshots, load_trade_pre_request, transition_api_ppu_order,
+    transition_api_sub_order, transition_file_std_order, transition_file_sub_order,
+    transition_order_authorization, transition_qry_lite_order, transition_rpt_std_order,
+    transition_sbx_std_order, transition_share_ro_order, write_trade_audit_event,
 };
 use axum::Json;
 use axum::extract::Path;
@@ -129,6 +129,67 @@ pub async fn get_order_detail_api(
     );
 
     Ok(ApiResponse::ok(GetOrderDetailResponse { data: order }))
+}
+
+pub async fn get_order_lifecycle_snapshots_api(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+) -> Result<Json<ApiResponse<GetOrderLifecycleSnapshotsResponse>>, (StatusCode, Json<ErrorResponse>)>
+{
+    require_permission(
+        &headers,
+        TradePermission::ReadOrder,
+        "order lifecycle snapshots read",
+    )?;
+    let dsn = database_dsn()?;
+    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let Some(snapshot) = load_order_lifecycle_snapshots(&client, &order_id).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+    enforce_order_read_scope(
+        &headers,
+        &snapshot.order.buyer_org_id,
+        &snapshot.order.seller_org_id,
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    write_trade_audit_event(
+        &client,
+        "order",
+        &order_id,
+        &actor_role,
+        "trade.order.lifecycle_snapshots.read",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    info!(
+        action = "trade.order.lifecycle_snapshots.read",
+        order_id = %snapshot.order.order_id,
+        current_state = %snapshot.order.current_state,
+        payment_status = %snapshot.order.payment.current_status,
+        settlement_status = %snapshot.order.settlement.current_status,
+        dispute_status = %snapshot.order.dispute.current_status,
+        "order lifecycle snapshots queried"
+    );
+
+    Ok(ApiResponse::ok(GetOrderLifecycleSnapshotsResponse {
+        data: snapshot,
+    }))
 }
 
 pub async fn cancel_order_api(

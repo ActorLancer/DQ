@@ -6,6 +6,7 @@ mod order_contract_confirm;
 mod order_create;
 mod order_file_std_transition;
 mod order_file_sub_transition;
+mod order_lifecycle_snapshot;
 mod order_qry_lite_transition;
 mod order_read;
 mod order_rpt_std_transition;
@@ -34,6 +35,12 @@ pub use order_file_std_transition::{
 };
 pub use order_file_sub_transition::{
     FileSubTransitionRequest, FileSubTransitionResponse, FileSubTransitionResponseData,
+};
+pub use order_lifecycle_snapshot::{
+    AcceptanceLifecycleSnapshot, AuthorizationLifecycleSnapshot, ContractLifecycleSnapshot,
+    DeliveryLifecycleSnapshot, DisputeLifecycleSnapshot, GetOrderLifecycleSnapshotsResponse,
+    GetOrderLifecycleSnapshotsResponseData, OrderLifecycleSnapshot, PaymentLifecycleSnapshot,
+    SettlementLifecycleSnapshot,
 };
 pub use order_qry_lite_transition::{
     QryLiteTransitionRequest, QryLiteTransitionResponse, QryLiteTransitionResponseData,
