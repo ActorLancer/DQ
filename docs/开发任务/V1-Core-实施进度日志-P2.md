@@ -2313,3 +2313,110 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-142（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-033
+- 当前批次目标：输出 `docs/01-architecture/order-orchestration.md`，冻结订单主状态、支付/交付/验收/结算/争议子状态、推进规则、互斥关系与回调乱序保护，并补索引引用。
+- 前置依赖核对结果：`TRADE-007`、`TRADE-024`、`BIL-022`、`DLV-029` 已完成且审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-033` 是当前单任务批次，交付物为 `docs/01-architecture/order-orchestration.md`，DoD 要求文档落盘、结构完整、术语一致并被 README/索引引用。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版解释，与 CSV 对 `TRADE-033` 的目标、依赖与验证要求一致。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：当前只实现 `TRADE-033` 范围，不跨任务扩展为新的运行时能力。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批先登记计划中，完成后再补待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后同步追加本批追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对交易主链路、支付推进、待交付门禁与完整闭环术语。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 `billing` 负责支付结果处理，`order` 负责订单推进与履约门禁。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：当前任务不新增 API，只引用既有订单/支付接口作为编排证据。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：核对支付 webhook / outbox 审计在编排链路中的事件边界。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` 等既有错误口径，不在文档中发明新错误码。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：确认本批需至少一条集成测试或手工 API 验证，并保留审计/日志证据。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：文档落在 `docs/01-architecture/`，并通过 README 索引暴露。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：API 验证继续使用 core 栈数据库 `datab-postgres:5432` 与本地 Kafka。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用 `KAFKA_BROKERS`、`KAFKA_BOOTSTRAP_SERVERS`、`DATABASE_URL` 现有配置，不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：维持 Rust + Axum + PostgreSQL + Kafka 的实现上下文，文档只做冻结说明。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体边界，强调 `order/billing/delivery` 的编排职责分工。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：`trade.order_main.status` 是唯一主状态，支付/交付/验收/结算/争议子状态是镜像状态，文档需画清其同步关系和互斥边界。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：交易闭环必须覆盖下单、支付、交付、验收、结算全链路，且支付成功前不得放行交付。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：买方搜索、选购与下单流程中的支付、锁资、交付、验收节点必须在编排文档中有明确推进顺序。
+- 预计涉及文件：
+  - `docs/01-architecture/order-orchestration.md`
+  - `docs/README.md`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务：`APP_PORT=8093 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  4. `psql` 写入乱序支付回调临时数据，`curl POST /api/v1/payments/webhooks/mock_payment` 验证 `out_of_order_ignored` 与 `order.payment.result.ignored` 审计痕迹。
+  5. `psql` 回查 `payment.payment_intent`、`trade.order_main`、`audit.audit_event`，再清理临时业务数据；审计记录按 append-only 保留。
+
+### BATCH-142（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-033
+- 当前批次目标：输出 `docs/01-architecture/order-orchestration.md`，冻结订单主状态、支付/交付/验收/结算/争议子状态、推进规则、互斥关系与回调乱序保护，并补索引引用。
+- 前置依赖核对结果：`TRADE-007`、`TRADE-024`、`BIL-022`、`DLV-029` 已完成且审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-033` 是当前单任务批次，交付物为 `docs/01-architecture/order-orchestration.md`，DoD 要求文档落盘、结构完整、术语一致并被 README/索引引用。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版解释，与 CSV 对 `TRADE-033` 的目标、依赖与验证要求一致。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：当前只实现 `TRADE-033` 范围，不跨任务扩展为新的运行时能力。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批已写入计划中与待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：已同步追加本批追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对交易主链路、支付推进、待交付门禁与完整闭环术语。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认 `billing` 负责支付结果处理，`order` 负责订单推进与履约门禁。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：当前任务不新增 API，只引用既有订单/支付接口作为编排证据。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：核对支付 webhook / outbox 审计在编排链路中的事件边界。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` 等既有错误口径，不在文档中发明新错误码。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：确认本批需至少一条集成测试或手工 API 验证，并保留审计/日志证据。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：文档落在 `docs/01-architecture/`，并通过 README 索引暴露。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：API 验证使用 core 栈数据库 `datab-postgres:5432` 与本地 Kafka。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用 `KAFKA_BROKERS`、`KAFKA_BOOTSTRAP_SERVERS`、`DATABASE_URL` 现有配置，不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：维持 Rust + Axum + PostgreSQL + Kafka 的实现上下文，文档只做冻结说明。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体边界，强调 `order/billing/delivery` 的编排职责分工。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：`trade.order_main.status` 是唯一主状态，支付/交付/验收/结算/争议子状态是镜像状态，文档已画清其同步关系和互斥边界。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：文档已覆盖下单、支付、交付、验收、结算全链路，并强调支付成功前不得放行交付。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：文档已按买方搜索、选购与下单主流程梳理支付、锁资、交付、验收节点的推进顺序。
+- 已实现功能：
+  1. 新增 `docs/01-architecture/order-orchestration.md`，冻结 `trade.order_main.status` 主状态唯一性、五类子状态职责、主链路推进关系、SKU 首个交付/开通动作、互斥规则与维护约束。
+  2. 文档中明确当前 V1 运行时职责边界：`billing` 处理支付 webhook 与乱序保护，`order` 负责主状态推进、交付门禁与最小 `delivery_record(prepared)` 落库，`delivery` 模块目录仍是占位。
+  3. 文档中落地两层回调乱序保护：`payment.payment_intent` 时间戳/rank 防回退，以及 `trade.order_main` 的可变状态白名单 + `SELECT ... FOR UPDATE` + compare-and-swap。
+  4. 更新 `docs/README.md`，将 `docs/01-architecture/order-orchestration.md` 纳入工程文档索引，满足 README/索引引用要求。
+- 涉及文件：
+  - `docs/01-architecture/order-orchestration.md`
+  - `docs/README.md`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. 启动服务：`APP_PORT=8093 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  4. `psql` 写入两组临时数据：一组用于验证 webhook 层 `out_of_order_ignored`，一组用于验证订单层 `order.payment.result.ignored`。
+  5. `curl POST /api/v1/payments/webhooks/mock_payment` 两次，分别发送 `payment.failed` 晚到回调和 `payment.succeeded` 的前序状态回调。
+  6. `psql` 回查 `payment.payment_intent`、`trade.order_main`、`payment.payment_webhook_event`、`audit.audit_event`，再清理临时业务数据；审计记录按 append-only 保留。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`162 passed, 0 failed, 1 ignored`）。
+  - 真实 API 联调通过：
+    - `POST /api/v1/payments/webhooks/mock_payment`（`trade033-api-ooo`）返回 `HTTP 200`，`processed_status=out_of_order_ignored`，`out_of_order_ignored=true`。
+    - `POST /api/v1/payments/webhooks/mock_payment`（`trade033-api-order-ignore`）返回 `HTTP 200`，`processed_status=processed`，`applied_payment_status=succeeded`。
+  - DB 回查：
+    - `intent_ooo` 保持 `succeeded`，`order_ooo` 保持 `seller_delivering / paid`
+    - `intent_ignore` 更新为 `succeeded`，`order_ignore` 保持 `contract_pending / unpaid`
+    - `payment.payment_webhook_event`：`evt-trade033-ooo -> out_of_order_ignored`，`evt-trade033-order-ignore -> processed`
+    - 审计命中：`payment.webhook.out_of_order_ignored=1`、`payment.webhook.processed=1`、`order.payment.result.ignored=1`
+  - 清理结果：临时业务数据已清理；回查结果 `order_main=0 | payment_intent=0 | organization=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.4（交易与订单聚合）
+  - `全集成基线-V1` 15（核心交易链路设计）
+  - `业务流程图-V1` 4.3（买方搜索、选购与下单流程）
+- 覆盖的任务清单条目：`TRADE-033`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+

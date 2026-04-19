@@ -9,6 +9,10 @@
 - `docs/04-runbooks/`
 - `docs/05-test-cases/`
 
+关键索引：
+
+- `docs/01-architecture/order-orchestration.md`：Order / Contract / Authorization / Billing / Delivery 主交易编排、状态分层与乱序回调保护。
+
 说明：
 
 - 既有专题文档目录（如 `开发准备/`、`数据库设计/`、`全集成文档/`）继续保留。
