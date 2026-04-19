@@ -4,15 +4,17 @@ use crate::AppState;
 use crate::modules::delivery::dto::{
     ApiUsageLogResponse, CommitOrderDeliveryRequest, CommitOrderDeliveryResponse,
     DownloadFileResponse, DownloadFileResponseData, DownloadTicketResponse,
-    GetRevisionSubscriptionResponse, GetShareGrantResponse, ManageQuerySurfaceRequest,
-    ManageQuerySurfaceResponse, ManageQueryTemplateRequest, ManageQueryTemplateResponse,
-    ManageRevisionSubscriptionRequest, ManageRevisionSubscriptionResponse, ManageShareGrantRequest,
-    ManageShareGrantResponse, ManageTemplateGrantRequest, ManageTemplateGrantResponse,
+    ExecuteTemplateRunRequest, ExecuteTemplateRunResponse, GetRevisionSubscriptionResponse,
+    GetShareGrantResponse, ManageQuerySurfaceRequest, ManageQuerySurfaceResponse,
+    ManageQueryTemplateRequest, ManageQueryTemplateResponse, ManageRevisionSubscriptionRequest,
+    ManageRevisionSubscriptionResponse, ManageShareGrantRequest, ManageShareGrantResponse,
+    ManageTemplateGrantRequest, ManageTemplateGrantResponse,
 };
 use crate::modules::delivery::repo::{
-    commit_api_delivery, commit_file_delivery, consume_download_ticket, get_api_usage_log,
-    get_revision_subscription, get_share_grants, issue_download_ticket, manage_query_surface,
-    manage_query_template, manage_revision_subscription, manage_share_grant, manage_template_grant,
+    commit_api_delivery, commit_file_delivery, consume_download_ticket, execute_template_run,
+    get_api_usage_log, get_revision_subscription, get_share_grants, issue_download_ticket,
+    manage_query_surface, manage_query_template, manage_revision_subscription, manage_share_grant,
+    manage_template_grant,
 };
 use crate::modules::storage::application::fetch_object_bytes;
 use axum::Json;
@@ -185,6 +187,42 @@ pub async fn manage_query_surface_api(
 
     Ok(ApiResponse::ok(ManageQuerySurfaceResponse {
         data: query_surface,
+    }))
+}
+
+pub async fn execute_template_run_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<ExecuteTemplateRunRequest>,
+) -> Result<Json<ApiResponse<ExecuteTemplateRunResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::UseTemplateQuery,
+        "template query execution",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let requester_user_id = header(&headers, "x-user-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let query_run = execute_template_run(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        requester_user_id.as_deref(),
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ExecuteTemplateRunResponse {
+        data: query_run,
     }))
 }
 

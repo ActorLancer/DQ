@@ -11,6 +11,7 @@ pub enum DeliveryPermission {
     ManageQuerySurface,
     ManageQueryTemplate,
     EnableTemplateQuery,
+    UseTemplateQuery,
     IssueDownloadTicket,
     DownloadFile,
     ManageRevisionSubscription,
@@ -56,6 +57,14 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
             "seller_operator"
                 | "tenant_developer"
                 | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        DeliveryPermission::UseTemplateQuery => matches!(
+            role,
+            "buyer_operator"
+                | "tenant_developer"
+                | "business_analyst"
                 | "platform_admin"
                 | "platform_risk_settlement"
         ),

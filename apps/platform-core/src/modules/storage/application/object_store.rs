@@ -1,5 +1,6 @@
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::{Builder, Credentials, Region};
+use aws_sdk_s3::primitives::ByteStream;
 use axum::Json;
 use axum::http::StatusCode;
 use kernel::{ErrorCode, ErrorResponse};
@@ -8,6 +9,40 @@ use kernel::{ErrorCode, ErrorResponse};
 pub struct FetchedObjectPayload {
     pub bytes: Vec<u8>,
     pub content_type: Option<String>,
+}
+
+pub async fn put_object_bytes(
+    bucket_name: &str,
+    object_key: &str,
+    bytes: Vec<u8>,
+    content_type: Option<&str>,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let client = build_minio_client();
+    let mut request = client
+        .put_object()
+        .bucket(bucket_name)
+        .key(object_key)
+        .body(ByteStream::from(bytes));
+    if let Some(content_type) = content_type.filter(|value| !value.trim().is_empty()) {
+        request = request.content_type(content_type);
+    }
+    request.send().await.map_err(map_object_store_error)?;
+    Ok(())
+}
+
+pub async fn delete_object(
+    bucket_name: &str,
+    object_key: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let client = build_minio_client();
+    client
+        .delete_object()
+        .bucket(bucket_name)
+        .key(object_key)
+        .send()
+        .await
+        .map_err(map_object_store_error)?;
+    Ok(())
 }
 
 pub async fn fetch_object_bytes(

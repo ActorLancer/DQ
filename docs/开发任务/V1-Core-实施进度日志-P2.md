@@ -3619,3 +3619,104 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-154（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-012
+- 已阅读证据：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-012` 为 `POST /api/v1/orders/{id}/template-runs`，要求参数校验、风控校验、输出边界校验、审计，交付路径为 `delivery/**`、`storage/**` 与 `packages/openapi/delivery.yaml`。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认本任务完成定义为接口、DTO、权限校验、审计、错误码和最小测试齐备，并要求至少一条集成测试或手工 API 验证通过。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md` / `AI-Agent-执行提示词.md`：确认单任务批次必须先写日志“计划中”，实现后完整验证、更新 TODO、写“待审批”、本地提交。
+  4. `docs/开发任务/V1-Core-TODO与预留清单.md` / `docs/开发任务/V1-Core-人工审批记录.md`：确认 `TODO-PROC-BIL-001` 追溯约束保持不变，人工审批记录继续由人工维护。
+  5. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认模板查询必须通过白名单模板、参数 schema、输出边界和导出限制校验后才能执行，并为每次执行形成正式运行记录。
+  6. `docs/原始PRD/数据商品查询与执行面设计.md:L127`：确认 `QuerySurface -> QueryTemplate -> QueryGrant -> QueryExecutionRun -> ResultArtifact` 的 V1 闭环，以及执行记录需包含发起人、模板、输入参数摘要、输出摘要、计费单位、审计与风控结果。
+  7. `docs/页面说明书/页面说明书-V1-完整版.md:L639`：模板查询开通页需展示模板白名单、参数 schema 摘要、输出边界和导出限制。
+  8. `docs/页面说明书/页面说明书-V1-完整版.md:L685`：查询运行记录页需展示 query run 时间线、模板版本、请求参数摘要、结果摘要/结果对象、计费单位、审计引用与策略命中。
+  9. `docs/权限设计/接口权限校验清单.md` / `角色权限矩阵正式版.md` / `后端鉴权中间件规则说明.md`：确认权限为 `delivery.template_query.use`，鉴权顺序为身份 -> 主体状态 -> 权限 -> 订单作用域 -> 模板白名单 -> 参数校验 -> 输出边界 -> 风控 -> 审计。
+  10. `docs/数据库设计/V1/upgrade/065_query_execution_plane.sql` / `066_sensitive_data_controlled_delivery.sql` / `数据库表字典正式版.md`：确认 `delivery.query_execution_run` 与敏感字段 `masked_level / export_scope / approval_ticket_id / sensitive_policy_snapshot` 的落库结构。
+  11. 其余必读冻结文档已按本阶段基线复核标题、边界与服务/事件/配置口径，无新增冲突；当前任务未发现需要升级到问题清单的文档矛盾。
+- 当前批次目标：实现模板执行接口 `POST /api/v1/orders/{id}/template-runs`，完成模板授权有效性、参数 schema、输出边界、风控、结果对象（MinIO）、`delivery.query_execution_run`、订单状态联动与审计闭环。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `apps/platform-core/src/modules/storage/application/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv012_template_run_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + MinIO + `curl POST /api/v1/orders/{id}/template-runs` 联调，回查 `delivery.query_execution_run / delivery.storage_object / trade.order_main / audit.audit_event` 后清理业务数据。
+
+### BATCH-154（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-012
+- 当前批次目标：实现模板执行接口 `POST /api/v1/orders/{id}/template-runs`，完成模板授权有效性、参数 schema、输出边界、风控、结果对象（MinIO）、`delivery.query_execution_run`、订单状态联动与审计闭环。
+- 前置依赖核对结果：`TRADE-003; TRADE-007; DB-006; DB-019; DB-020; CORE-008` 已完成且审批通过；`DLV-011` 已完成并本地提交。
+- 已实现功能：
+  1. 新增模板执行接口 `POST /api/v1/orders/{id}/template-runs`，接入 `delivery.template_query.use` 权限。
+  2. 新增 DTO：`ExecuteTemplateRunRequest/Response`、`QueryRunResponseData`，返回模板版本、结果对象、计费单位、策略快照、状态推进结果。
+  3. 新增仓储 `execute_template_run(...)`，落地模板授权读取、订单/主体作用域校验、请求人校验、参数 schema 校验、输出边界校验、风控校验、配额校验。
+  4. 新增 `delivery.query_execution_run` 写路径：先写 `running`，生成结果摘要和敏感策略快照后回写 `completed / completed_at / result_object_id / billed_units / result_row_count`。
+  5. 新增 MinIO 结果对象落桶：通过 `storage::put_object_bytes(...)` 写入 `report-results/query-runs/{order_id}/{query_run_id}/result.json`，并同步登记 `delivery.storage_object(result_object)`。
+  6. 新增 `QRY_LITE` 状态联动：从 `template_authorized` 推进到 `query_executed`，并同步刷新 `delivery_status=delivered / acceptance_status=accepted / settlement_status=pending_settlement`。
+  7. 审计落地：`delivery.template_query.use` 与 `trade.order.qry_lite.transition`。
+  8. 新增专项 DB smoke `dlv012_template_run_db_smoke`，覆盖成功执行、缺失审批票据、非法输出格式三条链路，并回查 MinIO 结果对象。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/query_run.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/query_run_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv012_template_run_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `apps/platform-core/src/modules/storage/application/mod.rs`
+  - `apps/platform-core/src/modules/storage/application/object_store.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv012_template_run_db_smoke -- --nocapture`
+  7. 启动服务：`APP_PORT=8105 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入临时买卖方/资产/商品/执行环境/QuerySurface/QueryTemplate/Grant 数据，执行真实 `curl POST /api/v1/orders/{id}/template-runs` 联调，回查 `delivery.query_execution_run / delivery.storage_object / trade.order_main / audit.audit_event` 与 MinIO 对象路径后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`177 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - `dlv012_template_run_db_smoke`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/template-runs`：`HTTP 200`
+    - 返回 `status=completed`、`current_state=query_executed`、`result_row_count=2`、`masked_level=masked`、`export_scope=none`
+  - DB 回查通过：
+    - `delivery.query_execution_run`：`completed / template_query / masked / none / 2 / 1.00000000`
+    - `trade.order_main`：`query_executed / paid / delivered / accepted / pending_settlement`
+    - `delivery.storage_object`：登记 `s3://report-results/query-runs/{order_id}/{query_run_id}/result.json`
+    - 审计：`delivery.template_query.use=1`、`trade.order.qry_lite.transition=1`
+  - MinIO 联调通过：
+    - `report-results/query-runs/{order_id}/{query_run_id}/result.json` 对象路径已在 `datab-minio` 内创建并可见。
+  - 清理结果：临时业务数据与 MinIO 临时对象路径已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `数据商品查询与执行面设计` 5 / 8（执行闭环、参数/边界/风控/计费/审计）
+  - `页面说明书-V1` 7.4 / 7.7（模板执行入口、运行记录页字段）
+  - `065_query_execution_plane.sql` / `066_sensitive_data_controlled_delivery.sql`（`delivery.query_execution_run` 与敏感字段冻结）
+  - `数据库表字典正式版` / `全量领域模型与对象关系说明`（`QueryExecutionRun` 与结果对象职责）
+  - `权限设计` 接口权限校验清单 / 角色矩阵 / 鉴权规则（`delivery.template_query.use` 与鉴权顺序）
+- 覆盖的任务清单条目：`DLV-012`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

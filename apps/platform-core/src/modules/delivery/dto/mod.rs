@@ -2,6 +2,7 @@ mod api_usage_log;
 mod download_file;
 mod download_ticket;
 mod file_delivery_commit;
+mod query_run;
 mod query_surface;
 mod query_template;
 mod revision_subscription;
@@ -17,6 +18,10 @@ pub use download_file::{
 };
 pub use file_delivery_commit::{
     CommitOrderDeliveryRequest, CommitOrderDeliveryResponse, CommitOrderDeliveryResponseData,
+};
+pub use query_run::{
+    ExecuteTemplateRunRequest, ExecuteTemplateRunResponse, GetQueryRunsResponse,
+    QueryRunListResponseData, QueryRunResponseData,
 };
 pub use query_surface::{
     ManageQuerySurfaceRequest, ManageQuerySurfaceResponse, QuerySurfaceResponseData,

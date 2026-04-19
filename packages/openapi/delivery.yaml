@@ -13,7 +13,9 @@ info:
     product-scoped query execution configuration; DLV-010 adds QueryTemplate
     version management for a controlled query surface; DLV-011 adds
     template-grant enablement for QRY_LITE orders with whitelisted templates,
-    output boundaries, and quota snapshots.
+    output boundaries, and quota snapshots; DLV-012 adds template query
+    execution with QueryExecutionRun persistence, MinIO result artifacts, and
+    risk/output-boundary enforcement.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -243,6 +245,38 @@ paths:
           description: Order or query surface not found
         '409':
           description: SKU is not QRY_LITE, selected templates are invalid, or output boundary/quota exceeds the frozen surface policy
+  /api/v1/orders/{id}/template-runs:
+    post:
+      summary: Execute a granted QRY_LITE template run and persist QueryExecutionRun plus result artifact
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteTemplateRunRequest'
+      responses:
+        '200':
+          description: Template query executed and QueryExecutionRun persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteTemplateRunResponseEnvelope'
+        '400':
+          description: Invalid parameter payload or JSON shape
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order, template grant, template, or requester not found
+        '409':
+          description: Grant inactive, parameters invalid, output boundary exceeded, risk guard blocked, or quota exhausted
   /api/v1/orders/{id}/usage-log:
     get:
       summary: Read minimal-disclosure API usage logs under order scope
@@ -723,6 +757,168 @@ components:
         updated_at:
           type: string
           format: date-time
+    ExecuteTemplateRunRequest:
+      type: object
+      required: [query_template_id, request_payload_json]
+      properties:
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        query_template_id:
+          type: string
+          format: uuid
+        requester_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        request_payload_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        masked_level:
+          type: string
+          enum: [masked, summary, restricted]
+          nullable: true
+        export_scope:
+          type: string
+          enum: [none, summary, restricted_object]
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        execution_metadata_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ExecuteTemplateRunResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ExecuteTemplateRunResponse'
+    ExecuteTemplateRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QueryRunResponseData'
+    QueryRunResponseData:
+      type: object
+      required:
+        - query_run_id
+        - order_id
+        - template_query_grant_id
+        - query_surface_id
+        - query_template_id
+        - query_template_name
+        - query_template_version
+        - execution_mode
+        - request_payload_json
+        - result_summary_json
+        - result_row_count
+        - billed_units
+        - export_attempt_count
+        - status
+        - masked_level
+        - export_scope
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+      properties:
+        query_run_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        template_query_grant_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        query_template_id:
+          type: string
+          format: uuid
+        query_template_name:
+          type: string
+        query_template_version:
+          type: integer
+          format: int32
+        requester_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        execution_mode:
+          type: string
+        request_payload_json:
+          type: object
+          additionalProperties: true
+        result_summary_json:
+          type: object
+          additionalProperties: true
+        result_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        result_object_uri:
+          type: string
+          nullable: true
+        bucket_name:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        result_row_count:
+          type: integer
+          format: int64
+        billed_units:
+          type: string
+        export_attempt_count:
+          type: integer
+          format: int32
+        status:
+          type: string
+        masked_level:
+          type: string
+        export_scope:
+          type: string
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        sensitive_policy_snapshot:
+          type: object
+          additionalProperties: true
+        operation:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
     ApiUsageLogResponseEnvelope:
       type: object
       required: [success, data]

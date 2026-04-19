@@ -19,3 +19,5 @@ mod dlv009_query_surface_db;
 mod dlv010_query_template_db;
 
 mod dlv011_template_grant_db;
+
+mod dlv012_template_run_db;
