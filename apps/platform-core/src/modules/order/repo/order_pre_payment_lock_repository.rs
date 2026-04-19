@@ -137,7 +137,29 @@ fn is_template_snapshot_complete(snapshot: &Value) -> bool {
                 && obj.get("tax_code").is_some_and(|v| !v.is_null())
                 && obj.get("tax_inclusive").is_some_and(|v| !v.is_null())
         });
-    settlement_ok && tax_ok
+    let scenario_ok = snapshot
+        .get("scenario_snapshot")
+        .and_then(Value::as_object)
+        .is_some_and(|obj| {
+            [
+                "scenario_code",
+                "scenario_name",
+                "selected_sku_id",
+                "selected_sku_code",
+                "selected_sku_type",
+                "selected_sku_role",
+                "primary_sku",
+                "supplementary_skus",
+                "contract_template",
+                "acceptance_template",
+                "refund_template",
+                "per_sku_snapshot_required",
+                "multi_sku_requires_independent_contract_authorization_settlement",
+            ]
+            .iter()
+            .all(|key| obj.get(*key).is_some_and(|value| !value.is_null()))
+        });
+    settlement_ok && tax_ok && scenario_ok
 }
 
 fn is_review_status_approved(product_metadata: &Value) -> bool {

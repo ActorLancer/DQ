@@ -1,5 +1,6 @@
 use crate::modules::order::domain::{
     OrderPriceSnapshot, SettlementTermsSnapshot, TaxTermsSnapshot, derive_settlement_basis,
+    resolve_standard_scenario_snapshot,
 };
 use axum::Json;
 use axum::http::StatusCode;
@@ -16,6 +17,7 @@ pub async fn freeze_order_price_snapshot(
                o.order_id::text,
                o.product_id::text,
                o.sku_id::text,
+               o.price_snapshot_json,
                p.price_mode,
                p.price::text,
                p.currency_code,
@@ -36,25 +38,48 @@ pub async fn freeze_order_price_snapshot(
         return Ok(None);
     };
 
-    let metadata: Value = row.get(6);
+    let current_snapshot: Value = row.get(3);
+    let metadata: Value = row.get(7);
     let tax_terms = parse_tax_terms(&metadata);
-    let pricing_mode: String = row.get(3);
-    let billing_mode: String = row.get(9);
+    let pricing_mode: String = row.get(4);
+    let billing_mode: String = row.get(10);
+    let scenario_code_hint = current_snapshot
+        .get("scenario_snapshot")
+        .and_then(|value| value.get("scenario_code"))
+        .and_then(Value::as_str);
+    let scenario_snapshot = resolve_standard_scenario_snapshot(
+        row.get::<_, String>(2).as_str(),
+        row.get::<_, String>(8).as_str(),
+        row.get::<_, String>(9).as_str(),
+        scenario_code_hint,
+        &metadata,
+    )
+    .map_err(|err| {
+        (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: err.message(),
+                request_id: None,
+            }),
+        )
+    })?;
     let snapshot = OrderPriceSnapshot {
         product_id: row.get(1),
         sku_id: row.get(2),
-        sku_code: row.get(7),
-        sku_type: row.get(8),
+        sku_code: row.get(8),
+        sku_type: row.get(9),
         pricing_mode: pricing_mode.clone(),
-        unit_price: row.get(4),
-        currency_code: row.get(5),
+        unit_price: row.get(5),
+        currency_code: row.get(6),
         billing_mode: billing_mode.clone(),
-        refund_mode: row.get(10),
+        refund_mode: row.get(11),
         settlement_terms: SettlementTermsSnapshot {
             settlement_basis: derive_settlement_basis(&billing_mode, &pricing_mode),
             settlement_mode: "manual_v1".to_string(),
         },
         tax_terms,
+        scenario_snapshot: Some(scenario_snapshot),
         captured_at: kernel::UtcTimestampMs::now().0.to_string(),
         source: "catalog.product + catalog.product_sku".to_string(),
     };

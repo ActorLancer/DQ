@@ -247,6 +247,21 @@ mod tests {
                        'tax_code', 'VAT',
                        'tax_inclusive', false
                      ),
+                     'scenario_snapshot', jsonb_build_object(
+                       'scenario_code', 'S1',
+                       'scenario_name', '工业设备运行指标 API 订阅',
+                       'selected_sku_id', $5::text,
+                       'selected_sku_code', $6::text,
+                       'selected_sku_type', 'API_SUB',
+                       'selected_sku_role', 'primary',
+                       'primary_sku', 'API_SUB',
+                       'supplementary_skus', jsonb_build_array('API_PPU'),
+                       'contract_template', 'CONTRACT_API_SUB_V1',
+                       'acceptance_template', 'ACCEPT_API_SUB_V1',
+                       'refund_template', 'REFUND_API_SUB_V1',
+                       'per_sku_snapshot_required', true,
+                       'multi_sku_requires_independent_contract_authorization_settlement', true
+                     ),
                      'captured_at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
                      'source', 'trade010-seed'
                    )

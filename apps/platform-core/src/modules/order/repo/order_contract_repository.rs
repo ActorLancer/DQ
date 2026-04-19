@@ -5,6 +5,7 @@ use crate::modules::order::repo::pre_request_repository::{map_db_error, write_tr
 use axum::Json;
 use axum::http::StatusCode;
 use kernel::{ErrorCode, ErrorResponse};
+use serde_json::Value;
 use tokio_postgres::Client;
 
 pub struct ContractConfirmContext {
@@ -43,7 +44,7 @@ pub async fn confirm_order_contract(
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
-            "SELECT status, payment_status
+            "SELECT status, payment_status, price_snapshot_json
              FROM trade.order_main
              WHERE order_id = $1::text::uuid
              FOR UPDATE",
@@ -63,6 +64,7 @@ pub async fn confirm_order_contract(
     };
     let current_status: String = row.get(0);
     let current_payment_status: String = row.get(1);
+    let order_snapshot: Value = row.get(2);
     if !matches!(
         current_status.as_str(),
         "created" | "contract_pending" | "contract_effective"
@@ -78,6 +80,65 @@ pub async fn confirm_order_contract(
             }),
         ));
     }
+
+    let template_row = tx
+        .query_opt(
+            "SELECT template_name, status
+             FROM contract.template_definition
+             WHERE template_id = $1::text::uuid",
+            &[&payload.contract_template_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let Some(template_row) = template_row else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!(
+                    "contract template not found: {}",
+                    payload.contract_template_id
+                ),
+                request_id: request_id.map(str::to_string),
+            }),
+        ));
+    };
+    let contract_template_name: String = template_row.get(0);
+    let contract_template_status: String = template_row.get(1);
+    if contract_template_status != "active" {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!(
+                    "ORDER_CONTRACT_CONFIRM_FORBIDDEN: contract template `{contract_template_name}` is not active"
+                ),
+                request_id: request_id.map(str::to_string),
+            }),
+        ));
+    }
+
+    let scenario_sku_snapshot = order_snapshot.get("scenario_snapshot").cloned();
+    if let Some(expected_contract_template) = scenario_sku_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.get("contract_template"))
+        .and_then(Value::as_str)
+    {
+        if expected_contract_template != contract_template_name {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(ErrorResponse {
+                    code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                    message: format!(
+                        "ORDER_CONTRACT_CONFIRM_FORBIDDEN: contract template `{contract_template_name}` does not match scenario snapshot `{expected_contract_template}`"
+                    ),
+                    request_id: request_id.map(str::to_string),
+                }),
+            ));
+        }
+    }
+    let variables_json =
+        merge_contract_variables(payload.variables_json.clone(), scenario_sku_snapshot);
 
     let upserted = tx
         .query_one(
@@ -123,7 +184,7 @@ pub async fn confirm_order_contract(
                 &payload.data_contract_id,
                 &payload.contract_digest,
                 &payload.data_contract_digest,
-                &payload.variables_json,
+                &variables_json,
             ],
         )
         .await
@@ -135,7 +196,7 @@ pub async fn confirm_order_contract(
     let data_contract_digest: Option<String> = upserted.get(4);
     let contract_status: String = upserted.get(5);
     let signed_at: String = upserted.get(6);
-    let variables_json: serde_json::Value = upserted.get(7);
+    let variables_json: Value = upserted.get(7);
     let signing = sign_contract_with_provider(&contract_id, signer_id)
         .await
         .map_err(|err| {
@@ -250,4 +311,20 @@ pub async fn confirm_order_contract(
         variables_json,
         onchain_digest_ref: contract_digest,
     })
+}
+
+fn merge_contract_variables(variables_json: Value, scenario_sku_snapshot: Option<Value>) -> Value {
+    let mut merged = match variables_json {
+        Value::Object(map) => map,
+        Value::Null => serde_json::Map::new(),
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("legacy_variables_json".to_string(), other);
+            map
+        }
+    };
+    if let Some(snapshot) = scenario_sku_snapshot {
+        merged.insert("scenario_sku_snapshot".to_string(), snapshot);
+    }
+    Value::Object(merged)
 }

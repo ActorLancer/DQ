@@ -1,3 +1,4 @@
+use super::scenario_snapshot::ScenarioSkuSnapshot;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -26,6 +27,8 @@ pub struct OrderPriceSnapshot {
     pub refund_mode: String,
     pub settlement_terms: SettlementTermsSnapshot,
     pub tax_terms: TaxTermsSnapshot,
+    #[serde(default)]
+    pub scenario_snapshot: Option<ScenarioSkuSnapshot>,
     pub captured_at: String,
     pub source: String,
 }

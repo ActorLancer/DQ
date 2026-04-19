@@ -550,6 +550,8 @@ components:
         sku_id:
           type: string
           format: uuid
+        scenario_code:
+          type: string
         inquiry_id:
           type: string
           format: uuid
@@ -2170,6 +2172,55 @@ components:
           type: string
         tax_inclusive:
           type: boolean
+    ScenarioSkuSnapshot:
+      type: object
+      required:
+        [
+          scenario_code,
+          scenario_name,
+          selected_sku_id,
+          selected_sku_code,
+          selected_sku_type,
+          selected_sku_role,
+          primary_sku,
+          supplementary_skus,
+          contract_template,
+          acceptance_template,
+          refund_template,
+          per_sku_snapshot_required,
+          multi_sku_requires_independent_contract_authorization_settlement,
+        ]
+      properties:
+        scenario_code:
+          type: string
+        scenario_name:
+          type: string
+        selected_sku_id:
+          type: string
+          format: uuid
+        selected_sku_code:
+          type: string
+        selected_sku_type:
+          type: string
+        selected_sku_role:
+          type: string
+          enum: [primary, supplementary]
+        primary_sku:
+          type: string
+        supplementary_skus:
+          type: array
+          items:
+            type: string
+        contract_template:
+          type: string
+        acceptance_template:
+          type: string
+        refund_template:
+          type: string
+        per_sku_snapshot_required:
+          type: boolean
+        multi_sku_requires_independent_contract_authorization_settlement:
+          type: boolean
     OrderPriceSnapshot:
       type: object
       required:
@@ -2213,6 +2264,9 @@ components:
           $ref: '#/components/schemas/SettlementTermsSnapshot'
         tax_terms:
           $ref: '#/components/schemas/TaxTermsSnapshot'
+        scenario_snapshot:
+          $ref: '#/components/schemas/ScenarioSkuSnapshot'
+          nullable: true
         captured_at:
           type: string
         source:

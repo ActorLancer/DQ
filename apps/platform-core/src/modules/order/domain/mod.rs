@@ -2,6 +2,7 @@ mod layered_status;
 mod payment_state;
 mod pre_request;
 mod price_snapshot;
+mod scenario_snapshot;
 
 pub use layered_status::{
     LayeredOrderStatus, derive_closed_layered_status_by_reason, derive_layered_status,
@@ -13,4 +14,7 @@ pub use pre_request::{
 };
 pub use price_snapshot::{
     OrderPriceSnapshot, SettlementTermsSnapshot, TaxTermsSnapshot, derive_settlement_basis,
+};
+pub use scenario_snapshot::{
+    ScenarioSkuSnapshot, ScenarioSnapshotResolveError, resolve_standard_scenario_snapshot,
 };

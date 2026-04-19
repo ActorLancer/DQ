@@ -142,6 +142,21 @@ mod tests {
                      'tax_code', 'VAT',
                      'tax_inclusive', false
                    ),
+                   'scenario_snapshot', jsonb_build_object(
+                     'scenario_code', 'S2',
+                     'scenario_name', '工业质量与产线日报文件包交付',
+                     'selected_sku_id', $2::text,
+                     'selected_sku_code', $3::text,
+                     'selected_sku_type', 'FILE_STD',
+                     'selected_sku_role', 'primary',
+                     'primary_sku', 'FILE_STD',
+                     'supplementary_skus', jsonb_build_array('FILE_SUB'),
+                     'contract_template', 'CONTRACT_FILE_V1',
+                     'acceptance_template', 'ACCEPT_FILE_V1',
+                     'refund_template', 'REFUND_FILE_V1',
+                     'per_sku_snapshot_required', true,
+                     'multi_sku_requires_independent_contract_authorization_settlement', true
+                   ),
                    'captured_at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
                    'source', 'trade021-smoke'
                  )

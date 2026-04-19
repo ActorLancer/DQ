@@ -1,6 +1,6 @@
 use crate::modules::order::domain::{
     OrderPriceSnapshot, SettlementTermsSnapshot, TaxTermsSnapshot, derive_layered_status,
-    derive_settlement_basis,
+    derive_settlement_basis, resolve_standard_scenario_snapshot,
 };
 use crate::modules::order::dto::{CreateOrderRequest, CreateOrderResponseData};
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
@@ -67,7 +67,7 @@ pub async fn create_order_with_snapshot(
     let ctx = load_product_sku_context(&tx, &payload.product_id, &payload.sku_id).await?;
     validate_order_create_preconditions(&tx, &ctx, &payload.buyer_org_id).await?;
 
-    let price_snapshot = build_price_snapshot(&ctx);
+    let price_snapshot = build_price_snapshot(&ctx, payload.scenario_code.as_deref())?;
     let price_snapshot_json = serde_json::to_value(&price_snapshot).map_err(|err| {
         (
             StatusCode::BAD_REQUEST,
@@ -326,8 +326,29 @@ async fn ensure_org_active(
     Ok(())
 }
 
-fn build_price_snapshot(context: &ProductSkuContext) -> OrderPriceSnapshot {
-    OrderPriceSnapshot {
+fn build_price_snapshot(
+    context: &ProductSkuContext,
+    scenario_code: Option<&str>,
+) -> Result<OrderPriceSnapshot, (StatusCode, Json<ErrorResponse>)> {
+    let scenario_snapshot = resolve_standard_scenario_snapshot(
+        &context.sku_id,
+        &context.sku_code,
+        &context.sku_type,
+        scenario_code,
+        &context.metadata,
+    )
+    .map_err(|err| {
+        (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: err.message(),
+                request_id: None,
+            }),
+        )
+    })?;
+
+    Ok(OrderPriceSnapshot {
         product_id: context.product_id.clone(),
         sku_id: context.sku_id.clone(),
         sku_code: context.sku_code.clone(),
@@ -342,9 +363,10 @@ fn build_price_snapshot(context: &ProductSkuContext) -> OrderPriceSnapshot {
             settlement_mode: "manual_v1".to_string(),
         },
         tax_terms: parse_tax_terms(&context.metadata),
+        scenario_snapshot: Some(scenario_snapshot),
         captured_at: kernel::UtcTimestampMs::now().0.to_string(),
         source: "catalog.product + catalog.product_sku".to_string(),
-    }
+    })
 }
 
 fn parse_tax_terms(metadata: &Value) -> TaxTermsSnapshot {
@@ -421,6 +443,7 @@ async fn write_order_create_outbox_event(
         "payment_status": created.payment_status,
         "amount": created.amount,
         "currency_code": created.currency_code,
+        "scenario_snapshot": created.price_snapshot.scenario_snapshot.clone(),
         "created_at": created.created_at
     });
     client

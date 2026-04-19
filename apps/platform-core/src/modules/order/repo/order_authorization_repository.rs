@@ -18,6 +18,7 @@ struct OrderScope {
     sku_type: String,
     product_id: String,
     sku_id: String,
+    scenario_sku_snapshot: Option<Value>,
 }
 
 struct PolicyInfo {
@@ -91,10 +92,9 @@ pub async fn transition_order_authorization(
                 .clone()
                 .unwrap_or_else(|| scope.buyer_org_id.clone());
 
-            let raw_policy_snapshot = payload
-                .policy_snapshot
-                .clone()
-                .unwrap_or_else(|| build_policy_snapshot(&policy));
+            let raw_policy_snapshot = payload.policy_snapshot.clone().unwrap_or_else(|| {
+                build_policy_snapshot(&policy, scope.scenario_sku_snapshot.as_ref())
+            });
             let authorization_model = build_authorization_model_snapshot(
                 order_id,
                 &scope.product_id,
@@ -108,8 +108,10 @@ pub async fn transition_order_authorization(
                 &policy.usage_constraints,
                 policy.exportable,
             );
-            let policy_snapshot =
-                normalize_policy_snapshot(raw_policy_snapshot, &authorization_model);
+            let policy_snapshot = attach_scenario_sku_snapshot(
+                normalize_policy_snapshot(raw_policy_snapshot, &authorization_model),
+                scope.scenario_sku_snapshot.as_ref(),
+            );
 
             tx.execute(
                 "UPDATE trade.order_main
@@ -368,7 +370,8 @@ async fn load_order_scope(
                policy_id::text,
                s.sku_type,
                o.product_id::text,
-               o.sku_id::text
+               o.sku_id::text,
+               o.price_snapshot_json
              FROM trade.order_main o
              JOIN catalog.product_sku s ON s.sku_id = o.sku_id
              WHERE o.order_id = $1::text::uuid
@@ -394,6 +397,7 @@ async fn load_order_scope(
         sku_type: row.get(2),
         product_id: row.get(3),
         sku_id: row.get(4),
+        scenario_sku_snapshot: row.get::<_, Value>(5).get("scenario_snapshot").cloned(),
     })
 }
 
@@ -557,8 +561,8 @@ fn default_grant_type(sku_type: &str) -> &'static str {
     }
 }
 
-fn build_policy_snapshot(policy: &PolicyInfo) -> Value {
-    json!({
+fn build_policy_snapshot(policy: &PolicyInfo, scenario_sku_snapshot: Option<&Value>) -> Value {
+    let mut snapshot = json!({
         "policy_id": policy.policy_id,
         "policy_name": policy.policy_name,
         "policy_status": policy.policy_status,
@@ -568,7 +572,38 @@ fn build_policy_snapshot(policy: &PolicyInfo) -> Value {
         "region_constraints": policy.region_constraints,
         "output_constraints": policy.output_constraints,
         "exportable": policy.exportable
-    })
+    });
+    if let (Some(snapshot_obj), Some(scenario_snapshot)) =
+        (snapshot.as_object_mut(), scenario_sku_snapshot)
+    {
+        snapshot_obj.insert(
+            "scenario_sku_snapshot".to_string(),
+            scenario_snapshot.clone(),
+        );
+    }
+    snapshot
+}
+
+fn attach_scenario_sku_snapshot(
+    policy_snapshot: Value,
+    scenario_sku_snapshot: Option<&Value>,
+) -> Value {
+    let Some(scenario_sku_snapshot) = scenario_sku_snapshot else {
+        return policy_snapshot;
+    };
+    let mut snapshot = match policy_snapshot {
+        Value::Object(map) => map,
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("legacy_policy_snapshot".to_string(), other);
+            map
+        }
+    };
+    snapshot.insert(
+        "scenario_sku_snapshot".to_string(),
+        scenario_sku_snapshot.clone(),
+    );
+    Value::Object(snapshot)
 }
 
 fn conflict(message: &str, request_id: Option<&str>) -> (StatusCode, Json<ErrorResponse>) {

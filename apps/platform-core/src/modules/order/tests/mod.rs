@@ -26,6 +26,7 @@ mod trade026_contract_signing_provider_db;
 mod trade027_main_trade_flow_db;
 mod trade030_payment_result_orchestrator_db;
 mod trade031_deliverability_gate_db;
+mod trade032_scenario_sku_snapshot_db;
 
 #[cfg(test)]
 mod tests {

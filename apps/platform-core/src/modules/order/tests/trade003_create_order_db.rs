@@ -83,6 +83,15 @@ mod tests {
             json["data"]["data"]["price_snapshot"]["sku_id"].as_str(),
             Some(seed.sku_id.as_str())
         );
+        assert_eq!(
+            json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"].as_str(),
+            Some("S2")
+        );
+        assert_eq!(
+            json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["selected_sku_role"]
+                .as_str(),
+            Some("primary")
+        );
         assert_eq!(json["data"]["data"]["status"].as_str(), Some("created"));
 
         let row = client
@@ -117,6 +126,14 @@ mod tests {
         assert_eq!(row.get::<_, String>(8), "not_started");
         assert_eq!(row.get::<_, String>(9), "none");
         assert_eq!(snapshot["billing_mode"].as_str(), Some("one_time"));
+        assert_eq!(
+            snapshot["scenario_snapshot"]["scenario_code"].as_str(),
+            Some("S2")
+        );
+        assert_eq!(
+            snapshot["scenario_snapshot"]["contract_template"].as_str(),
+            Some("CONTRACT_FILE_V1")
+        );
 
         let audit_count: i64 = client
             .query_one(

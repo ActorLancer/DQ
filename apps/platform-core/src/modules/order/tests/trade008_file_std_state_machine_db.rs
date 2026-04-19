@@ -287,6 +287,21 @@ mod tests {
                      'refund_mode', 'manual_refund',
                      'settlement_terms', jsonb_build_object('settlement_basis', 'one_time_final', 'settlement_mode', 'manual_v1'),
                      'tax_terms', jsonb_build_object('tax_policy', 'platform_default', 'tax_code', 'VAT', 'tax_inclusive', false),
+                     'scenario_snapshot', jsonb_build_object(
+                       'scenario_code', 'S2',
+                       'scenario_name', '工业质量与产线日报文件包交付',
+                       'selected_sku_id', $5::text,
+                       'selected_sku_code', 'TRADE008-SKU',
+                       'selected_sku_type', 'FILE_STD',
+                       'selected_sku_role', 'primary',
+                       'primary_sku', 'FILE_STD',
+                       'supplementary_skus', jsonb_build_array('FILE_SUB'),
+                       'contract_template', 'CONTRACT_FILE_V1',
+                       'acceptance_template', 'ACCEPT_FILE_V1',
+                       'refund_template', 'REFUND_FILE_V1',
+                       'per_sku_snapshot_required', true,
+                       'multi_sku_requires_independent_contract_authorization_settlement', true
+                     ),
                      'captured_at', '1776570000001',
                      'source', 'seed'
                    )::jsonb
@@ -319,6 +334,21 @@ mod tests {
                      'refund_mode', 'manual_refund',
                      'settlement_terms', jsonb_build_object('settlement_basis', 'one_time_final', 'settlement_mode', 'manual_v1'),
                      'tax_terms', jsonb_build_object('tax_policy', 'platform_default', 'tax_code', 'VAT', 'tax_inclusive', false),
+                     'scenario_snapshot', jsonb_build_object(
+                       'scenario_code', 'S2',
+                       'scenario_name', '工业质量与产线日报文件包交付',
+                       'selected_sku_id', $5::text,
+                       'selected_sku_code', 'TRADE008-SKU',
+                       'selected_sku_type', 'FILE_STD',
+                       'selected_sku_role', 'primary',
+                       'primary_sku', 'FILE_STD',
+                       'supplementary_skus', jsonb_build_array('FILE_SUB'),
+                       'contract_template', 'CONTRACT_FILE_V1',
+                       'acceptance_template', 'ACCEPT_FILE_V1',
+                       'refund_template', 'REFUND_FILE_V1',
+                       'per_sku_snapshot_required', true,
+                       'multi_sku_requires_independent_contract_authorization_settlement', true
+                     ),
                      'captured_at', '1776570000002',
                      'source', 'seed'
                    )::jsonb

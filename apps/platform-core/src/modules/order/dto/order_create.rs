@@ -6,6 +6,7 @@ pub struct CreateOrderRequest {
     pub buyer_org_id: String,
     pub product_id: String,
     pub sku_id: String,
+    pub scenario_code: Option<String>,
     pub inquiry_id: Option<String>,
 }
 

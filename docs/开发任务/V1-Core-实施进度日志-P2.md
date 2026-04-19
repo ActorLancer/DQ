@@ -898,6 +898,129 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
 
+### BATCH-141（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-032
+- 当前批次目标：实现五条标准链路的场景到 SKU 快照规则；同一场景可包含主 SKU 与补充 SKU，但订单、合同、授权及后续验收/结算依据必须按 SKU 单独快照，不允许仅记录场景名。
+- 前置依赖核对结果：`CTX-021`、`TRADE-023` 已完成且审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-032` 为当前单任务批次，依赖为 `CTX-021; TRADE-023`，目标是场景到 SKU 快照规则落地。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版解释，强调“一个场景可包含主 SKU 与补充 SKU，但订单、合同、授权、验收、结算仍必须按 SKU 单独快照”。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 编码 -> 验证 -> TODO -> 待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务批次，不跨任务扩展，不以场景名替代事实源。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批先登记计划中，完成后补待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对五条标准链路与 5.3.2A 场景到主/补充 SKU 映射，确认 `API_SUB`、`RPT_STD` 等存在多场景歧义。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认交易快照逻辑应在 `order/contract/authorization` 内闭环，不越界到 `delivery` 或 `billing` 的后续实现。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：当前任务允许在 Trade OpenAPI 中补充场景快照字段，但必须保持现有路径不变。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：核对订单创建事件应可携带足够业务快照，不得只留场景名。
+  12. `docs/开发准备/统一错误码字典正式版.md`：继续沿用状态冲突类错误码口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批补场景-SKU 快照专项回归。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增独立场景快照领域文件，避免把规则堆进单个仓储。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：验证继续使用 core 栈数据库 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用现有 `DATABASE_URL`、`KAFKA_*` 本地配置，不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：沿用 Rust + Axum + PostgreSQL，实现快照解析与持久化。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体边界，本批只补快照事实源与下游快照同步。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：订单是唯一主聚合，主状态之外的合同、授权、验收、结算证据都必须围绕具体订单/SKU 事实留存。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：五条标准链路均以标准 SKU 为主轴推进，不允许场景名覆盖 SKU 事实。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：下单时需冻结模板/价格/权利/有效期等事实，后续合同、授权、交付、验收、结算均基于订单快照推进。
+- 额外读取依赖文档：
+  1. `docs/00-context/v1-closed-loop-matrix.md`：确认 `8 SKU × 5 场景` 下主挂点/补充挂点/非挂点矩阵，非挂点必须阻断且审计。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md` `5.3.2 / 5.3.2A`：确认五条标准链路与主/补充 SKU 映射，以及“若一个场景同时使用多个 SKU，订单、合同、授权、验收、结算仍应按 SKU 逐一快照”的补充要求。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/order/domain/**`
+  - `apps/platform-core/src/modules/order/repo/order_create_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_contract_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_authorization_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/price_snapshot_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_pre_payment_lock_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/**`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade003_create_order_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade021_pre_payment_lock_checks_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade032_scenario_sku_snapshot_db_smoke -- --nocapture`
+  6. 启动服务后用 `curl` 真实联调：验证歧义 SKU 不带 `scenario_code` 被阻断、显式 `scenario_code` 创建成功、合同与授权快照含场景-SKU 快照。
+
+### BATCH-141（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-032
+- 当前批次目标：实现五条标准链路的场景到 SKU 快照规则；同一场景可包含主 SKU 与补充 SKU，但订单、合同、授权及后续验收/结算依据必须按 SKU 单独快照，不允许仅记录场景名。
+- 前置依赖核对结果：`CTX-021`、`TRADE-023` 已完成且审批通过。
+- 已实现功能：
+  1. 新增 `order/domain/scenario_snapshot.rs`，基于冻结五条标准链路与 `8 SKU × 5 场景` 矩阵解析 `ScenarioSkuSnapshot`，支持显式 `scenario_code`、商品元数据 hint 与唯一映射自动判定；对 `API_SUB`、`RPT_STD` 这类多场景歧义 SKU 在未指明 `scenario_code` 时返回冲突。
+  2. `CreateOrderRequest` 新增可选 `scenario_code`，下单价格快照 `OrderPriceSnapshot` 新增可选 `scenario_snapshot`，并在 `trade.order.created` outbox 事件中带出场景-SKU 快照事实。
+  3. `freeze_order_price_snapshot(...)` 现在会优先复用订单现有 `scenario_snapshot.scenario_code`，确保歧义 SKU 在补冻结快照时仍能稳定回放到原场景，不会丢失 SKU 角色与模板快照。
+  4. 合同确认链路改为校验 `contract.template_definition.template_name` 与 `scenario_snapshot.contract_template` 的冻结模板名，而不是错误拿 UUID 对比；确认后把 `scenario_sku_snapshot` 合并写入 `contract.digital_contract.variables_json`。
+  5. 授权迁移链路把 `scenario_sku_snapshot` 写入 `policy_snapshot`，订单详情与生命周期授权视图通过既有聚合读取即可稳定返回按 SKU 冻结后的场景快照。
+  6. 锁资前校验的模板完整性检查已纳入 `scenario_snapshot` 必填字段，防止后续链路只存场景名不存 SKU 事实。
+  7. 新增 `trade032_scenario_sku_snapshot_db_smoke`，并补齐 `trade003`、`trade008`、`trade009`、`trade010`、`trade021` 的快照断言/seed，使历史链路与新规则一致。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/domain/mod.rs`
+  - `apps/platform-core/src/modules/order/domain/price_snapshot.rs`
+  - `apps/platform-core/src/modules/order/domain/scenario_snapshot.rs`
+  - `apps/platform-core/src/modules/order/dto/order_create.rs`
+  - `apps/platform-core/src/modules/order/repo/order_authorization_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_contract_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_create_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_pre_payment_lock_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/price_snapshot_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/trade003_create_order_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade008_file_std_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade009_file_sub_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade010_api_sub_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade021_pre_payment_lock_checks_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade032_scenario_sku_snapshot_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/02-openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade003_create_order_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade008_file_std_state_machine_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade009_file_sub_state_machine_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade010_api_sub_state_machine_db_smoke -- --nocapture`
+  7. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade021_pre_payment_lock_checks_db_smoke -- --nocapture`
+  8. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade032_scenario_sku_snapshot_db_smoke -- --nocapture`
+  9. 启动服务：`APP_PORT=8092 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  10. `psql` 写入临时 `API_SUB` / `RPT_STD` 业务数据，`curl` 依次验证：歧义 `API_SUB` 缺少 `scenario_code` 返回 `409`、指定 `S4` 创建成功、补冻结快照成功、`RPT_STD + S5` 以补充 SKU 成功建单、合同确认与授权发放均回传 `scenario_sku_snapshot`。
+  11. `psql` 回查 `trade.order_main.price_snapshot_json`、`contract.digital_contract.variables_json`、`trade.authorization_grant.policy_snapshot` 与 `audit.audit_event`，再清理临时业务数据；审计记录按 append-only 保留。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`162 passed, 0 failed, 1 ignored`）。
+  - DB smoke：`trade003`、`trade008`、`trade009`、`trade010`、`trade021`、`trade032` 全部通过。
+  - 真实 API 联调：
+    - 歧义 `API_SUB` 不带 `scenario_code` 建单：`HTTP 409`，消息为 `ORDER_CREATE_FORBIDDEN: scenario_code is required for sku_type \`API_SUB\` because it belongs to multiple frozen scenarios: S1,S4`
+    - `API_SUB + S4` 建单：`HTTP 200`，`price_snapshot.scenario_snapshot = S4 / primary`
+    - `POST /api/v1/trade/orders/{id}/price-snapshot/freeze`：`HTTP 200`，补冻结后仍为 `S4`
+    - `RPT_STD + S5` 建单：`HTTP 200`，`selected_sku_role = supplementary`，`primary_sku = QRY_LITE`
+    - `POST /api/v1/orders/{id}/contract-confirm`：`HTTP 200`，`variables_json.scenario_sku_snapshot.scenario_code = S4`
+    - `POST /api/v1/orders/{id}/authorization/transition`：`HTTP 200`，`policy_snapshot.scenario_sku_snapshot.scenario_code = S4`
+    - `GET /api/v1/orders/{id}`：`HTTP 200`，合同与授权聚合均回传 `scenario_sku_snapshot`
+  - DB 回查：
+    - `trade.order_main.price_snapshot_json#>>'{scenario_snapshot,scenario_code}' = S4`
+    - `contract.digital_contract.variables_json#>>'{scenario_sku_snapshot,selected_sku_type}' = API_SUB`
+    - `trade.authorization_grant.policy_snapshot#>>'{scenario_sku_snapshot,selected_sku_type}' = API_SUB`
+    - 审计命中：`trade.order.create=1`、`trade.order.price_snapshot.freeze=1`、`trade.contract.confirm=1`、`trade.authorization.grant=1`
+  - 清理结果：临时业务数据已清理；回查结果 `order_main=0 | digital_contract=0 | organization=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.4（订单聚合与关联事实必须围绕具体订单/SKU 留存）
+  - `全集成基线-V1` 15 / 5.3.2 / 5.3.2A（五条标准链路与场景到主/补充 SKU 映射）
+  - `业务流程图-V1` 4.3（下单冻结模板/价格/权利/有效期等事实）
+- 覆盖的任务清单条目：`TRADE-032`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
 ### BATCH-134（计划中）
 - 状态：计划中
 - 当前任务编号：TRADE-025
