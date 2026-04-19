@@ -275,7 +275,21 @@ mod tests {
                    $1::text::uuid, $2::text::uuid, $3::text::uuid, $4::text::uuid, $5::text::uuid,
                    'created', 'unpaid', 'pending_delivery', 'not_started', 'not_started', 'none',
                    'online', 28.80, 'CNY',
-                   '{}'::jsonb
+                   jsonb_build_object(
+                     'product_id', $1::text,
+                     'sku_id', $5::text,
+                     'sku_code', 'TRADE008-SKU',
+                     'sku_type', 'FILE_STD',
+                     'pricing_mode', 'one_time',
+                     'unit_price', '28.80',
+                     'currency_code', 'CNY',
+                     'billing_mode', 'one_time',
+                     'refund_mode', 'manual_refund',
+                     'settlement_terms', jsonb_build_object('settlement_basis', 'one_time_final', 'settlement_mode', 'manual_v1'),
+                     'tax_terms', jsonb_build_object('tax_policy', 'platform_default', 'tax_code', 'VAT', 'tax_inclusive', false),
+                     'captured_at', '1776570000001',
+                     'source', 'seed'
+                   )::jsonb
                  )
                  RETURNING order_id::text",
                 &[&product_id, &asset_version_id, &buyer_org_id, &seller_org_id, &sku_id],
@@ -293,7 +307,21 @@ mod tests {
                    $1::text::uuid, $2::text::uuid, $3::text::uuid, $4::text::uuid, $5::text::uuid,
                    'created', 'unpaid', 'pending_delivery', 'not_started', 'not_started', 'none',
                    'online', 28.80, 'CNY',
-                   '{}'::jsonb
+                   jsonb_build_object(
+                     'product_id', $1::text,
+                     'sku_id', $5::text,
+                     'sku_code', 'TRADE008-SKU',
+                     'sku_type', 'FILE_STD',
+                     'pricing_mode', 'one_time',
+                     'unit_price', '28.80',
+                     'currency_code', 'CNY',
+                     'billing_mode', 'one_time',
+                     'refund_mode', 'manual_refund',
+                     'settlement_terms', jsonb_build_object('settlement_basis', 'one_time_final', 'settlement_mode', 'manual_v1'),
+                     'tax_terms', jsonb_build_object('tax_policy', 'platform_default', 'tax_code', 'VAT', 'tax_inclusive', false),
+                     'captured_at', '1776570000002',
+                     'source', 'seed'
+                   )::jsonb
                  )
                  RETURNING order_id::text",
                 &[&product_id, &asset_version_id, &buyer_org_id, &seller_org_id, &sku_id],

@@ -17,6 +17,7 @@ mod trade016_digital_contract_aggregate_db;
 mod trade017_authorization_aggregate_db;
 mod trade018_auto_cutoff_db;
 mod trade019_lifecycle_snapshots_db;
+mod trade021_pre_payment_lock_checks_db;
 
 #[cfg(test)]
 mod tests {

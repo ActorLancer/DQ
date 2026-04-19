@@ -8,6 +8,7 @@ mod order_create_repository;
 mod order_file_std_repository;
 mod order_file_sub_repository;
 mod order_lifecycle_snapshot_repository;
+mod order_pre_payment_lock_repository;
 mod order_qry_lite_repository;
 mod order_read_repository;
 mod order_rpt_std_repository;
@@ -26,6 +27,7 @@ pub use order_create_repository::{create_order_with_snapshot, find_order_by_idem
 pub use order_file_std_repository::transition_file_std_order;
 pub use order_file_sub_repository::transition_file_sub_order;
 pub use order_lifecycle_snapshot_repository::load_order_lifecycle_snapshots;
+pub use order_pre_payment_lock_repository::ensure_pre_payment_lock_checks;
 pub use order_qry_lite_repository::transition_qry_lite_order;
 pub use order_read_repository::load_order_detail;
 pub use order_rpt_std_repository::transition_rpt_std_order;

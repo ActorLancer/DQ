@@ -1,6 +1,7 @@
 use crate::modules::order::domain::{LayeredOrderStatus, derive_layered_status};
 use crate::modules::order::dto::{FileSubTransitionRequest, FileSubTransitionResponseData};
 use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
+use crate::modules::order::repo::ensure_pre_payment_lock_checks;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -69,6 +70,12 @@ pub async fn transition_file_sub_order(
             }),
         ));
     };
+    if matches!(
+        normalized_action.as_str(),
+        "establish_subscription" | "renew_subscription"
+    ) {
+        ensure_pre_payment_lock_checks(&tx, order_id, request_id).await?;
+    }
 
     let updated_row = tx
         .query_one(

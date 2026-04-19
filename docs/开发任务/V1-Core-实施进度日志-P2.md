@@ -1112,3 +1112,86 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-130（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-021
+- 当前批次目标：实现支付锁定前的前置校验：主体状态、商品状态、审核状态、模板齐备、价格快照完整。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-020` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-021` DoD、验收与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认 `TRADE-021` 前置校验范围与强制项。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中→编码→验证→待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：单任务批次执行，不跳步骤。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：延续批次审计记录格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认支付锁定前不得绕过主体/商品/审核门禁。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认交易门禁属于 `platform-core/order` 聚合边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认不新增路径，仅在既有 transition 路径加门禁。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：失败场景不新增事件，成功场景维持既有审计动作。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：补齐门禁失败/成功分支验证。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增独立仓储与专项测试文件，避免继续膨胀单文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调数据库使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 作为交易门禁权威数据源。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体内聚。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：订单主状态推进必须受聚合前置约束保护。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：付款/锁定前需通过主体、商品、审核等门禁。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：下单后锁款前需校验商品与主体有效性、快照完整性。
+
+### BATCH-130（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-021
+- 当前批次目标：实现支付锁定前的前置校验：主体状态、商品状态、审核状态、模板齐备、价格快照完整。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-020` 已审批通过。
+- 已实现功能：
+  1. 新增统一前置校验仓储 `ensure_pre_payment_lock_checks(...)`，并接入 `FILE_STD.lock_funds`、`FILE_SUB.establish_subscription/renew_subscription`、`API_SUB.lock_funds`。
+  2. 落地门禁校验项：买卖主体状态、商品状态、资产版本审核态（`active/published`）、SKU 可售态、产品审核态（`metadata.review_status`）、风控阻断标记、价格快照完整性、模板快照完整性。
+  3. 失败统一返回 `409 TRD_STATE_CONFLICT`，错误前缀统一为 `ORDER_PRE_LOCK_CHECK_FAILED:`。
+  4. 修复受影响历史 smoke seed：`trade008`、`trade009`、`trade010` 补齐完整 `price_snapshot_json`。
+  5. 新增 `TRADE-021` 专项 DB smoke：覆盖“审核态拦截 -> 快照拦截 -> 通过门禁后成功锁款”完整链路。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/repo/order_pre_payment_lock_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_file_std_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_file_sub_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_api_sub_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/trade008_file_std_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade009_file_sub_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade010_api_sub_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade021_pre_payment_lock_checks_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade008_file_std_state_machine_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade009_file_sub_state_machine_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade010_api_sub_state_machine_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade021_pre_payment_lock_checks_db_smoke -- --nocapture`
+  7. 启动服务：`KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. `psql` 插入临时测试数据（org/asset/version/product/sku/order），`curl` 调用 `POST /api/v1/orders/{id}/file-std/transition` 三次验证（审核态拦截、快照拦截、通过成功），`psql` 回查订单状态与审计计数。
+  9. 清理临时业务测试数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`139 passed, 0 failed, 1 ignored`）。
+  - `trade008/trade009/trade010` DB smoke：通过。
+  - `trade021_pre_payment_lock_checks_db_smoke`：通过。
+  - API 联调结果：
+    - 第一次（审核态不通过）返回 `409`：`ORDER_PRE_LOCK_CHECK_FAILED: product review status is not approved`
+    - 第二次（快照不完整）返回 `409`：`ORDER_PRE_LOCK_CHECK_FAILED: price snapshot is incomplete`
+    - 第三次（补齐后）返回 `200`，订单推进到 `buyer_locked/paid`。
+  - DB 回查：`trade.order_main` 命中 `buyer_locked|paid|file_std_lock_funds`；`audit.audit_event` 命中 `trade.order.file_std.transition = 1`。
+  - 清理结果：临时业务数据已清理；审计记录按 append-only 规则保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.4（订单状态推进门禁）
+  - `全集成基线-V1` 15（付款锁定前校验）
+  - `业务流程图-V1` 4.3（下单至锁款前校验口径）
+- 覆盖的任务清单条目：`TRADE-021`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
