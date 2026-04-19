@@ -4,7 +4,8 @@ info:
   version: 1.0.0
   description: >-
     Delivery module baseline for V1. DLV-001 freezes storage-gateway shared
-    schemas; DLV-002 adds the file-delivery commit endpoint.
+    schemas; DLV-002 adds the file-delivery commit endpoint; DLV-003 adds
+    short-lived download-ticket issuance backed by Redis cache.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -40,6 +41,32 @@ paths:
           description: Order not found
         '409':
           description: Order state does not allow file delivery commit
+  /api/v1/orders/{id}/download-ticket:
+    get:
+      summary: Issue a short-lived download ticket for a committed file delivery
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Download ticket issued and cached in Redis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadTicketResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Ticket expired, exhausted, or current order state does not allow issuance
+        '500':
+          description: Redis cache write failed
 components:
   schemas:
     CommitOrderDeliveryRequest:
@@ -184,6 +211,72 @@ components:
         committed_at:
           type: string
           format: date-time
+    DownloadTicketResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/DownloadTicketResponse'
+    DownloadTicketResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DownloadTicketResponseData'
+    DownloadTicketResponseData:
+      type: object
+      required:
+        - order_id
+        - delivery_id
+        - ticket_id
+        - download_token
+        - ticket_status
+        - issued_at
+        - expire_at
+        - download_limit
+        - download_count
+        - remaining_downloads
+        - bucket_name
+        - object_key
+        - envelope_id
+        - delivery_commit_hash
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        download_token:
+          type: string
+        ticket_status:
+          type: string
+        issued_at:
+          type: string
+          format: date-time
+        expire_at:
+          type: string
+          format: date-time
+        download_limit:
+          type: integer
+        download_count:
+          type: integer
+        remaining_downloads:
+          type: integer
+        bucket_name:
+          type: string
+        object_key:
+          type: string
+        envelope_id:
+          type: string
+          format: uuid
+        delivery_commit_hash:
+          type: string
     StorageGatewaySnapshot:
       type: object
       required: [integrity, watermark_policy, access_audit]

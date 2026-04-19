@@ -1,6 +1,8 @@
 use crate::AppState;
-use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponse};
-use crate::modules::delivery::repo::commit_file_delivery;
+use crate::modules::delivery::dto::{
+    CommitOrderDeliveryRequest, CommitOrderDeliveryResponse, DownloadTicketResponse,
+};
+use crate::modules::delivery::repo::{commit_file_delivery, issue_download_ticket};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -11,6 +13,7 @@ use kernel::{ErrorCode, ErrorResponse};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeliveryPermission {
     CommitFileDelivery,
+    IssueDownloadTicket,
 }
 
 pub async fn commit_order_delivery_api(
@@ -47,11 +50,45 @@ pub async fn commit_order_delivery_api(
     }))
 }
 
+pub async fn issue_download_ticket_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<DownloadTicketResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::IssueDownloadTicket,
+        "download ticket issuance",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let ticket = issue_download_ticket(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(DownloadTicketResponse { data: ticket }))
+}
+
 fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
     match permission {
         DeliveryPermission::CommitFileDelivery => matches!(
             role,
             "seller_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
+        ),
+        DeliveryPermission::IssueDownloadTicket => matches!(
+            role,
+            "buyer_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
         ),
     }
 }
