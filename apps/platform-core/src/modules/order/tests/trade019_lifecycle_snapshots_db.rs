@@ -102,6 +102,16 @@ mod tests {
             Some("active")
         );
         assert_eq!(
+            json["data"]["data"]["authorization"]["authorization_model"]["scope"]["order_id"]
+                .as_str(),
+            Some(seed.order_id.as_str())
+        );
+        assert_eq!(
+            json["data"]["data"]["authorization"]["authorization_model"]["resource"]["sku_id"]
+                .as_str(),
+            Some(seed.sku_id.as_str())
+        );
+        assert_eq!(
             json["data"]["data"]["delivery"]["delivery_id"].as_str(),
             Some(seed.delivery_id.as_str())
         );

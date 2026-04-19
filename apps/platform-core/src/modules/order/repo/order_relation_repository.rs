@@ -1,3 +1,6 @@
+use crate::modules::authorization::domain::{
+    build_authorization_model_snapshot, extract_or_build_authorization_model,
+};
 use crate::modules::order::dto::{
     OrderAuthorizationRelation, OrderBillingEventRelation, OrderBillingRelations,
     OrderCompensationRelation, OrderContractRelation, OrderDeliveryRelation, OrderDisputeRelation,
@@ -69,18 +72,23 @@ async fn load_authorization_relations(
     let rows = client
         .query(
             "SELECT
-               authorization_grant_id::text,
-               status,
-               grant_type,
-               granted_to_type,
-               granted_to_id::text,
-               to_char(valid_from AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               to_char(valid_to AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               policy_snapshot,
-               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
-             FROM trade.authorization_grant
-             WHERE order_id = $1::text::uuid
-             ORDER BY updated_at DESC, authorization_grant_id DESC",
+               ag.authorization_grant_id::text,
+               ag.status,
+               ag.grant_type,
+               ag.granted_to_type,
+               ag.granted_to_id::text,
+               to_char(ag.valid_from AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ag.valid_to AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ag.policy_snapshot,
+               to_char(ag.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               o.product_id::text,
+               o.sku_id::text,
+               s.sku_type
+             FROM trade.authorization_grant ag
+             JOIN trade.order_main o ON o.order_id = ag.order_id
+             JOIN catalog.product_sku s ON s.sku_id = o.sku_id
+             WHERE ag.order_id = $1::text::uuid
+             ORDER BY ag.updated_at DESC, ag.authorization_grant_id DESC",
             &[&order_id],
         )
         .await
@@ -88,16 +96,46 @@ async fn load_authorization_relations(
 
     Ok(rows
         .into_iter()
-        .map(|row| OrderAuthorizationRelation {
-            authorization_id: row.get(0),
-            current_status: row.get(1),
-            grant_type: row.get(2),
-            granted_to_type: row.get(3),
-            granted_to_id: row.get(4),
-            valid_from: row.get(5),
-            valid_to: row.get(6),
-            policy_snapshot: row.get(7),
-            updated_at: row.get(8),
+        .map(|row| {
+            let policy_snapshot: Value = row.get(7);
+            let fallback = build_authorization_model_snapshot(
+                order_id,
+                row.get::<_, String>(9).as_str(),
+                row.get::<_, String>(10).as_str(),
+                row.get::<_, String>(11).as_str(),
+                policy_snapshot
+                    .get("policy_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                row.get::<_, String>(3).as_str(),
+                row.get::<_, String>(4).as_str(),
+                row.get::<_, String>(2).as_str(),
+                policy_snapshot
+                    .get("subject_constraints")
+                    .unwrap_or(&Value::Null),
+                policy_snapshot
+                    .get("usage_constraints")
+                    .unwrap_or(&Value::Null),
+                policy_snapshot
+                    .get("exportable")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            );
+            OrderAuthorizationRelation {
+                authorization_id: row.get(0),
+                current_status: row.get(1),
+                grant_type: row.get(2),
+                granted_to_type: row.get(3),
+                granted_to_id: row.get(4),
+                valid_from: row.get(5),
+                valid_to: row.get(6),
+                authorization_model: extract_or_build_authorization_model(
+                    &policy_snapshot,
+                    fallback,
+                ),
+                policy_snapshot,
+                updated_at: row.get(8),
+            }
         })
         .collect())
 }

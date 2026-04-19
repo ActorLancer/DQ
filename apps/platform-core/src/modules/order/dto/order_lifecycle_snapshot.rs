@@ -1,3 +1,4 @@
+use crate::modules::authorization::domain::AuthorizationModelSnapshot;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -75,6 +76,7 @@ pub struct AuthorizationLifecycleSnapshot {
     pub granted_to_id: String,
     pub valid_from: String,
     pub valid_to: Option<String>,
+    pub authorization_model: AuthorizationModelSnapshot,
     pub policy_snapshot: Value,
     pub updated_at: String,
 }

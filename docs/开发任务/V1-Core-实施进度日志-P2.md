@@ -770,6 +770,83 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
 
+### BATCH-134（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-025
+- 当前批次目标：为授权模块补充 `scope / subject / resource / action` 最小结构，形成 V1 可用且可向 OPA 演进的稳定授权快照。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-024` 已审批通过。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-025` 目标、范围、验收口径与 `technical_reference`。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认任务详细解释，要求补齐授权最小结构而非引入 OPA 依赖。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务批次执行，先记录“计划中”，后编码与验证。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：沿用冻结开发规则、审计与 TODO 留痕要求。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接上一批已审批状态，从 `TRADE-025` 单任务继续。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：延续 `TODO-PROC-BIL-001` 审计追溯要求。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对核心交易链路中授权应作为订单/合同后的可审计聚合。
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L530`：合同与策略聚合必须具备可序列化的策略/授权表达。
+  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L86`：策略/契约需独立建模，不能只靠零散字段拼装。
+- 当前实现与验证计划：
+  1. 在授权快照中补充 `scope / subject / resource / action` 最小结构，并保持 V1 现有接口行为兼容。
+  2. 将最小结构接入授权迁移结果、订单详情关联视图、生命周期快照。
+  3. 补充 `TRADE-025` 专项 DB smoke。
+  4. 执行 `cargo fmt --all`、`cargo test -p platform-core`、`TRADE_DB_SMOKE=1 ... trade025_authorization_min_structure_db_smoke`。
+  5. 启动服务后执行真实 API 联调，验证授权迁移与订单详情返回的最小结构，并回查审计。
+
+### BATCH-134（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-025
+- 当前批次目标：为授权模块补充 `scope / subject / resource / action` 最小结构，形成 V1 可用且可向 OPA 演进的稳定授权快照。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-024` 已审批通过。
+- 已实现功能：
+  1. 新增 `AuthorizationModelSnapshot` 及其 `scope / subject / resource / action` 四段最小结构，约束授权快照显式表达主体、资源、动作与上下文范围。
+  2. 在授权迁移写路径中基于 `order/product/sku/policy/grantee/grant_type` 构造 `authorization_model`，并将其规范化写入 `policy_snapshot`。
+  3. 在授权迁移返回 DTO、订单详情 `relations.authorizations`、生命周期快照 `authorization` 中统一暴露 `authorization_model`。
+  4. 为历史/兜底快照补充 `extract_or_build_authorization_model(...)`，确保旧数据缺少最小结构时仍可由订单上下文回填。
+  5. 修复授权聚合查询中 `status/order_id` 联表歧义列，消除真实授权迁移 DB 错误。
+  6. 新增 `TRADE-025` 专项 DB smoke，并补充 `TRADE-017 / TRADE-019 / TRADE-022` 断言覆盖授权最小结构。
+- 涉及文件：
+  - `apps/platform-core/src/modules/authorization/domain/mod.rs`
+  - `apps/platform-core/src/modules/order/dto/order_authorization_transition.rs`
+  - `apps/platform-core/src/modules/order/dto/order_lifecycle_snapshot.rs`
+  - `apps/platform-core/src/modules/order/dto/order_read.rs`
+  - `apps/platform-core/src/modules/order/dto/order_relations.rs`
+  - `apps/platform-core/src/modules/order/repo/order_authorization_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_lifecycle_snapshot_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_relation_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/trade017_authorization_aggregate_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade019_lifecycle_snapshots_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade022_order_relations_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade025_authorization_min_structure_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade025_authorization_min_structure_db_smoke -- --nocapture`
+  4. 启动最新服务：`APP_PORT=8083 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `psql` 插入临时 `SHARE_RO` 业务数据与绑定策略。
+  6. `curl POST http://127.0.0.1:8083/api/v1/orders/{id}/authorization/transition` 触发授权发放。
+  7. `curl GET http://127.0.0.1:8083/api/v1/orders/{id}` 校验订单详情聚合中的 `authorization_model`。
+  8. `psql` 回查 `trade.authorization_grant.policy_snapshot` 与 `audit.audit_event`，然后清理临时业务数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`147 passed, 0 failed, 1 ignored`）。
+  - `trade025_authorization_min_structure_db_smoke`：通过。
+  - 真实 API 联调：`POST /api/v1/orders/80935453-55ee-40f7-b841-9f09561d11db/authorization/transition` 返回 `HTTP 200`，`authorization_model.scope.order_id / resource.sku_id / subject.subject_id / action.grant_type` 全部正确。
+  - 真实 API 联调：`GET /api/v1/orders/80935453-55ee-40f7-b841-9f09561d11db` 返回 `HTTP 200`，`relations.authorizations[0].authorization_model` 与授权迁移返回保持一致。
+  - DB 回查：`trade.authorization_grant.policy_snapshot` 已持久化 `scope / subject / resource / action`；`audit.audit_event` 命中 `trade.authorization.grant` 与 `trade.order.read`。
+  - 清理结果：临时业务测试数据已清理；审计记录按 append-only 规则保留。
+- 覆盖的冻结文档条目：
+  - `领域模型/全量领域模型与对象关系说明.md` 4.3（合同与策略聚合）
+  - `原始PRD/数据商品元信息与数据契约设计.md` 3.2（策略/契约独立建模）
+  - `全集成文档/数据交易平台-全集成基线-V1.md` 15（交易链路中的授权聚合与审计）
+- 覆盖的任务清单条目：`TRADE-025`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
 ### BATCH-126（计划中）
 - 状态：计划中
 - 当前任务编号：TRADE-017

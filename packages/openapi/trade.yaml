@@ -736,6 +736,7 @@ components:
           granted_to_type,
           granted_to_id,
           valid_from,
+          authorization_model,
           policy_snapshot,
           updated_at,
         ]
@@ -759,6 +760,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        authorization_model:
+          $ref: '#/components/schemas/AuthorizationModelSnapshot'
         policy_snapshot:
           type: object
           additionalProperties: true
@@ -1159,6 +1162,7 @@ components:
           granted_to_type,
           granted_to_id,
           valid_from,
+          authorization_model,
           policy_snapshot,
           updated_at,
         ]
@@ -1182,6 +1186,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        authorization_model:
+          $ref: '#/components/schemas/AuthorizationModelSnapshot'
         policy_snapshot:
           type: object
           additionalProperties: true
@@ -1950,6 +1956,7 @@ components:
           granted_to_id,
           valid_from,
           reason_code,
+          authorization_model,
           policy_snapshot,
           transitioned_at,
         ]
@@ -1990,12 +1997,86 @@ components:
           nullable: true
         reason_code:
           type: string
+        authorization_model:
+          $ref: '#/components/schemas/AuthorizationModelSnapshot'
         policy_snapshot:
           type: object
           additionalProperties: true
         transitioned_at:
           type: string
           format: date-time
+    AuthorizationModelSnapshot:
+      type: object
+      required: [scope, subject, resource, action]
+      properties:
+        scope:
+          $ref: '#/components/schemas/AuthorizationScopeSnapshot'
+        subject:
+          $ref: '#/components/schemas/AuthorizationSubjectSnapshot'
+        resource:
+          $ref: '#/components/schemas/AuthorizationResourceSnapshot'
+        action:
+          $ref: '#/components/schemas/AuthorizationActionSnapshot'
+    AuthorizationScopeSnapshot:
+      type: object
+      required: [scope_type, order_id, product_id, sku_id, sku_type, policy_id]
+      properties:
+        scope_type:
+          type: string
+        order_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        policy_id:
+          type: string
+          format: uuid
+    AuthorizationSubjectSnapshot:
+      type: object
+      required: [subject_type, subject_id, constraints]
+      properties:
+        subject_type:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        constraints:
+          type: object
+          additionalProperties: true
+    AuthorizationResourceSnapshot:
+      type: object
+      required: [resource_type, product_id, sku_id, sku_type]
+      properties:
+        resource_type:
+          type: string
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+    AuthorizationActionSnapshot:
+      type: object
+      required: [grant_type, access_mode, allowed_usage, exportable]
+      properties:
+        grant_type:
+          type: string
+        access_mode:
+          type: string
+        allowed_usage:
+          type: array
+          items:
+            type: string
+        exportable:
+          type: boolean
     TradePreRequestResponse:
       type: object
       required: [data]

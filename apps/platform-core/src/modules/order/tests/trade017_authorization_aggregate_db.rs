@@ -70,6 +70,23 @@ mod tests {
             grant_resp.json["data"]["data"]["policy_id"].as_str(),
             Some(seed.policy_id.as_str())
         );
+        assert_eq!(
+            grant_resp.json["data"]["data"]["authorization_model"]["scope"]["order_id"].as_str(),
+            Some(seed.order_expire_id.as_str())
+        );
+        assert_eq!(
+            grant_resp.json["data"]["data"]["authorization_model"]["resource"]["sku_id"].as_str(),
+            Some(seed.sku_id.as_str())
+        );
+        assert_eq!(
+            grant_resp.json["data"]["data"]["authorization_model"]["subject"]["subject_id"]
+                .as_str(),
+            Some(seed.buyer_org_id.as_str())
+        );
+        assert_eq!(
+            grant_resp.json["data"]["data"]["authorization_model"]["action"]["grant_type"].as_str(),
+            Some("share_grant")
+        );
 
         let suspend_req_id = format!("req-trade017-{suffix}-suspend");
         let suspend_resp = transition(

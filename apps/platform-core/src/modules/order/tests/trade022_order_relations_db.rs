@@ -94,6 +94,16 @@ mod tests {
             Some(seed.authorization_ids[1].as_str())
         );
         assert_eq!(
+            json["data"]["data"]["relations"]["authorizations"][0]["authorization_model"]["scope"]
+                ["order_id"]
+                .as_str(),
+            Some(seed.order_id.as_str())
+        );
+        assert_eq!(
+            json["data"]["data"]["relations"]["authorizations"][0]["authorization_model"]["resource"]["sku_id"].as_str(),
+            Some(seed.sku_id.as_str())
+        );
+        assert_eq!(
             json["data"]["data"]["relations"]["deliveries"]
                 .as_array()
                 .map(|items| items.len()),
