@@ -6,17 +6,19 @@ use axum::http::StatusCode;
 use kernel::{ErrorCode, ErrorResponse};
 
 pub async fn apply_payment_result_to_order(
-    client: &tokio_postgres::Client,
+    client: &mut tokio_postgres::Client,
     order_id: &str,
     result: PaymentResultKind,
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
-    let row = client
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let row = tx
         .query_opt(
             "SELECT status, payment_status
              FROM trade.order_main
-             WHERE order_id = $1::text::uuid",
+             WHERE order_id = $1::text::uuid
+             FOR UPDATE",
             &[&order_id],
         )
         .await
@@ -28,7 +30,7 @@ pub async fn apply_payment_result_to_order(
     let target = derive_target_state(&current_status, result);
     let Some((next_order_status, next_payment_status, reason_code)) = target else {
         write_order_audit(
-            client,
+            &tx,
             order_id,
             "order.payment.result.ignored",
             "ignored",
@@ -38,11 +40,12 @@ pub async fn apply_payment_result_to_order(
             None,
         )
         .await?;
+        tx.commit().await.map_err(map_db_error)?;
         return Ok(None);
     };
 
     let layered_status = derive_layered_status(next_order_status, next_payment_status);
-    let _ = client
+    let updated = tx
         .execute(
             "UPDATE trade.order_main
              SET
@@ -54,7 +57,8 @@ pub async fn apply_payment_result_to_order(
                dispute_status = $7,
                last_reason_code = $8,
                updated_at = now()
-             WHERE order_id = $1::text::uuid",
+             WHERE order_id = $1::text::uuid
+               AND status = $9",
             &[
                 &order_id,
                 &next_order_status,
@@ -64,13 +68,29 @@ pub async fn apply_payment_result_to_order(
                 &layered_status.settlement_status,
                 &layered_status.dispute_status,
                 &reason_code,
+                &current_status,
             ],
         )
         .await
         .map_err(map_db_error)?;
+    if updated == 0 {
+        write_order_audit(
+            &tx,
+            order_id,
+            "order.payment.result.ignored",
+            "ignored",
+            request_id,
+            trace_id,
+            Some(current_status.as_str()),
+            None,
+        )
+        .await?;
+        tx.commit().await.map_err(map_db_error)?;
+        return Ok(None);
+    }
 
     write_order_audit(
-        client,
+        &tx,
         order_id,
         "order.payment.result.applied",
         "success",
@@ -80,11 +100,12 @@ pub async fn apply_payment_result_to_order(
         Some(next_order_status),
     )
     .await?;
+    tx.commit().await.map_err(map_db_error)?;
     Ok(Some(next_order_status.to_string()))
 }
 
 async fn write_order_audit(
-    client: &tokio_postgres::Client,
+    client: &impl tokio_postgres::GenericClient,
     order_id: &str,
     action_name: &str,
     result_code: &str,

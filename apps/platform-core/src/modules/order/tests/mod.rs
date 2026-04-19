@@ -20,6 +20,7 @@ mod trade019_lifecycle_snapshots_db;
 mod trade021_pre_payment_lock_checks_db;
 mod trade022_order_relations_db;
 mod trade023_order_templates_db;
+mod trade024_illegal_state_regression_db;
 
 #[cfg(test)]
 mod tests {

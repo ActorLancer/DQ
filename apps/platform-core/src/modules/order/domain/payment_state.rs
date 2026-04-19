@@ -5,30 +5,18 @@ pub enum PaymentResultKind {
     TimedOut,
 }
 
-pub fn status_rank(status: &str) -> i32 {
-    match status {
-        "created" => 0,
-        "quoted" => 1,
-        "approval_pending" => 2,
-        "contract_pending" => 3,
-        "contract_effective" => 4,
-        "buyer_locked" => 5,
-        "seller_delivering" => 6,
-        "delivered" => 7,
-        "accepted" => 8,
-        "settled" => 9,
-        "closed" => 10,
-        _ => 0,
-    }
+pub fn is_payment_mutable_order_status(status: &str) -> bool {
+    matches!(
+        status,
+        "created" | "quoted" | "approval_pending" | "contract_pending" | "contract_effective"
+    )
 }
 
 pub fn derive_target_state(
     current_status: &str,
     result: PaymentResultKind,
 ) -> Option<(&'static str, &'static str, &'static str)> {
-    let current_rank = status_rank(current_status);
-    let buyer_locked_rank = status_rank("buyer_locked");
-    if current_rank > buyer_locked_rank {
+    if !is_payment_mutable_order_status(current_status) {
         return None;
     }
     match result {
@@ -64,6 +52,18 @@ mod tests {
     #[test]
     fn failure_does_not_rollback_after_delivery_progress() {
         let target = derive_target_state("seller_delivering", PaymentResultKind::Failed);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn paid_order_ignores_late_failure_callback() {
+        let target = derive_target_state("buyer_locked", PaymentResultKind::Failed);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn sku_specific_fulfillment_state_ignores_payment_callback() {
+        let target = derive_target_state("api_bound", PaymentResultKind::TimedOut);
         assert_eq!(target, None);
     }
 }

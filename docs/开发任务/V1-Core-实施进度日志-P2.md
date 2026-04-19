@@ -1389,3 +1389,91 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-133（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-024
+- 当前批次目标：为订单状态机补充拒绝非法回退保护，避免支付/回调乱序把订单主状态回写到更早阶段。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-023` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-024` 描述、DoD、验收与 `technical_reference`。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认本任务聚焦“非法回退保护”，不是新增新状态机分支。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续执行“计划中 -> 编码 -> 验证 -> 待审批”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：单任务批次，不跳步骤。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 批次审计格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束不变。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：首批标准链路仍按 SKU 独立快照与单向履约推进。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：订单状态编排位于 `platform-core/order` 与 `billing webhook` 联动边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：不新增公开接口，仅强化既有状态迁移行为。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本任务不新增 topic，复用既有审计痕迹。
+  12. `docs/开发准备/统一错误码字典正式版.md`：拒绝非法回退仍复用既有冲突/忽略语义，不发明新错误码。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：需要覆盖乱序回调 / 状态保护回归。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增独立 `TRADE-024` 专项 smoke，避免堆入旧测试。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调数据库使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：通过 Rust 应用层事务与 PostgreSQL 行锁完成状态保护。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体内聚，不跨模块引入无关重构。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L1445`：订单生命周期是单向总表，不应回退到更早阶段。
+  2. `docs/data_trading_blockchain_system_design_split/06-Phase 1：最小可信交易闭环系统设计.md:L65`：迁移必须具备明确触发源、互斥、幂等性，重复或乱序事件不能造成矛盾状态。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：首批场景按 SKU 独立履约，回调不能覆盖已进入交付/验收/结算阶段的订单事实。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/order/application/*`
+  - `apps/platform-core/src/modules/order/domain/*`
+  - `apps/platform-core/src/modules/order/tests/*`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade024_illegal_state_regression_db_smoke -- --nocapture`
+  4. 启动服务：`KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `curl POST /api/v1/payments/webhooks/mock_payment` 发送乱序失败回调，验证订单状态不回退并回查审计。
+
+### BATCH-133（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-024
+- 当前批次目标：为订单状态机补充拒绝非法回退保护，避免支付/回调乱序把订单主状态回写到更早阶段。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-023` 已审批通过。
+- 已实现功能：
+  1. 将支付结果驱动订单状态的适用范围收敛到 `created / quoted / approval_pending / contract_pending / contract_effective` 五类预锁定状态。
+  2. 支付结果应用改为事务内 `SELECT ... FOR UPDATE` + `UPDATE ... WHERE status = current_status`，补齐 compare-and-swap 保护。
+  3. 对已进入 `buyer_locked` 及其后续履约状态、以及 SKU 特有履约状态，晚到支付回调统一记为 `order.payment.result.ignored`，不再回写订单主状态。
+  4. 新增 `TRADE-024` 专项 DB smoke，经真实 webhook 路由验证“支付意图可更新，但订单不回退”。
+  5. 补充 `payment_state` 单元测试，覆盖 `buyer_locked` 和 `api_bound` 等晚到回调忽略逻辑。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/domain/payment_state.rs`
+  - `apps/platform-core/src/modules/order/domain/mod.rs`
+  - `apps/platform-core/src/modules/order/application/mod.rs`
+  - `apps/platform-core/src/modules/billing/handlers.rs`
+  - `apps/platform-core/src/modules/order/tests/trade007_state_machine_fields_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade024_illegal_state_regression_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade024_illegal_state_regression_db_smoke -- --nocapture`
+  4. 启动最新服务：`APP_PORT=8082 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `psql` 插入临时 `seller_delivering / paid` 订单与 `processing` 支付意图。
+  6. `curl POST http://127.0.0.1:8082/api/v1/payments/webhooks/mock_payment` 发送乱序 `payment.failed` 回调。
+  7. `psql` 回查 `trade.order_main`、`payment.payment_intent`、`audit.audit_event`。
+  8. 清理临时业务数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`146 passed, 0 failed, 1 ignored`）。
+  - `trade024_illegal_state_regression_db_smoke`：通过。
+  - 真实 API 联调：`POST /api/v1/payments/webhooks/mock_payment` 返回 `HTTP 200`，`processed_status=processed`，`applied_payment_status=failed`。
+  - DB 回查：`payment.payment_intent.status=failed`，但 `trade.order_main` 仍保持 `seller_delivering / paid / trade024_api_seed_seller_delivering`，未发生状态倒退。
+  - 审计回查：命中 `order.payment.result.ignored / ignored`。
+  - 清理结果：临时业务测试数据已清理；审计记录按 append-only 规则保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 7.2（订单生命周期单向推进）
+  - `Phase 1：最小可信交易闭环系统设计` 6.5（迁移触发源明确、互斥、幂等）
+  - `全集成基线-V1` 5.3.2A（首批场景按 SKU 独立履约事实，不得被乱序回调覆盖）
+- 覆盖的任务清单条目：`TRADE-024`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

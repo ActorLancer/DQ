@@ -26,7 +26,7 @@ mod tests {
         }
         let dsn = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".into());
-        let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
             .await
             .expect("connect db");
         tokio::spawn(async move {
@@ -94,7 +94,7 @@ mod tests {
         assert_eq!(row.get::<_, String>(5), "none");
 
         let applied = apply_payment_result_to_order(
-            &client,
+            &mut client,
             &order_id,
             PaymentResultKind::Succeeded,
             Some(&request_id),

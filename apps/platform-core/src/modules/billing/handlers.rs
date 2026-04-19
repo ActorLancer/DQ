@@ -108,7 +108,7 @@ pub async fn create_payment_intent(
     let request_id = header(&headers, "x-request-id");
     let idempotency_key = header(&headers, "x-idempotency-key");
     let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
+    let (mut client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -235,7 +235,7 @@ pub async fn get_payment_intent(
         "payment intent read",
     )?;
     let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
+    let (mut client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -308,7 +308,7 @@ pub async fn cancel_payment_intent(
         "payment intent cancel",
     )?;
     let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
+    let (mut client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -397,7 +397,7 @@ pub async fn lock_order_payment(
 ) -> Result<Json<ApiResponse<OrderLockView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, BillingPermission::OrderLock, "order lock")?;
     let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
+    let (mut client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -514,7 +514,7 @@ pub async fn handle_payment_webhook(
     Json(payload): Json<PaymentWebhookRequest>,
 ) -> Result<Json<ApiResponse<PaymentWebhookResultView>>, (StatusCode, Json<ErrorResponse>)> {
     let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
+    let (mut client, connection) = connect_db(&dsn).await?;
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -853,7 +853,7 @@ pub async fn handle_payment_webhook(
         _ => PaymentResultKind::Failed,
     };
     let _ = apply_payment_result_to_order(
-        &client,
+        &mut client,
         &order_id,
         order_result_kind,
         header(&headers, "x-request-id").as_deref(),
