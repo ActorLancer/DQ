@@ -9,3 +9,5 @@ mod dlv004_download_validation_db;
 mod dlv005_revision_subscription_db;
 
 mod dlv006_share_grant_db;
+
+mod dlv007_api_delivery_db;

@@ -8,8 +8,8 @@ use crate::modules::delivery::dto::{
     ManageShareGrantRequest, ManageShareGrantResponse,
 };
 use crate::modules::delivery::repo::{
-    commit_file_delivery, consume_download_ticket, get_revision_subscription, get_share_grants,
-    issue_download_ticket, manage_revision_subscription, manage_share_grant,
+    commit_api_delivery, commit_file_delivery, consume_download_ticket, get_revision_subscription,
+    get_share_grants, issue_download_ticket, manage_revision_subscription, manage_share_grant,
 };
 use crate::modules::storage::application::fetch_object_bytes;
 use axum::Json;
@@ -25,11 +25,32 @@ pub async fn commit_order_delivery_api(
     headers: HeaderMap,
     Json(payload): Json<CommitOrderDeliveryRequest>,
 ) -> Result<Json<ApiResponse<CommitOrderDeliveryResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
-        &headers,
-        DeliveryPermission::CommitFileDelivery,
-        "file delivery commit",
-    )?;
+    let branch = payload.branch.trim().to_ascii_lowercase();
+    match branch.as_str() {
+        "file" => require_permission(
+            &headers,
+            DeliveryPermission::CommitFileDelivery,
+            "file delivery commit",
+        )?,
+        "api" => require_permission(
+            &headers,
+            DeliveryPermission::EnableApiDelivery,
+            "api delivery enable",
+        )?,
+        _ => {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(ErrorResponse {
+                    code: kernel::ErrorCode::TrdStateConflict.as_str().to_string(),
+                    message: format!(
+                        "DELIVERY_COMMIT_FORBIDDEN: branch `{}` is not supported",
+                        payload.branch
+                    ),
+                    request_id: header(&headers, "x-request-id"),
+                }),
+            ));
+        }
+    }
 
     let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
     let tenant_id = header(&headers, "x-tenant-id");
@@ -37,16 +58,33 @@ pub async fn commit_order_delivery_api(
     let trace_id = header(&headers, "x-trace-id");
 
     let mut client = state.db.client().map_err(map_db_connect)?;
-    let committed = commit_file_delivery(
-        &mut client,
-        &order_id,
-        tenant_id.as_deref(),
-        &payload,
-        &actor_role,
-        request_id.as_deref(),
-        trace_id.as_deref(),
-    )
-    .await?;
+    let committed = match branch.as_str() {
+        "file" => {
+            commit_file_delivery(
+                &mut client,
+                &order_id,
+                tenant_id.as_deref(),
+                &payload,
+                &actor_role,
+                request_id.as_deref(),
+                trace_id.as_deref(),
+            )
+            .await?
+        }
+        "api" => {
+            commit_api_delivery(
+                &mut client,
+                &order_id,
+                tenant_id.as_deref(),
+                &payload,
+                &actor_role,
+                request_id.as_deref(),
+                trace_id.as_deref(),
+            )
+            .await?
+        }
+        _ => unreachable!(),
+    };
 
     Ok(ApiResponse::ok(CommitOrderDeliveryResponse {
         data: committed,

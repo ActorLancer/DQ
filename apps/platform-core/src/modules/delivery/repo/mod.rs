@@ -1,3 +1,4 @@
+mod api_delivery_repository;
 mod download_file_repository;
 mod download_ticket_repository;
 mod file_delivery_repository;
@@ -5,6 +6,7 @@ mod revision_subscription_repository;
 mod share_grant_repository;
 mod storage_gateway_repository;
 
+pub use api_delivery_repository::commit_api_delivery;
 pub use download_file_repository::consume_download_ticket;
 pub use download_ticket_repository::{
     DownloadTicketCachePayload, delete_download_ticket_cache, enforce_buyer_scope,

@@ -112,8 +112,11 @@ pub async fn commit_file_delivery(
     }
 
     let fallback_bucket = default_bucket_name();
-    let resolved =
-        resolve_storage_object_location(&payload.object_uri, Some(fallback_bucket.as_str()));
+    let object_uri = payload
+        .object_uri
+        .as_deref()
+        .expect("file delivery validated object_uri");
+    let resolved = resolve_storage_object_location(object_uri, Some(fallback_bucket.as_str()));
     let bucket_name = resolved.bucket_name.clone().unwrap_or(fallback_bucket);
     let object_key = resolved.object_key.clone().ok_or_else(|| {
         conflict(
@@ -170,9 +173,6 @@ pub async fn commit_file_delivery(
         return Ok(CommitOrderDeliveryResponseData {
             order_id: order_id.to_string(),
             delivery_id: committed_delivery_id.expect("committed delivery id"),
-            object_id: committed_object_id.expect("committed object id"),
-            envelope_id: committed_envelope_id.expect("committed envelope id"),
-            ticket_id: active_ticket_id.expect("active ticket id"),
             branch: "file".to_string(),
             previous_state: current_state.clone(),
             current_state,
@@ -181,13 +181,29 @@ pub async fn commit_file_delivery(
             acceptance_status: derive_layered_status("delivered", "paid").acceptance_status,
             settlement_status: derive_layered_status("delivered", "paid").settlement_status,
             dispute_status: derive_layered_status("delivered", "paid").dispute_status,
-            bucket_name,
-            object_key,
-            expires_at: committed_expires_at.expect("committed expires_at"),
-            download_limit: active_download_limit.expect("active download limit"),
-            receipt_hash: committed_receipt_hash.expect("committed receipt hash"),
-            delivery_commit_hash: committed_delivery_commit_hash.expect("committed commit hash"),
+            object_id: committed_object_id,
+            envelope_id: committed_envelope_id,
+            ticket_id: active_ticket_id,
+            bucket_name: Some(bucket_name),
+            object_key: Some(object_key),
+            expires_at: committed_expires_at,
+            download_limit: active_download_limit,
+            receipt_hash: committed_receipt_hash,
+            delivery_commit_hash: committed_delivery_commit_hash,
             committed_at: committed_at.expect("committed at"),
+            app_id: None,
+            app_name: None,
+            app_type: None,
+            client_id: None,
+            api_credential_id: None,
+            api_key: None,
+            api_key_hint: None,
+            quota_json: None,
+            rate_limit_json: None,
+            upstream_mode: None,
+            operation: Some("already_committed".to_string()),
+            endpoint_uri: None,
+            credential_status: None,
         });
     }
 
@@ -240,13 +256,16 @@ pub async fn commit_file_delivery(
              RETURNING object_id::text",
             &[
                 &seller_org_id,
-                &payload.object_uri,
+                &object_uri,
                 &payload
                     .content_type
                     .as_deref()
                     .unwrap_or("application/octet-stream"),
-                &payload.size_bytes,
-                &payload.content_hash,
+                &payload.size_bytes.expect("validated size_bytes"),
+                &payload
+                    .content_hash
+                    .as_deref()
+                    .expect("validated content_hash"),
                 &payload.encryption_algo.as_deref().unwrap_or("AES-GCM"),
                 &payload.plaintext_visible_to_platform.unwrap_or(false),
                 &storage_namespace_id,
@@ -279,7 +298,7 @@ pub async fn commit_file_delivery(
             &[
                 &order_id,
                 &buyer_org_id,
-                &payload.key_cipher,
+                &payload.key_cipher.as_deref().expect("validated key_cipher"),
                 &payload
                     .key_control_mode
                     .as_deref()
@@ -330,8 +349,8 @@ pub async fn commit_file_delivery(
                 &order_id,
                 &buyer_org_id,
                 &generated_token_hash,
-                &payload.expire_at,
-                &payload.download_limit,
+                &payload.expire_at.as_deref().expect("validated expire_at"),
+                &payload.download_limit.expect("validated download_limit"),
             ],
         )
         .await
@@ -358,11 +377,20 @@ pub async fn commit_file_delivery(
                 &prepared_delivery_id,
                 &object_id,
                 &delivery_route_snapshot.as_deref().unwrap_or("signed_url"),
-                &payload.delivery_commit_hash,
+                &payload
+                    .delivery_commit_hash
+                    .as_deref()
+                    .expect("validated delivery_commit_hash"),
                 &envelope_id,
                 &trust_boundary_snapshot,
-                &payload.receipt_hash,
-                &payload.expire_at,
+                &payload
+                    .receipt_hash
+                    .as_deref()
+                    .expect("validated receipt_hash"),
+                &payload
+                    .expire_at
+                    .as_deref()
+                    .expect("validated expire_at"),
             ],
         )
         .await
@@ -418,9 +446,6 @@ pub async fn commit_file_delivery(
     Ok(CommitOrderDeliveryResponseData {
         order_id: order_id.to_string(),
         delivery_id: prepared_delivery_id,
-        object_id,
-        envelope_id,
-        ticket_id,
         branch: "file".to_string(),
         previous_state: current_state,
         current_state: "delivered".to_string(),
@@ -429,13 +454,29 @@ pub async fn commit_file_delivery(
         acceptance_status: layered_status.acceptance_status,
         settlement_status: layered_status.settlement_status,
         dispute_status: layered_status.dispute_status,
-        bucket_name,
-        object_key,
+        object_id: Some(object_id),
+        envelope_id: Some(envelope_id),
+        ticket_id: Some(ticket_id),
+        bucket_name: Some(bucket_name),
+        object_key: Some(object_key),
         expires_at: payload.expire_at.clone(),
         download_limit: payload.download_limit,
         receipt_hash: payload.receipt_hash.clone(),
         delivery_commit_hash: payload.delivery_commit_hash.clone(),
         committed_at,
+        app_id: None,
+        app_name: None,
+        app_type: None,
+        client_id: None,
+        api_credential_id: None,
+        api_key: None,
+        api_key_hint: None,
+        quota_json: None,
+        rate_limit_json: None,
+        upstream_mode: None,
+        operation: Some("committed".to_string()),
+        endpoint_uri: None,
+        credential_status: None,
     })
 }
 
@@ -482,38 +523,74 @@ async fn resolve_storage_namespace_id(
     })
 }
 
-fn validate_commit_request(
+pub(crate) fn validate_commit_request(
     payload: &CommitOrderDeliveryRequest,
     request_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if payload.object_uri.trim().is_empty() {
+    if payload
+        .object_uri
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
         return Err(bad_request("object_uri is required", request_id));
     }
-    if payload.size_bytes <= 0 {
+    if payload.size_bytes.unwrap_or_default() <= 0 {
         return Err(bad_request("size_bytes must be > 0", request_id));
     }
-    if payload.content_hash.trim().is_empty() {
+    if payload
+        .content_hash
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
         return Err(bad_request("content_hash is required", request_id));
     }
-    if payload.key_cipher.trim().is_empty() {
+    if payload
+        .key_cipher
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
         return Err(bad_request("key_cipher is required", request_id));
     }
-    if payload.download_limit <= 0 {
+    if payload.download_limit.unwrap_or_default() <= 0 {
         return Err(bad_request("download_limit must be > 0", request_id));
     }
-    if payload.delivery_commit_hash.trim().is_empty() {
+    if payload
+        .delivery_commit_hash
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
         return Err(bad_request("delivery_commit_hash is required", request_id));
     }
-    if payload.receipt_hash.trim().is_empty() {
+    if payload
+        .receipt_hash
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
         return Err(bad_request("receipt_hash is required", request_id));
     }
-    if payload.expire_at.trim().is_empty() {
+    if payload
+        .expire_at
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or_default()
+        .is_empty()
+    {
         return Err(bad_request("expire_at is required", request_id));
     }
     Ok(())
 }
 
-fn enforce_seller_scope(
+pub(crate) fn enforce_seller_scope(
     actor_role: &str,
     tenant_id: Option<&str>,
     seller_org_id: &str,
@@ -536,7 +613,7 @@ fn enforce_seller_scope(
     ))
 }
 
-async fn write_delivery_audit_event(
+pub(crate) async fn write_delivery_audit_event(
     client: &(impl GenericClient + Sync),
     ref_type: &str,
     ref_id: &str,
@@ -586,11 +663,14 @@ async fn write_delivery_audit_event(
     Ok(())
 }
 
-fn default_bucket_name() -> String {
+pub(crate) fn default_bucket_name() -> String {
     std::env::var("BUCKET_DELIVERY_OBJECTS").unwrap_or_else(|_| "delivery-objects".to_string())
 }
 
-fn not_found(order_id: &str, request_id: Option<&str>) -> (StatusCode, Json<ErrorResponse>) {
+pub(crate) fn not_found(
+    order_id: &str,
+    request_id: Option<&str>,
+) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::NOT_FOUND,
         Json(ErrorResponse {
@@ -601,7 +681,10 @@ fn not_found(order_id: &str, request_id: Option<&str>) -> (StatusCode, Json<Erro
     )
 }
 
-fn bad_request(message: &str, request_id: Option<&str>) -> (StatusCode, Json<ErrorResponse>) {
+pub(crate) fn bad_request(
+    message: &str,
+    request_id: Option<&str>,
+) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {
@@ -612,7 +695,10 @@ fn bad_request(message: &str, request_id: Option<&str>) -> (StatusCode, Json<Err
     )
 }
 
-fn conflict(message: &str, request_id: Option<&str>) -> (StatusCode, Json<ErrorResponse>) {
+pub(crate) fn conflict(
+    message: &str,
+    request_id: Option<&str>,
+) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::CONFLICT,
         Json(ErrorResponse {

@@ -3073,3 +3073,110 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-149（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-007
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-007` 目标为 `POST /api/v1/orders/{id}/deliver` 的 API 分支，生成应用绑定、访问凭证、调用配额、限流配置。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：复核 `DLV-007` 必须是“真实 API 开通链路”，不能只推进订单状态或只落一条占位记录。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地 commit”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务顺序、冻结文档先行、实现后必须做真实 API 联调与 DB 回查。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 `BATCH-148`，先登记本批计划中。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 API 订阅链路为“应用绑定 -> API 凭证签发 -> 健康检查 -> 首次成功调用”，交付完成条件是“应用绑定成功、API Key 生效、健康检查通过”。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：API 开通属于 Delivery 领域，但订单/支付/合同真值仍在 Trade。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结表已存在 `POST /api/v1/orders/{id}/deliver`，`delivery_mode=api_access`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批先落数据库真值与审计，不提前补 Kafka 业务桥接。
+  12. `docs/开发准备/统一错误码字典正式版.md`：冲突/权限/内部错误继续沿用统一错误结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批需要最小 DB smoke + 真实 API 联调 + 数据库回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：API 开通继续落在 `delivery/api|dto|repo|tests`，不把交付实现塞回订单模块。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批联调继续使用 `datab-postgres` 与本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用本地环境变量与固定 DSN/端口口径。
+  17. `docs/开发准备/技术选型正式版.md`：沿用当前 `SQLx + SeaORM` 数据访问基线，不回退旧实现。
+  18. `docs/开发准备/平台总体架构设计草案.md`：API 产品交付需要把凭证、应用绑定、配额与限流配置统一落入受控交付链路。
+- 当前任务额外引用的 `technical_reference` 与约束映射：
+  - `docs/业务流程/业务流程图-V1-完整版.md:L334`：API 类交付需生成 API Key / 应用绑定 / 调用配额，并由网关按调用次数、频率、IP、用途策略校验。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L611`：API 开通页核心模块必须包含“应用绑定、API Key 展示、调用配额、限流规则、调用日志摘要”。
+  - `docs/原始PRD/数据对象产品族与交付模式增强设计.md:L292`：API / 服务是 V1 标准交付方式，交付对象应显式落到 `api_endpoint` 与相应订单交付对象。
+- 补充约束文档：
+  1. `docs/权限设计/接口权限校验清单.md`：`POST /api/v1/orders/{id}/deliver` 在 API 分支需满足 `delivery.api.enable`，并做 tenant + order + 交付对象匹配 + 审计。
+  2. `docs/权限设计/角色权限矩阵正式版.md`、`docs/权限设计/菜单权限映射表.md`：API 开通页角色至少覆盖 `tenant_developer`、`tenant_admin`，并保留卖方交付角色辅助开通口径。
+  3. `docs/权限设计/后端鉴权中间件规则说明.md`：鉴权必须先过身份/主体状态，再过权限、订单作用域、交付对象匹配、审计。
+  4. `docs/数据库设计/数据库表字典正式版.md`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`：本批核心表为 `core.application`、`delivery.api_credential`、`delivery.delivery_record`。
+- 当前批次目标：实现 `/api/v1/orders/{id}/deliver` 的 API 分支，支持 `API_SUB/API_PPU` 订单开通应用绑定、签发 API 凭证、落配额与限流配置，并与交付记录、订单主状态、审计联动。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv007_api_delivery_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST /api/v1/orders/{id}/deliver`（`branch=api`）联调，回查 `core.application / delivery.api_credential / delivery.delivery_record / trade.order_main / audit.audit_event` 后清理业务数据。
+
+### BATCH-149（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-007
+- 前置依赖核对：`TRADE-003`、`TRADE-007`、`CAT-010`、`DLV-001` 已完成并审批通过。
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/deliver` 的 API 分支，为 `API_SUB/API_PPU` 订单生成应用绑定、访问凭证、调用配额与限流配置，并联动订单交付状态。
+- 实现摘要：
+  1. `delivery/api/handlers.rs` 按 `payload.branch` 分流 `file/api` 两条交付路径，新增 API 分支鉴权入口。
+  2. `delivery/api/support.rs` 新增 `DeliveryPermission::EnableApiDelivery`，角色口径覆盖 `tenant_developer/tenant_admin/seller_operator/platform_admin/platform_risk_settlement`。
+  3. `delivery/dto/file_delivery_commit.rs` 扩展 API 开通请求/响应字段，保留文件交付分支兼容性。
+  4. `delivery/repo/api_delivery_repository.rs` 新增 API 开通仓储：校验 `api_endpoint` 绑定、创建或复用买方 `core.application`、签发 `delivery.api_credential`、落配额与限流配置、提交 `delivery.delivery_record`、推进 `trade.order_main` 到 `api_key_issued/quota_ready`。
+  5. `delivery/repo/file_delivery_repository.rs` 同步适配通用响应结构，不改变文件交付既有外部行为。
+  6. 新增 `dlv007_api_delivery_db.rs`，覆盖 `API_SUB` 与 `API_PPU` 的 DB smoke；`packages/openapi/delivery.yaml` 已同步更新。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/file_delivery_commit.rs`
+  - `apps/platform-core/src/modules/delivery/repo/file_delivery_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/api_delivery_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv007_api_delivery_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv007_api_delivery_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8100 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入临时 `API_SUB` 订单与 `api_endpoint` 对象，执行 `curl POST /api/v1/orders/{id}/deliver`（`branch=api`），再回查 `core.application / delivery.api_credential / delivery.delivery_record / trade.order_main / audit.audit_event`，最后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv007_api_delivery_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`172 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：`POST /api/v1/orders/{id}/deliver` 返回 `HTTP 200`，摘要为 `api | api_key_issued | platform_proxy | ****505796`。
+  - DB 回查通过：
+    - `core.application`：已创建/绑定买方应用，`metadata.rate_limit_profile={"burst":20,"concurrency":5,"requests_per_minute":80}`。
+    - `delivery.api_credential`：`active | platform_proxy | subscription`。
+    - `delivery.delivery_record`：`committed | api_access | platform_proxy | api-sub-receipt-*`。
+    - `trade.order_main`：`api_key_issued | in_progress | not_started | pending_settlement`。
+    - 审计：`delivery.api.enable=1`、`trade.order.api_sub.transition=1`。
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.4.1A（API 应用绑定、Key 签发、配额与限流）
+  - `页面说明书-V1` 7.2（应用绑定、API Key、配额、限流与调用摘要）
+  - `数据对象产品族与交付模式增强设计` 3.2（API / 服务类交付对象与 `api_endpoint`）
+  - `权限设计` 接口权限校验清单 / 角色矩阵 / 后端鉴权规则（`delivery.api.enable`、tenant + order + 交付对象匹配）
+- 覆盖的任务清单条目：`DLV-007`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
