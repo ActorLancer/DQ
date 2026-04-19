@@ -4,6 +4,7 @@ mod download_file_repository;
 mod download_ticket_repository;
 mod file_delivery_repository;
 mod query_surface_repository;
+mod query_template_repository;
 mod revision_subscription_repository;
 mod share_grant_repository;
 mod storage_gateway_repository;
@@ -18,6 +19,7 @@ pub use download_ticket_repository::{
 };
 pub use file_delivery_repository::commit_file_delivery;
 pub use query_surface_repository::manage_query_surface;
+pub use query_template_repository::manage_query_template;
 pub use revision_subscription_repository::{
     get_revision_subscription, manage_revision_subscription,
 };

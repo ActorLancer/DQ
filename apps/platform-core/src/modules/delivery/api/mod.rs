@@ -10,7 +10,8 @@ use download_middleware::validate_download_ticket_middleware;
 pub use handlers::{
     commit_order_delivery_api, download_file_api, get_api_usage_log_api,
     get_revision_subscription_api, get_share_grants_api, issue_download_ticket_api,
-    manage_query_surface_api, manage_revision_subscription_api, manage_share_grant_api,
+    manage_query_surface_api, manage_query_template_api, manage_revision_subscription_api,
+    manage_share_grant_api,
 };
 
 pub fn router() -> Router<AppState> {
@@ -40,5 +41,9 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/products/{id}/query-surfaces",
             post(manage_query_surface_api),
+        )
+        .route(
+            "/api/v1/query-surfaces/{id}/templates",
+            post(manage_query_template_api),
         )
 }

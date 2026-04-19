@@ -10,7 +10,8 @@ info:
     FILE_SUB revision-subscription manage/read APIs; DLV-006 adds SHARE_RO
     share-grant manage/read APIs; DLV-007 adds API delivery enablement; DLV-008
     adds API usage-log read APIs; DLV-009 adds QuerySurface management for
-    product-scoped query execution configuration.
+    product-scoped query execution configuration; DLV-010 adds QueryTemplate
+    version management for a controlled query surface.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -264,6 +265,38 @@ paths:
           description: Product not found
         '409':
           description: Asset version, environment, read scope, or output boundary is invalid
+  /api/v1/query-surfaces/{id}/templates:
+    post:
+      summary: Create or update a QueryTemplate version for a QuerySurface
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageQueryTemplateRequest'
+      responses:
+        '200':
+          description: QueryTemplate version created or updated for the QuerySurface
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageQueryTemplateResponseEnvelope'
+        '400':
+          description: Invalid schema, status, or version payload
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: QuerySurface not found
+        '409':
+          description: QuerySurface scope, whitelist field, analysis rule, or export policy is invalid
 components:
   schemas:
     ManageQuerySurfaceRequest:
@@ -384,6 +417,134 @@ components:
         quota_policy_json:
           type: object
           additionalProperties: true
+        status:
+          type: string
+        operation:
+          type: string
+          enum: [created, updated]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ManageQueryTemplateRequest:
+      type: object
+      properties:
+        query_template_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_name:
+          type: string
+          nullable: true
+        template_type:
+          type: string
+          nullable: true
+        template_body_ref:
+          type: string
+          nullable: true
+        version_no:
+          type: integer
+          format: int32
+          nullable: true
+        parameter_schema_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        analysis_rule_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        result_schema_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        export_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        risk_guard_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        whitelist_fields:
+          type: array
+          nullable: true
+          items:
+            type: string
+        status:
+          type: string
+          enum: [draft, active, disabled]
+          nullable: true
+    ManageQueryTemplateResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageQueryTemplateResponse'
+    ManageQueryTemplateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QueryTemplateResponseData'
+    QueryTemplateResponseData:
+      type: object
+      required:
+        - query_template_id
+        - query_surface_id
+        - template_name
+        - template_type
+        - version_no
+        - parameter_schema_json
+        - analysis_rule_json
+        - result_schema_json
+        - export_policy_json
+        - risk_guard_json
+        - whitelist_fields
+        - status
+        - operation
+        - created_at
+        - updated_at
+      properties:
+        query_template_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        template_name:
+          type: string
+        template_type:
+          type: string
+        template_body_ref:
+          type: string
+          nullable: true
+        version_no:
+          type: integer
+          format: int32
+        parameter_schema_json:
+          type: object
+          additionalProperties: true
+        analysis_rule_json:
+          type: object
+          additionalProperties: true
+        result_schema_json:
+          type: object
+          additionalProperties: true
+        export_policy_json:
+          type: object
+          additionalProperties: true
+        risk_guard_json:
+          type: object
+          additionalProperties: true
+        whitelist_fields:
+          type: array
+          items:
+            type: string
         status:
           type: string
         operation:

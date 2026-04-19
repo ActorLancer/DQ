@@ -3398,3 +3398,112 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-152（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-010
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-010` 目标为 `POST /api/v1/query-surfaces/{id}/templates`，支持模板版本、参数 schema、输出 schema、白名单字段。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：复核 `DLV-010` 是 QuerySurface 之后的模板配置落点，要求接口、DTO、权限、审计、错误码与最小测试齐备。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地 commit”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务顺序、冻结文档先行、实现后必须做真实 API 联调与 DB 回查。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 `BATCH-151`，先登记本批计划中。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：查询模板属于受控执行面的一部分，必须与 QuerySurface/授权/审计联动，不允许自由 SQL。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：模板定义归属 Delivery，但会引用 Catalog 的 QuerySurface 真值。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结表已列出 `POST /api/v1/query-surfaces/{id}/templates`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批先落数据库真值与审计，不提前引入额外异步桥接。
+  12. `docs/开发准备/统一错误码字典正式版.md`：模板配置冲突/权限/内部错误继续沿用统一错误结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批需要最小 DB smoke + 真实 API 联调 + 数据库回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：模板接口继续落在 `delivery/api|dto|repo|tests`。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批联调继续使用 `datab-postgres` 与本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用本地环境变量与固定 DSN/端口口径。
+  17. `docs/开发准备/技术选型正式版.md`：沿用当前 `SQLx + SeaORM` 数据访问基线，不回退旧实现。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模板定义必须冻结参数 schema、输出 schema、分析规则与导出策略。
+- 当前任务额外引用的 `technical_reference` 与约束映射：
+  - `docs/原始PRD/数据商品查询与执行面设计.md:L35`：`QueryTemplate` 必须表达模板名称与版本、参数定义、analysis rule/风险限制、输出结果 schema、可导出边界、风险规则与审计要求。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L668`：查询面与模板配置页核心模块包含“模板版本列表、参数 schema 配置、analysis rule 摘要、输出边界与导出策略、模板审核状态”。
+  - `docs/数据库设计/V1/upgrade/065_query_execution_plane.sql:L1`：`delivery.query_template_definition` 已冻结字段为 `query_surface_id / template_name / template_type / template_body_ref / parameter_schema_json / analysis_rule_json / result_schema_json / export_policy_json / risk_guard_json / status / version_no`。
+- 当前批次目标：实现 `POST /api/v1/query-surfaces/{id}/templates`，完成 QueryTemplate 的创建/维护、参数/输出 schema 冻结、白名单字段和导出策略校验，并落审计。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv010_query_template_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST /api/v1/query-surfaces/{id}/templates` 联调，回查 `delivery.query_template_definition / audit.audit_event` 后清理业务数据。
+
+### BATCH-152（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-010
+- 当前批次目标：实现 `POST /api/v1/query-surfaces/{id}/templates`，完成 QueryTemplate 的创建/维护、参数/输出 schema 冻结、白名单字段和导出策略校验，并落审计。
+- 前置依赖核对结果：`TRADE-003; TRADE-007; DB-006; DB-019; DB-020; CORE-008` 已完成且审批通过；`DLV-009` 已完成并本地提交。
+- 已实现功能：
+  1. 新增 QueryTemplate 接口 `POST /api/v1/query-surfaces/{id}/templates`，接入 `delivery.query_template.manage` 权限。
+  2. 新增 DTO：`ManageQueryTemplateRequest/Response` 与 `QueryTemplateResponseData`。
+  3. 新增仓储 `manage_query_template(...)`，落库 `delivery.query_template_definition`。
+  4. 支持模板版本策略：
+     - 首次创建默认 `version_no=1`
+     - 同名模板未显式给定版本时自动按 `max(version_no)+1` 创建新版本
+     - 传入 `query_template_id` 时只允许更新既有版本，不允许改写版本号
+  5. 落地参数 schema / 输出 schema / analysis rule / export policy / risk guard 五类冻结 JSON 字段。
+  6. 落地白名单字段校验：去重、非空、必须命中 `result_schema_json.properties|fields` 声明，并同步回填到 `analysis_rule_json.whitelist_fields` 与 `export_policy_json.whitelist_fields`。
+  7. 拒绝 `allow_raw_export=true`、拒绝 raw 导出格式、拒绝 `free_sql`、拒绝 `risk_mode=bypass`。
+  8. 维持 QuerySurface / 卖方主体 / 资产版本 / tenant scope 联动校验，审计动作 `delivery.query_template.manage`。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/query_template.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/query_template_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv010_query_template_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv010_query_template_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8103 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入临时卖方/资产/商品/执行环境/QuerySurface 数据，执行真实 `curl POST /api/v1/query-surfaces/{id}/templates` 联调（创建 v1、创建 v2、更新 v2、非法白名单），回查 `delivery.query_template_definition / audit.audit_event` 后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv010_query_template_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`175 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - 创建 v1：`HTTP 200`，`operation=created`，`version_no=1`
+    - 创建 v2：`HTTP 200`，`operation=created`，`version_no=2`
+    - 更新 v2：`HTTP 200`，`operation=updated`，`version_no=2`，`whitelist_fields=["city","total_amount","confidence"]`
+    - 非法白名单：`HTTP 409`，`QUERY_TEMPLATE_MANAGE_FORBIDDEN: whitelist field \`missing_field\` is not declared in result_schema_json`
+  - DB 回查通过：
+    - `delivery.query_template_definition`：同名模板存在 2 个版本；最新 `template_body_ref` 为 patch 后版本；`analysis_rule_json/export_policy_json.whitelist_fields` 已同步写入。
+    - 审计：`delivery.query_template.manage=3`，对应 `created/created/updated`。
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `数据商品查询与执行面设计` 3 / 5 / 11（QueryTemplate 核心对象、V1 闭环、数据库落点）
+  - `页面说明书-V1` 7.6（模板版本列表、参数 schema、analysis rule、输出边界、模板审核状态）
+  - `065_query_execution_plane.sql`（`delivery.query_template_definition` 字段冻结）
+  - `权限设计` 接口权限校验清单 / 角色矩阵 / 鉴权规则（`delivery.query_template.manage`、QuerySurface 作用域、参数 schema / analysis / 导出策略 / 审计链）
+- 覆盖的任务清单条目：`DLV-010`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
