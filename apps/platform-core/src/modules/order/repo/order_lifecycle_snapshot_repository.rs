@@ -1,6 +1,7 @@
 use crate::modules::authorization::domain::{
     build_authorization_model_snapshot, extract_or_build_authorization_model,
 };
+use crate::modules::delivery::repo::load_storage_gateway_snapshots;
 use crate::modules::order::dto::{
     AcceptanceLifecycleSnapshot, AuthorizationLifecycleSnapshot, ContractLifecycleSnapshot,
     DeliveryLifecycleSnapshot, DisputeLifecycleSnapshot, GetOrderLifecycleSnapshotsResponseData,
@@ -203,6 +204,7 @@ async fn load_delivery_snapshot(
     client: &Client,
     order_id: &str,
 ) -> Result<Option<DeliveryLifecycleSnapshot>, (StatusCode, Json<ErrorResponse>)> {
+    let gateway_snapshots = load_storage_gateway_snapshots(client, order_id).await?;
     let row = client
         .query_opt(
             "SELECT
@@ -224,8 +226,10 @@ async fn load_delivery_snapshot(
         .map_err(map_db_error)?;
 
     row.map(|row| {
+        let delivery_id: String = row.get(0);
         Ok(DeliveryLifecycleSnapshot {
-            delivery_id: row.get(0),
+            storage_gateway: gateway_snapshots.get(&delivery_id).cloned(),
+            delivery_id,
             delivery_type: row.get(1),
             delivery_route: row.get(2),
             current_status: row.get(3),

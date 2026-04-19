@@ -1,0 +1,136 @@
+openapi: 3.1.0
+info:
+  title: DataB Delivery API
+  version: 1.0.0
+  description: >-
+    Delivery / storage-gateway domain baseline for V1. DLV-001 freezes shared
+    object locator, integrity, watermark, download restriction and access audit
+    schemas that will be referenced by subsequent delivery endpoints.
+servers:
+  - url: http://127.0.0.1:8080
+paths: {}
+components:
+  schemas:
+    StorageGatewaySnapshot:
+      type: object
+      required: [integrity, watermark_policy, access_audit]
+      properties:
+        object_locator:
+          $ref: '#/components/schemas/StorageGatewayObjectLocator'
+        integrity:
+          $ref: '#/components/schemas/StorageGatewayIntegrity'
+        watermark_policy:
+          $ref: '#/components/schemas/StorageGatewayWatermarkPolicy'
+        download_restriction:
+          $ref: '#/components/schemas/StorageGatewayDownloadRestriction'
+        access_audit:
+          $ref: '#/components/schemas/StorageGatewayAccessAudit'
+    StorageGatewayObjectLocator:
+      type: object
+      required: [object_id, object_uri, location_type, storage_zone, plaintext_visible_to_platform]
+      properties:
+        object_id:
+          type: string
+          format: uuid
+        object_uri:
+          type: string
+        bucket_name:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        location_type:
+          type: string
+        storage_zone:
+          type: string
+        provider_type:
+          type: string
+          nullable: true
+        namespace_name:
+          type: string
+          nullable: true
+        namespace_kind:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          format: int64
+          nullable: true
+        plaintext_visible_to_platform:
+          type: boolean
+    StorageGatewayIntegrity:
+      type: object
+      required: []
+      properties:
+        content_hash:
+          type: string
+          nullable: true
+        encryption_algo:
+          type: string
+          nullable: true
+        delivery_commit_hash:
+          type: string
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        envelope_id:
+          type: string
+          format: uuid
+          nullable: true
+    StorageGatewayWatermarkPolicy:
+      type: object
+      required: [mode, rule, fingerprint_fields, sensitive_delivery_mode, disclosure_review_status]
+      properties:
+        mode:
+          type: string
+        rule:
+          type: object
+          additionalProperties: true
+        fingerprint_fields:
+          type: array
+          items:
+            type: string
+        watermark_hash:
+          type: string
+          nullable: true
+        sensitive_delivery_mode:
+          type: string
+        disclosure_review_status:
+          type: string
+    StorageGatewayDownloadRestriction:
+      type: object
+      required: [ticket_id, expire_at, download_limit, download_count, remaining_downloads, current_status]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+        expire_at:
+          type: string
+          format: date-time
+        download_limit:
+          type: integer
+        download_count:
+          type: integer
+        remaining_downloads:
+          type: integer
+        current_status:
+          type: string
+    StorageGatewayAccessAudit:
+      type: object
+      required: [access_count]
+      properties:
+        access_count:
+          type: integer
+          format: int64
+        last_downloaded_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_client_fingerprint:
+          type: string
+          nullable: true

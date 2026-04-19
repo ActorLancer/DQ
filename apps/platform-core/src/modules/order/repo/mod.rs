@@ -12,6 +12,6 @@ pub use command::{
     transition_order_authorization, transition_qry_lite_order, transition_rpt_std_order,
     transition_sbx_std_order, transition_share_ro_order,
 };
-pub use pre_request_repository::{insert_trade_pre_request, load_trade_pre_request};
+pub use pre_request_repository::{insert_trade_pre_request, load_trade_pre_request, map_db_error};
 pub use query::{load_order_detail, load_order_lifecycle_snapshots, load_order_relations};
 pub use shared::audit::write_trade_audit_event;

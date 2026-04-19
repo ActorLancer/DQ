@@ -2420,3 +2420,109 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
 
+
+### BATCH-143（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-001
+- 当前批次目标：实现 `storage-gateway` 领域模型，冻结对象定位、bucket/key、hash、watermark 策略、下载限制、访问审计，并接入现有订单只读聚合供后续文件交付链路复用。
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-006`、`DB-019`、`DB-020`、`CORE-008` 已完成且审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-001` 为当前起始任务，交付要求落在 `modules/delivery/**`、`modules/storage/**`、`packages/openapi/delivery.yaml`，DoD 要求业务规则、状态机、审计、事件与测试齐备。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版条目与 CSV 一致，当前任务只冻结 `storage-gateway` 领域模型，不提前宣称 `deliver/download-ticket` 路由完成。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地提交”执行，但本阶段按你的新规则连续推进下一个 DLV task。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单 task 实施，不合并多 task；代码组织优先模块化，不把交付逻辑塞回 `order` 大文件。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批先登记计划中，完成后补待审批记录。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001` 审计说明。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：按当前约定只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `storage-gateway` 是 V1 核心服务；文件类交付主流程要求对象上传、key_envelope、delivery_ticket、delivery_commit_hash、下载验真与审计联动。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认交付/对象存储边界在 `delivery/storage-gateway`，订单服务只保留主状态与聚合编排职责。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结的交付接口从 `POST /api/v1/orders/{id}/deliver`、`GET /api/v1/orders/{id}/download-ticket` 起步；本任务先补领域模型和 OpenAPI 基线文件，不发明额外路径。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：交付域后续事件仍须走 `outbox -> Kafka`，不能把 Kafka 当业务真值；本任务需为后续交付事件留稳定聚合结构。
+  12. `docs/开发准备/统一错误码字典正式版.md`：继续沿用现有 `TRD_STATE_CONFLICT` / 统一错误响应结构，不额外发明偏离字典的新格式。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：当前任务至少需要一条集成测试或手工 API 验证，并保留审计/日志证据；本阶段额外执行 curl、联调和 DB 回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：交付能力独立组织在 `modules/delivery` 与 `modules/storage`，避免继续堆积到 `order` 模块。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：DLV 阶段联调使用 `datab-postgres`、`datab-minio`、`datab-redis`、`datab-kafka`；文件/对象类交付必须实际接入 MinIO。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用 `DATABASE_URL`、`MINIO_ENDPOINT`、bucket 环境变量、Kafka topic 配置和 Redis 本地口径，不另起一套配置命名。
+  17. `docs/开发准备/技术选型正式版.md`：维持 Rust + Axum + PostgreSQL + MinIO/S3-compatible + Redis + Kafka/outbox 技术基线。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体边界，交付模型通过独立模块对订单读聚合提供能力，不反向侵入订单主状态机职责。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L709`：`Delivery`、`StorageObject`、`DeliveryTicket`、`KeyEnvelope` 是交付聚合的核心对象，订单对交付是 `1 -> N` 关系，需在领域模型中稳定表达对象、票据和访问痕迹。
+  2. `docs/业务流程/业务流程图-V1-完整版.md:L270`：文件类交付流程要求对象上传、key_envelope、delivery_ticket、download_limit/expire_at、delivery_commit_hash、下载验真与回执链路完整衔接。
+  3. `docs/页面说明书/页面说明书-V1-完整版.md:L590`：文件交付页核心模块是对象上传区、密钥封装状态、下载令牌状态、交付回执列表和 Hash 校验提示；本任务输出的领域模型需覆盖这些页面对象。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/**`
+  - `apps/platform-core/src/modules/storage/**`
+  - `apps/platform-core/src/modules/order/dto/order_relations.rs`
+  - `apps/platform-core/src/modules/order/dto/order_lifecycle_snapshot.rs`
+  - `apps/platform-core/src/modules/order/repo/order_relation_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_lifecycle_snapshot_repository.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv001_storage_gateway_db_smoke -- --nocapture`
+  7. 启动服务：`APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `mc`/MinIO 写入临时对象、`psql` 写入交付记录与票据、`curl GET /api/v1/orders/{id}` / `curl GET /api/v1/orders/{id}/lifecycle-snapshots` 联调，再回查 `audit.audit_event` 与清理临时业务数据。
+
+### BATCH-143（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-001
+- 当前批次目标：实现 `storage-gateway` 领域模型，冻结对象定位、bucket/key、hash、watermark 策略、下载限制、访问审计，并接入现有订单只读聚合供后续文件交付链路复用。
+- 已实现功能：
+  1. 新增 `modules/storage`，落地 `object_uri -> bucket/key` 解析，支持 `s3://bucket/key`、HTTP bucket 前缀与相对路径回退。
+  2. 新增 `modules/delivery` 领域快照 `StorageGatewaySnapshot`，覆盖对象定位、完整性、watermark 策略、下载限制、访问审计。
+  3. 新增 `load_storage_gateway_snapshots(order_id)`，从 `delivery.delivery_record / storage_object / key_envelope / delivery_ticket / delivery_receipt / catalog.storage_namespace` 聚合交付存储视图。
+  4. 将 `storage_gateway` 接入 `GET /api/v1/orders/{id}` 与 `GET /api/v1/orders/{id}/lifecycle-snapshots` 的交付聚合输出。
+  5. 新增 `delivery.storage_gateway.read` 审计写入，修正 append-only 审计表不能 `UPDATE` 的口径，改为直接 `INSERT`。
+  6. 新增 `packages/openapi/delivery.yaml` 基线，并更新 `packages/openapi/trade.yaml`、`docs/02-openapi/trade.yaml` 的订单交付聚合 schema。
+  7. 新增 `DLV-001` 专项 DB smoke，覆盖订单详情、生命周期快照、审计回查。
+- 涉及文件：
+  - `apps/platform-core/src/modules/storage/**`
+  - `apps/platform-core/src/modules/delivery/**`
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/dto/order_relations.rs`
+  - `apps/platform-core/src/modules/order/dto/order_lifecycle_snapshot.rs`
+  - `apps/platform-core/src/modules/order/repo/order_relation_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_lifecycle_snapshot_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `packages/openapi/trade.yaml`
+  - `docs/02-openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv001_storage_gateway_db_smoke -- --nocapture`
+  7. `./infra/minio/init-minio.sh`
+  8. 启动服务：`APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  9. 使用真实 MinIO 对象 + `psql` 临时业务数据，`curl GET /api/v1/orders/{id}`、`curl GET /api/v1/orders/{id}/lifecycle-snapshots` 联调，回查 `audit.audit_event` 并清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`166 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；根目录 `.sqlx` 已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - `dlv001_storage_gateway_db_smoke`：通过。
+  - 真实 API 联调通过：
+    - `GET /api/v1/orders/{id}`：`HTTP 200`，返回 `storage_gateway.object_locator.bucket_name=delivery-objects`、`object_key=orders/{suffix}/payload.enc`、`remaining_downloads=3`、`access_count=2`。
+    - `GET /api/v1/orders/{id}/lifecycle-snapshots`：`HTTP 200`，返回相同 `storage_gateway.object_locator.bucket_name=delivery-objects`。
+  - MinIO 实体联动通过：真实对象已上传并 `mc stat` 成功，DB 中 `delivery.storage_object.object_uri` 与对象路径一致。
+  - 审计回查：`delivery.storage_gateway.read` 命中 `2` 条（订单详情 + 生命周期快照）。
+  - 清理结果：临时业务数据与 MinIO 测试对象已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.5（交付与执行聚合）
+  - `业务流程图-V1` 4.4.1（文件类交付）
+  - `页面说明书-V1` 7.1（文件交付页）
+- 覆盖的任务清单条目：`DLV-001`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

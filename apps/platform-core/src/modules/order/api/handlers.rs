@@ -1,4 +1,5 @@
 use crate::AppState;
+use crate::modules::delivery::repo::write_storage_gateway_read_audit;
 use crate::modules::order::dto::{
     ApiPpuTransitionRequest, ApiPpuTransitionResponse, ApiSubTransitionRequest,
     ApiSubTransitionResponse, CancelOrderResponse, ConfirmOrderContractRequest,
@@ -141,6 +142,22 @@ pub async fn get_order_detail_api(
         header(&headers, "x-trace-id").as_deref(),
     )
     .await?;
+    for delivery in order
+        .relations
+        .deliveries
+        .iter()
+        .filter(|item| item.storage_gateway.is_some())
+    {
+        write_storage_gateway_read_audit(
+            &client,
+            &delivery.delivery_id,
+            &order.order_id,
+            &actor_role,
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+    }
     info!(
         action = "trade.order.read",
         order_id = %order.order_id,
@@ -193,6 +210,21 @@ pub async fn get_order_lifecycle_snapshots_api(
         header(&headers, "x-trace-id").as_deref(),
     )
     .await?;
+    if let Some(delivery) = snapshot
+        .delivery
+        .as_ref()
+        .filter(|item| item.storage_gateway.is_some())
+    {
+        write_storage_gateway_read_audit(
+            &client,
+            &delivery.delivery_id,
+            &snapshot.order.order_id,
+            &actor_role,
+            header(&headers, "x-request-id").as_deref(),
+            header(&headers, "x-trace-id").as_deref(),
+        )
+        .await?;
+    }
     info!(
         action = "trade.order.lifecycle_snapshots.read",
         order_id = %snapshot.order.order_id,

@@ -21,6 +21,7 @@ pub mod provider_ops;
 pub mod recommendation;
 pub mod review;
 pub mod search;
+pub mod storage;
 
 #[cfg(test)]
 mod tests {

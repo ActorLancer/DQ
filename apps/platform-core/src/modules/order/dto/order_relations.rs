@@ -1,4 +1,5 @@
 use crate::modules::authorization::domain::AuthorizationModelSnapshot;
+use crate::modules::delivery::domain::StorageGatewaySnapshot;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -48,6 +49,7 @@ pub struct OrderDeliveryRelation {
     pub receipt_hash: Option<String>,
     pub committed_at: Option<String>,
     pub expires_at: Option<String>,
+    pub storage_gateway: Option<StorageGatewaySnapshot>,
     pub updated_at: String,
 }
 

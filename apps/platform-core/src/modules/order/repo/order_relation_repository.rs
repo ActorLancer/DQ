@@ -1,6 +1,7 @@
 use crate::modules::authorization::domain::{
     build_authorization_model_snapshot, extract_or_build_authorization_model,
 };
+use crate::modules::delivery::repo::load_storage_gateway_snapshots;
 use crate::modules::order::dto::{
     OrderAuthorizationRelation, OrderBillingEventRelation, OrderBillingRelations,
     OrderCompensationRelation, OrderContractRelation, OrderDeliveryRelation, OrderDisputeRelation,
@@ -145,6 +146,7 @@ async fn load_delivery_relations(
     client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderDeliveryRelation>, (StatusCode, Json<ErrorResponse>)> {
+    let gateway_snapshots = load_storage_gateway_snapshots(client, order_id).await?;
     let rows = client
         .query(
             "SELECT
@@ -167,16 +169,20 @@ async fn load_delivery_relations(
 
     Ok(rows
         .into_iter()
-        .map(|row| OrderDeliveryRelation {
-            delivery_id: row.get(0),
-            delivery_type: row.get(1),
-            delivery_route: row.get(2),
-            current_status: row.get(3),
-            delivery_commit_hash: row.get(4),
-            receipt_hash: row.get(5),
-            committed_at: row.get(6),
-            expires_at: row.get(7),
-            updated_at: row.get(8),
+        .map(|row| {
+            let delivery_id: String = row.get(0);
+            OrderDeliveryRelation {
+                storage_gateway: gateway_snapshots.get(&delivery_id).cloned(),
+                delivery_id,
+                delivery_type: row.get(1),
+                delivery_route: row.get(2),
+                current_status: row.get(3),
+                delivery_commit_hash: row.get(4),
+                receipt_hash: row.get(5),
+                committed_at: row.get(6),
+                expires_at: row.get(7),
+                updated_at: row.get(8),
+            }
         })
         .collect())
 }
