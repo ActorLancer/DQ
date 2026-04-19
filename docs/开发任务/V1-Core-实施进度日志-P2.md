@@ -931,6 +931,36 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
 
+### BATCH-136（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-027
+- 当前批次目标：为主交易链路补充集成测试，覆盖下单、合同确认、锁资前校验、非法状态跳转、自动断权。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-026` 已审批通过。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-027` 验收要求是主链路集成测试，不是新增业务能力。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认需覆盖五类关键节点：下单、合同确认、锁资前校验、非法状态跳转、自动断权。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务批次执行“计划中 -> 编码 -> 完整验证 -> 待审批”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：只做当前任务，不跨任务扩展。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 P2 主线批次审计格式。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束不变。
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L620`：订单聚合必须贯穿完整交易主链路。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：主链路至少包含合同、锁定、交付/授权等关键步骤。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L204`：买方搜索、选购与下单流程要求形成从发现到交易推进的可验证链路。
+- technical_reference 约束映射：
+  1. `领域模型/全量领域模型与对象关系说明.md` 4.4：订单聚合是完整交易实例，集成测试应覆盖状态推进与关联对象。
+  2. `全集成文档/数据交易平台-全集成基线-V1.md` 15：主链路需覆盖合同、付款锁定、授权/交付关键节点。
+  3. `业务流程图-V1-完整版.md` 4.3：买方选购、下单、后续交易动作需可串联验证。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/order/tests/*`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade027_main_trade_flow_db_smoke -- --nocapture`
+  4. 启动服务：`APP_PORT=8085 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `curl` 真实联调覆盖：下单、合同确认、锁资前校验阻断/成功、非法状态跳转冲突、自动断权结果与审计。
+
 ### BATCH-126（计划中）
 - 状态：计划中
 - 当前任务编号：TRADE-017
@@ -1635,6 +1665,75 @@
   - `Phase 1：最小可信交易闭环系统设计` 6.5（迁移触发源明确、互斥、幂等）
   - `全集成基线-V1` 5.3.2A（首批场景按 SKU 独立履约事实，不得被乱序回调覆盖）
 - 覆盖的任务清单条目：`TRADE-024`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-136（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-027
+- 当前批次目标：为主交易链路补齐集成测试，覆盖下单、合同确认、锁资前校验、非法状态跳转、自动断权。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-026` 已审批通过。
+- 已阅读证据：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认下一任务为 `TRADE-027`，目标是主交易链路集成测试。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认本任务关注主链路关键节点联动，不是新增业务能力。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 编码 -> 验证 -> 待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：单任务批次，不跳步骤。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 审计格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束不变。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：主交易链路需覆盖下单、合同、支付前门禁、授权、断权。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：交易主链路位于 `platform-core/order`，联动 `billing/contract/authorization`。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：不新增公开接口，复用既有交易接口完成联动测试。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本任务不新增 topic，以审计和状态落库作为验证依据。
+  12. `docs/开发准备/统一错误码字典正式版.md`：锁资前校验和非法跳转继续复用既有冲突错误码。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：需补齐主链路集成场景覆盖。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增独立 `TRADE-027` 测试文件，避免堆积进既有 smoke。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调数据库使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：复用现有 `local/mock` 配置，不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：通过 Rust 集成测试 + 本地 curl/psql 联调完成验证。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体边界，不做行为扩展。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：订单聚合需串联合同、支付、授权等关系事实。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：首批标准链路必须覆盖下单、履约、授权和异常阻断。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：买方从下单到锁资、授权、断权的顺序必须可验证。
+- 已实现功能：
+  1. 新增 `TRADE-027` 独立 DB smoke：真实串联 `POST /api/v1/orders`、`POST /contract-confirm`、`POST /file-std/transition`、`POST /authorization/transition`、`POST /share-ro/transition`。
+  2. 覆盖主链路关键断言：下单成功、合同确认成功、商品审核不通过时锁资前校验阻断、审核恢复后锁资成功、非法状态跳转被拒绝、`SHARE_RO` 订单自动断权后授权状态变为 `expired`。
+  3. 覆盖审计断言：`trade.order.create`、`trade.contract.confirm`、`trade.order.file_std.transition`、`trade.authorization.auto_cutoff.expired`。
+  4. 修正 smoke 清理顺序，先删 `trade.order_main` 再删 `contract.digital_contract`，避免 `order_main_contract_id_fkey` 留存测试业务数据。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/tests/trade027_main_trade_flow_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade027_main_trade_flow_db_smoke -- --nocapture`
+  4. 启动服务：`APP_PORT=8085 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `psql` 写入临时 `FILE_STD` / `SHARE_RO` 业务数据。
+  6. `curl` 依次验证下单、合同确认、锁资前阻断/成功、非法状态跳转、授权发放、自动断权。
+  7. `psql` 回查 `trade.order_main`、`trade.authorization_grant`、`audit.audit_event`。
+  8. 清理临时业务测试数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`149 passed, 0 failed, 1 ignored`）。
+  - `trade027_main_trade_flow_db_smoke`：通过。
+  - 真实 API 联调：
+    - `POST /api/v1/orders` 返回 `HTTP 200`。
+    - `POST /api/v1/orders/{id}/contract-confirm` 返回 `HTTP 200`，`signature_provider_mode=mock`。
+    - 商品 `review_status=rejected` 时，`POST /file-std/transition` 返回 `409 ORDER_PRE_LOCK_CHECK_FAILED: product review status is not approved`。
+    - 商品恢复 `approved` 后，`POST /file-std/transition` 返回 `HTTP 200`，`current_state=buyer_locked`。
+    - 非法 `close_completed` 跳转返回 `409 FILE_STD_TRANSITION_FORBIDDEN`。
+    - `POST /authorization/transition` 返回 `HTTP 200`；`POST /share-ro/transition action=expire_share` 返回 `HTTP 200`。
+  - DB 回查：`trade.order_main` 文件订单状态为 `buyer_locked / paid`；`trade.authorization_grant` 最新状态为 `expired`；审计命中 `trade.order.create=1`、`trade.contract.confirm=1`、`trade.order.file_std.transition=1`、`trade.authorization.auto_cutoff.expired=1`。
+  - 清理结果：临时业务测试数据已清理；验证回查结果为 `order_main=0 | digital_contract=0 | organization=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.4（订单聚合关系与主链路事实）
+  - `全集成基线-V1` 15（核心交易链路设计）
+  - `业务流程图-V1` 4.3（买方搜索、选购与下单流程）
+- 覆盖的任务清单条目：`TRADE-027`
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
