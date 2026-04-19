@@ -13,6 +13,7 @@ mod trade012_share_ro_state_machine_db;
 mod trade013_qry_lite_state_machine_db;
 mod trade014_sbx_std_state_machine_db;
 mod trade015_rpt_std_state_machine_db;
+mod trade016_digital_contract_aggregate_db;
 
 #[cfg(test)]
 mod tests {

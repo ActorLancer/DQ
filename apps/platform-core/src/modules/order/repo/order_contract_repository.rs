@@ -83,40 +83,58 @@ pub async fn confirm_order_contract(
             "INSERT INTO contract.digital_contract (
                order_id,
                contract_template_id,
+               data_contract_id,
                contract_digest,
+               data_contract_digest,
                status,
                signed_at,
                variables_json
              ) VALUES (
                $1::text::uuid,
                $2::text::uuid,
-               $3,
+               $3::text::uuid,
+               $4,
+               $5,
                'signed',
                now(),
-               $4::jsonb
+               $6::jsonb
              )
              ON CONFLICT (order_id) DO UPDATE
              SET contract_template_id = EXCLUDED.contract_template_id,
+                 data_contract_id = EXCLUDED.data_contract_id,
                  contract_digest = EXCLUDED.contract_digest,
+                 data_contract_digest = EXCLUDED.data_contract_digest,
                  status = 'signed',
                  signed_at = now(),
                  variables_json = EXCLUDED.variables_json
              RETURNING
                contract_id::text,
+               contract_template_id::text,
+               contract_digest,
+               data_contract_id::text,
+               data_contract_digest,
                status,
-               to_char(signed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+               to_char(signed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               variables_json",
             &[
                 &order_id,
                 &payload.contract_template_id,
+                &payload.data_contract_id,
                 &payload.contract_digest,
+                &payload.data_contract_digest,
                 &payload.variables_json,
             ],
         )
         .await
         .map_err(map_db_error)?;
     let contract_id: String = upserted.get(0);
-    let contract_status: String = upserted.get(1);
-    let signed_at: String = upserted.get(2);
+    let contract_template_id: String = upserted.get(1);
+    let contract_digest: String = upserted.get(2);
+    let data_contract_id: Option<String> = upserted.get(3);
+    let data_contract_digest: Option<String> = upserted.get(4);
+    let contract_status: String = upserted.get(5);
+    let signed_at: String = upserted.get(6);
+    let variables_json: serde_json::Value = upserted.get(7);
 
     let signer_exists = tx
         .query_opt(
@@ -203,9 +221,17 @@ pub async fn confirm_order_contract(
     Ok(ConfirmOrderContractResponseData {
         order_id: order_id.to_string(),
         contract_id,
+        contract_template_id,
+        contract_digest: contract_digest.clone(),
+        data_contract_id,
+        data_contract_digest,
         contract_status,
         order_status,
+        signer_id: signer_id.to_string(),
+        signer_type: "user".to_string(),
         signer_role: payload.signer_role.clone(),
         signed_at,
+        variables_json,
+        onchain_digest_ref: contract_digest,
     })
 }

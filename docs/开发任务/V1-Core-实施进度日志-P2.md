@@ -615,12 +615,6 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按你的约定由你手工维护，本批未写入。
 
-### BATCH-124（计划中）
-- 状态：计划中
-- 当前任务编号：TRADE-015
-- 当前批次目标：实现报告产品状态机 `RPT_STD`：任务建立、报告生成、报告交付、验收、结算，并补齐权限、审计、OpenAPI、测试与 API 联调闭环。
-- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-014` 已审批通过。
-
 ### BATCH-124（待审批）
 - 状态：待审批
 - 当前任务编号：TRADE-015
@@ -697,3 +691,81 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按你的约定由你手工维护，本批未写入。
+
+### BATCH-125（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-016
+- 当前批次目标：实现数字合约聚合：合同模板、合同快照、签署状态、签约主体、签署时间、摘要上链引用。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-015` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-016` 描述、DoD、验收与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认 `TRADE-016` 详细语义与顺序执行要求。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：执行“计划中→编码→验证→待审批”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：遵循单任务批次与不可跳步。
+  5. `docs/开发任务/V1-Core-实施进度日志.md`：路径不存在，按当前约定在 `V1-Core-实施进度日志-P2.md` 记录。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：确认 TODO 追溯与 `TODO-PROC-BIL-001` 约束。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认交易链第 15 章、合同聚合职责与摘要上链口径。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认交易编排在 `platform-core`。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认 `/api/v1/orders/{id}/contract-confirm` 契约边界。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认交易审计留痕边界。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED`。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：对齐主交易链路的合同确认与审计可追溯要求。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：维持 dto/repo/api/tests 分层。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432` 与 core 栈容器。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：按环境变量注入 DB/Kafka。
+  17. `docs/开发准备/技术选型正式版.md`：保持 PostgreSQL 为业务真值。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持 order/contract/authorization 职责边界。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L530`：`DigitalContract` 必须体现合同快照，并绑定 `DataContract` 摘要与引用。
+  2. `docs/原始PRD/数据商品元信息与数据契约设计.md:L86`：数据契约必须独立建模，不得塞入 product metadata。
+  3. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：主交易闭环在合同阶段生成可追溯合同与策略对象。
+
+### BATCH-125（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-016
+- 当前批次目标：实现数字合约聚合：合同模板、合同快照、签署状态、签约主体、签署时间、摘要上链引用。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-015` 已审批通过。
+- 已实现功能：
+  1. 扩展合同确认请求：新增 `data_contract_id`、`data_contract_digest` 可选字段。
+  2. 扩展合同确认响应：返回 `contract_template_id`、`contract_digest`、`data_contract_id`、`data_contract_digest`、`signer_id`、`signer_type`、`variables_json`、`onchain_digest_ref`。
+  3. 扩展合同仓储事务：`contract.digital_contract` 同事务落库 `data_contract_id` 与 `data_contract_digest`，并保持签署状态/签署时间/签约主体写入。
+  4. 增加 `TRADE-016` DB smoke 测试：校验 API 响应、订单状态、数字合同聚合字段、签署人记录、审计记录。
+  5. 更新 OpenAPI：同步请求/响应 schema 与任务描述，保持路由不变。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_contract_confirm.rs`
+  - `apps/platform-core/src/modules/order/repo/order_contract_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/trade016_digital_contract_aggregate_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade016_digital_contract_aggregate_db_smoke -- --nocapture`
+  4. 启动服务：`APP_PORT=18084 DATABASE_URL=... KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+  5. `psql` 插入联调测试数据（buyer/seller/user/template/product/sku/data_contract/order）。
+  6. `curl` 调用 `POST /api/v1/orders/{id}/contract-confirm` 并校验返回聚合字段。
+  7. `psql` 回查 `trade.order_main`、`contract.digital_contract`、`contract.contract_signer`、`audit.audit_event`。
+  8. 清理临时业务数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`132 passed, 0 failed, 1 ignored`）。
+  - `trade016_digital_contract_aggregate_db_smoke`：通过（`1 passed`）。
+  - API 联调：`HTTP 200`，返回包含 `contract_template_id`、`data_contract_id`、`signer_id`、`signed_at`、`variables_json`、`onchain_digest_ref`。
+  - DB 回查：
+    - `trade.order_main.status=contract_effective`；
+    - `contract.digital_contract` 已写入 `data_contract_id`/`data_contract_digest`/`contract_digest`/`variables_json.region`；
+    - `contract.contract_signer` 命中 1 条签署记录；
+    - `audit.audit_event` 中 `trade.contract.confirm` 命中 1 条。
+  - 环境说明：服务启动需显式使用 `KAFKA_BROKERS=127.0.0.1:9094`（或同值的 `KAFKA_BOOTSTRAP_SERVERS`）以避免容器内部地址 `kafka:9092` 对主机进程不可达。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.3 合同与策略聚合（DigitalContract + DataContract 绑定）
+  - `原始PRD` 3.2 数据契约单独建模
+  - `全集成基线 V1` 15 核心交易链路（合同阶段）
+  - `数据库表字典` `contract.digital_contract`、`contract.contract_signer` 字段口径
+- 覆盖的任务清单条目：`TRADE-016`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

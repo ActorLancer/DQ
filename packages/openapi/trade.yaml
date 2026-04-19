@@ -7,6 +7,7 @@ info:
     - TRADE-001 minimal pre-order request model for RFQ / sample / POC
     - TRADE-002 order price snapshot freeze model
     - TRADE-003 order creation with product state / risk / price snapshot validation
+    - TRADE-016 digital-contract aggregate (template/snapshot/signer/anchor ref)
     - TRADE-030 payment-result transition mapping:
       - payment succeeded -> order status buyer_locked (delivery pending)
       - payment failed -> order status payment_failed_pending_resolution
@@ -613,6 +614,13 @@ components:
           format: uuid
         contract_digest:
           type: string
+        data_contract_id:
+          type: string
+          format: uuid
+          nullable: true
+        data_contract_digest:
+          type: string
+          nullable: true
         variables_json:
           type: object
           additionalProperties: true
@@ -635,10 +643,16 @@ components:
         [
           order_id,
           contract_id,
+          contract_template_id,
+          contract_digest,
           contract_status,
           order_status,
+          signer_id,
+          signer_type,
           signer_role,
           signed_at,
+          variables_json,
+          onchain_digest_ref,
         ]
       properties:
         order_id:
@@ -647,15 +661,37 @@ components:
         contract_id:
           type: string
           format: uuid
+        contract_template_id:
+          type: string
+          format: uuid
+        contract_digest:
+          type: string
+        data_contract_id:
+          type: string
+          format: uuid
+          nullable: true
+        data_contract_digest:
+          type: string
+          nullable: true
         contract_status:
           type: string
         order_status:
+          type: string
+        signer_id:
+          type: string
+          format: uuid
+        signer_type:
           type: string
         signer_role:
           type: string
         signed_at:
           type: string
           format: date-time
+        variables_json:
+          type: object
+          additionalProperties: true
+        onchain_digest_ref:
+          type: string
     FileStdTransitionRequest:
       type: object
       required: [action]
