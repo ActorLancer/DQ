@@ -31,7 +31,9 @@ pub use query_template::{
     ManageQueryTemplateRequest, ManageQueryTemplateResponse, QueryTemplateResponseData,
 };
 pub use sandbox_workspace::{
-    ManageSandboxWorkspaceRequest, ManageSandboxWorkspaceResponse, SandboxWorkspaceResponseData,
+    ManageSandboxWorkspaceRequest, ManageSandboxWorkspaceResponse, SandboxAttestationRefModel,
+    SandboxExportControlModel, SandboxSeatModel, SandboxSessionModel, SandboxWorkspaceModel,
+    SandboxWorkspaceResponseData,
 };
 pub use template_grant::{
     ManageTemplateGrantRequest, ManageTemplateGrantResponse, TemplateGrantResponseData,

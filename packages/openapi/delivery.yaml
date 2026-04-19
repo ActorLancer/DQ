@@ -862,6 +862,7 @@ components:
       required:
         - sandbox_workspace_id
         - sandbox_session_id
+        - sensitive_execution_policy_id
         - order_id
         - query_surface_id
         - environment_id
@@ -891,11 +892,18 @@ components:
         - dispute_status
         - created_at
         - updated_at
+        - workspace
+        - session
+        - seat
+        - export_control
       properties:
         sandbox_workspace_id:
           type: string
           format: uuid
         sandbox_session_id:
+          type: string
+          format: uuid
+        sensitive_execution_policy_id:
           type: string
           format: uuid
         order_id:
@@ -975,6 +983,168 @@ components:
         updated_at:
           type: string
           format: date-time
+        workspace:
+          $ref: '#/components/schemas/SandboxWorkspaceModel'
+        session:
+          $ref: '#/components/schemas/SandboxSessionModel'
+        seat:
+          $ref: '#/components/schemas/SandboxSeatModel'
+        export_control:
+          $ref: '#/components/schemas/SandboxExportControlModel'
+        attestation:
+          allOf:
+            - $ref: '#/components/schemas/SandboxAttestationRefModel'
+          nullable: true
+    SandboxWorkspaceModel:
+      type: object
+      required:
+        - sandbox_workspace_id
+        - query_surface_id
+        - environment_id
+        - workspace_name
+        - workspace_status
+        - clean_room_mode
+        - data_residency_mode
+        - created_at
+        - updated_at
+      properties:
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        workspace_name:
+          type: string
+        workspace_status:
+          type: string
+        clean_room_mode:
+          type: string
+        data_residency_mode:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SandboxSessionModel:
+      type: object
+      required:
+        - sandbox_session_id
+        - session_status
+        - session_started_at
+        - expire_at
+        - session_query_count
+        - export_attempt_count
+      properties:
+        sandbox_session_id:
+          type: string
+          format: uuid
+        session_status:
+          type: string
+        session_started_at:
+          type: string
+          format: date-time
+        expire_at:
+          type: string
+          format: date-time
+        session_query_count:
+          type: integer
+        export_attempt_count:
+          type: integer
+    SandboxSeatModel:
+      type: object
+      required:
+        - seat_user_id
+        - login_id
+        - display_name
+        - seat_status
+        - seat_limit
+      properties:
+        seat_user_id:
+          type: string
+          format: uuid
+        login_id:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        seat_status:
+          type: string
+        seat_limit:
+          type: integer
+    SandboxExportControlModel:
+      type: object
+      required:
+        - sensitive_execution_policy_id
+        - policy_scope
+        - execution_mode
+        - policy_status
+        - export_control_json
+        - output_boundary_json
+        - policy_snapshot_json
+        - step_up_required
+        - attestation_required
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+        policy_scope:
+          type: string
+        execution_mode:
+          type: string
+        policy_status:
+          type: string
+        export_control_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        policy_snapshot_json:
+          type: object
+          additionalProperties: true
+        step_up_required:
+          type: boolean
+        attestation_required:
+          type: boolean
+    SandboxAttestationRefModel:
+      type: object
+      required:
+        - attestation_record_id
+        - attestation_type
+        - status
+        - metadata_json
+      properties:
+        attestation_record_id:
+          type: string
+          format: uuid
+        attestation_type:
+          type: string
+        status:
+          type: string
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        verifier_ref:
+          type: string
+          nullable: true
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata_json:
+          type: object
+          additionalProperties: true
     ExecuteTemplateRunRequest:
       type: object
       required: [query_template_id, request_payload_json]

@@ -1,6 +1,13 @@
-use crate::modules::delivery::dto::{ManageSandboxWorkspaceRequest, SandboxWorkspaceResponseData};
+use crate::modules::delivery::dto::{
+    ManageSandboxWorkspaceRequest, SandboxAttestationRefModel, SandboxExportControlModel,
+    SandboxSeatModel, SandboxSessionModel, SandboxWorkspaceModel, SandboxWorkspaceResponseData,
+};
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
+};
+use crate::modules::delivery::repo::sandbox_workspace_model_repository::{
+    build_export_control_json, build_sandbox_policy_snapshot, upsert_attestation_reference,
+    upsert_sensitive_execution_policy,
 };
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::repo::{
@@ -75,7 +82,7 @@ pub async fn manage_sandbox_workspace(
         load_execution_environment(&tx, &environment_id, &context.seller_org_id, request_id)
             .await?;
 
-    let seat_user_id = resolve_seat_user_id(
+    let seat_user = resolve_seat_user_id(
         &tx,
         payload.seat_user_id.as_deref().or(existing_session
             .as_ref()
@@ -218,7 +225,7 @@ pub async fn manage_sandbox_workspace(
                        export_attempt_count,
                        to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
                        to_char(ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
-            &[&session.sandbox_session_id, &seat_user_id, &expire_at],
+            &[&session.sandbox_session_id, &seat_user.user_id, &expire_at],
         )
         .await
         .map_err(map_db_error)?
@@ -248,7 +255,7 @@ pub async fn manage_sandbox_workspace(
                        export_attempt_count,
                        to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
                        to_char(ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
-            &[&sandbox_workspace_id, &seat_user_id, &expire_at],
+            &[&sandbox_workspace_id, &seat_user.user_id, &expire_at],
         )
         .await
         .map_err(map_db_error)?
@@ -260,6 +267,99 @@ pub async fn manage_sandbox_workspace(
     let export_attempt_count: i32 = session_row.get(4);
     let session_started_at: String = session_row.get(5);
     let session_expire_at: String = session_row.get(6);
+
+    let seat_limit = derive_seat_limit(&query_surface.query_policy_json);
+    let step_up_required = derive_step_up_required(&query_surface.query_policy_json);
+    let attestation_required =
+        derive_attestation_required(&query_surface.query_policy_json, &environment.metadata);
+    let export_control_json = build_export_control_json(
+        &export_policy_json,
+        &query_surface.query_policy_json,
+        &output_boundary_json,
+        seat_limit,
+        &session_expire_at,
+    );
+    let workspace_model_json = json!({
+        "sandbox_workspace_id": sandbox_workspace_id.clone(),
+        "query_surface_id": query_surface_id.clone(),
+        "environment_id": environment.environment_id.clone(),
+        "workspace_name": workspace_name.clone(),
+        "workspace_status": workspace_status.clone(),
+        "clean_room_mode": clean_room_mode.clone(),
+        "data_residency_mode": data_residency_mode.clone(),
+        "created_at": created_at.clone(),
+        "updated_at": updated_at.clone(),
+    });
+    let session_model_json = json!({
+        "sandbox_session_id": sandbox_session_id.clone(),
+        "session_status": session_status.clone(),
+        "session_started_at": session_started_at.clone(),
+        "expire_at": session_expire_at.clone(),
+        "session_query_count": session_query_count,
+        "export_attempt_count": export_attempt_count,
+    });
+    let seat_model_json = json!({
+        "seat_user_id": seat_user.user_id.clone(),
+        "login_id": seat_user.login_id.clone(),
+        "display_name": seat_user.display_name.clone(),
+        "email": seat_user.email.clone(),
+        "seat_status": session_status.clone(),
+        "seat_limit": seat_limit,
+    });
+    let attestation_metadata = json!({
+        "order_id": order_id,
+        "sandbox_workspace_id": sandbox_workspace_id.clone(),
+        "sandbox_session_id": sandbox_session_id.clone(),
+        "query_surface_id": query_surface_id.clone(),
+        "environment_id": environment.environment_id.clone(),
+        "seat_user_id": seat_user.user_id.clone(),
+        "seat_login_id": seat_user.login_id.clone(),
+    });
+    let attestation_reference = upsert_attestation_reference(
+        &tx,
+        order_id,
+        &sandbox_session_id,
+        &environment.environment_id,
+        environment
+            .metadata
+            .get("verifier_ref")
+            .and_then(Value::as_str),
+        attestation_required,
+        &attestation_metadata,
+    )
+    .await?;
+    let attestation_snapshot_json = attestation_reference.as_ref().map(|attestation| {
+        json!({
+            "attestation_record_id": attestation.attestation_record_id,
+            "attestation_type": attestation.attestation_type,
+            "status": attestation.status,
+            "attestation_uri": attestation.attestation_uri,
+            "attestation_hash": attestation.attestation_hash,
+            "verifier_ref": attestation.verifier_ref,
+            "verified_at": attestation.verified_at,
+            "metadata_json": attestation.metadata_json,
+        })
+    });
+    let policy_snapshot_json = build_sandbox_policy_snapshot(
+        &workspace_model_json,
+        &session_model_json,
+        &seat_model_json,
+        &environment_limits_json,
+        &export_control_json,
+        attestation_snapshot_json.as_ref(),
+    );
+    let sensitive_execution_policy = upsert_sensitive_execution_policy(
+        &tx,
+        order_id,
+        &sandbox_workspace_id,
+        &query_surface_id,
+        &output_boundary_json,
+        &export_control_json,
+        step_up_required,
+        attestation_required,
+        &policy_snapshot_json,
+    )
+    .await?;
 
     let layered_status = derive_sbx_std_layered_status(&context.payment_status);
     let target_state = "seat_issued";
@@ -279,18 +379,23 @@ pub async fn manage_sandbox_workspace(
     let trust_boundary_patch = json!({
         "delivery_mode": "sandbox_workspace",
         "sandbox_workspace": {
-            "sandbox_workspace_id": sandbox_workspace_id,
-            "sandbox_session_id": sandbox_session_id,
-            "query_surface_id": query_surface_id,
-            "environment_id": environment.environment_id,
-            "environment_type": environment.environment_type,
-            "seat_user_id": session_user_id,
-            "clean_room_mode": clean_room_mode,
-            "data_residency_mode": data_residency_mode,
-            "export_policy": export_policy_json,
-            "output_boundary_json": output_boundary_json,
-            "environment_limits_json": environment_limits_json,
-            "session_expire_at": session_expire_at,
+            "sandbox_workspace_id": sandbox_workspace_id.clone(),
+            "sandbox_session_id": sandbox_session_id.clone(),
+            "query_surface_id": query_surface_id.clone(),
+            "environment_id": environment.environment_id.clone(),
+            "environment_type": environment.environment_type.clone(),
+            "seat_user_id": session_user_id.clone(),
+            "seat_login_id": seat_user.login_id.clone(),
+            "seat_display_name": seat_user.display_name.clone(),
+            "clean_room_mode": clean_room_mode.clone(),
+            "data_residency_mode": data_residency_mode.clone(),
+            "export_policy": export_policy_json.clone(),
+            "output_boundary_json": output_boundary_json.clone(),
+            "environment_limits_json": environment_limits_json.clone(),
+            "export_control_json": sensitive_execution_policy.export_control_json.clone(),
+            "sensitive_execution_policy_id": sensitive_execution_policy.sensitive_execution_policy_id.clone(),
+            "attestation": attestation_snapshot_json,
+            "session_expire_at": session_expire_at.clone(),
         }
     });
 
@@ -363,11 +468,17 @@ pub async fn manage_sandbox_workspace(
         trace_id,
         json!({
             "order_id": order_id,
-            "sandbox_session_id": sandbox_session_id,
-            "query_surface_id": query_surface_id,
-            "environment_id": environment.environment_id,
-            "seat_user_id": session_user_id,
-            "operation": operation,
+            "sandbox_session_id": sandbox_session_id.clone(),
+            "query_surface_id": query_surface_id.clone(),
+            "environment_id": environment.environment_id.clone(),
+            "seat_user_id": session_user_id.clone(),
+            "sensitive_execution_policy_id": sensitive_execution_policy
+                .sensitive_execution_policy_id
+                .clone(),
+            "attestation_record_id": attestation_reference
+                .as_ref()
+                .map(|attestation| attestation.attestation_record_id.clone()),
+            "operation": operation.to_string(),
             "delivery_id": prepared.delivery_id,
         }),
     )
@@ -378,6 +489,9 @@ pub async fn manage_sandbox_workspace(
     Ok(SandboxWorkspaceResponseData {
         sandbox_workspace_id,
         sandbox_session_id,
+        sensitive_execution_policy_id: sensitive_execution_policy
+            .sensitive_execution_policy_id
+            .clone(),
         order_id: order_id.to_string(),
         query_surface_id,
         environment_id: environment.environment_id,
@@ -389,7 +503,7 @@ pub async fn manage_sandbox_workspace(
         sku_type: context.sku_type,
         workspace_name,
         workspace_status,
-        session_status,
+        session_status: session_status.clone(),
         seat_user_id: session_user_id,
         clean_room_mode,
         data_residency_mode,
@@ -409,6 +523,95 @@ pub async fn manage_sandbox_workspace(
         dispute_status: layered_status.dispute_status,
         created_at,
         updated_at,
+        workspace: SandboxWorkspaceModel {
+            sandbox_workspace_id: workspace_model_json["sandbox_workspace_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            query_surface_id: workspace_model_json["query_surface_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            environment_id: workspace_model_json["environment_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            workspace_name: workspace_model_json["workspace_name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            workspace_status: workspace_model_json["workspace_status"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            clean_room_mode: workspace_model_json["clean_room_mode"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            data_residency_mode: workspace_model_json["data_residency_mode"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            created_at: workspace_model_json["created_at"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            updated_at: workspace_model_json["updated_at"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+        },
+        session: SandboxSessionModel {
+            sandbox_session_id: session_model_json["sandbox_session_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            session_status: session_model_json["session_status"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            session_started_at: session_model_json["session_started_at"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            expire_at: session_model_json["expire_at"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            session_query_count: session_query_count,
+            export_attempt_count,
+        },
+        seat: SandboxSeatModel {
+            seat_user_id: seat_user.user_id.clone(),
+            login_id: seat_user.login_id.clone(),
+            display_name: seat_user.display_name.clone(),
+            email: seat_user.email.clone(),
+            seat_status: session_status.clone(),
+            seat_limit,
+        },
+        export_control: SandboxExportControlModel {
+            sensitive_execution_policy_id: sensitive_execution_policy
+                .sensitive_execution_policy_id
+                .clone(),
+            policy_scope: sensitive_execution_policy.policy_scope,
+            execution_mode: sensitive_execution_policy.execution_mode,
+            policy_status: sensitive_execution_policy.policy_status,
+            export_control_json: sensitive_execution_policy.export_control_json,
+            output_boundary_json: sensitive_execution_policy.output_boundary_json,
+            policy_snapshot_json: sensitive_execution_policy.policy_snapshot_json,
+            step_up_required: sensitive_execution_policy.step_up_required,
+            attestation_required: sensitive_execution_policy.attestation_required,
+        },
+        attestation: attestation_reference.map(|attestation| SandboxAttestationRefModel {
+            attestation_record_id: attestation.attestation_record_id,
+            attestation_type: attestation.attestation_type,
+            status: attestation.status,
+            attestation_uri: attestation.attestation_uri,
+            attestation_hash: attestation.attestation_hash,
+            verifier_ref: attestation.verifier_ref,
+            verified_at: attestation.verified_at,
+            metadata_json: attestation.metadata_json,
+        }),
     })
 }
 
@@ -438,6 +641,14 @@ struct ExistingSession {
     sandbox_session_id: String,
     user_id: String,
     ended_at: String,
+}
+
+#[derive(Debug, Clone)]
+struct SeatUserContext {
+    user_id: String,
+    login_id: String,
+    display_name: String,
+    email: Option<String>,
 }
 
 #[derive(Debug)]
@@ -667,7 +878,7 @@ async fn resolve_seat_user_id(
     seat_user_id: Option<&str>,
     buyer_org_id: &str,
     request_id: Option<&str>,
-) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<SeatUserContext, (StatusCode, Json<ErrorResponse>)> {
     let seat_user_id = seat_user_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -675,7 +886,12 @@ async fn resolve_seat_user_id(
 
     let row = client
         .query_opt(
-            "SELECT user_id::text, org_id::text, status
+            "SELECT user_id::text,
+                    org_id::text,
+                    status,
+                    login_id,
+                    display_name,
+                    email::text
              FROM core.user_account
              WHERE user_id = $1::text::uuid",
             &[&seat_user_id],
@@ -705,7 +921,12 @@ async fn resolve_seat_user_id(
             request_id,
         ));
     }
-    Ok(resolved_user_id)
+    Ok(SeatUserContext {
+        user_id: resolved_user_id,
+        login_id: row.get(3),
+        display_name: row.get(4),
+        email: row.get(5),
+    })
 }
 
 async fn normalize_expire_at(
@@ -985,6 +1206,38 @@ fn build_environment_limits_json(
             "metadata": environment.metadata,
         }
     })
+}
+
+fn derive_seat_limit(query_policy_json: &Value) -> i32 {
+    query_policy_json
+        .get("seat_limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        .clamp(1, i64::from(i32::MAX)) as i32
+}
+
+fn derive_step_up_required(query_policy_json: &Value) -> bool {
+    query_policy_json
+        .get("step_up_required")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn derive_attestation_required(query_policy_json: &Value, environment_metadata: &Value) -> bool {
+    query_policy_json
+        .get("attestation_required")
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            query_policy_json
+                .get("requires_attestation")
+                .and_then(Value::as_bool)
+        })
+        .or_else(|| {
+            environment_metadata
+                .get("attestation_required")
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false)
 }
 
 fn derive_sbx_std_layered_status(payment_status: &str) -> LayeredOrderStatus {

@@ -8,6 +8,7 @@ mod query_run_repository;
 mod query_surface_repository;
 mod query_template_repository;
 mod revision_subscription_repository;
+mod sandbox_workspace_model_repository;
 mod sandbox_workspace_repository;
 mod share_grant_repository;
 mod storage_gateway_repository;
