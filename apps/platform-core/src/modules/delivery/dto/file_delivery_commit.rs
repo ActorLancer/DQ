@@ -19,6 +19,7 @@ pub struct CommitOrderDeliveryRequest {
     pub download_limit: Option<i32>,
     pub delivery_commit_hash: Option<String>,
     pub receipt_hash: Option<String>,
+    pub report_type: Option<String>,
     pub asset_object_id: Option<String>,
     pub app_id: Option<String>,
     pub app_name: Option<String>,
@@ -70,4 +71,9 @@ pub struct CommitOrderDeliveryResponseData {
     pub operation: Option<String>,
     pub endpoint_uri: Option<String>,
     pub credential_status: Option<String>,
+    pub report_artifact_id: Option<String>,
+    pub report_type: Option<String>,
+    pub report_version_no: Option<i32>,
+    pub report_status: Option<String>,
+    pub report_hash: Option<String>,
 }

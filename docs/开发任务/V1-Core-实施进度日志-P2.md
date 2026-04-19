@@ -4074,3 +4074,92 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-159（计划中）
+- 已阅读证据：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-017` 目标为“实现报告交付接口 `POST /api/v1/orders/{id}/deliver` 的报告分支，生成 report artifact、报告 hash、交付回执”。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认本任务属于现有 `/deliver` 主交付入口的报告类扩展，要求补齐接口、DTO、权限、审计、错误码与最小测试，不允许与 OpenAPI 漂移。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md` / `docs/开发任务/AI-Agent-执行提示词.md`：确认本批继续按单任务流程执行，完整验证、本地提交后自动推进下一任务。
+  4. `docs/业务流程/业务流程图-V1-完整版.md:L388`：确认报告类交付链路要求卖方上传报告/结果产物与摘要，买方后续对照模板执行验收或驳回/争议。
+  5. `docs/页面说明书/页面说明书-V1-完整版.md:L701`：确认报告/结果产品交付页必须呈现报告文件、摘要、版本记录与买方反馈入口，因此交付结果需要稳定回传 artifact 元信息与版本号。
+  6. `docs/领域模型/全量领域模型与对象关系说明.md:L709`：确认 `delivery.report_artifact` 属于交付聚合，用于承载报告结果产物，并与 `delivery.storage_object` 形成对象关联。
+  7. `docs/数据库设计/V1/upgrade/030_trade_delivery.sql` / `docs/全集成文档/数据交易平台-全集成基线-V1.md:L24147` / `L29221`：确认 `delivery.report_artifact` 的冻结字段为 `order_id/object_id/report_type/version_no/status`，本批应基于既有表落地，不新增 migration。
+  8. 其余 18 份必读冻结文档已按阶段基线复核服务边界、事件、错误码、环境与配置口径；当前未发现需要升级为问题清单的冲突。
+- 当前批次目标：在 `POST /api/v1/orders/{id}/deliver` 中新增 `report` 分支，联动 `delivery.storage_object + delivery.delivery_record + delivery.report_artifact + trade.order_main` 完成报告交付、报告摘要/版本持久化、交付回执返回、审计留痕，并完成真实 API/DB/MinIO 联调验证。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv017_report_delivery_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + MinIO + `curl POST /api/v1/orders/{id}/deliver`（`branch=report`）联调，回查 `delivery.report_artifact / delivery.delivery_record / audit.audit_event` 后清理业务数据。
+
+### BATCH-159（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-017
+- 已实现功能：
+  1. 在 `POST /api/v1/orders/{id}/deliver` 中新增 `branch=report`，补齐独立权限 `delivery.report.commit`。
+  2. 新增 `report_delivery_repository.rs`，联动 `delivery.storage_object + delivery.delivery_record + delivery.report_artifact + trade.order_main` 落地报告交付。
+  3. 报告交付会冻结 `report_type / version_no / report_hash / receipt_hash / delivery_commit_hash`，并把对象定位写入 `trust_boundary_snapshot.report_artifact`。
+  4. 交付成功后将 `RPT_STD` 订单推进到 `report_delivered`，子状态更新为 `delivery_status=delivered / acceptance_status=in_progress / settlement_status=pending_settlement`。
+  5. 补齐幂等返回：订单已进入 `report_delivered/accepted/settled/closed` 且已有已提交报告产物时，重复提交返回 `already_committed`。
+  6. 新增 `dlv017_report_delivery_db_smoke`，覆盖首次交付、重复提交、订单详情聚合与审计断言。
+  7. 同步更新 `packages/openapi/delivery.yaml`，冻结 `report` 分支请求/响应 schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/file_delivery_commit.rs`
+  - `apps/platform-core/src/modules/delivery/repo/file_delivery_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/api_delivery_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/report_delivery_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv017_report_delivery_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv017_report_delivery_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8110 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用真实 MinIO `report-results` bucket 上传测试报告对象后，执行 `curl POST /api/v1/orders/{id}/deliver`（`branch=report`）联调，并回查 `trade.order_main / delivery.delivery_record / delivery.report_artifact / audit.audit_event`，再清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv017_report_delivery_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`182 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/deliver`（`branch=report`）返回 `HTTP 200`
+    - 返回 `current_state=report_delivered / delivery_status=delivered / acceptance_status=in_progress`
+    - 返回 `report_artifact_id`、`report_type=pdf_report`、`report_version_no=1`、`report_hash=sha256:report:*`
+    - 返回 `bucket=report-results / key=orders/<suffix>/monthly-report.pdf`
+  - DB 回查通过：
+    - `trade.order_main = report_delivered / paid / delivered / in_progress / pending_settlement`
+    - `delivery.delivery_record = committed / report_delivery / result_package`
+    - `delivery.report_artifact = pdf_report / version_no=1 / delivered`
+    - `audit.audit_event` 命中 `delivery.report.commit = 1`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.4（交付、验真与验收主流程）与 4.4.4（报告类交付）
+  - `页面说明书-V1` 7.8（报告 / 结果产品交付页）
+  - `全量领域模型与对象关系说明` 4.5（交付与执行聚合）
+  - `全集成基线-V1` 15（核心交易链路完整闭环）
+- 覆盖的任务清单条目：`DLV-017`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

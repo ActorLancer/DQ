@@ -24,7 +24,7 @@ servers:
 paths:
   /api/v1/orders/{id}/deliver:
     post:
-      summary: Commit file delivery or enable API access for a deliverable order
+      summary: Commit file/report delivery or enable API access for a deliverable order
       tags: [delivery]
       parameters:
         - name: id
@@ -41,7 +41,7 @@ paths:
               $ref: '#/components/schemas/CommitOrderDeliveryRequest'
       responses:
         '200':
-          description: File delivery committed or API access enabled
+          description: File/report delivery committed or API access enabled
           content:
             application/json:
               schema:
@@ -1857,7 +1857,7 @@ components:
       properties:
         branch:
           type: string
-          enum: [file, api]
+          enum: [file, report, api]
         object_uri:
           type: string
           nullable: true
@@ -1905,6 +1905,9 @@ components:
           type: string
         receipt_hash:
           type: string
+        report_type:
+          type: string
+          nullable: true
         asset_object_id:
           type: string
           format: uuid
@@ -2063,6 +2066,22 @@ components:
           type: string
           nullable: true
         credential_status:
+          type: string
+          nullable: true
+        report_artifact_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_type:
+          type: string
+          nullable: true
+        report_version_no:
+          type: integer
+          nullable: true
+        report_status:
+          type: string
+          nullable: true
+        report_hash:
           type: string
           nullable: true
     DownloadTicketResponseEnvelope:

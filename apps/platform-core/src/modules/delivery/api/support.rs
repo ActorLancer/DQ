@@ -6,6 +6,7 @@ use kernel::{ErrorCode, ErrorResponse};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeliveryPermission {
     CommitFileDelivery,
+    CommitReportDelivery,
     EnableApiDelivery,
     ReadApiUsageLog,
     ManageQuerySurface,
@@ -24,6 +25,10 @@ pub enum DeliveryPermission {
 pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
     match permission {
         DeliveryPermission::CommitFileDelivery => matches!(
+            role,
+            "seller_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
+        ),
+        DeliveryPermission::CommitReportDelivery => matches!(
             role,
             "seller_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
         ),

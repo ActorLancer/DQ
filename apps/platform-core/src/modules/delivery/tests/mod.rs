@@ -25,3 +25,4 @@ mod dlv013_query_runs_db;
 mod dlv014_sandbox_workspace_db;
 mod dlv015_sandbox_model_db;
 mod dlv016_sandbox_isolation_model_db;
+mod dlv017_report_delivery_db;

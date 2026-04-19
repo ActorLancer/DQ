@@ -204,6 +204,11 @@ pub async fn commit_file_delivery(
             operation: Some("already_committed".to_string()),
             endpoint_uri: None,
             credential_status: None,
+            report_artifact_id: None,
+            report_type: None,
+            report_version_no: None,
+            report_status: None,
+            report_hash: None,
         });
     }
 
@@ -477,10 +482,15 @@ pub async fn commit_file_delivery(
         operation: Some("committed".to_string()),
         endpoint_uri: None,
         credential_status: None,
+        report_artifact_id: None,
+        report_type: None,
+        report_version_no: None,
+        report_status: None,
+        report_hash: None,
     })
 }
 
-async fn resolve_storage_namespace_id(
+pub(crate) async fn resolve_storage_namespace_id(
     client: &(impl GenericClient + Sync),
     seller_org_id: &str,
     storage_namespace_id: Option<&str>,

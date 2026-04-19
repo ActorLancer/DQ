@@ -149,6 +149,11 @@ pub async fn commit_api_delivery(
                 operation: Some("already_enabled".to_string()),
                 endpoint_uri: Some(endpoint.endpoint_uri),
                 credential_status: Some(existing.status.clone()),
+                report_artifact_id: None,
+                report_type: None,
+                report_version_no: None,
+                report_status: None,
+                report_hash: None,
             });
         }
     }
@@ -407,6 +412,11 @@ pub async fn commit_api_delivery(
         }),
         endpoint_uri: Some(endpoint.endpoint_uri),
         credential_status: Some("active".to_string()),
+        report_artifact_id: None,
+        report_type: None,
+        report_version_no: None,
+        report_status: None,
+        report_hash: None,
     })
 }
 

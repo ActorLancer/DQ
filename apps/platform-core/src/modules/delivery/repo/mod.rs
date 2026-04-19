@@ -7,6 +7,7 @@ mod query_run_read_repository;
 mod query_run_repository;
 mod query_surface_repository;
 mod query_template_repository;
+mod report_delivery_repository;
 mod revision_subscription_repository;
 mod sandbox_workspace_model_repository;
 mod sandbox_workspace_repository;
@@ -27,6 +28,7 @@ pub use query_run_read_repository::get_query_runs;
 pub use query_run_repository::execute_template_run;
 pub use query_surface_repository::manage_query_surface;
 pub use query_template_repository::manage_query_template;
+pub use report_delivery_repository::commit_report_delivery;
 pub use revision_subscription_repository::{
     get_revision_subscription, manage_revision_subscription,
 };

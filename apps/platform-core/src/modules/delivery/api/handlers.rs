@@ -12,9 +12,9 @@ use crate::modules::delivery::dto::{
     ManageShareGrantResponse, ManageTemplateGrantRequest, ManageTemplateGrantResponse,
 };
 use crate::modules::delivery::repo::{
-    commit_api_delivery, commit_file_delivery, consume_download_ticket, execute_template_run,
-    get_api_usage_log, get_query_runs, get_revision_subscription, get_share_grants,
-    issue_download_ticket, manage_query_surface, manage_query_template,
+    commit_api_delivery, commit_file_delivery, commit_report_delivery, consume_download_ticket,
+    execute_template_run, get_api_usage_log, get_query_runs, get_revision_subscription,
+    get_share_grants, issue_download_ticket, manage_query_surface, manage_query_template,
     manage_revision_subscription, manage_sandbox_workspace, manage_share_grant,
     manage_template_grant,
 };
@@ -38,6 +38,11 @@ pub async fn commit_order_delivery_api(
             &headers,
             DeliveryPermission::CommitFileDelivery,
             "file delivery commit",
+        )?,
+        "report" => require_permission(
+            &headers,
+            DeliveryPermission::CommitReportDelivery,
+            "report delivery commit",
         )?,
         "api" => require_permission(
             &headers,
@@ -68,6 +73,18 @@ pub async fn commit_order_delivery_api(
     let committed = match branch.as_str() {
         "file" => {
             commit_file_delivery(
+                &mut client,
+                &order_id,
+                tenant_id.as_deref(),
+                &payload,
+                &actor_role,
+                request_id.as_deref(),
+                trace_id.as_deref(),
+            )
+            .await?
+        }
+        "report" => {
+            commit_report_delivery(
                 &mut client,
                 &order_id,
                 tenant_id.as_deref(),
