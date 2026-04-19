@@ -895,6 +895,7 @@ components:
         - workspace
         - session
         - seat
+        - execution_environment
         - export_control
       properties:
         sandbox_workspace_id:
@@ -989,6 +990,8 @@ components:
           $ref: '#/components/schemas/SandboxSessionModel'
         seat:
           $ref: '#/components/schemas/SandboxSeatModel'
+        execution_environment:
+          $ref: '#/components/schemas/SandboxExecutionEnvironmentModel'
         export_control:
           $ref: '#/components/schemas/SandboxExportControlModel'
         attestation:
@@ -1079,6 +1082,83 @@ components:
           type: string
         seat_limit:
           type: integer
+    SandboxExecutionEnvironmentModel:
+      type: object
+      required:
+        - environment_id
+        - environment_name
+        - environment_type
+        - environment_status
+        - isolation_level
+        - export_policy_json
+        - audit_policy_json
+        - trusted_attestation_flag
+        - supported_product_types
+        - current_capacity_json
+        - runtime_isolation
+      properties:
+        environment_id:
+          type: string
+          format: uuid
+        environment_name:
+          type: string
+        environment_type:
+          type: string
+        network_zone:
+          type: string
+          nullable: true
+        region_code:
+          type: string
+          nullable: true
+        environment_status:
+          type: string
+        isolation_level:
+          type: string
+        export_policy_json:
+          type: object
+          additionalProperties: true
+        audit_policy_json:
+          type: object
+          additionalProperties: true
+        trusted_attestation_flag:
+          type: boolean
+        supported_product_types:
+          type: array
+          items:
+            type: string
+        current_capacity_json:
+          type: object
+          additionalProperties: true
+        runtime_isolation:
+          $ref: '#/components/schemas/SandboxRuntimeIsolationModel'
+    SandboxRuntimeIsolationModel:
+      type: object
+      required:
+        - runtime_provider
+        - runtime_mode
+        - runtime_class
+        - profile_name
+        - rootfs_mode
+        - network_mode
+        - seccomp_profile
+        - status
+      properties:
+        runtime_provider:
+          type: string
+        runtime_mode:
+          type: string
+        runtime_class:
+          type: string
+        profile_name:
+          type: string
+        rootfs_mode:
+          type: string
+        network_mode:
+          type: string
+        seccomp_profile:
+          type: string
+        status:
+          type: string
     SandboxExportControlModel:
       type: object
       required:

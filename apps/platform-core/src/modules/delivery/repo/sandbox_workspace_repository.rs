@@ -1,6 +1,7 @@
 use crate::modules::delivery::dto::{
-    ManageSandboxWorkspaceRequest, SandboxAttestationRefModel, SandboxExportControlModel,
-    SandboxSeatModel, SandboxSessionModel, SandboxWorkspaceModel, SandboxWorkspaceResponseData,
+    ManageSandboxWorkspaceRequest, SandboxAttestationRefModel, SandboxExecutionEnvironmentModel,
+    SandboxExportControlModel, SandboxRuntimeIsolationModel, SandboxSeatModel, SandboxSessionModel,
+    SandboxWorkspaceModel, SandboxWorkspaceResponseData,
 };
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
@@ -127,7 +128,12 @@ pub async fn manage_sandbox_workspace(
     )?;
     let output_boundary_json =
         derive_workspace_output_boundary(&query_surface.output_boundary_json, &export_policy_json);
-    let environment_limits_json = build_environment_limits_json(&query_surface, &environment);
+    let execution_environment_model_json = build_execution_environment_model_json(&environment);
+    let environment_limits_json = build_environment_limits_json(
+        &query_surface,
+        &environment,
+        &execution_environment_model_json,
+    );
 
     let operation = if existing_workspace.is_some() {
         "updated"
@@ -344,6 +350,7 @@ pub async fn manage_sandbox_workspace(
         &workspace_model_json,
         &session_model_json,
         &seat_model_json,
+        &execution_environment_model_json,
         &environment_limits_json,
         &export_control_json,
         attestation_snapshot_json.as_ref(),
@@ -389,6 +396,7 @@ pub async fn manage_sandbox_workspace(
             "seat_display_name": seat_user.display_name.clone(),
             "clean_room_mode": clean_room_mode.clone(),
             "data_residency_mode": data_residency_mode.clone(),
+            "execution_environment": execution_environment_model_json.clone(),
             "export_policy": export_policy_json.clone(),
             "output_boundary_json": output_boundary_json.clone(),
             "environment_limits_json": environment_limits_json.clone(),
@@ -472,6 +480,9 @@ pub async fn manage_sandbox_workspace(
             "query_surface_id": query_surface_id.clone(),
             "environment_id": environment.environment_id.clone(),
             "seat_user_id": session_user_id.clone(),
+            "runtime_provider": execution_environment_model_json["runtime_isolation"]["runtime_provider"].clone(),
+            "runtime_mode": execution_environment_model_json["runtime_isolation"]["runtime_mode"].clone(),
+            "runtime_class": execution_environment_model_json["runtime_isolation"]["runtime_class"].clone(),
             "sensitive_execution_policy_id": sensitive_execution_policy
                 .sensitive_execution_policy_id
                 .clone(),
@@ -589,6 +600,88 @@ pub async fn manage_sandbox_workspace(
             seat_status: session_status.clone(),
             seat_limit,
         },
+        execution_environment: SandboxExecutionEnvironmentModel {
+            environment_id: execution_environment_model_json["environment_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            environment_name: execution_environment_model_json["environment_name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            environment_type: execution_environment_model_json["environment_type"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            network_zone: execution_environment_model_json["network_zone"]
+                .as_str()
+                .map(str::to_string),
+            region_code: execution_environment_model_json["region_code"]
+                .as_str()
+                .map(str::to_string),
+            environment_status: execution_environment_model_json["environment_status"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            isolation_level: execution_environment_model_json["isolation_level"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            export_policy_json: execution_environment_model_json["export_policy_json"].clone(),
+            audit_policy_json: execution_environment_model_json["audit_policy_json"].clone(),
+            trusted_attestation_flag: execution_environment_model_json["trusted_attestation_flag"]
+                .as_bool()
+                .unwrap_or(false),
+            supported_product_types: execution_environment_model_json["supported_product_types"]
+                .as_array()
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            current_capacity_json: execution_environment_model_json["current_capacity_json"]
+                .clone(),
+            runtime_isolation: SandboxRuntimeIsolationModel {
+                runtime_provider:
+                    execution_environment_model_json["runtime_isolation"]["runtime_provider"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                runtime_mode: execution_environment_model_json["runtime_isolation"]["runtime_mode"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                runtime_class:
+                    execution_environment_model_json["runtime_isolation"]["runtime_class"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                profile_name: execution_environment_model_json["runtime_isolation"]["profile_name"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                rootfs_mode: execution_environment_model_json["runtime_isolation"]["rootfs_mode"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                network_mode: execution_environment_model_json["runtime_isolation"]["network_mode"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                seccomp_profile:
+                    execution_environment_model_json["runtime_isolation"]["seccomp_profile"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                status: execution_environment_model_json["runtime_isolation"]["status"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            },
+        },
         export_control: SandboxExportControlModel {
             sensitive_execution_policy_id: sensitive_execution_policy
                 .sensitive_execution_policy_id
@@ -667,6 +760,7 @@ struct ExecutionEnvironmentContext {
     environment_id: String,
     environment_name: String,
     environment_type: String,
+    status: String,
     network_zone: Option<String>,
     region_code: Option<String>,
     metadata: Value,
@@ -867,6 +961,7 @@ async fn load_execution_environment(
         environment_id: row.get(0),
         environment_name,
         environment_type,
+        status,
         network_zone: row.get(5),
         region_code: row.get(6),
         metadata: row.get(7),
@@ -1193,6 +1288,7 @@ fn derive_workspace_output_boundary(
 fn build_environment_limits_json(
     query_surface: &QuerySurfaceContext,
     environment: &ExecutionEnvironmentContext,
+    execution_environment_model_json: &Value,
 ) -> Value {
     json!({
         "execution_scope": query_surface.execution_scope,
@@ -1201,9 +1297,120 @@ fn build_environment_limits_json(
             "environment_id": environment.environment_id,
             "environment_name": environment.environment_name,
             "environment_type": environment.environment_type,
+            "status": environment.status,
             "network_zone": environment.network_zone,
             "region_code": environment.region_code,
             "metadata": environment.metadata,
+        },
+        "execution_environment": execution_environment_model_json,
+    })
+}
+
+fn build_execution_environment_model_json(environment: &ExecutionEnvironmentContext) -> Value {
+    let metadata = environment.metadata.as_object();
+    let runtime_isolation = metadata
+        .and_then(|map| map.get("runtime_isolation"))
+        .cloned()
+        .or_else(|| metadata.and_then(|map| map.get("gvisor")).cloned())
+        .unwrap_or_else(|| json!({}));
+
+    let trusted_attestation_flag = metadata
+        .and_then(|map| map.get("trusted_attestation_flag"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            metadata
+                .and_then(|map| map.get("attestation_required"))
+                .and_then(Value::as_bool)
+        })
+        .or_else(|| {
+            metadata
+                .and_then(|map| map.get("verifier_ref"))
+                .and_then(Value::as_str)
+                .map(|_| true)
+        })
+        .unwrap_or(false);
+
+    let supported_product_types = metadata
+        .and_then(|map| map.get("supported_product_types"))
+        .and_then(Value::as_array)
+        .map(|values| {
+            Value::Array(
+                values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|value| Value::String(value.to_string()))
+                    .collect(),
+            )
+        })
+        .unwrap_or_else(|| json!(["SBX_STD"]));
+
+    json!({
+        "environment_id": environment.environment_id,
+        "environment_name": environment.environment_name,
+        "environment_type": environment.environment_type,
+        "network_zone": environment.network_zone,
+        "region_code": environment.region_code,
+        "environment_status": environment.status,
+        "isolation_level": metadata
+            .and_then(|map| map.get("isolation_level"))
+            .and_then(Value::as_str)
+            .unwrap_or("container_sandbox"),
+        "export_policy_json": metadata
+            .and_then(|map| map.get("export_policy"))
+            .cloned()
+            .unwrap_or_else(|| json!({
+                "allow_export": false,
+                "network_access": environment.network_zone.clone().unwrap_or_else(|| "seller_vpc".to_string()),
+                "policy_source": "environment_placeholder"
+            })),
+        "audit_policy_json": metadata
+            .and_then(|map| map.get("audit_policy"))
+            .cloned()
+            .unwrap_or_else(|| json!({
+                "required_events": ["query_log", "session_log", "policy_hit", "export_attempt"],
+                "policy_source": "environment_placeholder"
+            })),
+        "trusted_attestation_flag": trusted_attestation_flag,
+        "supported_product_types": supported_product_types,
+        "current_capacity_json": metadata
+            .and_then(|map| map.get("current_capacity"))
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+        "runtime_isolation": {
+            "runtime_provider": runtime_isolation
+                .get("runtime_provider")
+                .and_then(Value::as_str)
+                .or_else(|| runtime_isolation.get("preferred_runtime").and_then(Value::as_str))
+                .unwrap_or("gvisor"),
+            "runtime_mode": runtime_isolation
+                .get("runtime_mode")
+                .and_then(Value::as_str)
+                .unwrap_or("local_placeholder"),
+            "runtime_class": runtime_isolation
+                .get("runtime_class")
+                .and_then(Value::as_str)
+                .unwrap_or("runsc"),
+            "profile_name": runtime_isolation
+                .get("profile_name")
+                .and_then(Value::as_str)
+                .unwrap_or("sbx-std-default"),
+            "rootfs_mode": runtime_isolation
+                .get("rootfs_mode")
+                .and_then(Value::as_str)
+                .unwrap_or("read_only"),
+            "network_mode": runtime_isolation
+                .get("network_mode")
+                .and_then(Value::as_str)
+                .or(environment.network_zone.as_deref())
+                .unwrap_or("seller_vpc"),
+            "seccomp_profile": runtime_isolation
+                .get("seccomp_profile")
+                .and_then(Value::as_str)
+                .unwrap_or("platform/default"),
+            "status": runtime_isolation
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("reserved"),
         }
     })
 }

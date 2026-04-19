@@ -3989,3 +3989,88 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-158（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-016
+- 已阅读证据：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-016` 目标为“为 `SBX_STD` 预留 gVisor 执行隔离参数位，即便 local 模式先只做配置占位，也要把环境模型冻结”。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认本任务属于沙箱工作区链路的模型补全，不是新增独立交付分支；仍需走既有 `sandbox workspace` API、状态机、审计与测试闭环。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md` / `docs/开发任务/AI-Agent-执行提示词.md`：确认本批继续按单任务流程执行，完整验证后本地提交并自动推进下一任务。
+  4. `docs/业务流程/业务流程图-V1-完整版.md:L349`：确认沙箱链路必须创建隔离执行环境，并对导出、复制、网络访问等策略执行点进行控制。
+  5. `docs/页面说明书/页面说明书-V1-完整版.md:L654`：确认查询沙箱开通页必须稳定展示环境限制说明，因此执行环境与隔离参数不能只停留在松散 metadata。
+  6. `docs/原始PRD/数据商品查询与执行面设计.md:L127`：确认 `sandbox_query` 作为 V1 闭环能力必须把运行时长、导出次数、执行边界和后续审计/计费关系冻结。
+  7. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L727` / `L1396` / `L19468`：确认执行环境实体最小字段包括 `isolation_level / export_policy / audit_policy / trusted_attestation_flag / supported_product_types / current_capacity / environment_status`，且 V1 查询沙箱隔离优先评估 `gVisor`。
+  8. `docs/开发准备/技术选型正式版.md:L192`：确认查询沙箱 / 模板执行隔离的推荐占位技术为 `gVisor`，但 V1 不把更重的 `TEE / Kata / MPC / FL` 作为正式运行依赖。
+  9. `docs/数据库设计/V1/upgrade/010_identity_and_access.sql` / `065_query_execution_plane.sql` / `066_sensitive_data_controlled_delivery.sql`：确认 `core.execution_environment` 仅提供 `metadata` 承载扩展字段，本批应通过模型冻结与快照持久化落地，不新增 migration。
+  10. 其余 18 份必读冻结文档已按阶段基线复核服务边界、错误码、事件、环境与配置口径；当前未发现需要升级为问题清单的冲突。
+- 当前批次目标：在 `SBX_STD` 的沙箱开通链路中冻结执行环境模型与 gVisor 隔离参数占位，稳定写入响应、策略快照、trust-boundary 快照和审计元数据，并完成真实 API/DB 联调验证。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv016_sandbox_isolation_model_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST /api/v1/orders/{id}/sandbox-workspaces` 联调，回查 `delivery.sensitive_execution_policy / delivery.delivery_record / audit.audit_event` 中的执行环境与 gVisor 占位快照后清理业务数据。
+
+### BATCH-158（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-016
+- 已实现功能：
+  - 在 `SBX_STD` 沙箱开通链路中冻结执行环境模型，响应新增 `execution_environment` 结构，稳定输出 `environment_status / isolation_level / export_policy_json / audit_policy_json / trusted_attestation_flag / supported_product_types / current_capacity_json / runtime_isolation`。
+  - 为 `gVisor` 预留 V1 占位参数位：`runtime_provider / runtime_mode / runtime_class / profile_name / rootfs_mode / network_mode / seccomp_profile / status`，默认兼容 local 模式的 `local_placeholder + runsc` 口径。
+  - 将执行环境模型与 `gVisor` 占位同步写入 `delivery.sensitive_execution_policy.policy_snapshot`、`delivery.delivery_record.trust_boundary_snapshot` 以及 `delivery.sandbox.enable` 审计元数据，避免只留在松散 metadata 中。
+  - 新增 `dlv016_sandbox_isolation_model_db_smoke`，覆盖响应、策略快照、trust-boundary 快照与审计字段断言。
+  - 同步更新 `packages/openapi/delivery.yaml`，冻结新增 schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/sandbox_workspace.rs`
+  - `apps/platform-core/src/modules/delivery/repo/sandbox_workspace_model_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/sandbox_workspace_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv016_sandbox_isolation_model_db.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv016_sandbox_isolation_model_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8109 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入带 `runtime_isolation=gvisor` 占位的临时 `SBX_STD` 数据，执行真实 `curl POST /api/v1/orders/{id}/sandbox-workspaces` 联调，回查 `delivery.sensitive_execution_policy.policy_snapshot`、`delivery.delivery_record.trust_boundary_snapshot` 与 `audit.audit_event` 后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv016_sandbox_isolation_model_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`181 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/sandbox-workspaces`：`HTTP 200`
+    - 返回 `isolation=container_sandbox`、`trusted_attestation=true`、`supported_product_types=SBX_STD`
+    - 返回 `runtime_provider=gvisor / runtime_mode=local_placeholder / runtime_class=runsc / profile_name=sbx-std-default`
+  - DB 回查通过：
+    - `delivery.sensitive_execution_policy.policy_snapshot.execution_environment` 命中 `container_sandbox / gvisor / local_placeholder / runsc`
+    - `delivery.delivery_record.trust_boundary_snapshot.sandbox_workspace.execution_environment` 命中 `container_sandbox / gvisor / local_placeholder`
+    - `audit.audit_event` 命中 `delivery.sandbox.enable`，metadata 含 `runtime_provider=gvisor / runtime_mode=local_placeholder / runtime_class=runsc`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.4.3（沙箱 / 模板查询类交付）
+  - `页面说明书-V1` 7.5（查询沙箱开通页）
+  - `数据商品查询与执行面设计` 5（V1 业务闭环）
+  - `全集成基线-V1` 10.7（执行环境实体）与 `7.1 / 7.4` 中 `gVisor` 优先评估口径
+- 覆盖的任务清单条目：`DLV-016`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

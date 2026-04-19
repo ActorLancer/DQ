@@ -340,6 +340,7 @@ pub(crate) fn build_sandbox_policy_snapshot(
     workspace_json: &Value,
     session_json: &Value,
     seat_json: &Value,
+    execution_environment_json: &Value,
     environment_limits_json: &Value,
     export_control_json: &Value,
     attestation_json: Option<&Value>,
@@ -348,6 +349,10 @@ pub(crate) fn build_sandbox_policy_snapshot(
     object.insert("workspace".to_string(), workspace_json.clone());
     object.insert("session".to_string(), session_json.clone());
     object.insert("seat".to_string(), seat_json.clone());
+    object.insert(
+        "execution_environment".to_string(),
+        execution_environment_json.clone(),
+    );
     object.insert(
         "environment_limits_json".to_string(),
         environment_limits_json.clone(),

@@ -56,6 +56,7 @@ pub struct SandboxWorkspaceResponseData {
     pub workspace: SandboxWorkspaceModel,
     pub session: SandboxSessionModel,
     pub seat: SandboxSeatModel,
+    pub execution_environment: SandboxExecutionEnvironmentModel,
     pub export_control: SandboxExportControlModel,
     pub attestation: Option<SandboxAttestationRefModel>,
 }
@@ -91,6 +92,35 @@ pub struct SandboxSeatModel {
     pub email: Option<String>,
     pub seat_status: String,
     pub seat_limit: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxExecutionEnvironmentModel {
+    pub environment_id: String,
+    pub environment_name: String,
+    pub environment_type: String,
+    pub network_zone: Option<String>,
+    pub region_code: Option<String>,
+    pub environment_status: String,
+    pub isolation_level: String,
+    pub export_policy_json: Value,
+    pub audit_policy_json: Value,
+    pub trusted_attestation_flag: bool,
+    pub supported_product_types: Vec<String>,
+    pub current_capacity_json: Value,
+    pub runtime_isolation: SandboxRuntimeIsolationModel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxRuntimeIsolationModel {
+    pub runtime_provider: String,
+    pub runtime_mode: String,
+    pub runtime_class: String,
+    pub profile_name: String,
+    pub rootfs_mode: String,
+    pub network_mode: String,
+    pub seccomp_profile: String,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
