@@ -5,7 +5,8 @@ info:
   description: >-
     Delivery module baseline for V1. DLV-001 freezes storage-gateway shared
     schemas; DLV-002 adds the file-delivery commit endpoint; DLV-003 adds
-    short-lived download-ticket issuance backed by Redis cache.
+    short-lived download-ticket issuance backed by Redis cache; DLV-004 adds
+    ticket-validated file download with delivery-receipt logging.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -67,6 +68,36 @@ paths:
           description: Ticket expired, exhausted, or current order state does not allow issuance
         '500':
           description: Redis cache write failed
+  /api/v1/orders/{id}/download:
+    get:
+      summary: Download a committed file delivery through the ticket-validated gateway
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Short-lived download token returned by the download-ticket API
+      responses:
+        '200':
+          description: File payload fetched from MinIO and download receipt persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadFileResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '409':
+          description: Ticket invalid, expired, exhausted, or current order state does not allow download
+        '502':
+          description: MinIO or object-store fetch failed
 components:
   schemas:
     CommitOrderDeliveryRequest:
@@ -277,6 +308,98 @@ components:
           format: uuid
         delivery_commit_hash:
           type: string
+    DownloadFileResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/DownloadFileResponse'
+    DownloadFileResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DownloadFileResponseData'
+    DownloadFileResponseData:
+      type: object
+      required:
+        - order_id
+        - delivery_id
+        - ticket_id
+        - receipt_id
+        - receipt_hash
+        - downloaded_at
+        - ticket_status
+        - download_limit
+        - download_count
+        - remaining_downloads
+        - bucket_name
+        - object_key
+        - content_hash
+        - delivery_commit_hash
+        - key_envelope
+        - object_base64
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        receipt_id:
+          type: string
+          format: uuid
+        receipt_hash:
+          type: string
+        downloaded_at:
+          type: string
+          format: date-time
+        ticket_status:
+          type: string
+        download_limit:
+          type: integer
+        download_count:
+          type: integer
+        remaining_downloads:
+          type: integer
+        bucket_name:
+          type: string
+        object_key:
+          type: string
+        content_type:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+        delivery_commit_hash:
+          type: string
+        key_envelope:
+          $ref: '#/components/schemas/DownloadKeyEnvelopeData'
+        object_base64:
+          type: string
+    DownloadKeyEnvelopeData:
+      type: object
+      required: [envelope_id, key_cipher, unwrap_policy_json]
+      properties:
+        envelope_id:
+          type: string
+          format: uuid
+        key_cipher:
+          type: string
+        key_control_mode:
+          type: string
+          nullable: true
+        unwrap_policy_json:
+          type: object
+          additionalProperties: true
+        key_version:
+          type: string
+          nullable: true
     StorageGatewaySnapshot:
       type: object
       required: [integrity, watermark_policy, access_audit]

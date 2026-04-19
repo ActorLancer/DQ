@@ -2741,3 +2741,121 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-146（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-004
+- 当前批次目标：实现下载票据验证中间件与文件下载入口，确保文件下载请求必须携带有效 ticket，经 Redis + 数据库双重校验后写入 `delivery.delivery_receipt` 下载日志，并返回真实 MinIO 对象内容。
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-006`、`DB-019`、`DB-020`、`CORE-008` 已完成且审批通过；`DLV-001`、`DLV-002`、`DLV-003` 已完成并本地提交。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-004` 要求实现“下载票据验证中间件”，重点是下载请求校验与下载日志，不是重复实现票据签发。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：明确 `DLV-004` 与 `DLV-003` 分层，前者负责下载网关校验与日志落库。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续执行“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地提交”，提交后直接推进下一任务。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：继续保持 `modules/delivery/**` 和 `modules/storage/**` 按功能拆分，不把下载网关逻辑塞回订单模块。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：先登记本批计划中，完成后补待审批记录。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认文件副本交付链路是“下载令牌签发 -> 下载网关校验 -> 返回密文对象 + key_envelope -> 写 delivery_receipt / download_log / audit_event”，且文件下载属于受控入口。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：下载网关与对象读取仍归属 `delivery/storage-gateway`，Redis 只做短期票据缓存，PostgreSQL 保持主真值。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结表已存在 `GET /api/v1/orders/{id}/download-ticket`，本批需要补齐与之配套的实际受控下载入口说明与 schema。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批不提前发 Kafka 业务事件；下载日志与回执先落数据库/审计。
+  12. `docs/开发准备/统一错误码字典正式版.md`：继续沿用统一错误响应结构与现有错误码口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批仍执行编译/单测/DB+Redis smoke/真实 API 联调/DB+Redis+MinIO 回查/业务数据清理。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：下载中间件、下载 handler、下载仓储、对象存储读取能力继续拆分到 `modules/delivery/**`、`modules/storage/**`。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批要真实联动 `datab-postgres`、`datab-redis`、`datab-kafka`、`datab-minio`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：本批继续使用 `REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_NAMESPACE`，并新增读取 `MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / BUCKET_DELIVERY_OBJECTS`。
+  17. `docs/开发准备/技术选型正式版.md`：继续遵循 Rust + Axum + PostgreSQL + Redis + MinIO 技术基线；下载网关需要实质性 S3-compatible 对象读取能力。
+  18. `docs/开发准备/平台总体架构设计草案.md`：下载网关属于受控基础设施接缝，必须把校验、回执、审计和对象读取串联起来。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L709`：`DeliveryTicket` 表示下载或访问凭证，`DeliveryReceipt` 表示下载回执或访问回执，本批必须把两者串起来。
+  2. `docs/业务流程/业务流程图-V1-完整版.md:L270`：文件类交付链路要求“买方获取下载令牌 -> 下载网关校验 token、buyer_did、次数、时效 -> 返回密文对象 + key_envelope -> 写 delivery_receipt / download_log”。
+  3. `docs/页面说明书/页面说明书-V1-完整版.md:L590`：文件交付页核心模块包含“下载令牌状态 / 交付回执列表 / Hash 校验提示”，说明下载接口要把票据校验结果、回执和对象内容打通。
+- 补充约束文档：
+  1. `docs/04-runbooks/redis-keys.md`：下载票据缓存 key 固定为 `{ns}:download-ticket:{ticket_id}`，DB 3，TTL 5 分钟，文档建议一次性使用，本批至少要保证每次下载会回写次数与失效状态。
+  2. `docs/权限设计/接口权限校验清单.md`：`delivery.file.download` 需要 tenant + order 作用域，且附加校验“买方身份、次数、到期、审计”。
+  3. `docs/数据库设计/数据库表字典正式版.md`：`delivery.delivery_receipt` 字段固定为 `receipt_id / delivery_id / order_id / receipt_hash / client_fingerprint / source_ip / downloaded_at`，不得自由扩表。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `apps/platform-core/src/modules/storage/**`
+  - `apps/platform-core/Cargo.toml`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv004_download_validation_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 MinIO + Redis + `curl GET /api/v1/orders/{id}/download-ticket` / `curl GET /api/v1/orders/{id}/download?...` 联调，再回查 `delivery_ticket / delivery_receipt / audit.audit_event / redis download-ticket key`。
+
+### BATCH-146（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-004
+- 当前批次目标：实现下载票据验证中间件与文件下载入口，确保文件下载请求必须携带有效 ticket，经 Redis + 数据库双重校验后写入 `delivery.delivery_receipt` 下载日志，并返回真实 MinIO 对象内容。
+- 已实现功能：
+  1. 在 `modules/delivery/api` 新增下载票据验证中间件 `validate_download_ticket_middleware`，对 `GET /api/v1/orders/{id}/download` 强制校验 `delivery.file.download` 权限、ticket 传递、Redis 缓存存在、买方租户边界、订单路径与 token 绑定关系。
+  2. 新增 `download_file_api` 与 `consume_download_ticket(...)`：下载时以 PostgreSQL 为主真值再次校验 `FILE_STD`、订单状态、ticket 状态、次数与 `token_hash`，然后递增 `download_count`、写入 `delivery.delivery_receipt`、写入 `delivery.file.download` 审计。
+  3. 下载成功后会同步回写 Redis DB 3 中的下载票据缓存次数；若达到上限则删除缓存，避免已耗尽 ticket 被重复命中。
+  4. 在 `modules/storage/application` 新增 S3-compatible 对象读取能力，使用 MinIO endpoint + access key/secret 真实拉取对象，未用脚本伪造下载结果。
+  5. 下载接口返回 `delivery_receipt` 元数据、`key_envelope` 与 `object_base64`，把“下载网关校验 -> 返回密文对象 + key_envelope -> 写回执”的冻结链路串通。
+  6. `packages/openapi/delivery.yaml` 已同步新增受控下载路径与 schema。
+- 涉及文件：
+  - `Cargo.lock`
+  - `apps/platform-core/Cargo.toml`
+  - `apps/platform-core/src/modules/delivery/api/download_middleware.rs`
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/download_file.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/download_file_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/download_ticket_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv004_download_validation_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `apps/platform-core/src/modules/storage/application/mod.rs`
+  - `apps/platform-core/src/modules/storage/application/object_store.rs`
+  - `apps/platform-core/src/modules/storage/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv004_download_validation_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8097 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab MINIO_ENDPOINT=http://127.0.0.1:9000 MINIO_ROOT_USER=datab MINIO_ROOT_PASSWORD=datab_local_pass cargo run -p platform-core`
+  8. 使用真实 MinIO 对象 + `psql` 临时业务数据 + `curl GET /api/v1/orders/{id}/download-ticket` / `curl GET /api/v1/orders/{id}/download?ticket=...` 联调，再回查数据库、Redis 并清理业务数据与 MinIO 测试对象。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv004_download_validation_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`169 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `GET /api/v1/orders/{id}/download-ticket`：`HTTP 200`，`remaining_downloads=2`
+    - `GET /api/v1/orders/{id}/download?ticket=...`：`HTTP 200`，返回 `download_count=2`、`remaining_downloads=1`、`ticket_status=active`、`key_cipher=cipher-{suffix}`、真实 MinIO 对象内容 `encrypted-manual-{suffix}`
+  - DB 回查通过：
+    - `delivery.delivery_ticket`：`download_count=2 / status=active`
+    - `delivery.delivery_receipt`：写入 `receipt_hash / client_fingerprint / source_ip`
+    - `audit.audit_event`：`delivery.file.download` 命中 `1` 条 `ref_type=delivery_receipt / result_code=downloaded`
+  - Redis 联动通过：`datab:v1:download-ticket:{ticket_id}` 在下载后 `remaining_downloads=1`，与 DB 状态一致。
+  - MinIO 实体联动通过：接口返回的 `object_base64` 解码后与真实上传对象内容一致。
+  - 清理结果：临时业务数据、Redis 测试 key 和 MinIO 测试对象已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.5（`DeliveryTicket / DeliveryReceipt`）
+  - `业务流程图-V1` 4.4.1（下载网关校验 token、buyer_did、次数、时效）
+  - `页面说明书-V1` 7.1（下载令牌状态、交付回执列表、Hash 校验提示）
+  - `docs/04-runbooks/redis-keys.md`（下载票据 Redis key/TTL/DB 约束）
+  - `docs/数据库设计/数据库表字典正式版.md`（`delivery.delivery_receipt` 字段约束）
+- 覆盖的任务清单条目：`DLV-004`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

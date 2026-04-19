@@ -13,25 +13,37 @@ const DOWNLOAD_TICKET_AUDIT_EVENT: &str = "delivery.file.download";
 const REDIS_DOWNLOAD_TICKET_DB: i64 = 3;
 const REDIS_DOWNLOAD_TICKET_TTL_SECONDS: i64 = 300;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct RedisDownloadTicketCachePayload {
-    order_id: String,
-    delivery_id: String,
-    ticket_id: String,
-    buyer_org_id: String,
-    object_uri: String,
-    bucket_name: String,
-    object_key: String,
-    envelope_id: String,
-    delivery_commit_hash: String,
-    ticket_status: String,
-    expire_at: String,
-    download_limit: i32,
-    download_count: i32,
-    remaining_downloads: i32,
-    download_token: String,
-    token_hash: String,
-    issued_at: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadTicketCachePayload {
+    pub order_id: String,
+    pub delivery_id: String,
+    pub ticket_id: String,
+    pub buyer_org_id: String,
+    pub object_uri: String,
+    pub bucket_name: String,
+    pub object_key: String,
+    pub content_type: Option<String>,
+    pub content_hash: String,
+    pub envelope_id: String,
+    pub key_cipher: String,
+    pub key_control_mode: Option<String>,
+    pub unwrap_policy_json: Value,
+    pub key_version: Option<String>,
+    pub delivery_commit_hash: String,
+    pub ticket_status: String,
+    pub expire_at: String,
+    pub download_limit: i32,
+    pub download_count: i32,
+    pub remaining_downloads: i32,
+    pub download_token: String,
+    pub token_hash: String,
+    pub issued_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedDownloadToken {
+    pub ticket_id: String,
+    pub order_id: String,
 }
 
 pub async fn issue_download_ticket(
@@ -52,7 +64,13 @@ pub async fn issue_download_ticket(
                dr.delivery_id::text,
                so.object_uri,
                ns.bucket_name,
+               so.content_type,
+               so.content_hash,
                ke.envelope_id::text,
+               ke.key_cipher,
+               ke.key_control_mode,
+               ke.unwrap_policy_json,
+               ke.key_version,
                dr.delivery_commit_hash,
                ticket.ticket_id::text,
                ticket.token_hash,
@@ -103,27 +121,40 @@ pub async fn issue_download_ticket(
     let bucket_name = row
         .get::<_, Option<String>>(5)
         .unwrap_or_else(default_bucket_name);
-    let envelope_id = row.get::<_, Option<String>>(6).ok_or_else(|| {
+    let content_type = row.get::<_, Option<String>>(6);
+    let content_hash = row.get::<_, Option<String>>(7).ok_or_else(|| {
+        conflict(
+            "DOWNLOAD_TICKET_FORBIDDEN: content hash missing",
+            request_id,
+        )
+    })?;
+    let envelope_id = row.get::<_, Option<String>>(8).ok_or_else(|| {
         conflict(
             "DOWNLOAD_TICKET_FORBIDDEN: key envelope missing",
             request_id,
         )
     })?;
-    let delivery_commit_hash = row.get::<_, Option<String>>(7).ok_or_else(|| {
+    let key_cipher = row
+        .get::<_, Option<String>>(9)
+        .ok_or_else(|| conflict("DOWNLOAD_TICKET_FORBIDDEN: key cipher missing", request_id))?;
+    let key_control_mode = row.get::<_, Option<String>>(10);
+    let unwrap_policy_json = row.get::<_, Option<Value>>(11).unwrap_or_else(|| json!({}));
+    let key_version = row.get::<_, Option<String>>(12);
+    let delivery_commit_hash = row.get::<_, Option<String>>(13).ok_or_else(|| {
         conflict(
             "DOWNLOAD_TICKET_FORBIDDEN: delivery commit hash missing",
             request_id,
         )
     })?;
-    let ticket_id: String = row.get(8);
-    let previous_token_hash: String = row.get(9);
-    let expire_at: String = row.get(10);
-    let download_limit: i32 = row.get(11);
-    let download_count: i32 = row.get(12);
-    let ticket_status: String = row.get(13);
-    let ticket_not_expired: bool = row.get(14);
-    let redis_ttl_seconds: i64 = row.get(15);
-    let issued_at: String = row.get(16);
+    let ticket_id: String = row.get(14);
+    let previous_token_hash: String = row.get(15);
+    let expire_at: String = row.get(16);
+    let download_limit: i32 = row.get(17);
+    let download_count: i32 = row.get(18);
+    let ticket_status: String = row.get(19);
+    let ticket_not_expired: bool = row.get(20);
+    let redis_ttl_seconds: i64 = row.get(21);
+    let issued_at: String = row.get(22);
 
     enforce_buyer_scope(actor_role, tenant_id, &buyer_org_id, request_id)?;
 
@@ -214,7 +245,7 @@ pub async fn issue_download_ticket(
     tx.commit().await.map_err(map_db_error)?;
 
     let redis_key = redis_download_ticket_key(&ticket_id);
-    let cache_payload = RedisDownloadTicketCachePayload {
+    let cache_payload = DownloadTicketCachePayload {
         order_id: order_id.to_string(),
         delivery_id: delivery_id.clone(),
         ticket_id: ticket_id.clone(),
@@ -222,7 +253,13 @@ pub async fn issue_download_ticket(
         object_uri: object_uri.clone(),
         bucket_name: bucket_name.clone(),
         object_key: object_key.clone(),
+        content_type,
+        content_hash,
         envelope_id: envelope_id.clone(),
+        key_cipher,
+        key_control_mode,
+        unwrap_policy_json,
+        key_version,
         delivery_commit_hash: delivery_commit_hash.clone(),
         ticket_status: ticket_status.clone(),
         expire_at: expire_at.clone(),
@@ -290,10 +327,51 @@ pub async fn issue_download_ticket(
     })
 }
 
-async fn set_download_ticket_cache(
+pub async fn load_download_ticket_cache(
+    ticket_id: &str,
+) -> Result<Option<DownloadTicketCachePayload>, (StatusCode, Json<ErrorResponse>)> {
+    let redis_url = redis_download_ticket_url();
+    let client = redis::Client::open(redis_url.as_str()).map_err(map_redis_error)?;
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(map_redis_error)?;
+    let redis_key = redis_download_ticket_key(ticket_id);
+    let cached = connection
+        .get::<_, Option<String>>(&redis_key)
+        .await
+        .map_err(map_redis_error)?;
+    cached
+        .map(|raw| {
+            serde_json::from_str::<DownloadTicketCachePayload>(&raw).map_err(map_redis_error)
+        })
+        .transpose()
+}
+
+pub async fn load_download_ticket_cache_ttl_seconds(
+    ticket_id: &str,
+) -> Result<Option<i64>, (StatusCode, Json<ErrorResponse>)> {
+    let redis_url = redis_download_ticket_url();
+    let client = redis::Client::open(redis_url.as_str()).map_err(map_redis_error)?;
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(map_redis_error)?;
+    let redis_key = redis_download_ticket_key(ticket_id);
+    let ttl = connection
+        .ttl::<_, i64>(&redis_key)
+        .await
+        .map_err(map_redis_error)?;
+    if ttl <= 0 {
+        return Ok(None);
+    }
+    Ok(Some(ttl))
+}
+
+pub async fn set_download_ticket_cache(
     redis_key: &str,
     ttl_seconds: i64,
-    payload: &RedisDownloadTicketCachePayload,
+    payload: &DownloadTicketCachePayload,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let redis_url = redis_download_ticket_url();
     let client = redis::Client::open(redis_url.as_str()).map_err(map_redis_error)?;
@@ -309,7 +387,7 @@ async fn set_download_ticket_cache(
     Ok(())
 }
 
-async fn delete_download_ticket_cache(redis_key: &str) {
+pub async fn delete_download_ticket_cache(redis_key: &str) {
     let redis_url = redis_download_ticket_url();
     let Ok(client) = redis::Client::open(redis_url.as_str()) else {
         return;
@@ -332,12 +410,12 @@ async fn restore_previous_ticket_hash(client: &Client, ticket_id: &str, previous
         .await;
 }
 
-fn redis_download_ticket_key(ticket_id: &str) -> String {
+pub fn redis_download_ticket_key(ticket_id: &str) -> String {
     let namespace = std::env::var("REDIS_NAMESPACE").unwrap_or_else(|_| "datab:v1".to_string());
     format!("{namespace}:download-ticket:{ticket_id}")
 }
 
-fn redis_download_ticket_url() -> String {
+pub fn redis_download_ticket_url() -> String {
     if let Ok(url) = std::env::var("REDIS_URL") {
         if !url.trim().is_empty() {
             return url;
@@ -353,7 +431,7 @@ fn redis_download_ticket_url() -> String {
     )
 }
 
-fn enforce_buyer_scope(
+pub fn enforce_buyer_scope(
     actor_role: &str,
     tenant_id: Option<&str>,
     buyer_org_id: &str,
@@ -420,7 +498,7 @@ async fn write_download_ticket_audit_event(
     Ok(())
 }
 
-fn map_redis_error(err: impl std::fmt::Display) -> (StatusCode, Json<ErrorResponse>) {
+pub fn map_redis_error(err: impl std::fmt::Display) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse {
@@ -433,6 +511,21 @@ fn map_redis_error(err: impl std::fmt::Display) -> (StatusCode, Json<ErrorRespon
 
 fn default_bucket_name() -> String {
     std::env::var("BUCKET_DELIVERY_OBJECTS").unwrap_or_else(|_| "delivery-objects".to_string())
+}
+
+pub fn parse_download_token(raw_token: &str) -> Option<ParsedDownloadToken> {
+    let mut segments = raw_token.split('.');
+    let prefix = segments.next()?;
+    let ticket_id = segments.next()?;
+    let order_id = segments.next()?;
+    let nonce = segments.next()?;
+    if prefix != "dlt" || nonce.is_empty() || segments.next().is_some() {
+        return None;
+    }
+    Some(ParsedDownloadToken {
+        ticket_id: ticket_id.to_string(),
+        order_id: order_id.to_string(),
+    })
 }
 
 fn not_found(order_id: &str, request_id: Option<&str>) -> (StatusCode, Json<ErrorResponse>) {

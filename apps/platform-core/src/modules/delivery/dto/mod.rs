@@ -1,6 +1,10 @@
+mod download_file;
 mod download_ticket;
 mod file_delivery_commit;
 
+pub use download_file::{
+    DownloadFileAccessData, DownloadFileResponse, DownloadFileResponseData, DownloadKeyEnvelopeData,
+};
 pub use file_delivery_commit::{
     CommitOrderDeliveryRequest, CommitOrderDeliveryResponse, CommitOrderDeliveryResponseData,
 };

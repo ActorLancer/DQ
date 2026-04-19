@@ -9,7 +9,9 @@ authors.workspace = true
 async-trait = "0.1"
 audit-kit = { path = "crates/audit-kit" }
 auth = { path = "crates/auth" }
+aws-sdk-s3 = "1"
 axum = { version = "0.8", features = ["macros"] }
+base64 = "0.22"
 config = { path = "crates/config" }
 db = { path = "crates/db" }
 http = { path = "crates/http" }
