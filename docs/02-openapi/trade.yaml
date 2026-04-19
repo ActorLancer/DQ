@@ -1,0 +1,2239 @@
+openapi: 3.1.0
+info:
+  title: Trade API
+  version: v1
+  description: |
+    V1 trade baseline currently includes:
+    - TRADE-001 minimal pre-order request model for RFQ / sample / POC
+    - TRADE-002 order price snapshot freeze model
+    - TRADE-003 order creation with product state / risk / price snapshot validation
+    - TRADE-016 digital-contract aggregate (template/snapshot/signer/anchor ref)
+    - TRADE-030 payment-result transition mapping:
+      - payment succeeded -> order status buyer_locked (delivery pending)
+      - payment failed -> order status payment_failed_pending_resolution
+      - payment timeout -> order status payment_timeout_pending_compensation_cancel
+paths:
+  /api/v1/orders/standard-templates:
+    get:
+      summary: List frozen standard order templates for the first five trade scenarios
+      operationId: listStandardOrderTemplates
+      tags: [trade]
+      responses:
+        '200':
+          description: Standard order templates found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderTemplatesResponse'
+  /api/v1/orders:
+    post:
+      summary: Create an order from listed product and sku
+      operationId: createOrder
+      tags: [trade]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrderResponse'
+  /api/v1/orders/{id}:
+    get:
+      summary: Get order detail with layered status fields
+      operationId: getOrderDetail
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order detail found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderDetailResponse'
+  /api/v1/orders/{id}/lifecycle-snapshots:
+    get:
+      summary: Get order lifecycle snapshots with structured sub-domain fields
+      operationId: getOrderLifecycleSnapshots
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lifecycle snapshots found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderLifecycleSnapshotsResponse'
+  /api/v1/orders/{id}/cancel:
+    post:
+      summary: Cancel order under state-machine constraints and refund branch
+      operationId: cancelOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order canceled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelOrderResponse'
+  /api/v1/orders/{id}/contract-confirm:
+    post:
+      summary: Confirm order contract with contract snapshot and signer role
+      operationId: confirmOrderContract
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmOrderContractRequest'
+      responses:
+        '200':
+          description: Contract confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmOrderContractResponse'
+  /api/v1/orders/{id}/authorization/transition:
+    post:
+      summary: Transition order authorization aggregate state
+      operationId: transitionOrderAuthorization
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderAuthorizationTransitionRequest'
+      responses:
+        '200':
+          description: Authorization transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderAuthorizationTransitionResponse'
+  /api/v1/orders/{id}/file-std/transition:
+    post:
+      summary: Transition FILE_STD order state under state-machine rules
+      operationId: transitionFileStdOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileStdTransitionRequest'
+      responses:
+        '200':
+          description: FILE_STD transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileStdTransitionResponse'
+  /api/v1/orders/{id}/file-sub/transition:
+    post:
+      summary: Transition FILE_SUB order state under subscription state-machine rules
+      operationId: transitionFileSubOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileSubTransitionRequest'
+      responses:
+        '200':
+          description: FILE_SUB transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileSubTransitionResponse'
+  /api/v1/orders/{id}/api-sub/transition:
+    post:
+      summary: Transition API_SUB order state under subscription state-machine rules
+      operationId: transitionApiSubOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiSubTransitionRequest'
+      responses:
+        '200':
+          description: API_SUB transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSubTransitionResponse'
+  /api/v1/orders/{id}/api-ppu/transition:
+    post:
+      summary: Transition API_PPU order state under usage-based state-machine rules
+      operationId: transitionApiPpuOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiPpuTransitionRequest'
+      responses:
+        '200':
+          description: API_PPU transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPpuTransitionResponse'
+  /api/v1/orders/{id}/share-ro/transition:
+    post:
+      summary: Transition SHARE_RO order state under read-only sharing state-machine rules
+      operationId: transitionShareRoOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareRoTransitionRequest'
+      responses:
+        '200':
+          description: SHARE_RO transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareRoTransitionResponse'
+  /api/v1/orders/{id}/qry-lite/transition:
+    post:
+      summary: Transition QRY_LITE order state under template-query state-machine rules
+      operationId: transitionQryLiteOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QryLiteTransitionRequest'
+      responses:
+        '200':
+          description: QRY_LITE transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QryLiteTransitionResponse'
+  /api/v1/orders/{id}/sbx-std/transition:
+    post:
+      summary: Transition SBX_STD order state under sandbox state-machine rules
+      operationId: transitionSbxStdOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SbxStdTransitionRequest'
+      responses:
+        '200':
+          description: SBX_STD transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SbxStdTransitionResponse'
+  /api/v1/orders/{id}/rpt-std/transition:
+    post:
+      summary: Transition RPT_STD order state under report delivery state-machine rules
+      operationId: transitionRptStdOrder
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RptStdTransitionRequest'
+      responses:
+        '200':
+          description: RPT_STD transition applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RptStdTransitionResponse'
+  /api/v1/trade/pre-requests:
+    post:
+      summary: Create a trade pre-request (RFQ/sample/POC)
+      operationId: createTradePreRequest
+      tags: [trade]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTradePreRequestRequest'
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradePreRequestResponse'
+  /api/v1/trade/pre-requests/{id}:
+    get:
+      summary: Get a trade pre-request
+      operationId: getTradePreRequest
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Query success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradePreRequestResponse'
+  /api/v1/trade/orders/{id}/price-snapshot/freeze:
+    post:
+      summary: Freeze order price snapshot from catalog SKU metadata
+      operationId: freezeOrderPriceSnapshot
+      tags: [trade]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Snapshot frozen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FreezeOrderPriceSnapshotResponse'
+components:
+  schemas:
+    GetOrderTemplatesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderTemplateView'
+    OrderTemplateView:
+      type: object
+      required:
+        [
+          template_code,
+          scenario_code,
+          scenario_name,
+          industry_code,
+          primary_sku,
+          supplementary_skus,
+          contract_template,
+          acceptance_template,
+          refund_template,
+          workflow_steps,
+          order_draft,
+        ]
+      properties:
+        template_code:
+          type: string
+        scenario_code:
+          type: string
+        scenario_name:
+          type: string
+        industry_code:
+          type: string
+        primary_sku:
+          type: string
+        supplementary_skus:
+          type: array
+          items:
+            type: string
+        contract_template:
+          type: string
+        acceptance_template:
+          type: string
+        refund_template:
+          type: string
+        workflow_steps:
+          type: array
+          items:
+            type: string
+        order_draft:
+          type: object
+          additionalProperties: true
+    ContractExpectationSnapshot:
+      type: object
+      properties:
+        contract_template_id:
+          type: string
+          format: uuid
+        expected_term_days:
+          type: integer
+          minimum: 1
+        expected_sla_tier:
+          type: string
+        custom_terms_note:
+          type: string
+    AuthorizationExpectationSnapshot:
+      type: object
+      properties:
+        grant_scope:
+          type: string
+        access_mode:
+          type: string
+        expected_valid_days:
+          type: integer
+          minimum: 1
+        export_allowed:
+          type: boolean
+        requires_poc_environment:
+          type: boolean
+    TradePreRequestDetails:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        expected_budget_range:
+          type: string
+        sample_field_scope:
+          type: array
+          items:
+            type: string
+        poc_goal:
+          type: string
+        expected_start_date:
+          type: string
+          format: date
+    CreateTradePreRequestRequest:
+      type: object
+      required: [buyer_org_id, request_kind, details]
+      properties:
+        buyer_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        request_kind:
+          type: string
+          enum: [rfq, sample_request, poc_request]
+        details:
+          $ref: '#/components/schemas/TradePreRequestDetails'
+        contract_expectation:
+          $ref: '#/components/schemas/ContractExpectationSnapshot'
+        authorization_expectation:
+          $ref: '#/components/schemas/AuthorizationExpectationSnapshot'
+    CreateOrderRequest:
+      type: object
+      required: [buyer_org_id, product_id, sku_id]
+      properties:
+        buyer_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        inquiry_id:
+          type: string
+          format: uuid
+    CreateOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/CreateOrderResponseData'
+    CreateOrderResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          buyer_org_id,
+          seller_org_id,
+          product_id,
+          sku_id,
+          status,
+          payment_status,
+          amount,
+          currency_code,
+          price_snapshot,
+          created_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        buyer_org_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        payment_status:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        price_snapshot:
+          $ref: '#/components/schemas/OrderPriceSnapshot'
+        created_at:
+          type: string
+          format: date-time
+    GetOrderDetailResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/GetOrderDetailResponseData'
+    GetOrderDetailResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          buyer_org_id,
+          seller_org_id,
+          product_id,
+          sku_id,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          amount,
+          currency_code,
+          relations,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        buyer_org_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        price_snapshot:
+          $ref: '#/components/schemas/OrderPriceSnapshot'
+          nullable: true
+        relations:
+          $ref: '#/components/schemas/OrderRelations'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OrderRelations:
+      type: object
+      required: [authorizations, deliveries, billing, disputes]
+      properties:
+        contract:
+          $ref: '#/components/schemas/OrderContractRelation'
+          nullable: true
+        authorizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderAuthorizationRelation'
+        deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderDeliveryRelation'
+        billing:
+          $ref: '#/components/schemas/OrderBillingRelations'
+        disputes:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderDisputeRelation'
+    OrderContractRelation:
+      type: object
+      required: [contract_id, contract_status, variables_json, updated_at]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        contract_template_id:
+          type: string
+          format: uuid
+          nullable: true
+        contract_status:
+          type: string
+        contract_digest:
+          type: string
+          nullable: true
+        data_contract_id:
+          type: string
+          format: uuid
+          nullable: true
+        data_contract_digest:
+          type: string
+          nullable: true
+        signed_at:
+          type: string
+          format: date-time
+          nullable: true
+        variables_json:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderAuthorizationRelation:
+      type: object
+      required:
+        [
+          authorization_id,
+          current_status,
+          grant_type,
+          granted_to_type,
+          granted_to_id,
+          valid_from,
+          authorization_model,
+          policy_snapshot,
+          updated_at,
+        ]
+      properties:
+        authorization_id:
+          type: string
+          format: uuid
+        current_status:
+          type: string
+        grant_type:
+          type: string
+        granted_to_type:
+          type: string
+        granted_to_id:
+          type: string
+          format: uuid
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+        authorization_model:
+          $ref: '#/components/schemas/AuthorizationModelSnapshot'
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderDeliveryRelation:
+      type: object
+      required: [delivery_id, delivery_type, current_status, updated_at]
+      properties:
+        delivery_id:
+          type: string
+          format: uuid
+        delivery_type:
+          type: string
+        delivery_route:
+          type: string
+          nullable: true
+        current_status:
+          type: string
+        delivery_commit_hash:
+          type: string
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        committed_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderBillingRelations:
+      type: object
+      required: [billing_events, settlements, refunds, compensations, invoices]
+      properties:
+        billing_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderBillingEventRelation'
+        settlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderSettlementRelation'
+        refunds:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderRefundRelation'
+        compensations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderCompensationRelation'
+        invoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderInvoiceRelation'
+    OrderBillingEventRelation:
+      type: object
+      required:
+        [
+          billing_event_id,
+          event_type,
+          event_source,
+          amount,
+          currency_code,
+          occurred_at,
+          metadata,
+        ]
+      properties:
+        billing_event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        event_source:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        units:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    OrderSettlementRelation:
+      type: object
+      required:
+        [
+          settlement_id,
+          settlement_type,
+          settlement_status,
+          settlement_mode,
+          payable_amount,
+          refund_amount,
+          compensation_amount,
+          updated_at,
+        ]
+      properties:
+        settlement_id:
+          type: string
+          format: uuid
+        settlement_type:
+          type: string
+        settlement_status:
+          type: string
+        settlement_mode:
+          type: string
+        payable_amount:
+          type: string
+        refund_amount:
+          type: string
+        compensation_amount:
+          type: string
+        reason_code:
+          type: string
+          nullable: true
+        settled_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderRefundRelation:
+      type: object
+      required: [refund_id, amount, currency_code, current_status, updated_at]
+      properties:
+        refund_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderCompensationRelation:
+      type: object
+      required: [compensation_id, amount, currency_code, current_status, updated_at]
+      properties:
+        compensation_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderInvoiceRelation:
+      type: object
+      required:
+        [
+          invoice_request_id,
+          requester_org_id,
+          invoice_title,
+          amount,
+          currency_code,
+          current_status,
+          updated_at,
+        ]
+      properties:
+        invoice_request_id:
+          type: string
+          format: uuid
+        settlement_id:
+          type: string
+          format: uuid
+          nullable: true
+        requester_org_id:
+          type: string
+          format: uuid
+        invoice_title:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    OrderDisputeRelation:
+      type: object
+      required:
+        [
+          case_id,
+          complainant_type,
+          complainant_id,
+          reason_code,
+          current_status,
+          evidence_count,
+          opened_at,
+          updated_at,
+        ]
+      properties:
+        case_id:
+          type: string
+          format: uuid
+        complainant_type:
+          type: string
+        complainant_id:
+          type: string
+          format: uuid
+        reason_code:
+          type: string
+        current_status:
+          type: string
+        decision_code:
+          type: string
+          nullable: true
+        penalty_code:
+          type: string
+          nullable: true
+        evidence_count:
+          type: integer
+          format: int64
+        opened_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    GetOrderLifecycleSnapshotsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/GetOrderLifecycleSnapshotsResponseData'
+    GetOrderLifecycleSnapshotsResponseData:
+      type: object
+      required: [order]
+      properties:
+        order:
+          $ref: '#/components/schemas/OrderLifecycleSnapshot'
+        contract:
+          $ref: '#/components/schemas/ContractLifecycleSnapshot'
+          nullable: true
+        authorization:
+          $ref: '#/components/schemas/AuthorizationLifecycleSnapshot'
+          nullable: true
+        delivery:
+          $ref: '#/components/schemas/DeliveryLifecycleSnapshot'
+          nullable: true
+    OrderLifecycleSnapshot:
+      type: object
+      required:
+        [
+          order_id,
+          buyer_org_id,
+          seller_org_id,
+          current_state,
+          payment,
+          acceptance,
+          settlement,
+          dispute,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        buyer_org_id:
+          type: string
+          format: uuid
+        seller_org_id:
+          type: string
+          format: uuid
+        current_state:
+          type: string
+        payment:
+          $ref: '#/components/schemas/PaymentLifecycleSnapshot'
+        acceptance:
+          $ref: '#/components/schemas/AcceptanceLifecycleSnapshot'
+        settlement:
+          $ref: '#/components/schemas/SettlementLifecycleSnapshot'
+        dispute:
+          $ref: '#/components/schemas/DisputeLifecycleSnapshot'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PaymentLifecycleSnapshot:
+      type: object
+      required: [current_status, payment_mode, amount, currency_code]
+      properties:
+        current_status:
+          type: string
+        payment_mode:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        buyer_locked_at:
+          type: string
+          format: date-time
+          nullable: true
+    AcceptanceLifecycleSnapshot:
+      type: object
+      required: [current_status]
+      properties:
+        current_status:
+          type: string
+        accepted_at:
+          type: string
+          format: date-time
+          nullable: true
+    SettlementLifecycleSnapshot:
+      type: object
+      required: [current_status]
+      properties:
+        current_status:
+          type: string
+        settled_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+    DisputeLifecycleSnapshot:
+      type: object
+      required: [current_status]
+      properties:
+        current_status:
+          type: string
+        last_reason_code:
+          type: string
+          nullable: true
+    ContractLifecycleSnapshot:
+      type: object
+      required:
+        [contract_id, contract_status, variables_json, updated_at]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        contract_status:
+          type: string
+        contract_digest:
+          type: string
+          nullable: true
+        signed_at:
+          type: string
+          format: date-time
+          nullable: true
+        variables_json:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    AuthorizationLifecycleSnapshot:
+      type: object
+      required:
+        [
+          authorization_id,
+          current_status,
+          grant_type,
+          granted_to_type,
+          granted_to_id,
+          valid_from,
+          authorization_model,
+          policy_snapshot,
+          updated_at,
+        ]
+      properties:
+        authorization_id:
+          type: string
+          format: uuid
+        current_status:
+          type: string
+        grant_type:
+          type: string
+        granted_to_type:
+          type: string
+        granted_to_id:
+          type: string
+          format: uuid
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+        authorization_model:
+          $ref: '#/components/schemas/AuthorizationModelSnapshot'
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    DeliveryLifecycleSnapshot:
+      type: object
+      required: [delivery_id, delivery_type, current_status, updated_at]
+      properties:
+        delivery_id:
+          type: string
+          format: uuid
+        delivery_type:
+          type: string
+        delivery_route:
+          type: string
+          nullable: true
+        current_status:
+          type: string
+        committed_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    CancelOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/CancelOrderResponseData'
+    CancelOrderResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          previous_state,
+          current_state,
+          payment_status,
+          refund_branch,
+          refund_required,
+          reason_code,
+          canceled_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        previous_state:
+          type: string
+        current_state:
+          type: string
+          enum: [closed]
+        payment_status:
+          type: string
+        refund_branch:
+          type: string
+          enum: [no_refund, refund_required]
+        refund_required:
+          type: boolean
+        reason_code:
+          type: string
+        canceled_at:
+          type: string
+          format: date-time
+    ConfirmOrderContractRequest:
+      type: object
+      required: [contract_template_id, contract_digest, signer_role]
+      properties:
+        contract_template_id:
+          type: string
+          format: uuid
+        contract_digest:
+          type: string
+        data_contract_id:
+          type: string
+          format: uuid
+          nullable: true
+        data_contract_digest:
+          type: string
+          nullable: true
+        variables_json:
+          type: object
+          additionalProperties: true
+        signer_role:
+          type: string
+          enum: [buyer_signatory, buyer_operator, legal_reviewer]
+    ConfirmOrderContractResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/ConfirmOrderContractResponseData'
+    ConfirmOrderContractResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          contract_id,
+          contract_template_id,
+          contract_digest,
+          contract_status,
+          order_status,
+          signer_id,
+          signer_type,
+          signer_role,
+          signed_at,
+          signature_provider_mode,
+          signature_provider_kind,
+          signature_provider_ref,
+          variables_json,
+          onchain_digest_ref,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        contract_id:
+          type: string
+          format: uuid
+        contract_template_id:
+          type: string
+          format: uuid
+        contract_digest:
+          type: string
+        data_contract_id:
+          type: string
+          format: uuid
+          nullable: true
+        data_contract_digest:
+          type: string
+          nullable: true
+        contract_status:
+          type: string
+        order_status:
+          type: string
+        signer_id:
+          type: string
+          format: uuid
+        signer_type:
+          type: string
+        signer_role:
+          type: string
+        signed_at:
+          type: string
+          format: date-time
+        signature_provider_mode:
+          type: string
+          enum: [mock, real]
+        signature_provider_kind:
+          type: string
+        signature_provider_ref:
+          type: string
+        variables_json:
+          type: object
+          additionalProperties: true
+        onchain_digest_ref:
+          type: string
+    FileStdTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              lock_funds,
+              start_delivery,
+              mark_delivered,
+              accept_delivery,
+              settle_order,
+              close_completed,
+              request_refund,
+              open_dispute,
+              resolve_dispute_refund,
+              resolve_dispute_complete,
+            ]
+        reason_note:
+          type: string
+    FileSubTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              establish_subscription,
+              start_cycle_delivery,
+              mark_cycle_delivered,
+              accept_cycle_delivery,
+              pause_subscription,
+              expire_subscription,
+              renew_subscription,
+              request_refund,
+              open_dispute,
+              resolve_dispute_refund,
+              resolve_dispute_complete,
+            ]
+        reason_note:
+          type: string
+    ApiSubTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              lock_funds,
+              bind_application,
+              issue_api_key,
+              trial_call,
+              activate_subscription,
+              bill_cycle,
+              terminate_subscription,
+            ]
+        reason_note:
+          type: string
+    ApiPpuTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              authorize_access,
+              configure_quota,
+              settle_success_call,
+              record_failed_call,
+              expire_access,
+              disable_access,
+            ]
+        reason_note:
+          type: string
+    ShareRoTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              enable_share,
+              grant_read_access,
+              confirm_first_query,
+              revoke_share,
+              expire_share,
+              interrupt_dispute,
+            ]
+        reason_note:
+          type: string
+    QryLiteTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              authorize_template,
+              validate_params,
+              execute_query,
+              make_result_available,
+              close_acceptance,
+            ]
+        reason_note:
+          type: string
+    SbxStdTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              enable_workspace,
+              issue_account_seat,
+              execute_sandbox_query,
+              export_limited_result,
+              expire_sandbox,
+              revoke_sandbox,
+            ]
+        reason_note:
+          type: string
+    RptStdTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            [
+              create_report_task,
+              generate_report,
+              deliver_report,
+              accept_report,
+              settle_report,
+            ]
+        reason_note:
+          type: string
+    OrderAuthorizationTransitionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [grant, revoke, expire, suspend, recover]
+        policy_id:
+          type: string
+          format: uuid
+        grant_type:
+          type: string
+        granted_to_type:
+          type: string
+        granted_to_id:
+          type: string
+          format: uuid
+        valid_to:
+          type: string
+          format: date-time
+        reason_note:
+          type: string
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+    FileStdTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/FileStdTransitionResponseData'
+    FileSubTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/FileSubTransitionResponseData'
+    ApiSubTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/ApiSubTransitionResponseData'
+    ApiPpuTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/ApiPpuTransitionResponseData'
+    ShareRoTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/ShareRoTransitionResponseData'
+    QryLiteTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/QryLiteTransitionResponseData'
+    SbxStdTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SbxStdTransitionResponseData'
+    RptStdTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/RptStdTransitionResponseData'
+    OrderAuthorizationTransitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/OrderAuthorizationTransitionResponseData'
+    FileStdTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    FileSubTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    ApiSubTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    ApiPpuTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    ShareRoTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    QryLiteTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    SbxStdTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    RptStdTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          action,
+          previous_state,
+          current_state,
+          payment_status,
+          delivery_status,
+          acceptance_status,
+          settlement_status,
+          dispute_status,
+          reason_code,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        transitioned_at:
+          type: string
+          format: date-time
+    OrderAuthorizationTransitionResponseData:
+      type: object
+      required:
+        [
+          order_id,
+          authorization_id,
+          action,
+          current_status,
+          policy_id,
+          policy_name,
+          policy_status,
+          grant_type,
+          granted_to_type,
+          granted_to_id,
+          valid_from,
+          reason_code,
+          authorization_model,
+          policy_snapshot,
+          transitioned_at,
+        ]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        authorization_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        previous_status:
+          type: string
+          nullable: true
+        current_status:
+          type: string
+        policy_id:
+          type: string
+          format: uuid
+        policy_name:
+          type: string
+        policy_status:
+          type: string
+        grant_type:
+          type: string
+        granted_to_type:
+          type: string
+        granted_to_id:
+          type: string
+          format: uuid
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+        reason_code:
+          type: string
+        authorization_model:
+          $ref: '#/components/schemas/AuthorizationModelSnapshot'
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+        transitioned_at:
+          type: string
+          format: date-time
+    AuthorizationModelSnapshot:
+      type: object
+      required: [scope, subject, resource, action]
+      properties:
+        scope:
+          $ref: '#/components/schemas/AuthorizationScopeSnapshot'
+        subject:
+          $ref: '#/components/schemas/AuthorizationSubjectSnapshot'
+        resource:
+          $ref: '#/components/schemas/AuthorizationResourceSnapshot'
+        action:
+          $ref: '#/components/schemas/AuthorizationActionSnapshot'
+    AuthorizationScopeSnapshot:
+      type: object
+      required: [scope_type, order_id, product_id, sku_id, sku_type, policy_id]
+      properties:
+        scope_type:
+          type: string
+        order_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        policy_id:
+          type: string
+          format: uuid
+    AuthorizationSubjectSnapshot:
+      type: object
+      required: [subject_type, subject_id, constraints]
+      properties:
+        subject_type:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        constraints:
+          type: object
+          additionalProperties: true
+    AuthorizationResourceSnapshot:
+      type: object
+      required: [resource_type, product_id, sku_id, sku_type]
+      properties:
+        resource_type:
+          type: string
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+    AuthorizationActionSnapshot:
+      type: object
+      required: [grant_type, access_mode, allowed_usage, exportable]
+      properties:
+        grant_type:
+          type: string
+        access_mode:
+          type: string
+        allowed_usage:
+          type: array
+          items:
+            type: string
+        exportable:
+          type: boolean
+    TradePreRequestResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/TradePreRequestResponseData'
+    TradePreRequestResponseData:
+      type: object
+      required:
+        [
+          inquiry_id,
+          buyer_org_id,
+          status,
+          request_kind,
+          details,
+          contract_expectation,
+          authorization_expectation,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        inquiry_id:
+          type: string
+          format: uuid
+        buyer_org_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [open, submitted, closed]
+        request_kind:
+          type: string
+          enum: [rfq, sample_request, poc_request]
+        details:
+          $ref: '#/components/schemas/TradePreRequestDetails'
+        contract_expectation:
+          $ref: '#/components/schemas/ContractExpectationSnapshot'
+        authorization_expectation:
+          $ref: '#/components/schemas/AuthorizationExpectationSnapshot'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SettlementTermsSnapshot:
+      type: object
+      required: [settlement_basis, settlement_mode]
+      properties:
+        settlement_basis:
+          type: string
+        settlement_mode:
+          type: string
+    TaxTermsSnapshot:
+      type: object
+      required: [tax_policy, tax_code, tax_inclusive]
+      properties:
+        tax_policy:
+          type: string
+        tax_code:
+          type: string
+        tax_inclusive:
+          type: boolean
+    OrderPriceSnapshot:
+      type: object
+      required:
+        [
+          product_id,
+          sku_id,
+          sku_code,
+          sku_type,
+          pricing_mode,
+          unit_price,
+          currency_code,
+          billing_mode,
+          refund_mode,
+          settlement_terms,
+          tax_terms,
+          captured_at,
+          source,
+        ]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_code:
+          type: string
+        sku_type:
+          type: string
+        pricing_mode:
+          type: string
+        unit_price:
+          type: string
+        currency_code:
+          type: string
+        billing_mode:
+          type: string
+        refund_mode:
+          type: string
+        settlement_terms:
+          $ref: '#/components/schemas/SettlementTermsSnapshot'
+        tax_terms:
+          $ref: '#/components/schemas/TaxTermsSnapshot'
+        captured_at:
+          type: string
+        source:
+          type: string
+    FreezeOrderPriceSnapshotResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [data]
+          properties:
+            data:
+              type: object
+              required: [order_id, snapshot]
+              properties:
+                order_id:
+                  type: string
+                  format: uuid
+                snapshot:
+                  $ref: '#/components/schemas/OrderPriceSnapshot'
+    OrderPaymentOrchestrationTransition:
+      type: object
+      required: [payment_result, from_order_status, to_order_status, non_regression_guard]
+      properties:
+        payment_result:
+          type: string
+          enum: [succeeded, failed, timeout]
+        from_order_status:
+          type: string
+        to_order_status:
+          type: string
+        non_regression_guard:
+          type: string
