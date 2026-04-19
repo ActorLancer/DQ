@@ -1,3 +1,4 @@
+mod acceptance;
 mod api_usage_log;
 mod download_file;
 mod download_ticket;
@@ -10,6 +11,10 @@ mod sandbox_workspace;
 mod share_grant;
 mod template_grant;
 
+pub use acceptance::{
+    AcceptOrderRequest, AcceptOrderResponse, OrderAcceptanceResponseData, RejectOrderRequest,
+    RejectOrderResponse,
+};
 pub use api_usage_log::{
     ApiUsageLogAppData, ApiUsageLogEntryData, ApiUsageLogListResponseData, ApiUsageLogResponse,
     ApiUsageLogSummaryData,

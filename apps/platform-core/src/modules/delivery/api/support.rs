@@ -8,6 +8,8 @@ pub enum DeliveryPermission {
     CommitFileDelivery,
     CommitReportDelivery,
     EnableApiDelivery,
+    AcceptDelivery,
+    RejectDelivery,
     ReadApiUsageLog,
     ManageQuerySurface,
     ManageQueryTemplate,
@@ -36,6 +38,14 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
             role,
             "seller_operator"
                 | "tenant_developer"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        DeliveryPermission::AcceptDelivery | DeliveryPermission::RejectDelivery => matches!(
+            role,
+            "buyer_operator"
+                | "procurement_manager"
                 | "tenant_admin"
                 | "platform_admin"
                 | "platform_risk_settlement"

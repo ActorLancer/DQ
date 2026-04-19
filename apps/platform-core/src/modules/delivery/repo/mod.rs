@@ -1,3 +1,4 @@
+mod acceptance_repository;
 mod api_delivery_repository;
 mod api_usage_log_repository;
 mod download_file_repository;
@@ -15,6 +16,7 @@ mod share_grant_repository;
 mod storage_gateway_repository;
 mod template_grant_repository;
 
+pub use acceptance_repository::{accept_order_delivery, reject_order_delivery};
 pub use api_delivery_repository::commit_api_delivery;
 pub use api_usage_log_repository::get_api_usage_log;
 pub use download_file_repository::consume_download_ticket;

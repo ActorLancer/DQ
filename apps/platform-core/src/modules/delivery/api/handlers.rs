@@ -2,21 +2,23 @@ use super::download_middleware::ValidatedDownloadTicket;
 use super::support::{DeliveryPermission, header, map_db_connect, require_permission};
 use crate::AppState;
 use crate::modules::delivery::dto::{
-    ApiUsageLogResponse, CommitOrderDeliveryRequest, CommitOrderDeliveryResponse,
-    DownloadFileResponse, DownloadFileResponseData, DownloadTicketResponse,
-    ExecuteTemplateRunRequest, ExecuteTemplateRunResponse, GetQueryRunsResponse,
-    GetRevisionSubscriptionResponse, GetShareGrantResponse, ManageQuerySurfaceRequest,
-    ManageQuerySurfaceResponse, ManageQueryTemplateRequest, ManageQueryTemplateResponse,
-    ManageRevisionSubscriptionRequest, ManageRevisionSubscriptionResponse,
-    ManageSandboxWorkspaceRequest, ManageSandboxWorkspaceResponse, ManageShareGrantRequest,
-    ManageShareGrantResponse, ManageTemplateGrantRequest, ManageTemplateGrantResponse,
+    AcceptOrderRequest, AcceptOrderResponse, ApiUsageLogResponse, CommitOrderDeliveryRequest,
+    CommitOrderDeliveryResponse, DownloadFileResponse, DownloadFileResponseData,
+    DownloadTicketResponse, ExecuteTemplateRunRequest, ExecuteTemplateRunResponse,
+    GetQueryRunsResponse, GetRevisionSubscriptionResponse, GetShareGrantResponse,
+    ManageQuerySurfaceRequest, ManageQuerySurfaceResponse, ManageQueryTemplateRequest,
+    ManageQueryTemplateResponse, ManageRevisionSubscriptionRequest,
+    ManageRevisionSubscriptionResponse, ManageSandboxWorkspaceRequest,
+    ManageSandboxWorkspaceResponse, ManageShareGrantRequest, ManageShareGrantResponse,
+    ManageTemplateGrantRequest, ManageTemplateGrantResponse, RejectOrderRequest,
+    RejectOrderResponse,
 };
 use crate::modules::delivery::repo::{
-    commit_api_delivery, commit_file_delivery, commit_report_delivery, consume_download_ticket,
-    execute_template_run, get_api_usage_log, get_query_runs, get_revision_subscription,
-    get_share_grants, issue_download_ticket, manage_query_surface, manage_query_template,
-    manage_revision_subscription, manage_sandbox_workspace, manage_share_grant,
-    manage_template_grant,
+    accept_order_delivery, commit_api_delivery, commit_file_delivery, commit_report_delivery,
+    consume_download_ticket, execute_template_run, get_api_usage_log, get_query_runs,
+    get_revision_subscription, get_share_grants, issue_download_ticket, manage_query_surface,
+    manage_query_template, manage_revision_subscription, manage_sandbox_workspace,
+    manage_share_grant, manage_template_grant, reject_order_delivery,
 };
 use crate::modules::storage::application::fetch_object_bytes;
 use axum::Json;
@@ -113,6 +115,70 @@ pub async fn commit_order_delivery_api(
     Ok(ApiResponse::ok(CommitOrderDeliveryResponse {
         data: committed,
     }))
+}
+
+pub async fn accept_order_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<AcceptOrderRequest>,
+) -> Result<Json<ApiResponse<AcceptOrderResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::AcceptDelivery,
+        "order acceptance",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let accepted = accept_order_delivery(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(AcceptOrderResponse { data: accepted }))
+}
+
+pub async fn reject_order_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<RejectOrderRequest>,
+) -> Result<Json<ApiResponse<RejectOrderResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::RejectDelivery,
+        "order rejection",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let rejected = reject_order_delivery(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(RejectOrderResponse { data: rejected }))
 }
 
 pub async fn issue_download_ticket_api(

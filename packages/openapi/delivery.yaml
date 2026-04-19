@@ -54,6 +54,68 @@ paths:
           description: Order not found
         '409':
           description: Order state does not allow the requested delivery branch
+  /api/v1/orders/{id}/accept:
+    post:
+      summary: Accept a manually delivered FILE_STD/FILE_SUB/RPT_STD order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptOrderRequest'
+      responses:
+        '200':
+          description: Order acceptance persisted and the latest delivery record marked accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptOrderResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: SKU or current order state does not allow manual acceptance
+  /api/v1/orders/{id}/reject:
+    post:
+      summary: Reject a manually delivered FILE_STD/FILE_SUB/RPT_STD order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectOrderRequest'
+      responses:
+        '200':
+          description: Order rejection persisted and the latest delivery record marked rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RejectOrderResponseEnvelope'
+        '400':
+          description: reject payload is incomplete
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: SKU or current order state does not allow rejection
   /api/v1/orders/{id}/download-ticket:
     get:
       summary: Issue a short-lived download ticket for a committed file delivery
@@ -1939,6 +2001,114 @@ components:
         metadata:
           type: object
           additionalProperties: true
+          nullable: true
+    AcceptOrderRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          nullable: true
+        verification_summary:
+          type: object
+          additionalProperties: true
+          nullable: true
+    RejectOrderRequest:
+      type: object
+      required: [reason_code]
+      properties:
+        reason_code:
+          type: string
+        reason_detail:
+          type: string
+          nullable: true
+        verification_summary:
+          type: object
+          additionalProperties: true
+          nullable: true
+    AcceptOrderResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/AcceptOrderResponse'
+    AcceptOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderAcceptanceResponseData'
+    RejectOrderResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/RejectOrderResponse'
+    RejectOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderAcceptanceResponseData'
+    OrderAcceptanceResponseData:
+      type: object
+      required:
+        - order_id
+        - action
+        - previous_state
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - reason_code
+        - processed_at
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+          nullable: true
+        delivery_branch:
+          type: string
+          nullable: true
+        action:
+          type: string
+          enum: [accept, reject]
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        reason_detail:
+          type: string
+          nullable: true
+        accepted_at:
+          type: string
+          format: date-time
+          nullable: true
+        processed_at:
+          type: string
+          format: date-time
+        operation:
+          type: string
           nullable: true
     CommitOrderDeliveryResponseEnvelope:
       type: object

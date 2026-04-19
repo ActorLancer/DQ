@@ -4163,3 +4163,96 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-160（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-018
+- 已阅读证据：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认下一任务为 `DLV-018`，目标为实现 `POST /api/v1/orders/{id}/accept` 与 `POST /api/v1/orders/{id}/reject`，完成定义要求接口/DTO/权限/审计/错误码/最小测试齐备。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认交付范围落在 `apps/platform-core/src/modules/delivery/**` 与 `packages/openapi/delivery.yaml`，并要求至少一条集成测试或手工 API 验证可见审计痕迹。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：本批仍按单任务冻结流程执行，先写计划中，再实现、验证、TODO、待审批、本地提交。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：延续单任务、不可跳步、验证不可省略、保留 `TODO-PROC-BIL-001` 追溯说明。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md` / `docs/开发任务/V1-Core-TODO与预留清单.md`：确认上一批 `DLV-017/BATCH-159` 已完成并记录，当前从 `DLV-018` 顺序继续。
+  6. `docs/业务流程/业务流程图-V1-完整版.md:L268`：交付、验真与验收主流程要求买方在交付后执行验收，不符合时提交 `reject` 或 `open_case`；状态轴存在 `delivered -> rejected -> dispute_opened`。
+  7. `docs/页面说明书/页面说明书-V1-完整版.md:L714`：验收页必须支持交付摘要、验真结果、合同/模板匹配检查、确认验收按钮、拒收按钮、发起争议按钮，关键状态含 `delivered / accepted / rejected / dispute_opened`。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：核心交易链路中“步骤 8：验收”要求按产品类型执行人工/自动验收，接口冻结表要求 `POST /api/v1/orders/{id}/accept|reject` 且权限为 `delivery.accept.execute / delivery.reject.execute`。
+  9. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认两个接口路径已冻结。
+  10. `docs/开发准备/事件模型与Topic清单正式版.md`：确认后续事件语义包含 `acceptance.passed / acceptance.rejected`，本批先落接口与审计，事件桥接留待后续 `DLV-020/030`。
+  11. 其余 18 份必读冻结文档已按阶段基线复核服务边界、错误码、环境、配置、测试矩阵与数据库分层口径；当前未发现需要升级为问题清单的冲突。
+- 当前批次目标：在 `delivery` 子域补齐统一验收通过/拒收接口，落实 buyer-scope 权限校验、订单与交付记录状态回写、最小拒收原因结构、OpenAPI、DB smoke 与真实 API/DB 联调验证。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv018_acceptance_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST /api/v1/orders/{id}/accept` / `reject` 联调，回查 `trade.order_main / delivery.delivery_record / audit.audit_event` 后清理业务数据。
+
+### BATCH-160（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-018
+- 已实现功能：
+  1. 在 `delivery` 子域新增 `POST /api/v1/orders/{id}/accept` 与 `POST /api/v1/orders/{id}/reject`，并接入 `delivery.accept.execute / delivery.reject.execute` 权限校验。
+  2. 新增统一验收仓储 `acceptance_repository.rs`，按 `FILE_STD / FILE_SUB / RPT_STD` 的交付主状态执行手工验收通过/拒收。
+  3. 验收通过会把订单推进到 `accepted`，补写 `accepted_at`，并将最新 `delivery.delivery_record` 标记为 `accepted`。
+  4. 拒收会把订单推进到 `rejected`，并同步写入 `acceptance_status=rejected / settlement_status=blocked / dispute_status=open`，将最新 `delivery.delivery_record` 标记为 `rejected`。
+  5. 两个接口都会把验收决策写入 `delivery.delivery_record.trust_boundary_snapshot.acceptance`，冻结 `decision / reason_code / reason_detail / verification_summary` 最小结构。
+  6. 补齐重复提交幂等：已验收/已拒收再次调用分别返回 `already_accepted / already_rejected`。
+  7. 新增 `dlv018_acceptance_db_smoke`，覆盖文件验收通过、重复验收、报告拒收、审计与 DB 断言。
+  8. 同步更新 `packages/openapi/delivery.yaml`，新增 `accept/reject` 路径与 schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/acceptance.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/acceptance_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv018_acceptance_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv018_acceptance_db_smoke -- --nocapture`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8111 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用真实 PostgreSQL + `curl POST /api/v1/orders/{id}/accept|reject` 联调，回查 `trade.order_main / delivery.delivery_record / audit.audit_event` 后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`183 passed, 0 failed, 1 ignored`）。
+  - `dlv018_acceptance_db_smoke`：通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/accept` 返回 `HTTP 200`，`current_state=accepted / delivery_branch=file / acceptance_status=accepted / settlement_status=pending_settlement`
+    - `POST /api/v1/orders/{id}/reject` 返回 `HTTP 200`，`current_state=rejected / delivery_branch=report / acceptance_status=rejected / settlement_status=blocked / dispute_status=open`
+  - DB 回查通过：
+    - 文件订单：`accepted / paid / delivered / accepted / pending_settlement / none / accepted_at=true`
+    - 文件交付记录：`accepted / trust_boundary_snapshot.acceptance.decision=accepted`
+    - 报告订单：`rejected / paid / delivered / rejected / blocked / open`
+    - 报告交付记录：`rejected / trust_boundary_snapshot.acceptance.reason_code=report_quality_failed`
+    - 审计：`delivery.accept=1`、`delivery.reject=1`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.4（交付、验真与验收主流程）与 5.3（争议处理流程）
+  - `页面说明书-V1` 7.9（验收页）
+  - `全集成基线-V1` 15（核心交易链路完整闭环）、接口冻结与权限矩阵中的 `accept/reject` 口径
+- 覆盖的任务清单条目：`DLV-018`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

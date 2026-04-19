@@ -8,11 +8,11 @@ use axum::middleware;
 use axum::routing::{get, post};
 use download_middleware::validate_download_ticket_middleware;
 pub use handlers::{
-    commit_order_delivery_api, download_file_api, execute_template_run_api, get_api_usage_log_api,
-    get_query_runs_api, get_revision_subscription_api, get_share_grants_api,
+    accept_order_api, commit_order_delivery_api, download_file_api, execute_template_run_api,
+    get_api_usage_log_api, get_query_runs_api, get_revision_subscription_api, get_share_grants_api,
     issue_download_ticket_api, manage_query_surface_api, manage_query_template_api,
     manage_revision_subscription_api, manage_sandbox_workspace_api, manage_share_grant_api,
-    manage_template_grant_api,
+    manage_template_grant_api, reject_order_api,
 };
 
 pub fn router() -> Router<AppState> {
@@ -21,6 +21,8 @@ pub fn router() -> Router<AppState> {
             "/api/v1/orders/{id}/deliver",
             post(commit_order_delivery_api),
         )
+        .route("/api/v1/orders/{id}/accept", post(accept_order_api))
+        .route("/api/v1/orders/{id}/reject", post(reject_order_api))
         .route(
             "/api/v1/orders/{id}/download-ticket",
             get(issue_download_ticket_api),
