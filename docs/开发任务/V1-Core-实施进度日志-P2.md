@@ -2964,3 +2964,112 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；当前运行库 `catalog.product.subscription_cadence` 实列未落地，已按快照/metadata 回退兼容，不单独新增 TODO；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-148（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-006
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-006` 目标为 `POST/GET /api/v1/orders/{id}/share-grants`，Definition of Done 要求接口、DTO、权限校验、审计、错误码、最小测试与 OpenAPI 一致。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：复核 `DLV-006` 属于 `SHARE_RO` 真实交付入口，不能只做状态机占位或只插入一条授权记录。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：本批继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地 commit”执行，并在提交后继续推进下一任务。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：继续遵守单任务顺序、冻结文档先行、按模块拆分实现。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 `BATCH-147`，先登记本批计划中，完成后再补待审批记录。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `SHARE_RO` 的主交付对象是“共享开通结果 + recipient/subscriber 绑定 + revoke 生命周期”，不得按文件下载或 API 调用解释；共享接口权限为 `delivery.share.enable/read`，校验顺序为身份 -> 主体状态 -> 权限 -> 订单作用域 -> 共享对象归属 -> recipient 合法性 -> 协议/到期策略 -> 风控 -> 审计。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：共享开通属于 Delivery 领域，但订单与支付/合同真值仍留在 Trade。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结表已存在 `POST/GET /api/v1/orders/{id}/share-grants`，本批需补齐实现和 schema。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批不提前补 Kafka 业务桥接，先落数据库真值与审计，后续 `DLV-020/030` 再补 outbox 事件。
+  12. `docs/开发准备/统一错误码字典正式版.md`：冲突/权限/内部错误继续沿用统一错误结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批需要最小 DB smoke + 真实 API 联调 + 数据库回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：共享授权继续落在 `delivery/api|dto|repo|tests`，不把实现塞回订单模块。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批联调继续使用 `datab-postgres`、`datab-kafka` 与本地 core 栈；共享授权本批不强依赖 Redis/MinIO 实体读写。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用本地环境变量与固定 DSN/端口口径。
+  17. `docs/开发准备/技术选型正式版.md`：沿用当前 `SQLx + SeaORM` 数据访问基线，不回退旧实现。
+  18. `docs/开发准备/平台总体架构设计草案.md`：共享开通是受控交付入口，需把交付结果、审计和后续首个只读访问触发点连通。
+- 当前任务额外引用的 `technical_reference` 与约束映射：
+  - `docs/业务流程/业务流程图-V1-完整版.md:L314`：共享开通需校验 `recipient / subscriber / share protocol`，绑定共享对象、范围和到期时间，生成 `data_share_grant`，执行 share grant，并在到期/撤权时写入状态回执与审计。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L625`：只读共享开通页必须呈现共享协议类型、recipient/subscriber 绑定、共享对象列表、授权范围与到期时间、grant 状态与撤权记录。
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L709`：`DataShareGrant` 负责记录 recipient/subscriber、共享协议、access locator 与 grant/revoke 生命周期，是 `Order` 到共享交付结果的正式关系对象。
+- 补充约束文档：
+  1. `docs/权限设计/接口权限校验清单.md`：`POST /share-grants` 需 `delivery.share.enable`，`GET /share-grants` 需 `delivery.share.read`，并额外校验订单已支付、共享对象存在、recipient 合法、最小披露和审计。
+  2. `docs/权限设计/角色权限矩阵正式版.md`：卖方运营员/租户管理员可开通；买方运营员、卖方运营员、租户审计只读员可查看。
+  3. `docs/权限设计/后端鉴权中间件规则说明.md`：不得仅凭订单状态放行，必须再次校验 `asset_object_binding.object_kind = share_object`。
+  4. `docs/数据库设计/数据库表字典正式版.md`：`delivery.data_share_grant` 字段固定为 `asset_object_id / recipient_ref / share_protocol / access_locator / grant_status / read_only / receipt_hash / granted_at / revoked_at / expires_at / metadata`。
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/share-grants` 与 `GET /api/v1/orders/{id}/share-grants`，打通 `SHARE_RO` 订单共享开通、recipient/subscriber 绑定、`delivery.data_share_grant` 落库、订单状态推进、交付记录提交、审计与真实 API 联调。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv006_share_grant_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST/GET /api/v1/orders/{id}/share-grants` 联调，回查 `delivery.data_share_grant / delivery.delivery_record / trade.order_main / audit.audit_event` 后清理业务数据。
+
+### BATCH-148（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-006
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/share-grants` 与 `GET /api/v1/orders/{id}/share-grants`，打通 `SHARE_RO` 订单共享开通、recipient/subscriber 绑定、`delivery.data_share_grant` 落库、订单状态推进、交付记录提交、审计与真实 API 联调。
+- 已实现功能：
+  1. 在 `modules/delivery` 新增 `share_grant` DTO、仓储与 API 处理器，落地 `POST /api/v1/orders/{id}/share-grants`、`GET /api/v1/orders/{id}/share-grants`。
+  2. `POST` 已实现 `delivery.share.enable` 权限、卖方租户作用域校验、主体状态校验、`SHARE_RO` SKU 校验、支付完成校验、产品审核/资产版本状态校验、风控阻断校验，并强制 `catalog.asset_object_binding.object_kind = share_object`。
+  3. `grant` 操作会校验 `recipient_ref / share_protocol / expires_at / receipt_hash`，通过统一可交付门禁后写入或更新 `delivery.data_share_grant`，并把 `delivery.delivery_record` 从 `prepared` 推进到 `committed`，订单主状态推进到 `share_granted` 或保持 `shared_active`。
+  4. `revoke` 操作会回收当前有效 grant，写入 `revoked_at / receipt_hash`，保留既有 `subscriber_ref / scope_json` 元数据，并同步关闭 `delivery.delivery_record` 与 `trade.order_main`，同时触发既有授权断权编排。
+  5. `GET` 已实现 `delivery.share.read` 权限，支持买方/卖方最小作用域读取，返回共享协议、recipient/subscriber、access locator、scope、到期时间和 grant/revoke 历史。
+  6. `packages/openapi/delivery.yaml` 已同步新增 share-grant manage/read 路径与 schema，Delivery OpenAPI 与实现路由保持一致。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/share_grant.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/share_grant_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv006_share_grant_db.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv006_share_grant_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8099 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 临时写入 `SHARE_RO` 订单，执行 `curl POST /api/v1/orders/{id}/share-grants`、`curl GET /api/v1/orders/{id}/share-grants`、`curl POST /api/v1/orders/{id}/share-grants`（`revoke`），再回查 `delivery.data_share_grant / delivery.delivery_record / trade.order_main / audit.audit_event`，最后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv006_share_grant_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`171 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/share-grants`：`HTTP 200`，返回 `granted | share_granted | active`
+    - `GET /api/v1/orders/{id}/share-grants`：`HTTP 200`，返回 `share_granted | active | warehouse://buyer/...`
+    - `POST /api/v1/orders/{id}/share-grants`（`revoke`）：`HTTP 200`，返回 `revoked | revoked | revoked`
+  - DB 回查通过：
+    - `delivery.data_share_grant`：`revoked | warehouse://buyer/... | share_grant | share://seller/.../dataset | subscriber_ref=sub-...`
+    - `delivery.delivery_record`：`revoked | share_grant | share_grant | share-revoke-...`
+    - `trade.order_main`：`revoked | paid | closed | closed | closed`
+    - 审计：`delivery.share.enable=2`、`delivery.share.read=1`、`trade.order.share_ro.transition=2`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.4.1B（共享开通、recipient/subscriber 绑定、撤权/到期）
+  - `页面说明书-V1` 7.3（共享协议、对象、范围、到期时间与撤权展示）
+  - `领域模型` 4.5（`DataShareGrant` 作为 Order 到共享交付结果的正式关系对象）
+  - `权限设计` 接口权限校验清单 / 角色矩阵 / 后端鉴权规则（`delivery.share.enable/read` 与 `share_object` 校验）
+- 覆盖的任务清单条目：`DLV-006`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

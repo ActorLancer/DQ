@@ -10,6 +10,8 @@ pub enum DeliveryPermission {
     DownloadFile,
     ManageRevisionSubscription,
     ReadRevisionSubscription,
+    ManageShareGrant,
+    ReadShareGrant,
 }
 
 pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
@@ -36,6 +38,24 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
                 | "seller_operator"
                 | "seller_storage_operator"
                 | "procurement_manager"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ManageShareGrant => matches!(
+            role,
+            "seller_operator"
+                | "seller_storage_operator"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ReadShareGrant => matches!(
+            role,
+            "buyer_operator"
+                | "seller_operator"
+                | "seller_storage_operator"
+                | "tenant_audit_readonly"
                 | "tenant_admin"
                 | "platform_admin"
                 | "platform_risk_settlement"

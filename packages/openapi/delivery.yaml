@@ -7,7 +7,8 @@ info:
     schemas; DLV-002 adds the file-delivery commit endpoint; DLV-003 adds
     short-lived download-ticket issuance backed by Redis cache; DLV-004 adds
     ticket-validated file download with delivery-receipt logging; DLV-005 adds
-    FILE_SUB revision-subscription manage/read APIs.
+    FILE_SUB revision-subscription manage/read APIs; DLV-006 adds SHARE_RO
+    share-grant manage/read APIs.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -152,8 +153,233 @@ paths:
           description: Permission or tenant-scope forbidden
         '404':
           description: Order or revision subscription not found
+  /api/v1/orders/{id}/share-grants:
+    post:
+      summary: Create, update, or revoke a SHARE_RO grant
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageShareGrantRequest'
+      responses:
+        '200':
+          description: SHARE_RO grant created, updated, regranted, or revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageShareGrantResponseEnvelope'
+        '400':
+          description: Invalid payload or timestamp format
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or active grant not found
+        '409':
+          description: SKU is not SHARE_RO, share object is invalid, or current state does not allow management
+    get:
+      summary: Read SHARE_RO grant history under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: SHARE_RO grant records visible under order scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetShareGrantResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or share grant not found
 components:
   schemas:
+    ManageShareGrantRequest:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: [grant, revoke]
+          nullable: true
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        recipient_ref:
+          type: string
+          nullable: true
+        subscriber_ref:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        access_locator:
+          type: string
+          nullable: true
+        scope_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageShareGrantResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageShareGrantResponse'
+    ManageShareGrantResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ShareGrantResponseData'
+    GetShareGrantResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetShareGrantResponse'
+    GetShareGrantResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ShareGrantListResponseData'
+    ShareGrantListResponseData:
+      type: object
+      required:
+        - order_id
+        - sku_id
+        - sku_type
+        - current_state
+        - payment_status
+        - grants
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShareGrantResponseData'
+    ShareGrantResponseData:
+      type: object
+      required:
+        - data_share_grant_id
+        - order_id
+        - asset_object_id
+        - sku_id
+        - sku_type
+        - recipient_ref
+        - share_protocol
+        - grant_status
+        - read_only
+        - current_state
+        - payment_status
+        - delivery_status
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        data_share_grant_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        asset_object_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        recipient_ref:
+          type: string
+        subscriber_ref:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+        access_locator:
+          type: string
+          nullable: true
+        grant_status:
+          type: string
+        read_only:
+          type: boolean
+        receipt_hash:
+          type: string
+          nullable: true
+        granted_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        operation:
+          type: string
+          nullable: true
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     ManageRevisionSubscriptionRequest:
       type: object
       properties:

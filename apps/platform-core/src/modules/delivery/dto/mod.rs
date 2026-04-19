@@ -2,6 +2,7 @@ mod download_file;
 mod download_ticket;
 mod file_delivery_commit;
 mod revision_subscription;
+mod share_grant;
 
 pub use download_file::{
     DownloadFileAccessData, DownloadFileResponse, DownloadFileResponseData, DownloadKeyEnvelopeData,
@@ -20,4 +21,8 @@ pub use download_ticket::{DownloadTicketResponse, DownloadTicketResponseData};
 pub use revision_subscription::{
     GetRevisionSubscriptionResponse, ManageRevisionSubscriptionRequest,
     ManageRevisionSubscriptionResponse, RevisionSubscriptionResponseData,
+};
+pub use share_grant::{
+    GetShareGrantResponse, ManageShareGrantRequest, ManageShareGrantResponse,
+    ShareGrantListResponseData, ShareGrantResponseData,
 };

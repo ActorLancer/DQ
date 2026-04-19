@@ -4,11 +4,12 @@ use crate::AppState;
 use crate::modules::delivery::dto::{
     CommitOrderDeliveryRequest, CommitOrderDeliveryResponse, DownloadFileResponse,
     DownloadFileResponseData, DownloadTicketResponse, GetRevisionSubscriptionResponse,
-    ManageRevisionSubscriptionRequest, ManageRevisionSubscriptionResponse,
+    GetShareGrantResponse, ManageRevisionSubscriptionRequest, ManageRevisionSubscriptionResponse,
+    ManageShareGrantRequest, ManageShareGrantResponse,
 };
 use crate::modules::delivery::repo::{
-    commit_file_delivery, consume_download_ticket, get_revision_subscription,
-    issue_download_ticket, manage_revision_subscription,
+    commit_file_delivery, consume_download_ticket, get_revision_subscription, get_share_grants,
+    issue_download_ticket, manage_revision_subscription, manage_share_grant,
 };
 use crate::modules::storage::application::fetch_object_bytes;
 use axum::Json;
@@ -210,4 +211,68 @@ pub async fn get_revision_subscription_api(
     Ok(ApiResponse::ok(GetRevisionSubscriptionResponse {
         data: subscription,
     }))
+}
+
+pub async fn manage_share_grant_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<ManageShareGrantRequest>,
+) -> Result<Json<ApiResponse<ManageShareGrantResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::ManageShareGrant,
+        "share grant management",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let share_grant = manage_share_grant(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ManageShareGrantResponse {
+        data: share_grant,
+    }))
+}
+
+pub async fn get_share_grants_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<GetShareGrantResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::ReadShareGrant,
+        "share grant read",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let grants = get_share_grants(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(GetShareGrantResponse { data: grants }))
 }

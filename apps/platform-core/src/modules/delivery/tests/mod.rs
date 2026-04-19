@@ -7,3 +7,5 @@ mod dlv003_download_ticket_db;
 mod dlv004_download_validation_db;
 
 mod dlv005_revision_subscription_db;
+
+mod dlv006_share_grant_db;
