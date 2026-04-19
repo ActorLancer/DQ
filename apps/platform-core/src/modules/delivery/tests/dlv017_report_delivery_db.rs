@@ -179,6 +179,18 @@ mod tests {
                 .as_str(),
             Some("report-results")
         );
+        assert_eq!(
+            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+                ["watermark_policy"]["rule"]["delivery_branch"]
+                .as_str(),
+            Some("report")
+        );
+        assert_eq!(
+            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+                ["watermark_policy"]["rule"]["pipeline"]["status"]
+                .as_str(),
+            Some("reserved")
+        );
 
         let order_row = client
             .query_one(
@@ -196,7 +208,12 @@ mod tests {
 
         let delivery_row = client
             .query_one(
-                "SELECT status, object_id::text, delivery_commit_hash, receipt_hash
+                "SELECT status,
+                        object_id::text,
+                        delivery_commit_hash,
+                        receipt_hash,
+                        trust_boundary_snapshot -> 'watermark_policy' ->> 'delivery_branch',
+                        trust_boundary_snapshot -> 'watermark_policy' -> 'pipeline' ->> 'status'
                  FROM delivery.delivery_record
                  WHERE delivery_id = $1::text::uuid",
                 &[&seed.delivery_id],
@@ -214,6 +231,14 @@ mod tests {
         assert_eq!(
             delivery_row.get::<_, Option<String>>(3).as_deref(),
             Some(format!("report-receipt-{suffix}").as_str())
+        );
+        assert_eq!(
+            delivery_row.get::<_, Option<String>>(4).as_deref(),
+            Some("report")
+        );
+        assert_eq!(
+            delivery_row.get::<_, Option<String>>(5).as_deref(),
+            Some("reserved")
         );
 
         let artifact_row = client

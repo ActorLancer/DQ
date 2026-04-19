@@ -1,6 +1,6 @@
 use crate::modules::delivery::domain::{
     StorageGatewayAccessAudit, StorageGatewayDownloadRestriction, StorageGatewayIntegrity,
-    StorageGatewayObjectLocator, StorageGatewaySnapshot, StorageGatewayWatermarkPolicy,
+    StorageGatewayObjectLocator, StorageGatewaySnapshot, derive_storage_gateway_watermark_policy,
 };
 use crate::modules::delivery::events::STORAGE_GATEWAY_READ_EVENT;
 use crate::modules::order::repo::map_db_error;
@@ -9,7 +9,6 @@ use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient, Row};
 use kernel::ErrorResponse;
-use serde_json::Value;
 use std::collections::HashMap;
 
 pub async fn load_storage_gateway_snapshots(
@@ -86,7 +85,7 @@ pub async fn load_storage_gateway_snapshots(
                     bucket_name.as_deref(),
                 ))
             };
-            let trust_boundary_snapshot: Value = row.get(19);
+            let trust_boundary_snapshot: serde_json::Value = row.get(19);
             let sensitive_delivery_mode = row.get::<_, String>(17);
             let disclosure_review_status = row.get::<_, String>(18);
             let download_limit = row.get::<_, Option<i32>>(22);
@@ -123,7 +122,7 @@ pub async fn load_storage_gateway_snapshots(
                     receipt_hash: row.get(16),
                     envelope_id: row.get(14),
                 },
-                watermark_policy: derive_watermark_policy(
+                watermark_policy: derive_storage_gateway_watermark_policy(
                     &trust_boundary_snapshot,
                     &sensitive_delivery_mode,
                     &disclosure_review_status,
@@ -200,59 +199,4 @@ pub async fn write_storage_gateway_read_audit(
         .await
         .map_err(map_db_error)?;
     Ok(())
-}
-
-fn derive_watermark_policy(
-    trust_boundary_snapshot: &Value,
-    sensitive_delivery_mode: &str,
-    disclosure_review_status: &str,
-) -> StorageGatewayWatermarkPolicy {
-    let policy = trust_boundary_snapshot
-        .get("watermark_policy")
-        .cloned()
-        .or_else(|| {
-            trust_boundary_snapshot.get("watermark_rule").map(|value| {
-                serde_json::json!({
-                    "policy": value,
-                })
-            })
-        })
-        .unwrap_or_else(|| serde_json::json!({"policy": "reserved_for_pipeline"}));
-
-    let fingerprint_fields = trust_boundary_snapshot
-        .get("fingerprint_fields")
-        .and_then(|value| value.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|value| value.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let mode = trust_boundary_snapshot
-        .get("watermark_mode")
-        .and_then(|value| value.as_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            if trust_boundary_snapshot.get("watermark_rule").is_some() {
-                "rule_bound".to_string()
-            } else {
-                "placeholder".to_string()
-            }
-        });
-
-    let watermark_hash = trust_boundary_snapshot
-        .get("watermark_hash")
-        .and_then(|value| value.as_str())
-        .map(str::to_string);
-
-    StorageGatewayWatermarkPolicy {
-        mode,
-        rule: policy,
-        fingerprint_fields,
-        watermark_hash,
-        sensitive_delivery_mode: sensitive_delivery_mode.to_string(),
-        disclosure_review_status: disclosure_review_status.to_string(),
-    }
 }

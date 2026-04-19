@@ -18,7 +18,9 @@ info:
     risk/output-boundary enforcement; DLV-013 adds query-run history read APIs
     with audit references and policy-hit summaries; DLV-014 adds sandbox
     workspace enablement for SBX_STD orders with workspace/session
-    provisioning, expiry, and export-policy snapshots.
+    provisioning, expiry, and export-policy snapshots; DLV-019 freezes a
+    placeholder watermark/fingerprint policy on file/report delivery objects so
+    future watermark pipelines can attach without changing the read contract.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -2491,6 +2493,7 @@ components:
         rule:
           type: object
           additionalProperties: true
+          description: Placeholder-capable watermark rule snapshot frozen at delivery commit time.
         fingerprint_fields:
           type: array
           items:

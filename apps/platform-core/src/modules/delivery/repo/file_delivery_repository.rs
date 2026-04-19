@@ -1,3 +1,4 @@
+use crate::modules::delivery::domain::{build_watermark_placeholder_patch, merge_snapshot_patch};
 use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponseData};
 use crate::modules::order::domain::derive_layered_status;
 use crate::modules::order::repo::map_db_error;
@@ -133,6 +134,10 @@ pub async fn commit_file_delivery(
         request_id,
     )
     .await?;
+    let delivery_trust_boundary_snapshot = merge_snapshot_patch(
+        &trust_boundary_snapshot,
+        &build_watermark_placeholder_patch(&trust_boundary_snapshot, "file", None),
+    );
 
     if matches!(
         current_state.as_str(),
@@ -387,7 +392,7 @@ pub async fn commit_file_delivery(
                     .as_deref()
                     .expect("validated delivery_commit_hash"),
                 &envelope_id,
-                &trust_boundary_snapshot,
+                &delivery_trust_boundary_snapshot,
                 &payload
                     .receipt_hash
                     .as_deref()

@@ -127,6 +127,22 @@ mod tests {
             detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["object_locator"]["bucket_name"].as_str(),
             Some("delivery-objects")
         );
+        assert_eq!(
+            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["mode"].as_str(),
+            Some("rule_bound")
+        );
+        assert_eq!(
+            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["delivery_branch"].as_str(),
+            Some("file")
+        );
+        assert_eq!(
+            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["pipeline"]["status"].as_str(),
+            Some("reserved")
+        );
+        assert_eq!(
+            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["fingerprint_strategy"].as_str(),
+            Some("field_bound")
+        );
 
         let order_row = client
             .query_one(
@@ -144,7 +160,13 @@ mod tests {
 
         let delivery_row = client
             .query_one(
-                "SELECT status, object_id::text, envelope_id::text, delivery_commit_hash, receipt_hash
+                "SELECT status,
+                        object_id::text,
+                        envelope_id::text,
+                        delivery_commit_hash,
+                        receipt_hash,
+                        trust_boundary_snapshot -> 'watermark_policy' ->> 'delivery_branch',
+                        trust_boundary_snapshot -> 'watermark_policy' -> 'pipeline' ->> 'status'
                  FROM delivery.delivery_record
                  WHERE delivery_id = $1::text::uuid",
                 &[&seed.delivery_id],
@@ -161,6 +183,14 @@ mod tests {
         assert_eq!(
             delivery_row.get::<_, Option<String>>(4).as_deref(),
             Some(format!("receipt-{suffix}").as_str())
+        );
+        assert_eq!(
+            delivery_row.get::<_, Option<String>>(5).as_deref(),
+            Some("file")
+        );
+        assert_eq!(
+            delivery_row.get::<_, Option<String>>(6).as_deref(),
+            Some("reserved")
         );
 
         let ticket_row = client

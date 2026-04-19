@@ -4256,3 +4256,78 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-161（计划中）
+- 任务：DLV-019 交付对象水印/指纹策略占位模型
+- 状态：计划中
+- 说明：冻结文件与报告交付对象的水印/指纹占位结构，补齐读写路径、审计与联调验证。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+
+### BATCH-161（待审批）
+- 任务：`DLV-019` 水印/指纹策略占位模型
+- 前置依赖：`TRADE-003 / TRADE-007 / DB-006 / DB-019 / DB-020 / CORE-008` 已完成并已审批，本批按单任务流程继续执行。
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`（`DLV-019` 定义、依赖、交付路径、验收口径）
+  - `docs/开发任务/v1-core-开发任务清单.md`（`DLV-019` 详细说明）
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`（计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> commit）
+  - `docs/开发任务/AI-Agent-执行提示词.md`（单任务严格执行口径）
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`（当前批次续写）
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`（追溯约束续写）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（交付闭环与交付对象约束）
+  - `docs/开发准备/服务清单与服务边界正式版.md`（Delivery / Storage / Query 边界）
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（交付接口冻结口径）
+  - `docs/开发准备/事件模型与Topic清单正式版.md`（本批仅复核，无新增 topic）
+  - `docs/开发准备/统一错误码字典正式版.md`（保持现有错误码口径）
+  - `docs/开发准备/测试用例矩阵正式版.md`（交付与订单详情联调覆盖）
+  - `docs/开发准备/仓库拆分与目录结构建议.md`（复用 delivery 子域分层）
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`（MinIO/Kafka/Redis 本地栈）
+  - `docs/开发准备/配置项与密钥管理清单.md`（对象存储 bucket / 本地配置）
+  - `docs/开发准备/技术选型正式版.md`（当前基线：SQLx + SeaORM）
+  - `docs/开发准备/平台总体架构设计草案.md`（交付对象与订单聚合关系）
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L709`（4.5 交付与执行聚合）
+  - `docs/业务流程/业务流程图-V1-完整版.md:L270`（4.4.1 文件类交付）
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L590`（7.1 文件交付页）
+- 实现内容：
+  - 新增 `delivery/domain/watermark_policy.rs`，集中冻结交付对象的水印/指纹占位 patch 与读模型派生逻辑。
+  - `commit_file_delivery(...)` 现在会在写入 `delivery.delivery_record.trust_boundary_snapshot` 前，把 `watermark_mode / watermark_rule / fingerprint_fields / watermark_hash / watermark_policy` 统一冻结进去。
+  - `commit_report_delivery(...)` 现在会从订单信任边界快照提取报告分支占位规则，并与 `report_artifact` 信息一起写入交付记录。
+  - `storage_gateway` 读模型改为复用统一派生逻辑，确保订单详情/生命周期读取到的水印结构与提交时冻结结构一致。
+  - 新增 `dlv019_watermark_policy_db_smoke`，并补强 `dlv002 / dlv017` 断言，覆盖文件与报告两条交付路径的占位结构可见性。
+  - `packages/openapi/delivery.yaml` 已补充占位模型说明，保持 schema 不漂移。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv017_report_delivery_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv019_watermark_policy_db_smoke -- --nocapture`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. 启动服务：`APP_PORT=8112 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  10. 使用真实 PostgreSQL + `curl POST /api/v1/orders/{id}/deliver`（文件/报告）+ `curl GET /api/v1/orders/{id}` 联调，回查 `delivery.delivery_record / audit.audit_event` 后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`184 passed, 0 failed, 1 ignored`）。
+  - `dlv002_file_delivery_commit_db_smoke`：通过。
+  - `dlv017_report_delivery_db_smoke`：通过。
+  - `dlv019_watermark_policy_db_smoke`：通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - 文件交付：`HTTP 200`，订单进入 `delivered`，订单详情返回 `watermark_policy.rule.delivery_branch=file / pipeline.status=reserved`
+    - 报告交付：`HTTP 200`，订单进入 `report_delivered`，订单详情返回 `watermark_policy.rule.policy=result_attested / pipeline.status=reserved`
+  - DB 回查通过：
+    - 文件交付记录：`committed / watermark_policy.delivery_branch=file / watermark_policy.pipeline.status=reserved`
+    - 报告交付记录：`committed / watermark_policy.delivery_branch=report / watermark_policy.pipeline.status=reserved`
+    - 审计：`delivery.file.commit=1`、`delivery.report.commit=1`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.5（交付与执行聚合）
+  - `业务流程图` 4.4.1（文件类交付）
+  - `页面说明书` 7.1（文件交付页）
+  - `全集成基线-V1` 15（交付对象与订单闭环一致性）
+- 覆盖的任务清单条目：`DLV-019`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

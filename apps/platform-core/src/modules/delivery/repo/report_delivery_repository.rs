@@ -1,3 +1,4 @@
+use crate::modules::delivery::domain::{build_watermark_placeholder_patch, merge_snapshot_patch};
 use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponseData};
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, enforce_seller_scope, not_found, resolve_storage_namespace_id,
@@ -37,6 +38,7 @@ pub async fn commit_report_delivery(
                o.settlement_status,
                o.dispute_status,
                o.delivery_route_snapshot,
+               o.trust_boundary_snapshot,
                o.buyer_org_id::text,
                o.seller_org_id::text,
                s.sku_type,
@@ -106,21 +108,22 @@ pub async fn commit_report_delivery(
     let current_settlement_status: Option<String> = row.get(4);
     let current_dispute_status: Option<String> = row.get(5);
     let delivery_route_snapshot: Option<String> = row.get(6);
-    let buyer_org_id: String = row.get(7);
-    let seller_org_id: String = row.get(8);
-    let sku_type: String = row.get(9);
-    let committed_delivery_id: Option<String> = row.get(10);
-    let committed_object_id: Option<String> = row.get(11);
-    let committed_object_uri: Option<String> = row.get(12);
-    let committed_report_hash: Option<String> = row.get(13);
-    let committed_delivery_commit_hash: Option<String> = row.get(14);
-    let committed_receipt_hash: Option<String> = row.get(15);
-    let committed_at: Option<String> = row.get(16);
-    let latest_report_artifact_id: Option<String> = row.get(17);
-    let latest_report_type: Option<String> = row.get(18);
-    let latest_report_version_no: Option<i32> = row.get(19);
-    let latest_report_status: Option<String> = row.get(20);
-    let prepared_delivery_id: Option<String> = row.get(21);
+    let order_trust_boundary_snapshot: serde_json::Value = row.get(7);
+    let buyer_org_id: String = row.get(8);
+    let seller_org_id: String = row.get(9);
+    let sku_type: String = row.get(10);
+    let committed_delivery_id: Option<String> = row.get(11);
+    let committed_object_id: Option<String> = row.get(12);
+    let committed_object_uri: Option<String> = row.get(13);
+    let committed_report_hash: Option<String> = row.get(14);
+    let committed_delivery_commit_hash: Option<String> = row.get(15);
+    let committed_receipt_hash: Option<String> = row.get(16);
+    let committed_at: Option<String> = row.get(17);
+    let latest_report_artifact_id: Option<String> = row.get(18);
+    let latest_report_type: Option<String> = row.get(19);
+    let latest_report_version_no: Option<i32> = row.get(20);
+    let latest_report_status: Option<String> = row.get(21);
+    let prepared_delivery_id: Option<String> = row.get(22);
 
     enforce_seller_scope(actor_role, tenant_id, &seller_org_id, request_id)?;
 
@@ -346,18 +349,26 @@ pub async fn commit_report_delivery(
         .map_err(map_db_error)?
         .get(0);
 
-    let trust_boundary_patch = json!({
-        "report_artifact": {
-            "report_artifact_id": report_artifact_id,
-            "report_type": report_type,
-            "version_no": version_no,
-            "report_hash": payload.content_hash,
-            "bucket_name": bucket_name,
-            "object_key": object_key,
-            "object_id": object_id,
-            "metadata": payload.metadata,
-        }
-    });
+    let watermark_patch = build_watermark_placeholder_patch(
+        &order_trust_boundary_snapshot,
+        "report",
+        payload.metadata.as_ref(),
+    );
+    let trust_boundary_patch = merge_snapshot_patch(
+        &watermark_patch,
+        &json!({
+            "report_artifact": {
+                "report_artifact_id": report_artifact_id,
+                "report_type": report_type,
+                "version_no": version_no,
+                "report_hash": payload.content_hash,
+                "bucket_name": bucket_name,
+                "object_key": object_key,
+                "object_id": object_id,
+                "metadata": payload.metadata,
+            }
+        }),
+    );
 
     let committed_at: String = tx
         .query_one(

@@ -27,3 +27,4 @@ mod dlv015_sandbox_model_db;
 mod dlv016_sandbox_isolation_model_db;
 mod dlv017_report_delivery_db;
 mod dlv018_acceptance_db;
+mod dlv019_watermark_policy_db;
