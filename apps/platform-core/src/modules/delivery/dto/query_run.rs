@@ -34,6 +34,16 @@ pub struct QueryRunListResponseData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryRunAuditReferenceData {
+    pub audit_id: String,
+    pub action_name: String,
+    pub result_code: String,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub event_time: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryRunResponseData {
     pub query_run_id: String,
     pub order_id: String,
@@ -45,6 +55,7 @@ pub struct QueryRunResponseData {
     pub requester_user_id: Option<String>,
     pub execution_mode: String,
     pub request_payload_json: Value,
+    pub parameter_summary_json: Value,
     pub result_summary_json: Value,
     pub result_object_id: Option<String>,
     pub result_object_uri: Option<String>,
@@ -58,6 +69,8 @@ pub struct QueryRunResponseData {
     pub export_scope: String,
     pub approval_ticket_id: Option<String>,
     pub sensitive_policy_snapshot: Value,
+    pub policy_hits: Vec<String>,
+    pub audit_refs: Vec<QueryRunAuditReferenceData>,
     pub operation: String,
     pub current_state: String,
     pub payment_status: String,

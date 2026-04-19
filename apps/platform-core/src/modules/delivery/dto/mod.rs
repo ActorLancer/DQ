@@ -21,7 +21,7 @@ pub use file_delivery_commit::{
 };
 pub use query_run::{
     ExecuteTemplateRunRequest, ExecuteTemplateRunResponse, GetQueryRunsResponse,
-    QueryRunListResponseData, QueryRunResponseData,
+    QueryRunAuditReferenceData, QueryRunListResponseData, QueryRunResponseData,
 };
 pub use query_surface::{
     ManageQuerySurfaceRequest, ManageQuerySurfaceResponse, QuerySurfaceResponseData,

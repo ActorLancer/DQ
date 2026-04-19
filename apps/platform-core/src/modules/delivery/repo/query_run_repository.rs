@@ -117,6 +117,10 @@ pub async fn execute_template_run(
         &output_boundary_json,
         payload.execution_metadata_json.clone(),
     );
+    let parameter_summary_json = request_summary
+        .get("parameter_summary")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
     let sensitive_policy_snapshot = build_sensitive_policy_snapshot(
         &masked_level,
         &export_scope,
@@ -368,6 +372,7 @@ pub async fn execute_template_run(
         requester_user_id,
         execution_mode: "template_query".to_string(),
         request_payload_json: request_summary,
+        parameter_summary_json,
         result_summary_json,
         result_object_id: Some(object_id),
         result_object_uri: Some(object_uri),
@@ -381,6 +386,13 @@ pub async fn execute_template_run(
         export_scope,
         approval_ticket_id: payload.approval_ticket_id.clone(),
         sensitive_policy_snapshot,
+        policy_hits: vec![
+            "template_whitelist_passed".to_string(),
+            "parameter_schema_passed".to_string(),
+            "output_boundary_passed".to_string(),
+            "risk_guard_passed".to_string(),
+        ],
+        audit_refs: vec![],
         operation: "executed".to_string(),
         current_state: target_state.to_string(),
         payment_status: context.payment_status,

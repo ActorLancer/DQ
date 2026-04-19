@@ -15,7 +15,8 @@ info:
     template-grant enablement for QRY_LITE orders with whitelisted templates,
     output boundaries, and quota snapshots; DLV-012 adds template query
     execution with QueryExecutionRun persistence, MinIO result artifacts, and
-    risk/output-boundary enforcement.
+    risk/output-boundary enforcement; DLV-013 adds query-run history read APIs
+    with audit references and policy-hit summaries.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -246,6 +247,29 @@ paths:
         '409':
           description: SKU is not QRY_LITE, selected templates are invalid, or output boundary/quota exceeds the frozen surface policy
   /api/v1/orders/{id}/template-runs:
+    get:
+      summary: Read QRY_LITE query-run history under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Query-run timeline, result summaries, and audit references visible under buyer scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetQueryRunsResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order is not QRY_LITE or buyer/seller subject status blocks query-run history access
     post:
       summary: Execute a granted QRY_LITE template run and persist QueryExecutionRun plus result artifact
       tags: [delivery]
@@ -809,6 +833,57 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/QueryRunResponseData'
+    GetQueryRunsResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetQueryRunsResponse'
+    GetQueryRunsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QueryRunListResponseData'
+    QueryRunListResponseData:
+      type: object
+      required: [order_id, current_state, payment_status, delivery_status, query_runs]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        query_runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryRunResponseData'
+    QueryRunAuditReferenceData:
+      type: object
+      required: [audit_id, action_name, result_code, event_time]
+      properties:
+        audit_id:
+          type: string
+          format: uuid
+        action_name:
+          type: string
+        result_code:
+          type: string
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        event_time:
+          type: string
+          format: date-time
     QueryRunResponseData:
       type: object
       required:
@@ -821,6 +896,7 @@ components:
         - query_template_version
         - execution_mode
         - request_payload_json
+        - parameter_summary_json
         - result_summary_json
         - result_row_count
         - billed_units
@@ -828,6 +904,8 @@ components:
         - status
         - masked_level
         - export_scope
+        - policy_hits
+        - audit_refs
         - operation
         - current_state
         - payment_status
@@ -861,6 +939,9 @@ components:
         execution_mode:
           type: string
         request_payload_json:
+          type: object
+          additionalProperties: true
+        parameter_summary_json:
           type: object
           additionalProperties: true
         result_summary_json:
@@ -900,6 +981,14 @@ components:
         sensitive_policy_snapshot:
           type: object
           additionalProperties: true
+        policy_hits:
+          type: array
+          items:
+            type: string
+        audit_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryRunAuditReferenceData'
         operation:
           type: string
         current_state:
