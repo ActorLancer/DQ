@@ -4,8 +4,8 @@ use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
-use tokio_postgres::Client;
 
 pub struct CancelOrderContext {
     pub buyer_org_id: String,

@@ -49,7 +49,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_product_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/products")
@@ -73,7 +73,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_patch_product_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("PATCH")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
@@ -87,7 +87,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_get_product_detail_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
@@ -100,8 +100,8 @@ mod tests {
 
     #[tokio::test]
     async fn api_router_wrapper_matches_catalog_router() {
-        let app_from_api = router();
-        let app_from_catalog_router = catalog_router::router();
+        let app_from_api = crate::with_stub_test_state(router());
+        let app_from_catalog_router = crate::with_stub_test_state(catalog_router::router());
 
         let req1 = Request::builder()
             .method("GET")
@@ -127,7 +127,7 @@ mod tests {
 
     #[tokio::test]
     async fn returns_standard_scenario_templates_for_read_role() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/catalog/standard-scenarios")
@@ -140,7 +140,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_get_seller_profile_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/sellers/00000000-0000-0000-0000-000000000100/profile")
@@ -153,7 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_put_product_metadata_profile_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("PUT")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100/metadata-profile")
@@ -180,7 +180,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_sku_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/skus")
@@ -202,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_patch_sku_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("PATCH")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001")
@@ -216,7 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_bind_product_template_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/bind-template")
@@ -232,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_bind_sku_template_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/bind-template")
@@ -248,7 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_patch_usage_policy_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("PATCH")
             .uri("/api/v1/policies/00000000-0000-0000-0000-000000000001")
@@ -262,7 +262,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_raw_ingest_batch_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/raw-ingest-batches")
@@ -281,7 +281,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_raw_object_manifest_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/raw-ingest-batches/00000000-0000-0000-0000-000000000001/manifests")
@@ -300,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_detect_format_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/raw-object-manifests/00000000-0000-0000-0000-000000000001/detect-format")
@@ -319,7 +319,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_extraction_job_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri(
@@ -340,7 +340,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_preview_artifact_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/preview-artifacts")
@@ -360,7 +360,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_asset_field_definition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/field-definitions")
@@ -380,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_asset_quality_report_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/quality-reports")
@@ -401,7 +401,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_asset_processing_job_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/processing-jobs")
@@ -423,7 +423,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_data_contract_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/data-contracts")
@@ -442,7 +442,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_get_data_contract_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/data-contracts/00000000-0000-0000-0000-000000000002")
@@ -455,7 +455,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_asset_object_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/objects")
@@ -475,7 +475,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_patch_release_policy_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("PATCH")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/release-policy")
@@ -495,7 +495,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_submit_product_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/submit")
@@ -509,7 +509,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_review_product_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/review/products/00000000-0000-0000-0000-000000000001")
@@ -523,7 +523,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_suspend_product_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let req = Request::builder()
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/suspend")

@@ -1,3 +1,4 @@
+use crate::AppState;
 use crate::modules::order::dto::{
     ApiPpuTransitionRequest, ApiPpuTransitionResponse, ApiSubTransitionRequest,
     ApiSubTransitionResponse, CancelOrderResponse, ConfirmOrderContractRequest,
@@ -22,28 +23,23 @@ use crate::modules::order::repo::{
     transition_sbx_std_order, transition_share_ro_order, write_trade_audit_event,
 };
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
+use db::Error;
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
-use tokio_postgres::NoTls;
 use tracing::info;
 
 const STANDARD_ORDER_TEMPLATE_REF_ID: &str = "00000000-0000-0000-0000-000000000123";
 
 pub async fn create_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateOrderRequest>,
 ) -> Result<Json<ApiResponse<CreateOrderResponse>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::CreateOrder, "order create")?;
     enforce_order_create_scope(&headers, &payload.buyer_org_id)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let request_id = header(&headers, "x-request-id");
     let trace_id = header(&headers, "x-trace-id");
     let idempotency_key = header(&headers, "x-idempotency-key");
@@ -87,16 +83,11 @@ pub async fn create_order_api(
 }
 
 pub async fn get_order_templates_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<OrderTemplateView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::ReadOrder, "order template read")?;
-    let dsn = database_dsn()?;
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
     write_trade_audit_event(
@@ -119,17 +110,12 @@ pub async fn get_order_templates_api(
 }
 
 pub async fn get_order_detail_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
 ) -> Result<Json<ApiResponse<GetOrderDetailResponse>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::ReadOrder, "order read")?;
-    let dsn = database_dsn()?;
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let Some(order) = load_order_detail(&client, &order_id).await? else {
         return Err((
@@ -167,6 +153,7 @@ pub async fn get_order_detail_api(
 }
 
 pub async fn get_order_lifecycle_snapshots_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
 ) -> Result<Json<ApiResponse<GetOrderLifecycleSnapshotsResponse>>, (StatusCode, Json<ErrorResponse>)>
@@ -176,13 +163,7 @@ pub async fn get_order_lifecycle_snapshots_api(
         TradePermission::ReadOrder,
         "order lifecycle snapshots read",
     )?;
-    let dsn = database_dsn()?;
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let Some(snapshot) = load_order_lifecycle_snapshots(&client, &order_id).await? else {
         return Err((
@@ -228,17 +209,12 @@ pub async fn get_order_lifecycle_snapshots_api(
 }
 
 pub async fn cancel_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
 ) -> Result<Json<ApiResponse<CancelOrderResponse>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::CancelOrder, "order cancel")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
@@ -277,6 +253,7 @@ pub async fn cancel_order_api(
 }
 
 pub async fn confirm_order_contract_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ConfirmOrderContractRequest>,
@@ -298,13 +275,7 @@ pub async fn confirm_order_contract_api(
         )
     })?;
 
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let Some(order_scope) = load_order_contract_confirm_context(&client, &order_id).await? else {
         return Err((
@@ -343,6 +314,7 @@ pub async fn confirm_order_contract_api(
 }
 
 pub async fn transition_order_authorization_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<OrderAuthorizationTransitionRequest>,
@@ -355,13 +327,7 @@ pub async fn transition_order_authorization_api(
         TradePermission::TransitionAuthorization,
         "order authorization transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
@@ -404,6 +370,7 @@ pub async fn transition_order_authorization_api(
 }
 
 pub async fn transition_file_std_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<FileStdTransitionRequest>,
@@ -413,13 +380,7 @@ pub async fn transition_file_std_order_api(
         TradePermission::TransitionFileStd,
         "file std state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -460,6 +421,7 @@ pub async fn transition_file_std_order_api(
 }
 
 pub async fn transition_file_sub_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<FileSubTransitionRequest>,
@@ -469,13 +431,7 @@ pub async fn transition_file_sub_order_api(
         TradePermission::TransitionFileSub,
         "file sub state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -516,6 +472,7 @@ pub async fn transition_file_sub_order_api(
 }
 
 pub async fn transition_api_sub_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ApiSubTransitionRequest>,
@@ -525,13 +482,7 @@ pub async fn transition_api_sub_order_api(
         TradePermission::TransitionApiSub,
         "api sub state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -572,6 +523,7 @@ pub async fn transition_api_sub_order_api(
 }
 
 pub async fn transition_api_ppu_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ApiPpuTransitionRequest>,
@@ -581,13 +533,7 @@ pub async fn transition_api_ppu_order_api(
         TradePermission::TransitionApiPpu,
         "api ppu state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -628,6 +574,7 @@ pub async fn transition_api_ppu_order_api(
 }
 
 pub async fn transition_share_ro_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ShareRoTransitionRequest>,
@@ -637,13 +584,7 @@ pub async fn transition_share_ro_order_api(
         TradePermission::TransitionShareRo,
         "share ro state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -684,6 +625,7 @@ pub async fn transition_share_ro_order_api(
 }
 
 pub async fn transition_qry_lite_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<QryLiteTransitionRequest>,
@@ -693,13 +635,7 @@ pub async fn transition_qry_lite_order_api(
         TradePermission::TransitionQryLite,
         "qry lite state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -740,6 +676,7 @@ pub async fn transition_qry_lite_order_api(
 }
 
 pub async fn transition_sbx_std_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<SbxStdTransitionRequest>,
@@ -749,13 +686,7 @@ pub async fn transition_sbx_std_order_api(
         TradePermission::TransitionSbxStd,
         "sbx std state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -796,6 +727,7 @@ pub async fn transition_sbx_std_order_api(
 }
 
 pub async fn transition_rpt_std_order_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<RptStdTransitionRequest>,
@@ -805,13 +737,7 @@ pub async fn transition_rpt_std_order_api(
         TradePermission::TransitionRptStd,
         "rpt std state transition",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -852,6 +778,7 @@ pub async fn transition_rpt_std_order_api(
 }
 
 pub async fn create_trade_pre_request(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateTradePreRequestRequest>,
 ) -> Result<Json<ApiResponse<TradePreRequestResponse>>, (StatusCode, Json<ErrorResponse>)> {
@@ -860,13 +787,7 @@ pub async fn create_trade_pre_request(
         TradePermission::CreatePreRequest,
         "trade pre-request create",
     )?;
-    let dsn = database_dsn()?;
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let created = insert_trade_pre_request(&client, &payload).await?;
     let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
@@ -894,6 +815,7 @@ pub async fn create_trade_pre_request(
 }
 
 pub async fn get_trade_pre_request(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<TradePreRequestResponse>>, (StatusCode, Json<ErrorResponse>)> {
@@ -902,13 +824,7 @@ pub async fn get_trade_pre_request(
         TradePermission::ReadPreRequest,
         "trade pre-request read",
     )?;
-    let dsn = database_dsn()?;
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let Some(found) = load_trade_pre_request(&client, &id).await? else {
         return Err((
@@ -944,6 +860,7 @@ pub async fn get_trade_pre_request(
 }
 
 pub async fn freeze_order_price_snapshot_api(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
 ) -> Result<Json<ApiResponse<FreezeOrderPriceSnapshotResponse>>, (StatusCode, Json<ErrorResponse>)>
@@ -953,13 +870,7 @@ pub async fn freeze_order_price_snapshot_api(
         TradePermission::CreatePreRequest,
         "order price snapshot freeze",
     )?;
-    let dsn = database_dsn()?;
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .map_err(map_db_connect)?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
     let Some(snapshot) = freeze_order_price_snapshot(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,
@@ -1155,20 +1066,7 @@ fn require_permission(
     ))
 }
 
-fn database_dsn() -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    std::env::var("DATABASE_URL").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                code: ErrorCode::OpsInternal.as_str().to_string(),
-                message: "DATABASE_URL is not configured".to_string(),
-                request_id: None,
-            }),
-        )
-    })
-}
-
-fn map_db_connect(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>) {
+fn map_db_connect(err: Error) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse {

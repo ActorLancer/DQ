@@ -2,8 +2,8 @@
 mod tests {
     use crate::modules::catalog::domain::{BindTemplateRequest, PatchUsagePolicyRequest};
     use crate::modules::catalog::repository::PostgresCatalogRepository;
+    use db::{GenericClient, NoTls, connect};
     use serde_json::json;
-    use tokio_postgres::NoTls;
 
     fn live_db_enabled() -> bool {
         std::env::var("CATALOG_DB_SMOKE").ok().as_deref() == Some("1")
@@ -20,9 +20,7 @@ mod tests {
         if !live_db_enabled() {
             return;
         }
-        let (mut client, connection) = tokio_postgres::connect(&db_dsn(), NoTls)
-            .await
-            .expect("connect database");
+        let (mut client, connection) = connect(&db_dsn(), NoTls).await.expect("connect database");
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -71,9 +69,7 @@ mod tests {
         if !live_db_enabled() {
             return;
         }
-        let (mut client, connection) = tokio_postgres::connect(&db_dsn(), NoTls)
-            .await
-            .expect("connect database");
+        let (mut client, connection) = connect(&db_dsn(), NoTls).await.expect("connect database");
         tokio::spawn(async move {
             let _ = connection.await;
         });

@@ -6,9 +6,9 @@ use crate::modules::order::dto::{CreateOrderRequest, CreateOrderResponseData};
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde_json::{Value, json};
-use tokio_postgres::Client;
 
 struct ProductSkuContext {
     product_id: String,
@@ -181,7 +181,7 @@ pub async fn create_order_with_snapshot(
 }
 
 async fn load_product_sku_context(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     product_id: &str,
     sku_id: &str,
 ) -> Result<ProductSkuContext, (StatusCode, Json<ErrorResponse>)> {
@@ -247,7 +247,7 @@ async fn load_product_sku_context(
 }
 
 async fn validate_order_create_preconditions(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     context: &ProductSkuContext,
     buyer_org_id: &str,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -287,7 +287,7 @@ async fn validate_order_create_preconditions(
 }
 
 async fn ensure_org_active(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     org_id: &str,
     org_label: &str,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -393,7 +393,7 @@ fn parse_tax_terms(metadata: &Value) -> TaxTermsSnapshot {
 }
 
 fn parse_created_order_row(
-    row: &tokio_postgres::Row,
+    row: &Row,
 ) -> Result<CreateOrderResponseData, (StatusCode, Json<ErrorResponse>)> {
     let snapshot: Value = row.get(9);
     let price_snapshot = serde_json::from_value::<OrderPriceSnapshot>(snapshot).map_err(|err| {
@@ -423,7 +423,7 @@ fn parse_created_order_row(
 }
 
 async fn write_order_create_outbox_event(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     created: &CreateOrderResponseData,
     request_id: Option<&str>,
     trace_id: Option<&str>,

@@ -5,7 +5,7 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn rejects_submit_product_with_empty_submission_note() {
-    let app = router();
+    let app = crate::with_stub_test_state(router());
     let req = Request::builder()
         .method("POST")
         .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/submit")
@@ -19,7 +19,7 @@ async fn rejects_submit_product_with_empty_submission_note() {
 
 #[tokio::test]
 async fn rejects_review_subject_with_invalid_action_name() {
-    let app = router();
+    let app = crate::with_stub_test_state(router());
     let req = Request::builder()
         .method("POST")
         .uri("/api/v1/review/subjects/00000000-0000-0000-0000-000000000001")
@@ -33,7 +33,7 @@ async fn rejects_review_subject_with_invalid_action_name() {
 
 #[tokio::test]
 async fn rejects_review_compliance_with_empty_reason() {
-    let app = router();
+    let app = crate::with_stub_test_state(router());
     let req = Request::builder()
         .method("POST")
         .uri("/api/v1/review/compliance/00000000-0000-0000-0000-000000000001")

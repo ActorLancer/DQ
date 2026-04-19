@@ -5,8 +5,8 @@ use auth::{
 };
 use config::{ProviderMode, RuntimeConfig};
 use db::{
-    DbPool, DbPoolConfig, NoopBusinessMutationWriter, OrderRepository, OrderRepositoryBackend,
-    TxTemplate, build_order_repository,
+    AppDb, DbPool, DbPoolConfig, MySqlDbRuntime, NoopBusinessMutationWriter, OrderRepository,
+    OrderRepositoryBackend, TxTemplate, build_order_repository,
 };
 use http::{build_router, live_handler, record_chain_receipt, record_outbox_event, serve};
 use kernel::{
@@ -29,6 +29,53 @@ mod app;
 mod modules;
 mod shared;
 
+#[derive(Clone)]
+pub struct AppState {
+    pub runtime: RuntimeConfig,
+    pub db: Arc<AppDb>,
+}
+
+#[cfg(test)]
+pub fn stub_test_app_state() -> AppState {
+    AppState {
+        runtime: RuntimeConfig::from_env().expect("test runtime config should load"),
+        db: Arc::new(AppDb::Mysql(MySqlDbRuntime {
+            dsn: "mysql://reserved-for-tests".to_string(),
+            max_connections: 1,
+        })),
+    }
+}
+
+#[cfg(test)]
+pub async fn live_test_app_state() -> AppState {
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let db = AppDb::connect(
+        DbPoolConfig {
+            dsn,
+            max_connections: 16,
+        }
+        .into(),
+    )
+    .await
+    .expect("live test database should connect");
+
+    AppState {
+        runtime: RuntimeConfig::from_env().expect("test runtime config should load"),
+        db: Arc::new(db),
+    }
+}
+
+#[cfg(test)]
+pub fn with_stub_test_state(router: axum::Router<AppState>) -> axum::Router {
+    router.with_state(stub_test_app_state())
+}
+
+#[cfg(test)]
+pub async fn with_live_test_state(router: axum::Router<AppState>) -> axum::Router {
+    router.with_state(live_test_app_state().await)
+}
+
 struct CoreModule {
     provider_backend: ProviderBackend,
 }
@@ -42,6 +89,16 @@ impl Module for CoreModule {
     async fn start(&self, ctx: &ModuleContext) -> AppResult<()> {
         let dsn = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://local:local@localhost:5432/platform".to_string());
+        let app_db = Arc::new(
+            AppDb::connect(
+                DbPoolConfig {
+                    dsn: dsn.clone(),
+                    max_connections: 16,
+                }
+                .into(),
+            )
+            .await?,
+        );
         let pool = DbPool::connect(DbPoolConfig {
             dsn,
             max_connections: 16,
@@ -49,6 +106,7 @@ impl Module for CoreModule {
         let order_repo_backend = OrderRepositoryBackend::from_env()?;
         let order_repository = build_order_repository(&pool, order_repo_backend);
 
+        ctx.container.insert(app_db.clone()).await;
         ctx.container.insert(pool).await;
         ctx.container.insert(TxTemplate).await;
         ctx.container.insert(NoopBusinessMutationWriter).await;
@@ -316,13 +374,29 @@ pub async fn run() -> AppResult<()> {
             .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
         cfg.bind_port,
     );
+    let state = AppState {
+        runtime: cfg.clone(),
+        db: Arc::new(
+            AppDb::connect(
+                DbPoolConfig {
+                    dsn: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                        "postgres://local:local@localhost:5432/platform".to_string()
+                    }),
+                    max_connections: 16,
+                }
+                .into(),
+            )
+            .await?,
+        ),
+    };
 
-    let router = build_router(cfg.clone())
+    let router = build_router::<AppState>(cfg.clone())
         .route("/healthz", axum::routing::get(live_handler))
         .merge(modules::billing::api::router())
         .merge(modules::catalog::api::router())
         .merge(modules::iam::api::router())
-        .merge(modules::order::api::router());
+        .merge(modules::order::api::router())
+        .with_state(state.clone());
 
     let mut launcher = AppLauncher::new("platform-core");
     let provider_backend = match cfg.provider {

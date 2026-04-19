@@ -7,6 +7,7 @@ use crate::modules::order::domain::{
 use crate::modules::order::dto::CreateTradePreRequestRequest;
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +20,7 @@ struct InquiryPayloadV1 {
 }
 
 pub async fn insert_trade_pre_request(
-    client: &tokio_postgres::Client,
+    client: &Client,
     payload: &CreateTradePreRequestRequest,
 ) -> Result<TradePreRequest, (StatusCode, Json<ErrorResponse>)> {
     let stored_payload = InquiryPayloadV1 {
@@ -79,7 +80,7 @@ pub async fn insert_trade_pre_request(
 }
 
 pub async fn load_trade_pre_request(
-    client: &tokio_postgres::Client,
+    client: &Client,
     inquiry_id: &str,
 ) -> Result<Option<TradePreRequest>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -102,9 +103,7 @@ pub async fn load_trade_pre_request(
     row.map(|r| parse_pre_request_row(&r)).transpose()
 }
 
-fn parse_pre_request_row(
-    row: &tokio_postgres::Row,
-) -> Result<TradePreRequest, (StatusCode, Json<ErrorResponse>)> {
+fn parse_pre_request_row(row: &Row) -> Result<TradePreRequest, (StatusCode, Json<ErrorResponse>)> {
     let payload_text: Option<String> = row.get(5);
     let payload = payload_text
         .as_deref()
@@ -138,7 +137,7 @@ fn default_rfq_payload() -> InquiryPayloadV1 {
 }
 
 pub async fn write_trade_audit_event(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     ref_type: &str,
     ref_id: &str,
     actor_role: &str,
@@ -189,7 +188,7 @@ pub async fn write_trade_audit_event(
     Ok(())
 }
 
-pub fn map_db_error(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>) {
+pub fn map_db_error(err: Error) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {

@@ -64,7 +64,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_org_register_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -81,7 +81,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_auth_me_without_session_context_headers() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -98,7 +98,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_app_patch_for_tenant_operator() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -116,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invitation_create_for_developer_role() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -136,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_session_revoke_for_tenant_operator() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -153,7 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_step_up_check_without_user_id() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -173,7 +173,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_mfa_create_for_developer_role() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -193,7 +193,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_sso_create_for_developer_role() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -213,7 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_logout_for_tenant_operator() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()

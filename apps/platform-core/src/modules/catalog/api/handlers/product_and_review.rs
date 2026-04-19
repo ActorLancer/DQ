@@ -1,10 +1,11 @@
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 use tracing::info;
 
+use crate::AppState;
 use crate::modules::catalog::domain::{
     CreateDataProductRequest, DataProductView, PatchDataProductRequest, ProductLifecycleView,
     ProductMetadataProfileView, ProductSubmitView, PutProductMetadataProfileRequest,
@@ -19,6 +20,7 @@ use super::super::support::*;
 use super::super::validators::*;
 
 pub(in crate::modules::catalog) async fn create_product_draft(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateDataProductRequest>,
 ) -> Result<Json<ApiResponse<DataProductView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -28,11 +30,7 @@ pub(in crate::modules::catalog) async fn create_product_draft(
         "catalog product draft create",
     )?;
     validate_create_product_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresCatalogRepository::create_data_product(&tx, &payload)
@@ -74,6 +72,7 @@ pub(in crate::modules::catalog) async fn create_product_draft(
 }
 
 pub(in crate::modules::catalog) async fn patch_product_draft(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<PatchDataProductRequest>,
@@ -84,11 +83,7 @@ pub(in crate::modules::catalog) async fn patch_product_draft(
         "catalog product draft patch",
     )?;
     validate_patch_product_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing = PostgresCatalogRepository::get_data_product(&client, &id)
         .await
@@ -167,6 +162,7 @@ pub(in crate::modules::catalog) async fn patch_product_draft(
 }
 
 pub(in crate::modules::catalog) async fn put_product_metadata_profile(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
     Json(payload): Json<PutProductMetadataProfileRequest>,
@@ -177,11 +173,7 @@ pub(in crate::modules::catalog) async fn put_product_metadata_profile(
         "catalog product metadata profile put",
     )?;
     validate_put_product_metadata_profile_payload(&product_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let product = PostgresCatalogRepository::get_data_product(&client, &product_id)
         .await
@@ -238,6 +230,7 @@ pub(in crate::modules::catalog) async fn put_product_metadata_profile(
 }
 
 pub(in crate::modules::catalog) async fn submit_product(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
     Json(payload): Json<SubmitProductRequest>,
@@ -248,11 +241,7 @@ pub(in crate::modules::catalog) async fn submit_product(
         "catalog product submit",
     )?;
     validate_submit_product_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let product = PostgresCatalogRepository::get_data_product(&client, &product_id)
         .await
@@ -367,6 +356,7 @@ pub(in crate::modules::catalog) async fn submit_product(
 }
 
 pub(in crate::modules::catalog) async fn review_subject(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(subject_id): Path<String>,
     Json(payload): Json<ReviewDecisionRequest>,
@@ -377,11 +367,7 @@ pub(in crate::modules::catalog) async fn review_subject(
         "catalog subject review",
     )?;
     validate_review_decision_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
     let org_exists = PostgresCatalogRepository::organization_exists(&client, &subject_id)
         .await
         .map_err(map_db_error)?;
@@ -425,6 +411,7 @@ pub(in crate::modules::catalog) async fn review_subject(
 }
 
 pub(in crate::modules::catalog) async fn review_product(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
     Json(payload): Json<ReviewDecisionRequest>,
@@ -435,11 +422,7 @@ pub(in crate::modules::catalog) async fn review_product(
         "catalog product review",
     )?;
     validate_review_decision_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let current = PostgresCatalogRepository::get_data_product(&client, &product_id)
         .await
@@ -565,6 +548,7 @@ pub(in crate::modules::catalog) async fn review_product(
 }
 
 pub(in crate::modules::catalog) async fn review_compliance(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(compliance_id): Path<String>,
     Json(payload): Json<ReviewDecisionRequest>,
@@ -575,11 +559,7 @@ pub(in crate::modules::catalog) async fn review_compliance(
         "catalog compliance review",
     )?;
     validate_review_decision_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
     let product = PostgresCatalogRepository::get_data_product(&client, &compliance_id)
         .await
         .map_err(map_db_error)?
@@ -627,6 +607,7 @@ pub(in crate::modules::catalog) async fn review_compliance(
 }
 
 pub(in crate::modules::catalog) async fn suspend_product(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
     Json(payload): Json<SuspendProductRequest>,
@@ -669,11 +650,7 @@ pub(in crate::modules::catalog) async fn suspend_product(
         )?;
     }
 
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
     let existing = PostgresCatalogRepository::get_data_product(&client, &product_id)
         .await
         .map_err(map_db_error)?

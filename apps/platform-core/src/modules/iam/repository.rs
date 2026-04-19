@@ -5,15 +5,15 @@ use crate::modules::iam::domain::{
     ExecutionEnvironmentListQuery, ExecutionEnvironmentView, PatchApplicationRequest,
     UserListQuery, UserView,
 };
-use tokio_postgres::{GenericClient, Row};
+use db::{DbClientOps, DbRecord, Error};
 
 pub struct PostgresIamRepository;
 
 impl PostgresIamRepository {
     pub async fn create_department(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         payload: &CreateDepartmentRequest,
-    ) -> Result<DepartmentView, tokio_postgres::Error> {
+    ) -> Result<DepartmentView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO core.department (
@@ -44,9 +44,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn get_department(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         id: &str,
-    ) -> Result<Option<DepartmentView>, tokio_postgres::Error> {
+    ) -> Result<Option<DepartmentView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -70,9 +70,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn list_departments(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         query: &DepartmentListQuery,
-    ) -> Result<Vec<DepartmentView>, tokio_postgres::Error> {
+    ) -> Result<Vec<DepartmentView>, Error> {
         let rows = client
             .query(
                 "SELECT department_id::text, org_id::text, department_name, parent_department_id::text, status
@@ -97,9 +97,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn create_user(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         payload: &CreateUserRequest,
-    ) -> Result<UserView, tokio_postgres::Error> {
+    ) -> Result<UserView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO core.user_account (
@@ -144,10 +144,7 @@ impl PostgresIamRepository {
         })
     }
 
-    pub async fn get_user(
-        client: &impl GenericClient,
-        id: &str,
-    ) -> Result<Option<UserView>, tokio_postgres::Error> {
+    pub async fn get_user(client: &impl DbClientOps, id: &str) -> Result<Option<UserView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -179,9 +176,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn list_users(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         query: &UserListQuery,
-    ) -> Result<Vec<UserView>, tokio_postgres::Error> {
+    ) -> Result<Vec<UserView>, Error> {
         let rows = client
             .query(
                 "SELECT user_id::text, org_id::text, department_id::text, login_id::text, display_name,
@@ -212,9 +209,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn create_app(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         payload: &CreateApplicationRequest,
-    ) -> Result<ApplicationView, tokio_postgres::Error> {
+    ) -> Result<ApplicationView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO core.application (
@@ -242,10 +239,10 @@ impl PostgresIamRepository {
     }
 
     pub async fn patch_app(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         id: &str,
         payload: &PatchApplicationRequest,
-    ) -> Result<Option<ApplicationView>, tokio_postgres::Error> {
+    ) -> Result<Option<ApplicationView>, Error> {
         let row = client
             .query_opt(
                 "UPDATE core.application
@@ -262,9 +259,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn get_app(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         id: &str,
-    ) -> Result<Option<ApplicationView>, tokio_postgres::Error> {
+    ) -> Result<Option<ApplicationView>, Error> {
         let row = client
             .query_opt(
                 "SELECT app_id::text, org_id::text, app_name, app_type, status, client_id, metadata
@@ -277,9 +274,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn list_apps(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         query: &ApplicationListQuery,
-    ) -> Result<Vec<ApplicationView>, tokio_postgres::Error> {
+    ) -> Result<Vec<ApplicationView>, Error> {
         let rows = client
             .query(
                 "SELECT app_id::text, org_id::text, app_name, app_type, status, client_id, metadata
@@ -295,9 +292,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn create_connector(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         payload: &CreateConnectorRequest,
-    ) -> Result<ConnectorView, tokio_postgres::Error> {
+    ) -> Result<ConnectorView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO core.connector (
@@ -325,9 +322,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn get_connector(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         id: &str,
-    ) -> Result<Option<ConnectorView>, tokio_postgres::Error> {
+    ) -> Result<Option<ConnectorView>, Error> {
         let row = client
             .query_opt(
                 "SELECT connector_id::text, org_id::text, connector_name, connector_type, status, endpoint_ref
@@ -347,9 +344,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn list_connectors(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         query: &ConnectorListQuery,
-    ) -> Result<Vec<ConnectorView>, tokio_postgres::Error> {
+    ) -> Result<Vec<ConnectorView>, Error> {
         let rows = client
             .query(
                 "SELECT connector_id::text, org_id::text, connector_name, connector_type, status, endpoint_ref
@@ -375,9 +372,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn create_execution_environment(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         payload: &CreateExecutionEnvironmentRequest,
-    ) -> Result<ExecutionEnvironmentView, tokio_postgres::Error> {
+    ) -> Result<ExecutionEnvironmentView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO core.execution_environment (
@@ -407,9 +404,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn get_execution_environment(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         id: &str,
-    ) -> Result<Option<ExecutionEnvironmentView>, tokio_postgres::Error> {
+    ) -> Result<Option<ExecutionEnvironmentView>, Error> {
         let row = client
             .query_opt(
                 "SELECT environment_id::text, org_id::text, connector_id::text, environment_name, environment_type, status, region_code
@@ -430,9 +427,9 @@ impl PostgresIamRepository {
     }
 
     pub async fn list_execution_environments(
-        client: &impl GenericClient,
+        client: &impl DbClientOps,
         query: &ExecutionEnvironmentListQuery,
-    ) -> Result<Vec<ExecutionEnvironmentView>, tokio_postgres::Error> {
+    ) -> Result<Vec<ExecutionEnvironmentView>, Error> {
         let rows = client
             .query(
                 "SELECT environment_id::text, org_id::text, connector_id::text, environment_name, environment_type, status, region_code
@@ -460,7 +457,7 @@ impl PostgresIamRepository {
     }
 }
 
-fn parse_app_row(row: &Row) -> ApplicationView {
+fn parse_app_row(row: &DbRecord) -> ApplicationView {
     ApplicationView {
         app_id: row.get(0),
         org_id: row.get(1),

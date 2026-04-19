@@ -5,8 +5,9 @@ mod tests {
     use super::super::super::domain::PaymentResultKind;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
+    use db::connect_test_client;
+    use db::{Client, GenericClient, NoTls, connect};
     use serde_json::Value;
-    use tokio_postgres::{Client, NoTls};
     use tower::util::ServiceExt;
 
     #[derive(Debug)]
@@ -26,9 +27,7 @@ mod tests {
         }
         let dsn = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".into());
-        let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
-            .await
-            .expect("connect db");
+        let (mut client, connection) = connect(&dsn, NoTls).await.expect("connect db");
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -44,7 +43,7 @@ mod tests {
         let request_id = format!("req-trade007-{suffix}");
         let idempotency_key = format!("idem-trade007-{suffix}");
 
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
         let response = app
             .oneshot(
                 Request::builder()
@@ -93,8 +92,9 @@ mod tests {
         assert_eq!(row.get::<_, String>(4), "not_started");
         assert_eq!(row.get::<_, String>(5), "none");
 
+        let mut app_client = connect_test_client().await.expect("connect app db client");
         let applied = apply_payment_result_to_order(
-            &mut client,
+            &mut app_client,
             &order_id,
             PaymentResultKind::Succeeded,
             Some(&request_id),
@@ -131,7 +131,7 @@ mod tests {
         cleanup_graph(&client, &seed, &order_id).await;
     }
 
-    async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, tokio_postgres::Error> {
+    async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, db::Error> {
         let buyer_org = client
             .query_one(
                 "INSERT INTO core.organization (

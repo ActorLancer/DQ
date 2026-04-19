@@ -14,8 +14,14 @@ async-trait = "0.1"
 audit-kit = { path = "../audit-kit" }
 kernel = { path = "../kernel" }
 outbox-kit = { path = "../outbox-kit" }
+sea-orm = { version = "1.1", default-features = false, features = ["macros", "runtime-tokio-rustls", "sqlx-postgres", "sqlx-mysql"] }
+sea-query = "0.32"
+sea-query-binder = { version = "0.7", features = ["sqlx-postgres", "sqlx-mysql"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "mysql", "json", "uuid"] }
+thiserror = "2"
 tokio = { version = "1", features = ["sync"] }
-tokio-postgres = { version = "0.7", features = ["with-uuid-1"] }
+uuid = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

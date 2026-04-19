@@ -1,12 +1,10 @@
 use crate::modules::billing::models::PaymentIntentView;
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
-use tokio_postgres::NoTls;
 
-pub fn parse_intent_row(
-    row: &tokio_postgres::Row,
-) -> Result<PaymentIntentView, (StatusCode, Json<ErrorResponse>)> {
+pub fn parse_intent_row(row: &Row) -> Result<PaymentIntentView, (StatusCode, Json<ErrorResponse>)> {
     Ok(PaymentIntentView {
         payment_intent_id: row.get::<_, String>(0),
         order_id: row.get::<_, String>(1),
@@ -29,7 +27,7 @@ pub fn parse_intent_row(
 }
 
 pub async fn select_intent_by_idempotency(
-    client: &tokio_postgres::Client,
+    client: &Client,
     idempotency_key: &str,
 ) -> Result<Option<PaymentIntentView>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -62,7 +60,7 @@ pub async fn select_intent_by_idempotency(
 }
 
 pub async fn set_webhook_processed_status(
-    client: &tokio_postgres::Client,
+    client: &Client,
     webhook_event_id: &str,
     status: &str,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -79,7 +77,7 @@ pub async fn set_webhook_processed_status(
 }
 
 pub async fn write_audit_event(
-    client: &tokio_postgres::Client,
+    client: &Client,
     domain_name: &str,
     ref_type: &str,
     ref_id: &str,
@@ -128,41 +126,7 @@ pub async fn write_audit_event(
     Ok(())
 }
 
-pub fn database_dsn() -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    std::env::var("DATABASE_URL").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                code: ErrorCode::OpsInternal.as_str().to_string(),
-                message: "DATABASE_URL is not configured".to_string(),
-                request_id: None,
-            }),
-        )
-    })
-}
-
-pub async fn connect_db(
-    dsn: &str,
-) -> Result<
-    (
-        tokio_postgres::Client,
-        tokio_postgres::Connection<tokio_postgres::Socket, tokio_postgres::tls::NoTlsStream>,
-    ),
-    (StatusCode, Json<ErrorResponse>),
-> {
-    tokio_postgres::connect(dsn, NoTls).await.map_err(|err| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                code: ErrorCode::OpsInternal.as_str().to_string(),
-                message: format!("database connection failed: {err}"),
-                request_id: None,
-            }),
-        )
-    })
-}
-
-pub fn map_db_error(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>) {
+pub fn map_db_error(err: Error) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {

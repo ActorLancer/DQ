@@ -1,10 +1,11 @@
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 use tracing::info;
 
+use crate::AppState;
 use crate::modules::catalog::domain::{
     AssetFieldDefinitionView, AssetObjectView, AssetProcessingJobView, AssetQualityReportView,
     AssetReleasePolicyView, CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest,
@@ -20,6 +21,7 @@ use super::super::support::*;
 use super::super::validators::*;
 
 pub(in crate::modules::catalog) async fn create_raw_ingest_batch(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_id): Path<String>,
     Json(payload): Json<CreateRawIngestBatchRequest>,
@@ -30,11 +32,7 @@ pub(in crate::modules::catalog) async fn create_raw_ingest_batch(
         "catalog raw ingest batch create",
     )?;
     validate_create_raw_ingest_batch_payload(&asset_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresCatalogRepository::create_raw_ingest_batch(
@@ -67,6 +65,7 @@ pub(in crate::modules::catalog) async fn create_raw_ingest_batch(
 }
 
 pub(in crate::modules::catalog) async fn create_raw_object_manifest(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(raw_ingest_batch_id): Path<String>,
     Json(payload): Json<CreateRawObjectManifestRequest>,
@@ -77,11 +76,7 @@ pub(in crate::modules::catalog) async fn create_raw_object_manifest(
         "catalog raw object manifest create",
     )?;
     validate_create_raw_object_manifest_payload(&raw_ingest_batch_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_batch =
         PostgresCatalogRepository::get_raw_ingest_batch(&client, &raw_ingest_batch_id)
@@ -125,6 +120,7 @@ pub(in crate::modules::catalog) async fn create_raw_object_manifest(
 }
 
 pub(in crate::modules::catalog) async fn detect_raw_object_format(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(raw_object_manifest_id): Path<String>,
     Json(payload): Json<CreateFormatDetectionRequest>,
@@ -135,11 +131,7 @@ pub(in crate::modules::catalog) async fn detect_raw_object_format(
         "catalog format detection create",
     )?;
     validate_detect_format_payload(&raw_object_manifest_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing =
         PostgresCatalogRepository::get_raw_object_manifest(&client, &raw_object_manifest_id)
@@ -186,6 +178,7 @@ pub(in crate::modules::catalog) async fn detect_raw_object_format(
 }
 
 pub(in crate::modules::catalog) async fn create_extraction_job(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(raw_object_manifest_id): Path<String>,
     Json(payload): Json<CreateExtractionJobRequest>,
@@ -196,11 +189,7 @@ pub(in crate::modules::catalog) async fn create_extraction_job(
         "catalog extraction job create",
     )?;
     validate_create_extraction_job_payload(&raw_object_manifest_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing =
         PostgresCatalogRepository::get_raw_object_manifest(&client, &raw_object_manifest_id)
@@ -244,6 +233,7 @@ pub(in crate::modules::catalog) async fn create_extraction_job(
 }
 
 pub(in crate::modules::catalog) async fn create_preview_artifact(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_version_id): Path<String>,
     Json(payload): Json<CreatePreviewArtifactRequest>,
@@ -254,11 +244,7 @@ pub(in crate::modules::catalog) async fn create_preview_artifact(
         "catalog preview artifact create",
     )?;
     validate_create_preview_artifact_payload(&asset_version_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
         .await
@@ -317,6 +303,7 @@ pub(in crate::modules::catalog) async fn create_preview_artifact(
 }
 
 pub(in crate::modules::catalog) async fn create_asset_object(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_version_id): Path<String>,
     Json(payload): Json<CreateAssetObjectRequest>,
@@ -327,11 +314,7 @@ pub(in crate::modules::catalog) async fn create_asset_object(
         "catalog asset object create",
     )?;
     validate_create_asset_object_payload(&asset_version_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
         .await
@@ -373,6 +356,7 @@ pub(in crate::modules::catalog) async fn create_asset_object(
 }
 
 pub(in crate::modules::catalog) async fn patch_asset_release_policy(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_id): Path<String>,
     Json(payload): Json<PatchAssetReleasePolicyRequest>,
@@ -383,11 +367,7 @@ pub(in crate::modules::catalog) async fn patch_asset_release_policy(
         "catalog asset release policy patch",
     )?;
     validate_patch_asset_release_policy_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_asset = PostgresCatalogRepository::get_data_resource(&client, &asset_id)
         .await
@@ -439,6 +419,7 @@ pub(in crate::modules::catalog) async fn patch_asset_release_policy(
 }
 
 pub(in crate::modules::catalog) async fn create_asset_field_definition(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_version_id): Path<String>,
     Json(payload): Json<CreateAssetFieldDefinitionRequest>,
@@ -449,11 +430,7 @@ pub(in crate::modules::catalog) async fn create_asset_field_definition(
         "catalog asset field definition create",
     )?;
     validate_create_asset_field_definition_payload(&asset_version_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
         .await
@@ -496,6 +473,7 @@ pub(in crate::modules::catalog) async fn create_asset_field_definition(
 }
 
 pub(in crate::modules::catalog) async fn create_asset_quality_report(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_version_id): Path<String>,
     Json(payload): Json<CreateAssetQualityReportRequest>,
@@ -506,11 +484,7 @@ pub(in crate::modules::catalog) async fn create_asset_quality_report(
         "catalog asset quality report create",
     )?;
     validate_create_asset_quality_report_payload(&asset_version_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
         .await
@@ -553,6 +527,7 @@ pub(in crate::modules::catalog) async fn create_asset_quality_report(
 }
 
 pub(in crate::modules::catalog) async fn create_asset_processing_job(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(asset_version_id): Path<String>,
     Json(payload): Json<CreateAssetProcessingJobRequest>,
@@ -563,11 +538,7 @@ pub(in crate::modules::catalog) async fn create_asset_processing_job(
         "catalog asset processing job create",
     )?;
     validate_create_asset_processing_job_payload(&asset_version_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_version = PostgresCatalogRepository::get_asset_version(&client, &asset_version_id)
         .await

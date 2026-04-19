@@ -15,39 +15,47 @@
 
 8. 数据库就绪检查：`./db/scripts/check-db-ready.sh`
 9. 执行 migration 校验：`make migrate-up`
+10. `platform-core` 仍以 `db/scripts/*` 和既有 SQL migration 作为正式 schema 入口；不要改用 `sqlx-cli migrate` 或 `sea-orm-cli migrate`
+11. 如需刷新 SQLx 编译期校验元数据：`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
 
 ## 阶段 3：Seed
 
-10. 初始化 Kafka topics：`./infra/kafka/init-topics.sh`
-11. 初始化 MinIO buckets：`./infra/minio/init-minio.sh`
-12. 初始化 OpenSearch 索引：`./infra/opensearch/init-opensearch.sh`
-13. 执行本地 seed：`make seed-local`
-14. 准备五条标准链路演示数据：`fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json`
+12. 初始化 Kafka topics：`./infra/kafka/init-topics.sh`
+13. 初始化 MinIO buckets：`./infra/minio/init-minio.sh`
+14. 初始化 OpenSearch 索引：`./infra/opensearch/init-opensearch.sh`
+15. 执行本地 seed：`make seed-local`
+16. 准备五条标准链路演示数据：`fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json`
 
 ## 阶段 4：应用
 
-15. 启动主应用（platform-core）：`cargo run -p platform-core`
-16. 应用健康检查：`curl -fsS http://127.0.0.1:8080/healthz`
-17. 按需叠加观测栈：`make up-observability`
-18. 按需叠加 Fabric：`make up-fabric`
-19. 一键演示模式（全量）：`make up-demo`
+17. 启动主应用（platform-core）：
+   `APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+18. 应用健康检查：
+   `curl -fsS http://127.0.0.1:8094/health/live`
+   `curl -fsS http://127.0.0.1:8094/health/ready`
+19. 运行时数据访问职责：
+   `SQLx` 负责连接池、事务、核心写路径和复杂 SQL；
+   `SeaORM` 负责标准 CRUD、稳定读模型和固定关系加载
+20. 按需叠加观测栈：`make up-observability`
+21. 按需叠加 Fabric：`make up-fabric`
+22. 一键演示模式（全量）：`make up-demo`
 
 ## 阶段 5：回执模拟
 
-20. 验证 Keycloak realm：`./scripts/check-keycloak-realm.sh`
-21. 启动 Fabric 本地链（按需）：`make fabric-up`
-22. 生成本地通道与链码占位工件：`make fabric-channel && ./infra/fabric/deploy-chaincode-placeholder.sh`
-23. Fabric 自检：`./scripts/check-fabric-local.sh`
-24. OTel Collector 自检：`./scripts/check-otel-collector.sh`
-25. 观测栈自检：`./scripts/check-observability-stack.sh`
-26. 执行回执模拟（Mock Payment）：`./scripts/check-mock-payment.sh`
-27. 全量健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
+23. 验证 Keycloak realm：`./scripts/check-keycloak-realm.sh`
+24. 启动 Fabric 本地链（按需）：`make fabric-up`
+25. 生成本地通道与链码占位工件：`make fabric-channel && ./infra/fabric/deploy-chaincode-placeholder.sh`
+26. Fabric 自检：`./scripts/check-fabric-local.sh`
+27. OTel Collector 自检：`./scripts/check-otel-collector.sh`
+28. 观测栈自检：`./scripts/check-observability-stack.sh`
+29. 执行回执模拟（Mock Payment）：`./scripts/check-mock-payment.sh`
+30. 全量健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
     - 该检查包含端口与 HTTP 存活探测，以及命令级探测：`psql`、`redis-cli`、`kcat`（容器无 `kcat` 时优先临时 `kcat` 容器探测，再回退 `kafka-topics.sh`）、`mc`、`curl`。
 
 ## 阶段 6：配置快照与 Smoke
 
-28. 导出当前本地配置快照：`./scripts/export-local-config.sh`
-29. 运行本地 smoke 套件（建议在 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+31. 导出当前本地配置快照：`./scripts/export-local-config.sh`
+32. 运行本地 smoke 套件（建议在 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
 
 ## 迁移兼容说明（ENV-001 / ENV-057）
 

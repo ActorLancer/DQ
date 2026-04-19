@@ -1,8 +1,8 @@
 use crate::modules::catalog::router::router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use db::{Client, Error, GenericClient, NoTls, connect};
 use serde_json::{Value, json};
-use tokio_postgres::{Client, NoTls};
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
@@ -16,10 +16,7 @@ struct SeedIds {
     asset_version_id: String,
 }
 
-async fn seed_minimum_graph(
-    client: &Client,
-    suffix: &str,
-) -> Result<SeedIds, tokio_postgres::Error> {
+async fn seed_minimum_graph(client: &Client, suffix: &str) -> Result<SeedIds, Error> {
     let org = client
         .query_one(
             "INSERT INTO core.organization (
@@ -108,9 +105,7 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
     let Ok(dsn) = std::env::var("DATABASE_URL") else {
         return;
     };
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .expect("connect database");
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -132,7 +127,7 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
     let mut created_product_id: Option<String> = None;
 
     let outcome: Result<(), String> = async {
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
 
         let create_resp = app
             .clone()

@@ -1,11 +1,12 @@
 use crate::modules::order::repo::pre_request_repository::map_db_error;
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde_json::Value;
 
 pub async fn ensure_pre_payment_lock_checks(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     order_id: &str,
     request_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {

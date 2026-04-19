@@ -37,7 +37,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_trade_pre_request_create_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -62,7 +62,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_trade_price_snapshot_freeze_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -79,7 +79,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_order_create_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -104,7 +104,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_order_detail_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -122,7 +122,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_order_templates_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -139,7 +139,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_order_lifecycle_snapshots_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -157,7 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_order_cancel_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -175,7 +175,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_order_contract_confirm_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -202,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_order_authorization_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -225,7 +225,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_file_std_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -248,7 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_file_sub_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -271,7 +271,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_api_sub_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -294,7 +294,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_api_ppu_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -317,7 +317,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_share_ro_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -340,7 +340,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_qry_lite_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -363,7 +363,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_sbx_std_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -386,7 +386,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_rpt_std_transition_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()

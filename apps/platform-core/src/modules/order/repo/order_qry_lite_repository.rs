@@ -4,8 +4,8 @@ use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
-use tokio_postgres::Client;
 
 pub async fn transition_qry_lite_order(
     client: &mut Client,

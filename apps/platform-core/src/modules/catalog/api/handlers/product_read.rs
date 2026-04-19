@@ -1,9 +1,10 @@
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 
+use crate::AppState;
 use crate::modules::catalog::domain::{ProductDetailView, SellerProfileView};
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::CatalogPermission;
@@ -11,6 +12,7 @@ use crate::modules::catalog::service::CatalogPermission;
 use super::super::support::*;
 
 pub(in crate::modules::catalog) async fn get_product_detail(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
 ) -> Result<Json<ApiResponse<ProductDetailView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -19,11 +21,7 @@ pub(in crate::modules::catalog) async fn get_product_detail(
         CatalogPermission::ProductRead,
         "catalog product detail read",
     )?;
-    let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let mut detail = PostgresCatalogRepository::get_product_detail(&client, &product_id)
         .await
@@ -63,6 +61,7 @@ pub(in crate::modules::catalog) async fn get_product_detail(
 }
 
 pub(in crate::modules::catalog) async fn get_seller_profile(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(org_id): Path<String>,
 ) -> Result<Json<ApiResponse<SellerProfileView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -71,11 +70,7 @@ pub(in crate::modules::catalog) async fn get_seller_profile(
         CatalogPermission::SellerProfileRead,
         "catalog seller profile read",
     )?;
-    let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let view = PostgresCatalogRepository::get_seller_profile(&client, &org_id)
         .await

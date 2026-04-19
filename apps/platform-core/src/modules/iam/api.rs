@@ -1,3 +1,4 @@
+use crate::AppState;
 use crate::modules::access;
 use crate::modules::iam::domain::{
     AccessCheckRequest, AccessCheckView, AccessPermissionRuleView, ActionResultView,
@@ -18,16 +19,16 @@ use crate::modules::iam::service::{
     HighRiskAction, IamPermission, high_risk_action_requires_step_up, is_allowed, role_seeds,
 };
 use auth::{JwtParser, KeycloakClaimsJwtParser, MockJwtParser, extract_bearer};
-use axum::extract::{Path, Query};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
+use db::{DbClientOps, DbRecord, Error};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
-use tokio_postgres::{GenericClient, NoTls, Row};
 use tracing::info;
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/orgs/register", post(register_org))
         .route("/api/v1/iam/orgs", get(list_orgs))
@@ -126,14 +127,11 @@ pub fn router() -> Router {
 
 async fn register_org(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<RegisterOrganizationRequest>,
 ) -> Result<Json<ApiResponse<OrganizationAggregateView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::OrgRegister, "org register")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
 
     let metadata = serde_json::json!({
         "certification_level": payload.certification_level,
@@ -195,14 +193,11 @@ async fn register_org(
 
 async fn get_org(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<OrganizationAggregateView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::OrgRead, "org read")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -249,14 +244,11 @@ async fn get_org(
 
 async fn list_orgs(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<OrganizationListQuery>,
 ) -> Result<Json<ApiResponse<Vec<OrganizationAggregateView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::OrgRead, "org list")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT
@@ -293,6 +285,7 @@ async fn list_orgs(
 
 async fn patch_org_party_review_linkage(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<PatchOrganizationLinkageRequest>,
 ) -> Result<Json<ApiResponse<OrganizationAggregateView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -301,11 +294,7 @@ async fn patch_org_party_review_linkage(
         IamPermission::IdentityWrite,
         "party review linkage patch",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -361,14 +350,11 @@ async fn patch_org_party_review_linkage(
 
 async fn login(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<ApiResponse<LoginView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionWrite, "login")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -433,14 +419,11 @@ async fn login(
 
 async fn logout(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<LogoutRequest>,
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionWrite, "logout")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -475,6 +458,7 @@ async fn logout(
 
 async fn update_user_roles(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateUserRolesRequest>,
 ) -> Result<Json<ApiResponse<UserView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -483,11 +467,7 @@ async fn update_user_roles(
         IamPermission::RoleChangeWrite,
         "user role change write",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let roles = serde_json::Value::Array(
         payload
             .roles
@@ -537,14 +517,11 @@ async fn update_user_roles(
 
 async fn create_department(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateDepartmentRequest>,
 ) -> Result<Json<ApiResponse<DepartmentView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "department create")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_department(&tx, &payload)
         .await
@@ -566,14 +543,11 @@ async fn create_department(
 
 async fn get_department(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<DepartmentView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "department read")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_department(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -583,14 +557,11 @@ async fn get_department(
 
 async fn list_departments(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<DepartmentListQuery>,
 ) -> Result<Json<ApiResponse<Vec<DepartmentView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "department list")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_departments(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -599,14 +570,11 @@ async fn list_departments(
 
 async fn create_user(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<ApiResponse<UserView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "user create")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_user(&tx, &payload)
         .await
@@ -628,14 +596,11 @@ async fn create_user(
 
 async fn get_user(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<UserView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "user read")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_user(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -645,14 +610,11 @@ async fn get_user(
 
 async fn list_users(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<UserListQuery>,
 ) -> Result<Json<ApiResponse<Vec<UserView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "user list")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_users(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -661,14 +623,11 @@ async fn list_users(
 
 async fn create_app(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateApplicationRequest>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "app create")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_app(&tx, &payload)
         .await
@@ -690,15 +649,12 @@ async fn create_app(
 
 async fn patch_app(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<PatchApplicationRequest>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "app patch")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::patch_app(&tx, &id, &payload)
         .await
@@ -721,14 +677,11 @@ async fn patch_app(
 
 async fn get_app(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "app read")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_app(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -738,14 +691,11 @@ async fn get_app(
 
 async fn list_apps(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<ApplicationListQuery>,
 ) -> Result<Json<ApiResponse<Vec<ApplicationView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "application list")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_apps(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -754,6 +704,7 @@ async fn list_apps(
 
 async fn rotate_app_secret(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<RotateApplicationSecretRequest>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -762,11 +713,7 @@ async fn rotate_app_secret(
         IamPermission::IdentityWrite,
         "application credential rotate",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let secret_hash = payload
         .client_secret_hash
         .unwrap_or_else(|| new_external_readable_id("appsec"));
@@ -820,6 +767,7 @@ async fn rotate_app_secret(
 
 async fn revoke_app_secret(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -827,11 +775,7 @@ async fn revoke_app_secret(
         IamPermission::IdentityWrite,
         "application credential revoke",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -882,20 +826,23 @@ async fn revoke_app_secret(
 
 async fn invite_user(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateInvitationRequest>,
 ) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
-    create_invitation_internal(headers, payload, "iam.user.invite").await
+    create_invitation_internal(headers, state, payload, "iam.user.invite").await
 }
 
 async fn create_invitation(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateInvitationRequest>,
 ) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
-    create_invitation_internal(headers, payload, "iam.invitation.create").await
+    create_invitation_internal(headers, state, payload, "iam.invitation.create").await
 }
 
 async fn create_invitation_internal(
     headers: HeaderMap,
+    state: AppState,
     payload: CreateInvitationRequest,
     audit_action: &str,
 ) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -911,11 +858,7 @@ async fn create_invitation_internal(
         ));
     }
 
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let expires_hours = payload.expires_in_hours.unwrap_or(72).max(1);
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
@@ -977,14 +920,11 @@ async fn create_invitation_internal(
 
 async fn list_invitations(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<InvitationListQuery>,
 ) -> Result<Json<ApiResponse<Vec<InvitationView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "invitation read")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT invitation_id::text, org_id::text, invited_email::text, invited_phone,
@@ -1016,14 +956,11 @@ async fn list_invitations(
 
 async fn cancel_invitation(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "invitation cancel")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1065,14 +1002,11 @@ async fn cancel_invitation(
 
 async fn list_sessions(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<SessionListQuery>,
 ) -> Result<Json<ApiResponse<Vec<SessionView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionRead, "session list")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT session_id::text, user_id::text, trusted_device_id::text, session_type,
@@ -1104,14 +1038,11 @@ async fn list_sessions(
 
 async fn revoke_session(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SessionView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "session revoke")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1153,14 +1084,11 @@ async fn revoke_session(
 
 async fn list_devices(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<DeviceListQuery>,
 ) -> Result<Json<ApiResponse<Vec<DeviceView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionRead, "device list")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT trusted_device_id::text, user_id::text, device_name, platform, browser,
@@ -1193,14 +1121,11 @@ async fn list_devices(
 
 async fn revoke_device(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<DeviceView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "device revoke")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1242,14 +1167,11 @@ async fn revoke_device(
 
 async fn create_connector(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateConnectorRequest>,
 ) -> Result<Json<ApiResponse<ConnectorView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "connector create")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_connector(&tx, &payload)
         .await
@@ -1271,14 +1193,11 @@ async fn create_connector(
 
 async fn get_connector(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ConnectorView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "connector read")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_connector(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -1288,14 +1207,11 @@ async fn get_connector(
 
 async fn list_connectors(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<ConnectorListQuery>,
 ) -> Result<Json<ApiResponse<Vec<ConnectorView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "connector list")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_connectors(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -1304,6 +1220,7 @@ async fn list_connectors(
 
 async fn create_execution_environment(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateExecutionEnvironmentRequest>,
 ) -> Result<Json<ApiResponse<ExecutionEnvironmentView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -1311,11 +1228,7 @@ async fn create_execution_environment(
         IamPermission::IdentityWrite,
         "execution environment create",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_execution_environment(&tx, &payload)
         .await
@@ -1337,6 +1250,7 @@ async fn create_execution_environment(
 
 async fn get_execution_environment(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ExecutionEnvironmentView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -1344,11 +1258,7 @@ async fn get_execution_environment(
         IamPermission::IdentityRead,
         "execution environment read",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_execution_environment(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -1363,6 +1273,7 @@ async fn get_execution_environment(
 
 async fn list_execution_environments(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<ExecutionEnvironmentListQuery>,
 ) -> Result<Json<ApiResponse<Vec<ExecutionEnvironmentView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -1370,11 +1281,7 @@ async fn list_execution_environments(
         IamPermission::IdentityRead,
         "execution environment list",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_execution_environments(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -1383,6 +1290,7 @@ async fn list_execution_environments(
 
 async fn get_auth_me(
     headers: HeaderMap,
+    State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<SessionContextView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionRead, "session read")?;
     if let Some(token) = extract_bearer(&headers) {
@@ -1425,11 +1333,7 @@ async fn get_auth_me(
         ));
     };
 
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let row = client
         .query_opt(
             "SELECT user_id::text, org_id::text, login_id::text, display_name
@@ -1491,6 +1395,7 @@ fn parser_from_env() -> Box<dyn JwtParser> {
 
 async fn list_access_rules(
     headers: HeaderMap,
+    State(_state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<AccessPermissionRuleView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
@@ -1502,6 +1407,7 @@ async fn list_access_rules(
 
 async fn check_access_rule(
     headers: HeaderMap,
+    State(_state): State<AppState>,
     Json(payload): Json<AccessCheckRequest>,
 ) -> Result<Json<ApiResponse<AccessCheckView>>, (StatusCode, Json<ErrorResponse>)> {
     let permission = permission_from_code(&payload.permission_code)?;
@@ -1527,6 +1433,7 @@ async fn check_access_rule(
 
 async fn get_rbac_seeds(
     headers: HeaderMap,
+    State(_state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::AccessPolicyRead, "rbac seed read")?;
     let seeds = role_seeds()
@@ -1544,6 +1451,7 @@ async fn get_rbac_seeds(
 
 async fn check_step_up(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<StepUpCheckRequest>,
 ) -> Result<Json<ApiResponse<StepUpCheckView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::StepUpRead, "step-up check")?;
@@ -1565,11 +1473,7 @@ async fn check_step_up(
         )
     })?;
 
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_one(
@@ -1617,6 +1521,7 @@ async fn check_step_up(
 
 async fn verify_step_up(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<StepUpVerifyRequest>,
 ) -> Result<Json<ApiResponse<StepUpCheckView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -1631,11 +1536,7 @@ async fn verify_step_up(
         "rejected"
     };
 
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1680,13 +1581,10 @@ async fn verify_step_up(
 
 async fn list_mfa_authenticators(
     headers: HeaderMap,
+    State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<MfaAuthenticatorView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::MfaRead, "mfa authenticator read")?;
-    let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let user_id = header(&headers, "x-user-id");
     let rows = client
         .query(
@@ -1714,6 +1612,7 @@ async fn list_mfa_authenticators(
 
 async fn create_mfa_authenticator(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateMfaAuthenticatorRequest>,
 ) -> Result<Json<ApiResponse<MfaAuthenticatorView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -1733,11 +1632,7 @@ async fn create_mfa_authenticator(
         ));
     }
 
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_one(
@@ -1780,6 +1675,7 @@ async fn create_mfa_authenticator(
 
 async fn delete_mfa_authenticator(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<MfaAuthenticatorView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -1787,11 +1683,7 @@ async fn delete_mfa_authenticator(
         IamPermission::MfaWrite,
         "mfa authenticator delete",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1833,14 +1725,11 @@ async fn delete_mfa_authenticator(
 
 async fn create_sso_connection(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Json(payload): Json<CreateSsoConnectionRequest>,
 ) -> Result<Json<ApiResponse<SsoConnectionView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SsoWrite, "sso connection create")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_one(
@@ -1891,14 +1780,11 @@ async fn create_sso_connection(
 
 async fn list_sso_connections(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Query(query): Query<SsoConnectionListQuery>,
 ) -> Result<Json<ApiResponse<Vec<SsoConnectionView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SsoRead, "sso connection read")?;
-    let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT sso_connection_id::text, org_id::text, connection_name, protocol_type, issuer, status
@@ -1926,15 +1812,12 @@ async fn list_sso_connections(
 
 async fn patch_sso_connection(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<PatchSsoConnectionRequest>,
 ) -> Result<Json<ApiResponse<SsoConnectionView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SsoWrite, "sso connection patch")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1983,13 +1866,10 @@ async fn patch_sso_connection(
 
 async fn list_fabric_identities(
     headers: HeaderMap,
+    State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<FabricIdentityView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::FabricRead, "fabric identity read")?;
-    let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT fabric_identity_binding_id::text, msp_id, enrollment_id, identity_type, status
@@ -2015,6 +1895,7 @@ async fn list_fabric_identities(
 
 async fn issue_fabric_identity(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -2022,11 +1903,7 @@ async fn issue_fabric_identity(
         IamPermission::FabricWrite,
         "fabric identity issue placeholder",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -2065,6 +1942,7 @@ async fn issue_fabric_identity(
 
 async fn revoke_fabric_identity(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -2072,11 +1950,7 @@ async fn revoke_fabric_identity(
         IamPermission::FabricWrite,
         "fabric identity revoke placeholder",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -2115,13 +1989,10 @@ async fn revoke_fabric_identity(
 
 async fn list_certificates(
     headers: HeaderMap,
+    State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<CertificateView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::FabricRead, "certificate read")?;
-    let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT certificate_id::text, serial_number, status
@@ -2145,6 +2016,7 @@ async fn list_certificates(
 
 async fn revoke_certificate(
     headers: HeaderMap,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
@@ -2152,11 +2024,7 @@ async fn revoke_certificate(
         IamPermission::FabricWrite,
         "certificate revoke placeholder",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -2281,7 +2149,7 @@ fn high_risk_action_from_name(
     }
 }
 
-fn parse_org_row(row: &Row, blacklist_active: bool) -> OrganizationAggregateView {
+fn parse_org_row(row: &DbRecord, blacklist_active: bool) -> OrganizationAggregateView {
     let metadata: serde_json::Value = row.get(6);
     OrganizationAggregateView {
         org_id: row.get(0),
@@ -2347,7 +2215,7 @@ fn parse_org_row(row: &Row, blacklist_active: bool) -> OrganizationAggregateView
 }
 
 async fn write_audit_event(
-    client: &(impl GenericClient + Sync),
+    client: &(impl DbClientOps + Sync),
     ref_type: &str,
     ref_id: &str,
     actor_role: &str,
@@ -2405,40 +2273,6 @@ fn require_permission(
     ))
 }
 
-fn database_dsn() -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    std::env::var("DATABASE_URL").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                code: ErrorCode::OpsInternal.as_str().to_string(),
-                message: "DATABASE_URL is not configured".to_string(),
-                request_id: None,
-            }),
-        )
-    })
-}
-
-async fn connect_db(
-    dsn: &str,
-) -> Result<
-    (
-        tokio_postgres::Client,
-        tokio_postgres::Connection<tokio_postgres::Socket, tokio_postgres::tls::NoTlsStream>,
-    ),
-    (StatusCode, Json<ErrorResponse>),
-> {
-    tokio_postgres::connect(dsn, NoTls).await.map_err(|err| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                code: ErrorCode::OpsInternal.as_str().to_string(),
-                message: format!("database connection failed: {err}"),
-                request_id: None,
-            }),
-        )
-    })
-}
-
 fn not_found(message: &str, request_id: Option<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::NOT_FOUND,
@@ -2450,7 +2284,7 @@ fn not_found(message: &str, request_id: Option<String>) -> (StatusCode, Json<Err
     )
 }
 
-fn map_db_error(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>) {
+fn map_db_error(err: Error) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {

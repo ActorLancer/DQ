@@ -1,5 +1,6 @@
 mod handlers;
 
+use crate::AppState;
 use axum::Router;
 use axum::routing::{get, post};
 pub use handlers::{
@@ -11,7 +12,7 @@ pub use handlers::{
     transition_rpt_std_order_api, transition_sbx_std_order_api, transition_share_ro_order_api,
 };
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/orders", post(create_order_api))
         .route(

@@ -1,10 +1,11 @@
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 use tracing::info;
 
+use crate::AppState;
 use crate::modules::catalog::domain::{
     CreateDataContractRequest, CreateProductSkuRequest, DataContractView, PatchProductSkuRequest,
     ProductSkuView, default_trade_mode_for_sku_type, is_standard_sku_type,
@@ -16,6 +17,7 @@ use super::super::support::*;
 use super::super::validators::*;
 
 pub(in crate::modules::catalog) async fn create_product_sku(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
     Json(payload): Json<CreateProductSkuRequest>,
@@ -26,11 +28,7 @@ pub(in crate::modules::catalog) async fn create_product_sku(
         "catalog product sku create",
     )?;
     validate_create_sku_payload(&product_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let product = PostgresCatalogRepository::get_data_product(&client, &product_id)
         .await
@@ -108,6 +106,7 @@ pub(in crate::modules::catalog) async fn create_product_sku(
 }
 
 pub(in crate::modules::catalog) async fn patch_product_sku(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<PatchProductSkuRequest>,
@@ -118,11 +117,7 @@ pub(in crate::modules::catalog) async fn patch_product_sku(
         "catalog product sku patch",
     )?;
     validate_patch_sku_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing = PostgresCatalogRepository::get_product_sku(&client, &id)
         .await
@@ -213,6 +208,7 @@ pub(in crate::modules::catalog) async fn patch_product_sku(
 }
 
 pub(in crate::modules::catalog) async fn create_data_contract(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(sku_id): Path<String>,
     Json(payload): Json<CreateDataContractRequest>,
@@ -223,11 +219,7 @@ pub(in crate::modules::catalog) async fn create_data_contract(
         "catalog data contract create",
     )?;
     validate_create_data_contract_payload(&sku_id, &payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_sku = PostgresCatalogRepository::get_product_sku(&client, &sku_id)
         .await
@@ -269,6 +261,7 @@ pub(in crate::modules::catalog) async fn create_data_contract(
 }
 
 pub(in crate::modules::catalog) async fn get_data_contract(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path((sku_id, contract_id)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<DataContractView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -277,11 +270,7 @@ pub(in crate::modules::catalog) async fn get_data_contract(
         CatalogPermission::ProductDraftWrite,
         "catalog data contract read",
     )?;
-    let dsn = database_dsn()?;
-    let (client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let existing_sku = PostgresCatalogRepository::get_product_sku(&client, &sku_id)
         .await

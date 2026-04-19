@@ -9,11 +9,12 @@ use crate::modules::order::dto::{
 use crate::modules::order::repo::pre_request_repository::map_db_error;
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::ErrorResponse;
 use serde_json::Value;
 
 pub async fn load_order_relations(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<OrderRelations, (StatusCode, Json<ErrorResponse>)> {
     Ok(OrderRelations {
@@ -26,7 +27,7 @@ pub async fn load_order_relations(
 }
 
 async fn load_contract_relation(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Option<OrderContractRelation>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -66,7 +67,7 @@ async fn load_contract_relation(
 }
 
 async fn load_authorization_relations(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderAuthorizationRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client
@@ -141,7 +142,7 @@ async fn load_authorization_relations(
 }
 
 async fn load_delivery_relations(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderDeliveryRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client
@@ -181,7 +182,7 @@ async fn load_delivery_relations(
 }
 
 async fn load_billing_relations(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<OrderBillingRelations, (StatusCode, Json<ErrorResponse>)> {
     Ok(OrderBillingRelations {
@@ -194,7 +195,7 @@ async fn load_billing_relations(
 }
 
 async fn load_billing_events(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderBillingEventRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client
@@ -232,7 +233,7 @@ async fn load_billing_events(
 }
 
 async fn load_settlements(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderSettlementRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client
@@ -274,7 +275,7 @@ async fn load_settlements(
 }
 
 async fn load_refunds(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderRefundRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client
@@ -308,7 +309,7 @@ async fn load_refunds(
 }
 
 async fn load_compensations(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderCompensationRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client
@@ -342,7 +343,7 @@ async fn load_compensations(
 }
 
 async fn load_invoices(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderInvoiceRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client
@@ -380,7 +381,7 @@ async fn load_invoices(
 }
 
 async fn load_dispute_relations(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Vec<OrderDisputeRelation>, (StatusCode, Json<ErrorResponse>)> {
     let rows = client

@@ -6,8 +6,8 @@ use crate::modules::order::repo::ensure_pre_payment_lock_checks;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
-use tokio_postgres::Client;
 
 pub async fn transition_api_sub_order(
     client: &mut Client,

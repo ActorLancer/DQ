@@ -9,11 +9,12 @@ use crate::modules::order::dto::{
 use crate::modules::order::repo::pre_request_repository::map_db_error;
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::ErrorResponse;
 use serde_json::Value;
 
 pub async fn load_order_lifecycle_snapshots(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Option<GetOrderLifecycleSnapshotsResponseData>, (StatusCode, Json<ErrorResponse>)> {
     let order_row = client
@@ -93,7 +94,7 @@ pub async fn load_order_lifecycle_snapshots(
 }
 
 async fn load_contract_snapshot(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Option<ContractLifecycleSnapshot>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -128,7 +129,7 @@ async fn load_contract_snapshot(
 }
 
 async fn load_authorization_snapshot(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Option<AuthorizationLifecycleSnapshot>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -199,7 +200,7 @@ async fn load_authorization_snapshot(
 }
 
 async fn load_delivery_snapshot(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Option<DeliveryLifecycleSnapshot>, (StatusCode, Json<ErrorResponse>)> {
     let row = client

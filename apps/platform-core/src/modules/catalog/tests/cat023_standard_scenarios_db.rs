@@ -1,8 +1,8 @@
 use crate::modules::catalog::router::router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use db::{GenericClient, NoTls, connect};
 use serde_json::Value;
-use tokio_postgres::NoTls;
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
@@ -17,9 +17,7 @@ async fn cat023_standard_scenarios_endpoint_db_smoke() {
     let Ok(dsn) = std::env::var("DATABASE_URL") else {
         return;
     };
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .expect("connect database");
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -34,7 +32,7 @@ async fn cat023_standard_scenarios_endpoint_db_smoke() {
     let request_id = format!("req-cat023-standard-scenarios-{suffix}");
 
     let outcome: Result<(), String> = async {
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
         let resp = app
             .oneshot(
                 Request::builder()

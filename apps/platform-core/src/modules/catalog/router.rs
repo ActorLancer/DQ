@@ -1,10 +1,11 @@
+use crate::AppState;
 use axum::Router;
 use axum::routing::{get, patch, post, put};
 
 use super::api;
 
 /// Catalog HTTP routes (assembly only).
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/products", post(api::create_product_draft))
         .route(

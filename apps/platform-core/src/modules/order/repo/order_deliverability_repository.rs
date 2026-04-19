@@ -1,6 +1,7 @@
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde_json::Value;
 
@@ -9,7 +10,7 @@ pub struct PreparedDeliveryRecord {
 }
 
 pub async fn ensure_order_deliverable_and_prepare_delivery(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     order_id: &str,
     actor_role: &str,
     request_id: Option<&str>,

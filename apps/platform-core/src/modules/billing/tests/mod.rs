@@ -10,7 +10,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_policy_request_without_role() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -26,7 +26,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_create_payment_intent_without_permission() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -45,7 +45,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_cancel_payment_intent_for_tenant_operator() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
@@ -62,7 +62,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_lock_order_for_tenant_operator() {
-        let app = router();
+        let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()

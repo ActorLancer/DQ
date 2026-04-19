@@ -8,9 +8,9 @@ use crate::modules::order::dto::{
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde_json::{Value, json};
-use tokio_postgres::Client;
 
 struct OrderScope {
     buyer_org_id: String,
@@ -300,7 +300,7 @@ pub async fn transition_order_authorization(
     })
 }
 
-fn to_authorization_row(row: tokio_postgres::Row) -> AuthorizationRow {
+fn to_authorization_row(row: Row) -> AuthorizationRow {
     let policy_snapshot: Value = row.get(5);
     let fallback = build_authorization_model_snapshot(
         row.get::<_, String>(9).as_str(),
@@ -359,7 +359,7 @@ fn derive_target_status(
 }
 
 async fn load_order_scope(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     order_id: &str,
     request_id: Option<&str>,
 ) -> Result<OrderScope, (StatusCode, Json<ErrorResponse>)> {
@@ -402,7 +402,7 @@ async fn load_order_scope(
 }
 
 async fn load_latest_authorization(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     order_id: &str,
 ) -> Result<Option<AuthorizationRow>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -437,7 +437,7 @@ async fn load_latest_authorization(
 }
 
 async fn resolve_policy(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     scope: &OrderScope,
     requested_policy_id: Option<&str>,
     request_id: Option<&str>,
@@ -473,7 +473,7 @@ async fn resolve_policy(
 }
 
 async fn resolve_policy_for_existing(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     scope: &OrderScope,
     requested_policy_id: Option<&str>,
     policy_snapshot: &Value,
@@ -495,7 +495,7 @@ async fn resolve_policy_for_existing(
 }
 
 async fn load_policy_by_id(
-    client: &(impl tokio_postgres::GenericClient + Sync),
+    client: &(impl GenericClient + Sync),
     policy_id: &str,
     request_id: Option<&str>,
 ) -> Result<PolicyInfo, (StatusCode, Json<ErrorResponse>)> {
