@@ -10,6 +10,11 @@ if [[ -z "$(find .sqlx -type f -print -quit 2>/dev/null)" ]]; then
   exit 1
 fi
 
-SQLX_OFFLINE=true cargo check -p db --features query-compile-check
+SQLX_OFFLINE_DIR="$ROOT_DIR/.sqlx"
+
+env -u DATABASE_URL \
+  SQLX_OFFLINE=true \
+  SQLX_OFFLINE_DIR="$SQLX_OFFLINE_DIR" \
+  cargo check -p db --features query-compile-check
 
 echo "[ok] query compile check passed"
