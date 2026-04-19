@@ -11,3 +11,5 @@ mod dlv005_revision_subscription_db;
 mod dlv006_share_grant_db;
 
 mod dlv007_api_delivery_db;
+
+mod dlv008_api_usage_log_db;

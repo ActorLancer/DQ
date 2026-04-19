@@ -3180,3 +3180,112 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-150（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-008
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-008` 目标为 `GET /api/v1/orders/{id}/usage-log`，输出按最小披露裁剪后的 API 使用日志。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：复核 `DLV-008` 完成定义为“接口、DTO、权限校验、审计、错误码和最小测试齐备，且与 OpenAPI 不漂移”。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地 commit”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务顺序、冻结文档先行、实现后必须做真实 API 联调与 DB 回查。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 `BATCH-149`，先登记本批计划中。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `GET /api/v1/orders/{id}/usage-log` 对应权限 `delivery.api.log.read`，额外校验为“应用归属、最小披露”。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：API 使用日志属于 Delivery 读取面，但订单/应用/交付真值分散在 Trade + IAM + Delivery，需要聚合读取。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结表已列出 `GET /api/v1/orders/{id}/usage-log`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批以数据库已落 usage log 为真值，不提前引入额外 Kafka 读取逻辑。
+  12. `docs/开发准备/统一错误码字典正式版.md`：读取冲突/权限/内部错误继续沿用统一错误结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批需要最小 DB smoke + 真实 API 联调 + 数据库回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：读取接口继续落在 `delivery/api|dto|repo|tests`，不把 Delivery 读逻辑塞回 Order。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批联调继续使用 `datab-postgres` 与本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用本地环境变量与固定 DSN/端口口径。
+  17. `docs/开发准备/技术选型正式版.md`：沿用当前 `SQLx + SeaORM` 数据访问基线，不回退旧实现。
+  18. `docs/开发准备/平台总体架构设计草案.md`：Delivery 读接口需基于统一鉴权、主体状态和审计基线提供受控摘要，而不是泄露底层调用细节。
+- 当前任务额外引用的 `technical_reference` 与约束映射：
+  - `docs/业务流程/业务流程图-V1-完整版.md:L334`：API 类交付必须采集 `access_log / usage_event / response_hash`，Usage Log 接口至少要可回看调用摘要与验收前证据。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L611`：API 开通页核心模块包含“调用日志摘要”，因此接口不能只返回裸表字段，至少要提供摘要视图。
+  - `docs/原始PRD/数据对象产品族与交付模式增强设计.md:L292`：API / 服务类是 V1 标准交付方式，调用日志属于正式交付运营视图，而非调试临时数据。
+- 补充约束文档：
+  1. `docs/权限设计/接口权限校验清单.md`：`GET /api/v1/orders/{id}/usage-log` 权限为 `delivery.api.log.read`，额外校验为“应用归属、最小披露”。
+  2. `docs/权限设计/权限点清单.md`：确认存在 `delivery.api.log.read` 权限点。
+  3. `docs/权限设计/后端鉴权中间件规则说明.md`：敏感读接口必须执行“对象归属 + 最小披露 + 审计留痕”。
+  4. `docs/数据库设计/数据库表字典正式版.md`、`docs/数据库设计/V1/upgrade/030_trade_delivery.sql`、`docs/数据库设计/表关系总图-ER文本图.md`：本批核心表为 `delivery.api_usage_log`、`delivery.api_credential`、`core.application`、`trade.order_main`。
+- 当前批次目标：实现 `GET /api/v1/orders/{id}/usage-log`，返回按最小披露裁剪后的 API 使用日志摘要与记录列表，并联动应用归属校验与 `delivery.api.log.read` 审计。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv008_api_usage_log_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl GET /api/v1/orders/{id}/usage-log` 联调，回查 `delivery.api_usage_log / audit.audit_event` 后清理业务数据。
+
+### BATCH-150（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-008
+- 前置依赖核对：`TRADE-003`、`TRADE-007`、`DB-006`、`DB-019`、`DB-020`、`CORE-008` 已完成并审批通过；`DLV-007` 已在当前主线完成并本地提交。
+- 当前批次目标：实现 `GET /api/v1/orders/{id}/usage-log`，返回按最小披露裁剪后的 API 使用日志摘要与记录列表。
+- 实现摘要：
+  1. `delivery/api/mod.rs` 新增 `GET /api/v1/orders/{id}/usage-log` 路由，`delivery/api/handlers.rs` 新增读取处理器。
+  2. `delivery/api/support.rs` 新增 `DeliveryPermission::ReadApiUsageLog`，角色口径覆盖 `buyer_operator/procurement_manager/tenant_developer/tenant_audit_readonly/tenant_admin/platform_*`。
+  3. `delivery/dto/api_usage_log.rs` 新增响应 DTO，输出 `app + summary + logs` 三段结构，避免暴露明文 request_id。
+  4. `delivery/repo/api_usage_log_repository.rs` 新增读取仓储：校验买卖主体状态、SKU 类型、买方应用归属，聚合 `delivery.api_usage_log + delivery.api_credential + core.application + trade.order_main`，并将 `request_id` 裁剪为 `request_ref`。
+  5. `delivery/tests/dlv008_api_usage_log_db.rs` 新增 DB smoke，覆盖“买方成功读取 + 卖方越权失败 + 审计落库”。
+  6. `packages/openapi/delivery.yaml` 已同步新增 `usage-log` 路径和 schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/api_usage_log.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/api_usage_log_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv008_api_usage_log_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv008_api_usage_log_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8101 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入临时 `API_SUB` 订单、先执行 `curl POST /api/v1/orders/{id}/deliver` 生成应用绑定与 API 凭证，再向 `delivery.api_usage_log` 插入 3 条 usage 记录，执行 `curl GET /api/v1/orders/{id}/usage-log`（买方）与 `curl GET /api/v1/orders/{id}/usage-log`（卖方越权），最后回查 `delivery.api_usage_log / audit.audit_event` 并清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv008_api_usage_log_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`173 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - 买方 `GET /api/v1/orders/{id}/usage-log`：`HTTP 200`
+    - 卖方同路径越权读取：`HTTP 403`
+    - 返回摘要：`API_SUB | total=3 | success=1 | failed=2 | usage=4.75000000`
+    - 首条日志：`5xx | ***ijkl | 500`
+  - DB 回查通过：
+    - `delivery.api_usage_log`：`3` 条记录，`usage_units` 聚合为 `4.75000000`
+    - 审计：`delivery.api.log.read=1`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.4.2（`access_log / usage_event / response_hash` 采集）
+  - `页面说明书-V1` 7.2（API 开通页的“调用日志摘要”核心模块）
+  - `数据对象产品族与交付模式增强设计` 4（API / 服务类为 V1 标准交付方式）
+  - `权限设计` 接口权限校验清单 / 权限点清单 / 后端鉴权规则（`delivery.api.log.read`、应用归属、最小披露、审计）
+- 覆盖的任务清单条目：`DLV-008`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

@@ -1,9 +1,14 @@
+mod api_usage_log;
 mod download_file;
 mod download_ticket;
 mod file_delivery_commit;
 mod revision_subscription;
 mod share_grant;
 
+pub use api_usage_log::{
+    ApiUsageLogAppData, ApiUsageLogEntryData, ApiUsageLogListResponseData, ApiUsageLogResponse,
+    ApiUsageLogSummaryData,
+};
 pub use download_file::{
     DownloadFileAccessData, DownloadFileResponse, DownloadFileResponseData, DownloadKeyEnvelopeData,
 };

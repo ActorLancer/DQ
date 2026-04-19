@@ -7,6 +7,7 @@ use kernel::{ErrorCode, ErrorResponse};
 pub enum DeliveryPermission {
     CommitFileDelivery,
     EnableApiDelivery,
+    ReadApiUsageLog,
     IssueDownloadTicket,
     DownloadFile,
     ManageRevisionSubscription,
@@ -25,6 +26,16 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
             role,
             "seller_operator"
                 | "tenant_developer"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ReadApiUsageLog => matches!(
+            role,
+            "buyer_operator"
+                | "procurement_manager"
+                | "tenant_developer"
+                | "tenant_audit_readonly"
                 | "tenant_admin"
                 | "platform_admin"
                 | "platform_risk_settlement"

@@ -8,7 +8,8 @@ info:
     short-lived download-ticket issuance backed by Redis cache; DLV-004 adds
     ticket-validated file download with delivery-receipt logging; DLV-005 adds
     FILE_SUB revision-subscription manage/read APIs; DLV-006 adds SHARE_RO
-    share-grant manage/read APIs.
+    share-grant manage/read APIs; DLV-007 adds API delivery enablement; DLV-008
+    adds API usage-log read APIs.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -206,8 +207,137 @@ paths:
           description: Permission or tenant-scope forbidden
         '404':
           description: Order or share grant not found
+  /api/v1/orders/{id}/usage-log:
+    get:
+      summary: Read minimal-disclosure API usage logs under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: API usage-log summary and entries visible to the buyer-side app owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiUsageLogResponseEnvelope'
+        '403':
+          description: Permission or buyer-app ownership scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order is not an API SKU or API delivery has not been enabled
 components:
   schemas:
+    ApiUsageLogResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ApiUsageLogResponse'
+    ApiUsageLogResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ApiUsageLogListResponseData'
+    ApiUsageLogListResponseData:
+      type: object
+      required:
+        [order_id, sku_id, sku_type, current_state, payment_status, app, summary, logs]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        app:
+          $ref: '#/components/schemas/ApiUsageLogAppData'
+        summary:
+          $ref: '#/components/schemas/ApiUsageLogSummaryData'
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiUsageLogEntryData'
+    ApiUsageLogAppData:
+      type: object
+      required:
+        [app_id, app_name, client_id, api_credential_id, credential_status, upstream_mode]
+      properties:
+        app_id:
+          type: string
+          format: uuid
+        app_name:
+          type: string
+        client_id:
+          type: string
+        api_credential_id:
+          type: string
+          format: uuid
+        credential_status:
+          type: string
+        upstream_mode:
+          type: string
+    ApiUsageLogSummaryData:
+      type: object
+      required:
+        [total_calls, successful_calls, failed_calls, total_usage_units]
+      properties:
+        total_calls:
+          type: integer
+          format: int64
+        successful_calls:
+          type: integer
+          format: int64
+        failed_calls:
+          type: integer
+          format: int64
+        total_usage_units:
+          type: string
+        last_occurred_at:
+          type: string
+          format: date-time
+          nullable: true
+    ApiUsageLogEntryData:
+      type: object
+      required:
+        [api_usage_log_id, api_credential_id, usage_units, occurred_at]
+      properties:
+        api_usage_log_id:
+          type: string
+          format: uuid
+        api_credential_id:
+          type: string
+          format: uuid
+        request_ref:
+          type: string
+          nullable: true
+          description: Minimal-disclosure masked request identifier
+        response_code:
+          type: integer
+          format: int32
+          nullable: true
+        response_class:
+          type: string
+          nullable: true
+        usage_units:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
     ManageShareGrantRequest:
       type: object
       properties:
