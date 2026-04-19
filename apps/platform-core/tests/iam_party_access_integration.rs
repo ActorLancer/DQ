@@ -1,6 +1,6 @@
+use db::{GenericClient, NoTls, connect};
 use reqwest::Client;
 use serde_json::Value;
-use tokio_postgres::NoTls;
 
 fn base_url() -> String {
     std::env::var("IAM_IT_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:18080".to_string())
@@ -222,9 +222,7 @@ async fn iam_party_access_flow_live() {
         revoke_session.status()
     );
 
-    let (pg, conn) = tokio_postgres::connect(&database_url(), NoTls)
-        .await
-        .expect("db connect");
+    let (pg, conn) = connect(&database_url(), NoTls).await.expect("db connect");
     tokio::spawn(async move {
         let _ = conn.await;
     });

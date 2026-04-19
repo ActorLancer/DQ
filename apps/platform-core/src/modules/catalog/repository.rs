@@ -12,8 +12,8 @@ use crate::modules::catalog::domain::{
     PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
     ReviewDecisionView, SellerProfileView, TemplateBindingView, UsagePolicyView,
 };
+use db::{Error, GenericClient, Row};
 use serde_json::{Value, json};
-use tokio_postgres::{GenericClient, Row};
 
 pub struct PostgresCatalogRepository;
 
@@ -21,7 +21,7 @@ impl PostgresCatalogRepository {
     pub async fn get_raw_ingest_batch(
         client: &impl GenericClient,
         id: &str,
-    ) -> Result<Option<RawIngestBatchView>, tokio_postgres::Error> {
+    ) -> Result<Option<RawIngestBatchView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -49,7 +49,7 @@ impl PostgresCatalogRepository {
         asset_id: &str,
         payload: &CreateRawIngestBatchRequest,
         created_by: Option<&str>,
-    ) -> Result<RawIngestBatchView, tokio_postgres::Error> {
+    ) -> Result<RawIngestBatchView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO catalog.raw_ingest_batch (
@@ -88,7 +88,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         raw_ingest_batch_id: &str,
         payload: &CreateRawObjectManifestRequest,
-    ) -> Result<RawObjectManifestView, tokio_postgres::Error> {
+    ) -> Result<RawObjectManifestView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO catalog.raw_object_manifest (
@@ -132,7 +132,7 @@ impl PostgresCatalogRepository {
     pub async fn get_raw_object_manifest(
         client: &impl GenericClient,
         id: &str,
-    ) -> Result<Option<RawObjectManifestView>, tokio_postgres::Error> {
+    ) -> Result<Option<RawObjectManifestView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -162,7 +162,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         raw_object_manifest_id: &str,
         payload: &CreateFormatDetectionRequest,
-    ) -> Result<FormatDetectionResultView, tokio_postgres::Error> {
+    ) -> Result<FormatDetectionResultView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO catalog.format_detection_result (
@@ -200,7 +200,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         raw_object_manifest_id: &str,
         payload: &CreateExtractionJobRequest,
-    ) -> Result<ExtractionJobView, tokio_postgres::Error> {
+    ) -> Result<ExtractionJobView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO catalog.extraction_job (
@@ -245,7 +245,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         asset_version_id: &str,
         payload: &CreatePreviewArtifactRequest,
-    ) -> Result<PreviewArtifactView, tokio_postgres::Error> {
+    ) -> Result<PreviewArtifactView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO catalog.preview_artifact (
@@ -287,7 +287,7 @@ impl PostgresCatalogRepository {
     pub async fn create_data_resource(
         client: &impl GenericClient,
         payload: &CreateDataResourceRequest,
-    ) -> Result<DataResourceView, tokio_postgres::Error> {
+    ) -> Result<DataResourceView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO catalog.data_asset (
@@ -324,7 +324,7 @@ impl PostgresCatalogRepository {
     pub async fn get_data_resource(
         client: &impl GenericClient,
         id: &str,
-    ) -> Result<Option<DataResourceView>, tokio_postgres::Error> {
+    ) -> Result<Option<DataResourceView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -348,7 +348,7 @@ impl PostgresCatalogRepository {
     pub async fn create_asset_version(
         client: &impl GenericClient,
         payload: &CreateAssetVersionRequest,
-    ) -> Result<AssetVersionView, tokio_postgres::Error> {
+    ) -> Result<AssetVersionView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO catalog.asset_version (
@@ -396,7 +396,7 @@ impl PostgresCatalogRepository {
     pub async fn get_asset_version(
         client: &impl GenericClient,
         id: &str,
-    ) -> Result<Option<AssetVersionView>, tokio_postgres::Error> {
+    ) -> Result<Option<AssetVersionView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -425,7 +425,7 @@ impl PostgresCatalogRepository {
     pub async fn create_data_product(
         client: &impl GenericClient,
         payload: &CreateDataProductRequest,
-    ) -> Result<DataProductView, tokio_postgres::Error> {
+    ) -> Result<DataProductView, Error> {
         let metadata = compose_product_metadata(
             &payload.metadata,
             payload.subtitle.as_deref(),
@@ -488,7 +488,7 @@ impl PostgresCatalogRepository {
     pub async fn get_data_product(
         client: &impl GenericClient,
         id: &str,
-    ) -> Result<Option<DataProductView>, tokio_postgres::Error> {
+    ) -> Result<Option<DataProductView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -517,7 +517,7 @@ impl PostgresCatalogRepository {
     pub async fn get_product_detail(
         client: &impl GenericClient,
         id: &str,
-    ) -> Result<Option<ProductDetailView>, tokio_postgres::Error> {
+    ) -> Result<Option<ProductDetailView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -606,7 +606,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         id: &str,
         payload: &PatchDataProductRequest,
-    ) -> Result<Option<DataProductView>, tokio_postgres::Error> {
+    ) -> Result<Option<DataProductView>, Error> {
         let row = client
             .query_opt(
                 "UPDATE catalog.product
@@ -677,7 +677,7 @@ impl PostgresCatalogRepository {
     pub async fn product_has_metadata_profile(
         client: &impl GenericClient,
         product_id: &str,
-    ) -> Result<bool, tokio_postgres::Error> {
+    ) -> Result<bool, Error> {
         let row = client
             .query_one(
                 "SELECT EXISTS (
@@ -694,7 +694,7 @@ impl PostgresCatalogRepository {
     pub async fn product_has_skus(
         client: &impl GenericClient,
         product_id: &str,
-    ) -> Result<bool, tokio_postgres::Error> {
+    ) -> Result<bool, Error> {
         let row = client
             .query_one(
                 "SELECT EXISTS (
@@ -711,7 +711,7 @@ impl PostgresCatalogRepository {
     pub async fn product_all_skus_have_template(
         client: &impl GenericClient,
         product_id: &str,
-    ) -> Result<bool, tokio_postgres::Error> {
+    ) -> Result<bool, Error> {
         let row = client
             .query_one(
                 "SELECT NOT EXISTS (
@@ -741,7 +741,7 @@ impl PostgresCatalogRepository {
     pub async fn product_is_risk_blocked(
         client: &impl GenericClient,
         product_id: &str,
-    ) -> Result<bool, tokio_postgres::Error> {
+    ) -> Result<bool, Error> {
         let row = client
             .query_one(
                 "SELECT
@@ -763,7 +763,7 @@ impl PostgresCatalogRepository {
         product_id: &str,
         from_status: &str,
         to_status: &str,
-    ) -> Result<Option<DataProductView>, tokio_postgres::Error> {
+    ) -> Result<Option<DataProductView>, Error> {
         let row = client
             .query_opt(
                 "UPDATE catalog.product
@@ -800,7 +800,7 @@ impl PostgresCatalogRepository {
         action_name: &str,
         action_reason: Option<&str>,
         status: &str,
-    ) -> Result<ReviewDecisionView, tokio_postgres::Error> {
+    ) -> Result<ReviewDecisionView, Error> {
         let task_row = client
             .query_one(
                 "INSERT INTO review.review_task (
@@ -831,7 +831,7 @@ impl PostgresCatalogRepository {
     pub async fn organization_exists(
         client: &impl GenericClient,
         org_id: &str,
-    ) -> Result<bool, tokio_postgres::Error> {
+    ) -> Result<bool, Error> {
         let row = client
             .query_one(
                 "SELECT EXISTS (
@@ -846,7 +846,7 @@ impl PostgresCatalogRepository {
     pub async fn get_seller_profile(
         client: &impl GenericClient,
         org_id: &str,
-    ) -> Result<Option<SellerProfileView>, tokio_postgres::Error> {
+    ) -> Result<Option<SellerProfileView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -909,7 +909,7 @@ impl PostgresCatalogRepository {
         ref_id: &str,
         initial_action: &str,
         initial_reason: Option<&str>,
-    ) -> Result<ReviewDecisionView, tokio_postgres::Error> {
+    ) -> Result<ReviewDecisionView, Error> {
         let task_row = client
             .query_one(
                 "INSERT INTO review.review_task (
@@ -941,7 +941,7 @@ impl PostgresCatalogRepository {
         review_type: &str,
         ref_type: &str,
         ref_id: &str,
-    ) -> Result<bool, tokio_postgres::Error> {
+    ) -> Result<bool, Error> {
         let row = client
             .query_one(
                 "SELECT EXISTS (
@@ -966,7 +966,7 @@ impl PostgresCatalogRepository {
         action_name: &str,
         action_reason: Option<&str>,
         next_status: &str,
-    ) -> Result<Option<ReviewDecisionView>, tokio_postgres::Error> {
+    ) -> Result<Option<ReviewDecisionView>, Error> {
         let task_row = client
             .query_opt(
                 "SELECT review_task_id::text
@@ -1025,7 +1025,7 @@ impl PostgresCatalogRepository {
         target_action: &str,
         target_ref_type: &str,
         target_ref_id: &str,
-    ) -> Result<bool, tokio_postgres::Error> {
+    ) -> Result<bool, Error> {
         let row = client
             .query_one(
                 "SELECT EXISTS (
@@ -1056,7 +1056,7 @@ impl PostgresCatalogRepository {
         product_id: &str,
         asset_version_id: &str,
         payload: &PutProductMetadataProfileRequest,
-    ) -> Result<ProductMetadataProfileView, tokio_postgres::Error> {
+    ) -> Result<ProductMetadataProfileView, Error> {
         let metadata_version_no = payload.metadata_version_no.unwrap_or(1);
         let business_description_json = normalize_json_object(&payload.business_description_json);
         let data_content_json = normalize_json_object(&payload.data_content_json);
@@ -1147,7 +1147,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         asset_version_id: &str,
         payload: &CreateAssetFieldDefinitionRequest,
-    ) -> Result<AssetFieldDefinitionView, tokio_postgres::Error> {
+    ) -> Result<AssetFieldDefinitionView, Error> {
         let enum_values_json = normalize_json_array(&payload.enum_values_json);
         let row = client
             .query_one(
@@ -1199,7 +1199,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         asset_version_id: &str,
         payload: &CreateAssetQualityReportRequest,
-    ) -> Result<AssetQualityReportView, tokio_postgres::Error> {
+    ) -> Result<AssetQualityReportView, Error> {
         let coverage_range_json = normalize_json_object(&payload.coverage_range_json);
         let freshness_json = normalize_json_object(&payload.freshness_json);
         let metrics_json = normalize_json_object(&payload.metrics_json);
@@ -1269,7 +1269,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         asset_version_id: &str,
         payload: &CreateAssetObjectRequest,
-    ) -> Result<AssetObjectView, tokio_postgres::Error> {
+    ) -> Result<AssetObjectView, Error> {
         let object_row = client
             .query_one(
                 "INSERT INTO catalog.asset_object_binding (
@@ -1355,7 +1355,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         output_asset_version_id: &str,
         payload: &CreateAssetProcessingJobRequest,
-    ) -> Result<AssetProcessingJobView, tokio_postgres::Error> {
+    ) -> Result<AssetProcessingJobView, Error> {
         let mut metadata = normalize_object_json(&payload.metadata);
         let processing_summary_json = normalize_object_json(&payload.processing_summary_json);
         if let Value::Object(ref mut metadata_map) = metadata {
@@ -1456,7 +1456,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         product_id: &str,
         payload: &CreateProductSkuRequest,
-    ) -> Result<ProductSkuView, tokio_postgres::Error> {
+    ) -> Result<ProductSkuView, Error> {
         let mut metadata = payload.metadata.clone();
         if let Some(template_id) = &payload.template_id {
             metadata["draft_template_id"] = serde_json::Value::String(template_id.clone());
@@ -1511,7 +1511,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         id: &str,
         payload: &PatchProductSkuRequest,
-    ) -> Result<Option<ProductSkuView>, tokio_postgres::Error> {
+    ) -> Result<Option<ProductSkuView>, Error> {
         let row = client
             .query_opt(
                 "UPDATE catalog.product_sku
@@ -1572,7 +1572,7 @@ impl PostgresCatalogRepository {
     pub async fn get_product_sku(
         client: &impl GenericClient,
         id: &str,
-    ) -> Result<Option<ProductSkuView>, tokio_postgres::Error> {
+    ) -> Result<Option<ProductSkuView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -1599,7 +1599,7 @@ impl PostgresCatalogRepository {
     pub async fn list_product_skus(
         client: &impl GenericClient,
         product_id: &str,
-    ) -> Result<Vec<ProductSkuView>, tokio_postgres::Error> {
+    ) -> Result<Vec<ProductSkuView>, Error> {
         let rows = client
             .query(
                 "SELECT
@@ -1628,7 +1628,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         product_id: &str,
         template_id: &str,
-    ) -> Result<(), tokio_postgres::Error> {
+    ) -> Result<(), Error> {
         client
             .execute(
                 "UPDATE catalog.product
@@ -1645,7 +1645,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         sku_id: &str,
         payload: &BindTemplateRequest,
-    ) -> Result<(), tokio_postgres::Error> {
+    ) -> Result<(), Error> {
         let binding_type = payload.binding_type.as_deref().unwrap_or("contract");
         client
             .execute(
@@ -1677,7 +1677,7 @@ impl PostgresCatalogRepository {
         target_id: &str,
         payload: &BindTemplateRequest,
         bound_sku_count: i32,
-    ) -> Result<TemplateBindingView, tokio_postgres::Error> {
+    ) -> Result<TemplateBindingView, Error> {
         let row = client
             .query_one(
                 "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
@@ -1702,7 +1702,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         policy_id: &str,
         payload: &PatchUsagePolicyRequest,
-    ) -> Result<Option<UsagePolicyView>, tokio_postgres::Error> {
+    ) -> Result<Option<UsagePolicyView>, Error> {
         let row = client
             .query_opt(
                 "UPDATE contract.usage_policy
@@ -1751,7 +1751,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         sku_id: &str,
         payload: &CreateDataContractRequest,
-    ) -> Result<DataContractView, tokio_postgres::Error> {
+    ) -> Result<DataContractView, Error> {
         let row = client
             .query_one(
                 "INSERT INTO contract.data_contract (
@@ -1830,7 +1830,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         sku_id: &str,
         data_contract_id: &str,
-    ) -> Result<Option<DataContractView>, tokio_postgres::Error> {
+    ) -> Result<Option<DataContractView>, Error> {
         let row = client
             .query_opt(
                 "SELECT
@@ -1871,7 +1871,7 @@ impl PostgresCatalogRepository {
         client: &impl GenericClient,
         asset_id: &str,
         payload: &PatchAssetReleasePolicyRequest,
-    ) -> Result<Option<AssetReleasePolicyView>, tokio_postgres::Error> {
+    ) -> Result<Option<AssetReleasePolicyView>, Error> {
         let updated_count_row = client
             .query_one(
                 "WITH updated AS (

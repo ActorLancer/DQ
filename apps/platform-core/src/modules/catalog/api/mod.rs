@@ -3,9 +3,10 @@ mod handlers;
 pub mod support;
 pub mod validators;
 
+use crate::AppState;
 use axum::Router;
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     super::router::router()
 }
 

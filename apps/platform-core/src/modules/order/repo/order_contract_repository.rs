@@ -4,9 +4,9 @@ use crate::modules::order::dto::{ConfirmOrderContractRequest, ConfirmOrderContra
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde_json::Value;
-use tokio_postgres::Client;
 
 pub struct ContractConfirmContext {
     pub buyer_org_id: String,

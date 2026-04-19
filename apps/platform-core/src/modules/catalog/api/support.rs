@@ -1,8 +1,9 @@
 use axum::Json;
 use axum::http::{HeaderMap, StatusCode};
+use db::{Client, Error, GenericClient};
 use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
-use tokio_postgres::{Client, GenericClient, NoTls};
 
+use crate::AppState;
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{CatalogPermission, is_allowed};
 
@@ -349,36 +350,14 @@ pub(in crate::modules::catalog::api) fn require_any_permission(
     ))
 }
 
-pub(in crate::modules::catalog::api) fn database_dsn()
--> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    std::env::var("DATABASE_URL").map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                code: ErrorCode::OpsInternal.as_str().to_string(),
-                message: "DATABASE_URL is not configured".to_string(),
-                request_id: None,
-            }),
-        )
-    })
-}
-
-pub(in crate::modules::catalog::api) async fn connect_db(
-    dsn: &str,
-) -> Result<
-    (
-        Client,
-        tokio_postgres::Connection<tokio_postgres::Socket, tokio_postgres::tls::NoTlsStream>,
-    ),
-    (StatusCode, Json<ErrorResponse>),
-> {
-    tokio_postgres::connect(dsn, NoTls)
-        .await
-        .map_err(map_db_error)
+pub(in crate::modules::catalog::api) fn state_client(
+    state: &AppState,
+) -> Result<Client, (StatusCode, Json<ErrorResponse>)> {
+    state.db.client().map_err(map_db_error)
 }
 
 pub(in crate::modules::catalog::api) fn map_db_error(
-    err: tokio_postgres::Error,
+    err: Error,
 ) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,

@@ -3,8 +3,8 @@ mod tests {
     use super::super::super::api::router;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use db::{GenericClient, NoTls, connect};
     use serde_json::Value;
-    use tokio_postgres::NoTls;
     use tower::util::ServiceExt;
 
     #[tokio::test]
@@ -22,7 +22,7 @@ mod tests {
                 .as_secs()
         );
 
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
         let create_resp = app
             .oneshot(
                 Request::builder()
@@ -72,7 +72,8 @@ mod tests {
             Some("sample_request")
         );
 
-        let get_resp = router()
+        let get_resp = crate::with_live_test_state(router())
+            .await
             .oneshot(
                 Request::builder()
                     .method("GET")
@@ -86,9 +87,7 @@ mod tests {
             .expect("response");
         assert_eq!(get_resp.status(), StatusCode::OK);
 
-        let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-            .await
-            .expect("connect db");
+        let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
         tokio::spawn(async move {
             let _ = connection.await;
         });

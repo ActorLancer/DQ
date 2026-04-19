@@ -1,8 +1,8 @@
 use crate::modules::catalog::router::router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use db::{Client, Error, GenericClient, NoTls, connect};
 use serde_json::{Value, json};
-use tokio_postgres::{Client, NoTls};
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
@@ -18,7 +18,7 @@ struct SeedIds {
     template_id: String,
 }
 
-async fn seed_base(client: &Client, suffix: &str) -> Result<SeedIds, tokio_postgres::Error> {
+async fn seed_base(client: &Client, suffix: &str) -> Result<SeedIds, Error> {
     let org = client
         .query_one(
             "INSERT INTO core.organization (
@@ -262,9 +262,7 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
     let Ok(dsn) = std::env::var("DATABASE_URL") else {
         return;
     };
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .expect("connect database");
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -282,7 +280,7 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
     let mut request_ids: Vec<String> = Vec::new();
 
     let outcome: Result<(), String> = async {
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
 
         let create_product_req = format!("req-cat024-product-create-a-{suffix}");
         request_ids.push(create_product_req.clone());

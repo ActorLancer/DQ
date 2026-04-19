@@ -1,9 +1,10 @@
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 
+use crate::AppState;
 use crate::modules::catalog::domain::{
     BindTemplateRequest, PatchUsagePolicyRequest, TemplateBindingView, UsagePolicyView,
 };
@@ -14,6 +15,7 @@ use super::super::support::*;
 use super::super::validators::*;
 
 pub(in crate::modules::catalog) async fn bind_product_template(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
     Json(payload): Json<BindTemplateRequest>,
@@ -24,11 +26,7 @@ pub(in crate::modules::catalog) async fn bind_product_template(
         "catalog product template bind",
     )?;
     validate_bind_template_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let product = PostgresCatalogRepository::get_data_product(&client, &product_id)
         .await
@@ -94,6 +92,7 @@ pub(in crate::modules::catalog) async fn bind_product_template(
 }
 
 pub(in crate::modules::catalog) async fn bind_sku_template(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(sku_id): Path<String>,
     Json(payload): Json<BindTemplateRequest>,
@@ -104,11 +103,7 @@ pub(in crate::modules::catalog) async fn bind_sku_template(
         "catalog sku template bind",
     )?;
     validate_bind_template_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
 
     let sku = PostgresCatalogRepository::get_product_sku(&client, &sku_id)
         .await
@@ -172,6 +167,7 @@ pub(in crate::modules::catalog) async fn bind_sku_template(
 }
 
 pub(in crate::modules::catalog) async fn patch_usage_policy(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(policy_id): Path<String>,
     Json(payload): Json<PatchUsagePolicyRequest>,
@@ -182,11 +178,7 @@ pub(in crate::modules::catalog) async fn patch_usage_policy(
         "catalog usage policy patch",
     )?;
     validate_patch_usage_policy_payload(&payload, &headers)?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state_client(&state)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresCatalogRepository::patch_usage_policy(&tx, &policy_id, &payload)
         .await

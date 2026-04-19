@@ -3,8 +3,8 @@ mod tests {
     use super::super::super::api::router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
+    use db::{GenericClient, NoTls, connect};
     use serde_json::Value;
-    use tokio_postgres::NoTls;
     use tower::util::ServiceExt;
 
     #[tokio::test]
@@ -14,9 +14,7 @@ mod tests {
         }
         let dsn = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".into());
-        let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-            .await
-            .expect("connect database");
+        let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -30,7 +28,7 @@ mod tests {
         );
         let request_id = format!("req-trade023-order-templates-{suffix}");
 
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
         let response = app
             .oneshot(
                 Request::builder()

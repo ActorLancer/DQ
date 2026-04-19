@@ -2,8 +2,8 @@ use crate::modules::catalog::api::router;
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use db::{Client, Error, GenericClient, NoTls, connect};
 use serde_json::Value;
-use tokio_postgres::{Client, NoTls};
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
@@ -18,10 +18,7 @@ struct SeedIds {
     product_id: String,
 }
 
-async fn seed_product_graph(
-    client: &Client,
-    suffix: &str,
-) -> Result<SeedIds, tokio_postgres::Error> {
+async fn seed_product_graph(client: &Client, suffix: &str) -> Result<SeedIds, Error> {
     let org = client
         .query_one(
             "INSERT INTO core.organization (
@@ -147,9 +144,7 @@ async fn cat020_read_endpoints_db_smoke() {
     let Ok(dsn) = std::env::var("DATABASE_URL") else {
         return;
     };
-    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-        .await
-        .expect("connect database");
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
     tokio::spawn(async move {
         let _ = connection.await;
     });
@@ -175,7 +170,7 @@ async fn cat020_read_endpoints_db_smoke() {
             .await
             .map_err(|err| format!("repository product sku list query failed: {err:?}"))?;
 
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
 
         let product_resp = app
             .clone()

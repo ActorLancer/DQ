@@ -4,8 +4,8 @@ mod tests {
     use axum::Router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
+    use db::{Client, GenericClient, NoTls, connect};
     use serde_json::Value;
-    use tokio_postgres::{Client, NoTls};
     use tower::util::ServiceExt;
 
     #[derive(Debug)]
@@ -35,9 +35,7 @@ mod tests {
         }
         let dsn = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".into());
-        let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-            .await
-            .expect("connect db");
+        let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -50,7 +48,7 @@ mod tests {
                 .as_millis()
         );
         let seed = seed_graph(&client, &suffix).await.expect("seed graph");
-        let app = app();
+        let app = app().await;
 
         let success_request_id = format!("req-trade030-success-{suffix}");
         let failed_request_id = format!("req-trade030-failed-{suffix}");
@@ -286,10 +284,13 @@ mod tests {
         .await;
     }
 
-    fn app() -> Router {
-        Router::new()
-            .merge(billing::api::router())
-            .merge(order::api::router())
+    async fn app() -> Router {
+        crate::with_live_test_state(
+            Router::new()
+                .merge(billing::api::router())
+                .merge(order::api::router()),
+        )
+        .await
     }
 
     async fn post_webhook(
@@ -373,7 +374,7 @@ mod tests {
         );
     }
 
-    async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, tokio_postgres::Error> {
+    async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, db::Error> {
         let buyer_org_id: String = client
             .query_one(
                 "INSERT INTO core.organization (
@@ -568,7 +569,7 @@ mod tests {
         last_reason_code: &str,
         suffix: &str,
         label: &str,
-    ) -> Result<SeededOrder, tokio_postgres::Error> {
+    ) -> Result<SeededOrder, db::Error> {
         let order_id: String = client
             .query_one(
                 "INSERT INTO trade.order_main (

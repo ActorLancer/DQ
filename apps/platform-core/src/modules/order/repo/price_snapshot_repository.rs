@@ -4,11 +4,12 @@ use crate::modules::order::domain::{
 };
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde_json::Value;
 
 pub async fn freeze_order_price_snapshot(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Option<OrderPriceSnapshot>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -148,7 +149,7 @@ fn parse_tax_terms(metadata: &Value) -> TaxTermsSnapshot {
     }
 }
 
-fn map_db_error(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>) {
+fn map_db_error(err: Error) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {

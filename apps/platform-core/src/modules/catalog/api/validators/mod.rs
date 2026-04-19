@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::http::{HeaderMap, StatusCode};
+use db::GenericClient;
 use kernel::{ErrorCode, ErrorResponse};
-use tokio_postgres::GenericClient;
 
 use crate::modules::catalog::domain::{
     BindTemplateRequest, CreateAssetFieldDefinitionRequest, CreateAssetObjectRequest,

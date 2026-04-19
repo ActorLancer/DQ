@@ -3,8 +3,8 @@ mod tests {
     use super::super::super::api::router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
+    use db::{Client, GenericClient, NoTls, connect};
     use serde_json::Value;
-    use tokio_postgres::{Client, NoTls};
     use tower::util::ServiceExt;
 
     #[derive(Debug)]
@@ -26,9 +26,7 @@ mod tests {
         }
         let dsn = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".into());
-        let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
-            .await
-            .expect("connect db");
+        let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -44,7 +42,7 @@ mod tests {
             .await
             .expect("seed order graph");
 
-        let app = router();
+        let app = crate::with_live_test_state(router()).await;
         for action in [
             "lock_funds",
             "start_delivery",
@@ -170,10 +168,7 @@ mod tests {
         cleanup_seed_graph(&client, &seed).await;
     }
 
-    async fn seed_order_graph(
-        client: &Client,
-        suffix: &str,
-    ) -> Result<SeedGraph, tokio_postgres::Error> {
+    async fn seed_order_graph(client: &Client, suffix: &str) -> Result<SeedGraph, db::Error> {
         let buyer_org_id: String = client
             .query_one(
                 "INSERT INTO core.organization (org_name, org_type, status, metadata)

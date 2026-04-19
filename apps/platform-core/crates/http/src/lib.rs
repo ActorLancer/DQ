@@ -116,7 +116,10 @@ pub struct RequestContext {
     pub idempotency_key: String,
 }
 
-pub fn build_router(runtime: RuntimeConfig) -> Router {
+pub fn build_router<S>(runtime: RuntimeConfig) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     Router::new()
         .route("/health/live", get(live_handler))
         .route("/health/ready", get(ready_handler))
@@ -135,7 +138,10 @@ pub fn build_router(runtime: RuntimeConfig) -> Router {
         .layer(middleware::from_fn(request_context_middleware))
 }
 
-fn build_internal_dev_router() -> Router {
+fn build_internal_dev_router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     Router::new()
         .route("/internal/dev/trace-links", get(trace_links_handler))
         .route("/internal/dev/overview", get(dev_overview_handler))

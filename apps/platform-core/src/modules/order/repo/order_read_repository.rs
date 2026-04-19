@@ -4,11 +4,12 @@ use crate::modules::order::repo::load_order_relations;
 use crate::modules::order::repo::pre_request_repository::map_db_error;
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 use serde_json::Value;
 
 pub async fn load_order_detail(
-    client: &tokio_postgres::Client,
+    client: &Client,
     order_id: &str,
 ) -> Result<Option<GetOrderDetailResponseData>, (StatusCode, Json<ErrorResponse>)> {
     let row = client
@@ -44,7 +45,7 @@ pub async fn load_order_detail(
 }
 
 fn parse_order_row(
-    row: tokio_postgres::Row,
+    row: Row,
     relations: OrderRelations,
 ) -> Result<GetOrderDetailResponseData, (StatusCode, Json<ErrorResponse>)> {
     let current_state: String = row.get(5);

@@ -1,3 +1,4 @@
+use crate::AppState;
 use crate::modules::billing::handlers::{
     cancel_payment_intent, create_payment_intent, get_billing_policies, get_payment_intent,
     get_payout_preferences, handle_payment_webhook, lock_order_payment,
@@ -5,7 +6,7 @@ use crate::modules::billing::handlers::{
 use axum::Router;
 use axum::routing::{get, post};
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/billing/policies", get(get_billing_policies))
         .route(

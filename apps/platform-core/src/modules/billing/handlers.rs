@@ -1,8 +1,9 @@
 //! 所有 HTTP handler 函数
 
+use crate::AppState;
 use crate::modules::billing::db::{
-    connect_db, database_dsn, map_db_error, parse_intent_row, select_intent_by_idempotency,
-    set_webhook_processed_status, write_audit_event,
+    map_db_error, parse_intent_row, select_intent_by_idempotency, set_webhook_processed_status,
+    write_audit_event,
 };
 use crate::modules::billing::domain::PayoutPreference;
 use crate::modules::billing::models::{
@@ -20,8 +21,9 @@ use crate::modules::billing::webhook::{
 use crate::modules::order::application::apply_payment_result_to_order;
 use crate::modules::order::domain::PaymentResultKind;
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
+use db::{Error, GenericClient};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 use tracing::info;
@@ -97,6 +99,7 @@ pub async fn get_payout_preferences(
 }
 
 pub async fn create_payment_intent(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreatePaymentIntentRequest>,
 ) -> Result<Json<ApiResponse<PaymentIntentView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -107,11 +110,7 @@ pub async fn create_payment_intent(
     )?;
     let request_id = header(&headers, "x-request-id");
     let idempotency_key = header(&headers, "x-idempotency-key");
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     if let Some(ref key) = idempotency_key {
         if let Some(existing) = select_intent_by_idempotency(&client, key).await? {
@@ -226,6 +225,7 @@ pub async fn create_payment_intent(
 }
 
 pub async fn get_payment_intent(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<PaymentIntentView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -234,11 +234,7 @@ pub async fn get_payment_intent(
         BillingPermission::PaymentIntentRead,
         "payment intent read",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state.db.client().map_err(map_db_connect)?;
     let row = client
         .query_opt(
             "SELECT
@@ -299,6 +295,7 @@ pub async fn get_payment_intent(
 }
 
 pub async fn cancel_payment_intent(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<PaymentIntentView>>, (StatusCode, Json<ErrorResponse>)> {
@@ -307,11 +304,7 @@ pub async fn cancel_payment_intent(
         BillingPermission::PaymentIntentCancel,
         "payment intent cancel",
     )?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state.db.client().map_err(map_db_connect)?;
 
     let status_row = client
         .query_opt(
@@ -391,16 +384,13 @@ pub async fn cancel_payment_intent(
 }
 
 pub async fn lock_order_payment(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<LockOrderRequest>,
 ) -> Result<Json<ApiResponse<OrderLockView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, BillingPermission::OrderLock, "order lock")?;
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let client = state.db.client().map_err(map_db_connect)?;
 
     let intent_row = client
         .query_opt(
@@ -509,15 +499,12 @@ pub async fn lock_order_payment(
 }
 
 pub async fn handle_payment_webhook(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(provider): Path<String>,
     Json(payload): Json<PaymentWebhookRequest>,
 ) -> Result<Json<ApiResponse<PaymentWebhookResultView>>, (StatusCode, Json<ErrorResponse>)> {
-    let dsn = database_dsn()?;
-    let (mut client, connection) = connect_db(&dsn).await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    let mut client = state.db.client().map_err(map_db_connect)?;
 
     let provider_exists = client
         .query_opt(
@@ -885,4 +872,15 @@ pub async fn handle_payment_webhook(
         payment_intent_id: Some(payment_intent_id),
         applied_payment_status: Some(applied_status),
     }))
+}
+
+fn map_db_connect(err: Error) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            code: ErrorCode::OpsInternal.as_str().to_string(),
+            message: format!("database connection failed: {err}"),
+            request_id: None,
+        }),
+    )
 }

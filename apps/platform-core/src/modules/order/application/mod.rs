@@ -3,10 +3,11 @@ use crate::modules::order::domain::{
 };
 use axum::Json;
 use axum::http::StatusCode;
+use db::{Client, Error, GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
 
 pub async fn apply_payment_result_to_order(
-    client: &mut tokio_postgres::Client,
+    client: &mut Client,
     order_id: &str,
     result: PaymentResultKind,
     request_id: Option<&str>,
@@ -109,7 +110,7 @@ pub async fn apply_payment_result_to_order(
 }
 
 async fn write_order_audit(
-    client: &impl tokio_postgres::GenericClient,
+    client: &impl GenericClient,
     order_id: &str,
     action_name: &str,
     result_code: &str,
@@ -160,7 +161,7 @@ async fn write_order_audit(
     Ok(())
 }
 
-fn map_db_error(err: tokio_postgres::Error) -> (StatusCode, Json<ErrorResponse>) {
+fn map_db_error(err: Error) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {

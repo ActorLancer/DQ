@@ -5,7 +5,7 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn rejects_create_data_contract_when_sku_id_mismatch() {
-    let app = router();
+    let app = crate::with_stub_test_state(router());
     let req = Request::builder()
         .method("POST")
         .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/data-contracts")

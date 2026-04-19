@@ -5,21 +5,56 @@ use outbox_kit::{EventEnvelope, OutboxWriter};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio_postgres::NoTls;
+
+pub mod config;
+pub mod dialect;
+pub mod entity;
+pub mod error;
+pub mod query;
+pub mod runtime;
+pub mod sqlx;
+pub mod testing;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone)]
-pub struct DbPoolConfig {
-    pub dsn: String,
-    pub max_connections: u32,
-}
+pub use config::{AppDbConfig, DbPoolConfig};
+pub use dialect::DatabaseDialect;
+pub use error::{Error, Result};
+pub use runtime::{
+    AppDb, Client, Connection, GenericClient, MySqlDbRuntime, NoTls, PostgresDbRuntime,
+    RepositoryBackendRegistry, Row, Socket, Transaction, connect, tls,
+};
+pub use runtime::{GenericClient as DbClientOps, Row as DbRecord};
+pub use testing::{connect_test_client, test_database_url};
 
 #[derive(Debug, Clone)]
 pub struct DbPool {
     pub dsn: String,
     pub max_connections: u32,
+}
+
+impl DbPool {
+    pub fn connect(cfg: DbPoolConfig) -> AppResult<Self> {
+        if cfg.dsn.trim().is_empty() {
+            return Err(AppError::Config("database dsn cannot be empty".to_string()));
+        }
+        Ok(Self {
+            dsn: cfg.dsn,
+            max_connections: cfg.max_connections.max(1),
+        })
+    }
+
+    pub fn app_config(&self) -> AppDbConfig {
+        AppDbConfig {
+            dsn: self.dsn.clone(),
+            max_connections: self.max_connections,
+        }
+    }
+
+    pub async fn app_db(&self) -> AppResult<AppDb> {
+        AppDb::connect(self.app_config()).await
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,21 +128,21 @@ impl OrderRepositoryBackend {
 
 #[derive(Debug, Clone)]
 pub struct PostgresOrderRepository {
-    dsn: String,
+    pool: DbPool,
 }
 
 impl PostgresOrderRepository {
-    pub fn new(dsn: impl Into<String>) -> Self {
-        Self { dsn: dsn.into() }
+    pub fn new(pool: DbPool) -> Self {
+        Self { pool }
     }
 }
 
 #[async_trait]
 impl OrderRepository for PostgresOrderRepository {
     async fn upsert(&self, order: OrderRecord) -> AppResult<()> {
-        let (client, connection) = tokio_postgres::connect(&self.dsn, NoTls)
+        let (client, connection) = connect(&self.pool.dsn, NoTls)
             .await
-            .map_err(|e| AppError::Config(format!("postgres connect failed: {e}")))?;
+            .map_err(|err| AppError::Config(format!("postgres connect failed: {err}")))?;
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -128,14 +163,14 @@ impl OrderRepository for PostgresOrderRepository {
                 ],
             )
             .await
-            .map_err(|e| AppError::Config(format!("postgres upsert order failed: {e}")))?;
+            .map_err(|err| AppError::Config(format!("postgres upsert order failed: {err}")))?;
         Ok(())
     }
 
     async fn find_by_id(&self, order_id: &str) -> AppResult<Option<OrderRecord>> {
-        let (client, connection) = tokio_postgres::connect(&self.dsn, NoTls)
+        let (client, connection) = connect(&self.pool.dsn, NoTls)
             .await
-            .map_err(|e| AppError::Config(format!("postgres connect failed: {e}")))?;
+            .map_err(|err| AppError::Config(format!("postgres connect failed: {err}")))?;
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -146,20 +181,20 @@ impl OrderRepository for PostgresOrderRepository {
                 &[&order_id],
             )
             .await
-            .map_err(|e| AppError::Config(format!("postgres find order failed: {e}")))?;
+            .map_err(|err| AppError::Config(format!("postgres find order failed: {err}")))?;
 
-        Ok(row.map(|r| OrderRecord {
-            order_id: r.get::<_, String>(0),
-            tenant_id: r.get::<_, String>(1),
-            status: r.get::<_, String>(2),
-            amount_minor: r.get::<_, i64>(3),
+        Ok(row.map(|row| OrderRecord {
+            order_id: row.get(0),
+            tenant_id: row.get(1),
+            status: row.get(2),
+            amount_minor: row.get(3),
         }))
     }
 
     async fn list_by_tenant(&self, tenant_id: &str) -> AppResult<Vec<OrderRecord>> {
-        let (client, connection) = tokio_postgres::connect(&self.dsn, NoTls)
+        let (client, connection) = connect(&self.pool.dsn, NoTls)
             .await
-            .map_err(|e| AppError::Config(format!("postgres connect failed: {e}")))?;
+            .map_err(|err| AppError::Config(format!("postgres connect failed: {err}")))?;
         tokio::spawn(async move {
             let _ = connection.await;
         });
@@ -173,15 +208,15 @@ impl OrderRepository for PostgresOrderRepository {
                 &[&tenant_id],
             )
             .await
-            .map_err(|e| AppError::Config(format!("postgres list orders failed: {e}")))?;
+            .map_err(|err| AppError::Config(format!("postgres list orders failed: {err}")))?;
 
         Ok(rows
             .into_iter()
-            .map(|r| OrderRecord {
-                order_id: r.get::<_, String>(0),
-                tenant_id: r.get::<_, String>(1),
-                status: r.get::<_, String>(2),
-                amount_minor: r.get::<_, i64>(3),
+            .map(|row| OrderRecord {
+                order_id: row.get(0),
+                tenant_id: row.get(1),
+                status: row.get(2),
+                amount_minor: row.get(3),
             })
             .collect())
     }
@@ -193,21 +228,7 @@ pub fn build_order_repository(
 ) -> Arc<dyn OrderRepository> {
     match backend {
         OrderRepositoryBackend::InMemory => Arc::new(InMemoryOrderRepository::default()),
-        OrderRepositoryBackend::Postgres => {
-            Arc::new(PostgresOrderRepository::new(pool.dsn.clone()))
-        }
-    }
-}
-
-impl DbPool {
-    pub fn connect(cfg: DbPoolConfig) -> AppResult<Self> {
-        if cfg.dsn.trim().is_empty() {
-            return Err(AppError::Config("database dsn cannot be empty".to_string()));
-        }
-        Ok(Self {
-            dsn: cfg.dsn,
-            max_connections: cfg.max_connections.max(1),
-        })
+        OrderRepositoryBackend::Postgres => Arc::new(PostgresOrderRepository::new(pool.clone())),
     }
 }
 
@@ -289,9 +310,11 @@ pub trait TxLifecycleHook: Send + Sync {
     async fn on_begin(&self) -> AppResult<()> {
         Ok(())
     }
+
     async fn on_commit(&self) -> AppResult<()> {
         Ok(())
     }
+
     async fn on_rollback(&self) -> AppResult<()> {
         Ok(())
     }
@@ -394,6 +417,7 @@ pub async fn run_transaction_rollback_fixture(
 
     #[derive(Default)]
     struct FailingWriter;
+
     #[async_trait]
     impl BusinessMutationWriter for FailingWriter {
         async fn apply_mutation(&self, _mutation: BusinessMutation) -> AppResult<()> {
@@ -409,16 +433,19 @@ pub async fn run_transaction_rollback_fixture(
         committed: AtomicBool,
         rolled_back: AtomicBool,
     }
+
     #[async_trait]
     impl TxLifecycleHook for Hook {
         async fn on_begin(&self) -> AppResult<()> {
             self.began.store(true, Ordering::Relaxed);
             Ok(())
         }
+
         async fn on_commit(&self) -> AppResult<()> {
             self.committed.store(true, Ordering::Relaxed);
             Ok(())
         }
+
         async fn on_rollback(&self) -> AppResult<()> {
             self.rolled_back.store(true, Ordering::Relaxed);
             Ok(())
@@ -436,44 +463,15 @@ pub async fn run_transaction_rollback_fixture(
         )
         .await;
 
-    if result.is_ok() {
-        return Err(AppError::Config(
-            "rollback fixture expected failure but committed".to_string(),
-        ));
-    }
-
-    Ok(RollbackFixtureResult {
-        began: hook.began.load(Ordering::Relaxed),
-        committed: hook.committed.load(Ordering::Relaxed),
-        rolled_back: hook.rolled_back.load(Ordering::Relaxed),
-    })
-}
-
-#[cfg(feature = "query-compile-check")]
-mod query_compile_checks {
-    // Query compile-check scaffold:
-    // until a concrete DB library (SQLx/SeaORM) is fully wired in this crate,
-    // these typed query specs are compiled in CI to catch accidental query-shape drift early.
-    pub const ORDER_BASE_COLUMNS: &[&str] = &[
-        "order_id",
-        "tenant_id",
-        "status",
-        "created_at",
-        "updated_at",
-    ];
-
-    pub const ORDER_SELECT_BY_ID: &str = "SELECT order_id, tenant_id, status, created_at, updated_at FROM trade_order WHERE order_id = $1";
-    pub const OUTBOX_PENDING_SELECT: &str = "SELECT event_id, topic, aggregate_type, aggregate_id, payload_json, idempotency_key FROM outbox_event WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1";
-    pub const AUDIT_BY_OBJECT: &str = "SELECT action, object_type, object_id, result, created_at FROM audit_log WHERE object_type = $1 AND object_id = $2 ORDER BY created_at DESC LIMIT $3";
-
-    #[test]
-    fn query_specs_are_well_formed() {
-        assert_eq!(ORDER_BASE_COLUMNS.len(), 5);
-        for query in [ORDER_SELECT_BY_ID, OUTBOX_PENDING_SELECT, AUDIT_BY_OBJECT] {
-            assert!(query.starts_with("SELECT "));
-            assert!(query.contains(" FROM "));
-            assert!(query.contains('$'));
-        }
+    match result {
+        Ok(_) => Err(AppError::Config(
+            "rollback fixture unexpectedly committed".to_string(),
+        )),
+        Err(_) => Ok(RollbackFixtureResult {
+            began: hook.began.load(Ordering::Relaxed),
+            committed: hook.committed.load(Ordering::Relaxed),
+            rolled_back: hook.rolled_back.load(Ordering::Relaxed),
+        }),
     }
 }
 
