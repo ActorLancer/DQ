@@ -561,6 +561,7 @@ components:
           dispute_status,
           amount,
           currency_code,
+          relations,
           created_at,
           updated_at,
         ]
@@ -599,9 +600,350 @@ components:
         price_snapshot:
           $ref: '#/components/schemas/OrderPriceSnapshot'
           nullable: true
+        relations:
+          $ref: '#/components/schemas/OrderRelations'
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OrderRelations:
+      type: object
+      required: [authorizations, deliveries, billing, disputes]
+      properties:
+        contract:
+          $ref: '#/components/schemas/OrderContractRelation'
+          nullable: true
+        authorizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderAuthorizationRelation'
+        deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderDeliveryRelation'
+        billing:
+          $ref: '#/components/schemas/OrderBillingRelations'
+        disputes:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderDisputeRelation'
+    OrderContractRelation:
+      type: object
+      required: [contract_id, contract_status, variables_json, updated_at]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        contract_template_id:
+          type: string
+          format: uuid
+          nullable: true
+        contract_status:
+          type: string
+        contract_digest:
+          type: string
+          nullable: true
+        data_contract_id:
+          type: string
+          format: uuid
+          nullable: true
+        data_contract_digest:
+          type: string
+          nullable: true
+        signed_at:
+          type: string
+          format: date-time
+          nullable: true
+        variables_json:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderAuthorizationRelation:
+      type: object
+      required:
+        [
+          authorization_id,
+          current_status,
+          grant_type,
+          granted_to_type,
+          granted_to_id,
+          valid_from,
+          policy_snapshot,
+          updated_at,
+        ]
+      properties:
+        authorization_id:
+          type: string
+          format: uuid
+        current_status:
+          type: string
+        grant_type:
+          type: string
+        granted_to_type:
+          type: string
+        granted_to_id:
+          type: string
+          format: uuid
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+          nullable: true
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderDeliveryRelation:
+      type: object
+      required: [delivery_id, delivery_type, current_status, updated_at]
+      properties:
+        delivery_id:
+          type: string
+          format: uuid
+        delivery_type:
+          type: string
+        delivery_route:
+          type: string
+          nullable: true
+        current_status:
+          type: string
+        delivery_commit_hash:
+          type: string
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        committed_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderBillingRelations:
+      type: object
+      required: [billing_events, settlements, refunds, compensations, invoices]
+      properties:
+        billing_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderBillingEventRelation'
+        settlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderSettlementRelation'
+        refunds:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderRefundRelation'
+        compensations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderCompensationRelation'
+        invoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderInvoiceRelation'
+    OrderBillingEventRelation:
+      type: object
+      required:
+        [
+          billing_event_id,
+          event_type,
+          event_source,
+          amount,
+          currency_code,
+          occurred_at,
+          metadata,
+        ]
+      properties:
+        billing_event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        event_source:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        units:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    OrderSettlementRelation:
+      type: object
+      required:
+        [
+          settlement_id,
+          settlement_type,
+          settlement_status,
+          settlement_mode,
+          payable_amount,
+          refund_amount,
+          compensation_amount,
+          updated_at,
+        ]
+      properties:
+        settlement_id:
+          type: string
+          format: uuid
+        settlement_type:
+          type: string
+        settlement_status:
+          type: string
+        settlement_mode:
+          type: string
+        payable_amount:
+          type: string
+        refund_amount:
+          type: string
+        compensation_amount:
+          type: string
+        reason_code:
+          type: string
+          nullable: true
+        settled_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderRefundRelation:
+      type: object
+      required: [refund_id, amount, currency_code, current_status, updated_at]
+      properties:
+        refund_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderCompensationRelation:
+      type: object
+      required: [compensation_id, amount, currency_code, current_status, updated_at]
+      properties:
+        compensation_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    OrderInvoiceRelation:
+      type: object
+      required:
+        [
+          invoice_request_id,
+          requester_org_id,
+          invoice_title,
+          amount,
+          currency_code,
+          current_status,
+          updated_at,
+        ]
+      properties:
+        invoice_request_id:
+          type: string
+          format: uuid
+        settlement_id:
+          type: string
+          format: uuid
+          nullable: true
+        requester_org_id:
+          type: string
+          format: uuid
+        invoice_title:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    OrderDisputeRelation:
+      type: object
+      required:
+        [
+          case_id,
+          complainant_type,
+          complainant_id,
+          reason_code,
+          current_status,
+          evidence_count,
+          opened_at,
+          updated_at,
+        ]
+      properties:
+        case_id:
+          type: string
+          format: uuid
+        complainant_type:
+          type: string
+        complainant_id:
+          type: string
+          format: uuid
+        reason_code:
+          type: string
+        current_status:
+          type: string
+        decision_code:
+          type: string
+          nullable: true
+        penalty_code:
+          type: string
+          nullable: true
+        evidence_count:
+          type: integer
+          format: int64
+        opened_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
         updated_at:
           type: string
           format: date-time

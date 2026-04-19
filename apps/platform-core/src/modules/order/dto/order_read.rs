@@ -1,4 +1,5 @@
 use crate::modules::order::domain::OrderPriceSnapshot;
+use crate::modules::order::dto::OrderRelations;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,7 @@ pub struct GetOrderDetailResponseData {
     pub amount: String,
     pub currency_code: String,
     pub price_snapshot: Option<OrderPriceSnapshot>,
+    pub relations: OrderRelations,
     pub created_at: String,
     pub updated_at: String,
 }

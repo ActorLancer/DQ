@@ -1195,3 +1195,109 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-131（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-022
+- 当前批次目标：实现订单与合同/授权/交付/账单/争议的一对一或一对多关系装配器，补齐订单详情页与审计联查所需只读聚合。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-021` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-022` DoD、验收要求与 `technical_reference`。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认任务目标是“关系装配器”，不是新增交易动作。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续执行“计划中 -> 编码 -> 验证 -> 待审批”冻结流程。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：单任务批次执行，不跳步骤，不省略联调验证。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：延续 P2 批次审计格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束不变。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：订单详情页必须展示主链路、交付、账单、争议与审计联查入口。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：订单详情聚合属于 `platform-core/order` 读模型装配边界。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：维持 `/api/v1/orders/{id}` 既有接口，对外逻辑字段优先。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本任务为只读聚合，不新增事件主题。
+  12. `docs/开发准备/统一错误码字典正式版.md`：继续沿用既有 `NOT_FOUND/FORBIDDEN/CONFLICT` 语义，不发明新错误码。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：生命周期对象 `Authorization/Delivery/Settlement/Dispute/Billing Event` 必须可联查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：使用独立 relation assembler 仓储与专项测试文件，避免继续膨胀单仓储。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调数据库使用 `datab-postgres:5432`，本地服务需连通 Kafka/Redis 等基础栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：不新增配置项，沿用现有 `DATABASE_URL/KAFKA_*`。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 为订单关系聚合权威查询源。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体内聚，避免跨模块写入耦合。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：`Order` 聚合需联通 `contract.digital_contract`、`trade.authorization_grant`、`delivery.delivery_record`、`billing.*`、`support.dispute_case`。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：核心交易闭环要求合同、授权、交付、账单、争议可围绕订单主键联查。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：买方下单后详情页与后续链路需要围绕订单对象查看状态、交付、账务和争议摘要。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_read.rs`
+  - `apps/platform-core/src/modules/order/repo/order_read_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/*`（新增关系装配辅助仓储）
+  - `apps/platform-core/src/modules/order/tests/trade004_order_detail_db.rs`
+  - `apps/platform-core/src/modules/order/tests/*`（新增 `TRADE-022` 专项测试）
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade004_order_detail_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade022_order_relations_db_smoke -- --nocapture`
+  5. 启动服务：`KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  6. `psql` 插入临时订单关系数据，`curl` 调用 `GET /api/v1/orders/{id}`，回查审计与关系对象字段，再清理临时业务数据。
+
+### BATCH-131（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-022
+- 当前批次目标：实现订单与合同/授权/交付/账单/争议的一对一或一对多关系装配器，补齐订单详情页与审计联查所需只读聚合。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-021` 已审批通过。
+- 已实现功能：
+  1. 为 `GET /api/v1/orders/{id}` 新增稳定 `relations` 聚合对象，保留既有订单核心字段与权限/审计行为不变。
+  2. 新增独立关系装配仓储 `load_order_relations(...)`，按订单主键装配：
+     - `contract`：一对一数字合同关系；
+     - `authorizations`：授权记录数组；
+     - `deliveries`：交付记录数组；
+     - `billing`：账单事件、结算、退款、赔付、发票数组；
+     - `disputes`：争议记录数组，并附带 `evidence_count`。
+  3. `order_read_repository` 仅负责订单主记录读取与关系仓储拼装，避免把跨域查询继续堆进单文件。
+  4. 更新 OpenAPI `GetOrderDetailResponseData`，对外冻结新增关系对象 schema，不改接口路径。
+  5. 回归 `TRADE-004` 详情读取 smoke，新增 `TRADE-022` 专项 smoke，覆盖空关系与完整关系两种读场景。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_relations.rs`
+  - `apps/platform-core/src/modules/order/dto/order_read.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_relation_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_read_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade004_order_detail_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade022_order_relations_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade004_order_detail_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade022_order_relations_db_smoke -- --nocapture`
+  5. 启动服务：`KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  6. `psql` 插入临时订单关系数据。
+  7. `curl GET http://127.0.0.1:8080/api/v1/orders/{id}`（带 `x-role/x-tenant-id/x-request-id/x-trace-id`）。
+  8. `psql` 回查 `audit.audit_event` 的 `trade.order.read` 记录。
+  9. 清理临时业务测试数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`140 passed, 0 failed, 1 ignored`）。
+  - `trade004_order_detail_db_smoke`：通过。
+  - `trade022_order_relations_db_smoke`：通过。
+  - API 联调：`GET /api/v1/orders/{id}` 返回 `HTTP 200`，关系装配摘要为：
+    - `contract_status=signed`
+    - `authorizations=2`
+    - `deliveries=2`
+    - `billing_events=2`
+    - `disputes=2`
+  - DB 回查：`audit.audit_event` 命中 `trade.order.read = 1`。
+  - 清理结果：临时业务数据已清理；审计记录按 append-only 规则保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.4（订单主对象与合同/授权/交付/账单/争议关系）
+  - `全集成基线-V1` 15（核心交易闭环围绕订单主键联查）
+  - `业务流程图-V1` 4.3（下单后详情/后续链路需回看订单相关对象）
+- 覆盖的任务清单条目：`TRADE-022`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

@@ -1,5 +1,6 @@
 use crate::modules::order::domain::{OrderPriceSnapshot, derive_layered_status};
-use crate::modules::order::dto::GetOrderDetailResponseData;
+use crate::modules::order::dto::{GetOrderDetailResponseData, OrderRelations};
+use crate::modules::order::repo::load_order_relations;
 use crate::modules::order::repo::pre_request_repository::map_db_error;
 use axum::Json;
 use axum::http::StatusCode;
@@ -35,11 +36,16 @@ pub async fn load_order_detail(
         )
         .await
         .map_err(map_db_error)?;
-    row.map(parse_order_row).transpose()
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let relations = load_order_relations(client, order_id).await?;
+    parse_order_row(row, relations).map(Some)
 }
 
 fn parse_order_row(
     row: tokio_postgres::Row,
+    relations: OrderRelations,
 ) -> Result<GetOrderDetailResponseData, (StatusCode, Json<ErrorResponse>)> {
     let current_state: String = row.get(5);
     let payment_status: String = row.get(6);
@@ -85,6 +91,7 @@ fn parse_order_row(
         amount: row.get(11),
         currency_code: row.get(12),
         price_snapshot,
+        relations,
         created_at: row.get(14),
         updated_at: row.get(15),
     })

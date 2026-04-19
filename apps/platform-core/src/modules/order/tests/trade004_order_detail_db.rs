@@ -91,6 +91,31 @@ mod tests {
             json["data"]["data"]["dispute_status"].as_str(),
             Some("none")
         );
+        assert!(json["data"]["data"]["relations"]["contract"].is_null());
+        assert_eq!(
+            json["data"]["data"]["relations"]["authorizations"]
+                .as_array()
+                .map(|items| items.len()),
+            Some(0)
+        );
+        assert_eq!(
+            json["data"]["data"]["relations"]["deliveries"]
+                .as_array()
+                .map(|items| items.len()),
+            Some(0)
+        );
+        assert_eq!(
+            json["data"]["data"]["relations"]["billing"]["billing_events"]
+                .as_array()
+                .map(|items| items.len()),
+            Some(0)
+        );
+        assert_eq!(
+            json["data"]["data"]["relations"]["disputes"]
+                .as_array()
+                .map(|items| items.len()),
+            Some(0)
+        );
 
         let audit_count: i64 = client
             .query_one(
