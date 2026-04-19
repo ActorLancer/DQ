@@ -15,6 +15,7 @@ mod trade014_sbx_std_state_machine_db;
 mod trade015_rpt_std_state_machine_db;
 mod trade016_digital_contract_aggregate_db;
 mod trade017_authorization_aggregate_db;
+mod trade018_auto_cutoff_db;
 
 #[cfg(test)]
 mod tests {

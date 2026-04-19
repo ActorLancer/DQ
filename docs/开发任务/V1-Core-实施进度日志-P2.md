@@ -862,3 +862,100 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-127（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-018
+- 当前批次目标：实现基础断权机制：订单取消、到期、风控冻结、争议升级后自动触发交付入口断权。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-017` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-018` DoD、验收与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认 `TRADE-018` 为单任务批次且不可跳步。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中→编码→验证→待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：编码前先写计划中，保持冻结约束。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：延续批次日志格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认交易链授权与争议闭环要求。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：断权逻辑应内聚在交易主编排（order/authorization）。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：保持既有接口语义并对象化状态返回。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：授权撤销/暂停需可审计追踪。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用交易与授权错误码口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：覆盖生命周期与争议分支的状态一致性验证。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：维持 order/repo/dto/tests 分层。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：不引入额外配置项。
+  17. `docs/开发准备/技术选型正式版.md`：PostgreSQL 持续作为业务权威状态。
+  18. `docs/开发准备/平台总体架构设计草案.md`：遵循模块化单体内聚，不拆分外部新服务。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L530`：`Authorization` 是独立聚合，需随订单关键状态变化自动收口。
+  2. `docs/原始PRD/数据商品查询与执行面设计.md:L185`：授权与审计强关联，阻断动作需落审计证据。
+  3. `docs/原始PRD/敏感数据处理与受控交付设计.md:L124`：高风险/争议场景必须策略收口并阻断交付入口。
+
+### BATCH-127（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-018
+- 当前批次目标：实现基础断权机制：订单取消、到期、风控冻结、争议升级后自动触发交付入口断权。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-017` 已审批通过。
+- 已实现功能：
+  1. 新增统一自动断权仓储钩子 `apply_authorization_cutoff_if_needed(...)`，在订单状态迁移事务内自动收口授权。
+  2. 断权目标状态规则落地：
+     - 订单取消/关闭/撤销 -> `revoked`
+     - 到期 -> `expired`
+     - 风控冻结/争议升级 -> `suspended`
+  3. 自动断权接入以下迁移仓储：`cancel`、`file-std`、`file-sub`、`api-sub`、`api-ppu`、`share-ro`、`sbx-std`。
+  4. 补齐审计动作：`trade.authorization.auto_cutoff.revoked|expired|suspended`。
+  5. 将 `api-ppu disable_access` 风控语义 reason_code 对齐为 `api_ppu_risk_frozen`，确保自动断权判定一致。
+  6. 新增 `TRADE-018` DB smoke，覆盖 cancel/expire/dispute/risk 四触发路径与授权状态/审计断言。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/repo/order_authorization_cutoff_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_cancel_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_file_std_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_file_sub_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_api_sub_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_api_ppu_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_share_ro_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_sbx_std_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/trade018_auto_cutoff_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade018_auto_cutoff_db_smoke -- --nocapture`
+  4. 启动服务：`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+  5. `psql` 插入联调测试数据（buyer/seller/asset/version/product/sku/policy/order）。
+  6. `curl` 调用：
+     - `POST /api/v1/orders/{id}/authorization/transition`（4个订单 `action=grant`）
+     - `POST /api/v1/orders/{id}/cancel`
+     - `POST /api/v1/orders/{id}/share-ro/transition`（`action=expire_share`）
+     - `POST /api/v1/orders/{id}/share-ro/transition`（`action=interrupt_dispute`）
+     - `POST /api/v1/orders/{id}/api-ppu/transition`（`action=disable_access`）
+  7. `psql` 回查 `trade.authorization_grant` 与 `audit.audit_event`。
+  8. 清理临时业务测试数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`136 passed, 0 failed, 1 ignored`）。
+  - `trade018_auto_cutoff_db_smoke`：通过（`1 passed`，连接 `datab-postgres:5432`）。
+  - API 联调（新鲜数据）全部返回 `HTTP 200`，并出现预期状态：
+    - cancel -> `closed`；expire_share -> `expired`；interrupt_dispute -> `dispute_interrupted`；disable_access -> `disabled`。
+  - DB 回查授权状态：
+    - cancel 订单 `revoked`
+    - expire 订单 `expired`
+    - dispute 订单 `suspended`
+    - risk 订单 `suspended`
+  - 审计回查计数：
+    - `trade.authorization.auto_cutoff.revoked` = 1
+    - `trade.authorization.auto_cutoff.expired` = 1
+    - `trade.authorization.auto_cutoff.suspended` = 2
+  - 清理结果：临时业务数据已清理；审计记录保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.3（授权聚合独立、生命周期收口）
+  - `原始PRD/数据商品查询与执行面设计` 8.1（授权与审计联动）
+  - `原始PRD/敏感数据处理与受控交付设计` 5（争议/风控场景收口与断权）
+- 覆盖的任务清单条目：`TRADE-018`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

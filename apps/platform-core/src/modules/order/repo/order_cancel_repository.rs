@@ -1,5 +1,6 @@
 use crate::modules::order::domain::derive_closed_layered_status_by_reason;
 use crate::modules::order::dto::CancelOrderResponseData;
+use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -102,6 +103,19 @@ pub async fn cancel_order_with_state_machine(
         .await
         .map_err(map_db_error)?;
     let canceled_at: String = updated_row.get(0);
+
+    apply_authorization_cutoff_if_needed(
+        &tx,
+        order_id,
+        "closed",
+        &transition.layered_status.delivery_status,
+        &transition.layered_status.dispute_status,
+        transition.reason_code,
+        actor_role,
+        request_id,
+        trace_id,
+    )
+    .await?;
 
     write_trade_audit_event(
         &tx,
