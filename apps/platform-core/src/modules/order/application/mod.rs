@@ -51,6 +51,10 @@ pub async fn apply_payment_result_to_order(
              SET
                status = $2,
                payment_status = $3,
+               buyer_locked_at = CASE
+                 WHEN $2 = 'buyer_locked' THEN COALESCE(buyer_locked_at, now())
+                 ELSE buyer_locked_at
+               END,
                delivery_status = $4,
                acceptance_status = $5,
                settlement_status = $6,

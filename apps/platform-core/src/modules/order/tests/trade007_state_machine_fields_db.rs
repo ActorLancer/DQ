@@ -106,7 +106,14 @@ mod tests {
 
         let paid_row = client
             .query_one(
-                "SELECT status, payment_status, delivery_status, acceptance_status, settlement_status, dispute_status
+                "SELECT
+                   status,
+                   payment_status,
+                   delivery_status,
+                   acceptance_status,
+                   settlement_status,
+                   dispute_status,
+                   buyer_locked_at IS NOT NULL
                  FROM trade.order_main
                  WHERE order_id = $1::text::uuid",
                 &[&order_id],
@@ -119,6 +126,7 @@ mod tests {
         assert_eq!(paid_row.get::<_, String>(3), "not_started");
         assert_eq!(paid_row.get::<_, String>(4), "pending_settlement");
         assert_eq!(paid_row.get::<_, String>(5), "none");
+        assert!(paid_row.get::<_, bool>(6));
 
         cleanup_graph(&client, &seed, &order_id).await;
     }

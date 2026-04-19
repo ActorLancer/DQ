@@ -9,6 +9,7 @@ info:
     - TRADE-003 order creation with product state / risk / price snapshot validation
     - TRADE-016 digital-contract aggregate (template/snapshot/signer/anchor ref)
     - TRADE-030 payment-result transition mapping:
+      - eligible pre-payment order states: created / contract_effective
       - payment succeeded -> order status buyer_locked (delivery pending)
       - payment failed -> order status payment_failed_pending_resolution
       - payment timeout -> order status payment_timeout_pending_compensation_cancel

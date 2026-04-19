@@ -6,10 +6,7 @@ pub enum PaymentResultKind {
 }
 
 pub fn is_payment_mutable_order_status(status: &str) -> bool {
-    matches!(
-        status,
-        "created" | "quoted" | "approval_pending" | "contract_pending" | "contract_effective"
-    )
+    matches!(status, "created" | "contract_effective")
 }
 
 pub fn derive_target_state(
@@ -47,6 +44,31 @@ mod tests {
             target,
             Some(("buyer_locked", "paid", "payment_succeeded_to_buyer_locked"))
         );
+    }
+
+    #[test]
+    fn created_order_can_enter_payment_failure_resolution() {
+        let target = derive_target_state("created", PaymentResultKind::Failed);
+        assert_eq!(
+            target,
+            Some((
+                "payment_failed_pending_resolution",
+                "failed",
+                "payment_failed_pending_resolution"
+            ))
+        );
+    }
+
+    #[test]
+    fn contract_pending_order_ignores_payment_callback() {
+        let target = derive_target_state("contract_pending", PaymentResultKind::Succeeded);
+        assert_eq!(target, None);
+    }
+
+    #[test]
+    fn approval_pending_order_ignores_payment_callback() {
+        let target = derive_target_state("approval_pending", PaymentResultKind::TimedOut);
+        assert_eq!(target, None);
     }
 
     #[test]
