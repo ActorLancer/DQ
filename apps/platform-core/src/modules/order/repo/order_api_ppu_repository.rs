@@ -1,6 +1,7 @@
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::dto::{ApiPpuTransitionRequest, ApiPpuTransitionResponseData};
 use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
+use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -70,6 +71,13 @@ pub async fn transition_api_ppu_order(
             }),
         ));
     };
+    if normalized_action == "authorize_access" {
+        let prepared = ensure_order_deliverable_and_prepare_delivery(
+            &tx, order_id, actor_role, request_id, trace_id,
+        )
+        .await?;
+        let _ = prepared.delivery_id;
+    }
 
     let updated_row = tx
         .query_one(
@@ -155,18 +163,11 @@ fn derive_api_ppu_transition(
     payment_status: &str,
 ) -> Option<ApiPpuTransition> {
     let (target_state, target_payment_status, reason_code) = match action {
-        "authorize_access"
-            if matches!(
-                current_state,
-                "created" | "contract_pending" | "contract_effective"
-            ) =>
-        {
-            (
-                "api_authorized",
-                payment_status.to_string(),
-                "api_ppu_authorized",
-            )
-        }
+        "authorize_access" if current_state == "buyer_locked" => (
+            "api_authorized",
+            payment_status.to_string(),
+            "api_ppu_authorized",
+        ),
         "configure_quota" if current_state == "api_authorized" => (
             "quota_ready",
             payment_status.to_string(),
@@ -266,19 +267,18 @@ mod tests {
 
     #[test]
     fn api_ppu_success_call_is_billed() {
-        let authorized = derive_api_ppu_transition("authorize_access", "created", "unpaid");
+        let authorized = derive_api_ppu_transition("authorize_access", "buyer_locked", "paid");
         assert!(authorized.is_some());
-        let quota = derive_api_ppu_transition("configure_quota", "api_authorized", "unpaid");
+        let quota = derive_api_ppu_transition("configure_quota", "api_authorized", "paid");
         assert!(quota.is_some());
 
-        let failed_call = derive_api_ppu_transition("record_failed_call", "quota_ready", "unpaid")
+        let failed_call = derive_api_ppu_transition("record_failed_call", "quota_ready", "paid")
             .expect("failed-call transition");
         assert_eq!(failed_call.target_state, "usage_active");
-        assert_eq!(failed_call.target_payment_status, "unpaid");
+        assert_eq!(failed_call.target_payment_status, "paid");
 
-        let success_call =
-            derive_api_ppu_transition("settle_success_call", "usage_active", "unpaid")
-                .expect("success-call transition");
+        let success_call = derive_api_ppu_transition("settle_success_call", "usage_active", "paid")
+            .expect("success-call transition");
         assert_eq!(success_call.target_payment_status, "paid");
     }
 

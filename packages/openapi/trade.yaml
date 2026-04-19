@@ -13,6 +13,10 @@ info:
       - payment succeeded -> order status buyer_locked (delivery pending)
       - payment failed -> order status payment_failed_pending_resolution
       - payment timeout -> order status payment_timeout_pending_compensation_cancel
+    - TRADE-031 deliverability gate:
+      - first fulfillment/opening actions require buyer_locked + paid + signed contract
+      - subject state / product review / risk must pass before fulfillment can begin
+      - successful gate creates delivery.delivery_record with prepared status
 paths:
   /api/v1/orders/standard-templates:
     get:
@@ -229,6 +233,7 @@ paths:
   /api/v1/orders/{id}/api-ppu/transition:
     post:
       summary: Transition API_PPU order state under usage-based state-machine rules
+      description: The first opening action authorize_access requires a buyer_locked order that passes the TRADE-031 deliverability gate and creates a prepared delivery record.
       operationId: transitionApiPpuOrder
       tags: [trade]
       parameters:
@@ -254,6 +259,7 @@ paths:
   /api/v1/orders/{id}/share-ro/transition:
     post:
       summary: Transition SHARE_RO order state under read-only sharing state-machine rules
+      description: The first opening action enable_share requires a buyer_locked order that passes the TRADE-031 deliverability gate and creates a prepared delivery record.
       operationId: transitionShareRoOrder
       tags: [trade]
       parameters:
@@ -279,6 +285,7 @@ paths:
   /api/v1/orders/{id}/qry-lite/transition:
     post:
       summary: Transition QRY_LITE order state under template-query state-machine rules
+      description: The first opening action authorize_template requires a buyer_locked order that passes the TRADE-031 deliverability gate and creates a prepared delivery record.
       operationId: transitionQryLiteOrder
       tags: [trade]
       parameters:
@@ -304,6 +311,7 @@ paths:
   /api/v1/orders/{id}/sbx-std/transition:
     post:
       summary: Transition SBX_STD order state under sandbox state-machine rules
+      description: The first opening action enable_workspace requires a buyer_locked order that passes the TRADE-031 deliverability gate and creates a prepared delivery record.
       operationId: transitionSbxStdOrder
       tags: [trade]
       parameters:
@@ -329,6 +337,7 @@ paths:
   /api/v1/orders/{id}/rpt-std/transition:
     post:
       summary: Transition RPT_STD order state under report delivery state-machine rules
+      description: The first opening action create_report_task requires a buyer_locked order that passes the TRADE-031 deliverability gate and creates a prepared delivery record.
       operationId: transitionRptStdOrder
       tags: [trade]
       parameters:

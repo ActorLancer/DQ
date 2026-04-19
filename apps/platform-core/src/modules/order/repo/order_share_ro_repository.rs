@@ -1,6 +1,7 @@
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::dto::{ShareRoTransitionRequest, ShareRoTransitionResponseData};
 use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
+use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -70,6 +71,13 @@ pub async fn transition_share_ro_order(
             }),
         ));
     };
+    if normalized_action == "enable_share" {
+        let prepared = ensure_order_deliverable_and_prepare_delivery(
+            &tx, order_id, actor_role, request_id, trace_id,
+        )
+        .await?;
+        let _ = prepared.delivery_id;
+    }
 
     let updated_row = tx
         .query_one(
@@ -154,18 +162,11 @@ fn derive_share_ro_transition(
     payment_status: &str,
 ) -> Option<ShareRoTransition> {
     let (target_state, target_payment_status, reason_code) = match action {
-        "enable_share"
-            if matches!(
-                current_state,
-                "created" | "contract_pending" | "contract_effective"
-            ) =>
-        {
-            (
-                "share_enabled",
-                payment_status.to_string(),
-                "share_ro_enabled",
-            )
-        }
+        "enable_share" if current_state == "buyer_locked" => (
+            "share_enabled",
+            payment_status.to_string(),
+            "share_ro_enabled",
+        ),
         "grant_read_access" if current_state == "share_enabled" => (
             "share_granted",
             payment_status.to_string(),
@@ -274,9 +275,9 @@ mod tests {
 
     #[test]
     fn share_ro_lifecycle_allows_enable_to_revoke() {
-        let t1 = derive_share_ro_transition("enable_share", "created", "unpaid");
+        let t1 = derive_share_ro_transition("enable_share", "buyer_locked", "paid");
         assert!(t1.is_some());
-        let t2 = derive_share_ro_transition("grant_read_access", "share_enabled", "unpaid");
+        let t2 = derive_share_ro_transition("grant_read_access", "share_enabled", "paid");
         assert!(t2.is_some());
         let t3 = derive_share_ro_transition("confirm_first_query", "share_granted", "paid");
         assert!(t3.is_some());

@@ -329,6 +329,30 @@ mod tests {
             .await?
             .get(0);
 
+        client
+            .execute(
+                "INSERT INTO contract.digital_contract (
+                   order_id, contract_digest, status, signed_at, variables_json
+                 ) VALUES (
+                   $1::text::uuid, $2, 'signed', now(), '{\"term_days\":30}'::jsonb
+                 )",
+                &[&flow_order_id, &format!("sha256:trade008:flow:{suffix}")],
+            )
+            .await?;
+        client
+            .execute(
+                "INSERT INTO contract.digital_contract (
+                   order_id, contract_digest, status, signed_at, variables_json
+                 ) VALUES (
+                   $1::text::uuid, $2, 'signed', now(), '{\"term_days\":30}'::jsonb
+                 )",
+                &[
+                    &dispute_order_id,
+                    &format!("sha256:trade008:dispute:{suffix}"),
+                ],
+            )
+            .await?;
+
         Ok(SeedGraph {
             buyer_org_id,
             seller_org_id,

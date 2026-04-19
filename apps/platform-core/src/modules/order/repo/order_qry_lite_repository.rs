@@ -1,5 +1,6 @@
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::dto::{QryLiteTransitionRequest, QryLiteTransitionResponseData};
+use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -69,6 +70,13 @@ pub async fn transition_qry_lite_order(
             }),
         ));
     };
+    if normalized_action == "authorize_template" {
+        let prepared = ensure_order_deliverable_and_prepare_delivery(
+            &tx, order_id, actor_role, request_id, trace_id,
+        )
+        .await?;
+        let _ = prepared.delivery_id;
+    }
 
     let updated_row = tx
         .query_one(
@@ -141,18 +149,11 @@ fn derive_qry_lite_transition(
     payment_status: &str,
 ) -> Option<QryLiteTransition> {
     let (target_state, target_payment_status, reason_code) = match action {
-        "authorize_template"
-            if matches!(
-                current_state,
-                "created" | "contract_pending" | "contract_effective"
-            ) =>
-        {
-            (
-                "template_authorized",
-                payment_status.to_string(),
-                "qry_lite_template_authorized",
-            )
-        }
+        "authorize_template" if current_state == "buyer_locked" => (
+            "template_authorized",
+            payment_status.to_string(),
+            "qry_lite_template_authorized",
+        ),
         "validate_params" if current_state == "template_authorized" => (
             "params_validated",
             payment_status.to_string(),
@@ -231,11 +232,11 @@ mod tests {
 
     #[test]
     fn qry_lite_lifecycle_transitions_to_closed() {
-        let t1 = derive_qry_lite_transition("authorize_template", "created", "unpaid");
+        let t1 = derive_qry_lite_transition("authorize_template", "buyer_locked", "paid");
         assert!(t1.is_some());
-        let t2 = derive_qry_lite_transition("validate_params", "template_authorized", "unpaid");
+        let t2 = derive_qry_lite_transition("validate_params", "template_authorized", "paid");
         assert!(t2.is_some());
-        let t3 = derive_qry_lite_transition("execute_query", "params_validated", "unpaid");
+        let t3 = derive_qry_lite_transition("execute_query", "params_validated", "paid");
         assert!(t3.is_some());
         let t4 = derive_qry_lite_transition("make_result_available", "query_executed", "paid");
         assert!(t4.is_some());

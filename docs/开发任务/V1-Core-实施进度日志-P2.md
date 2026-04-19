@@ -770,6 +770,134 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
 
+### BATCH-140（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-031
+- 当前批次目标：实现统一“可交付判定器”，在各 SKU 首个交付/开通动作前综合校验支付状态、合同状态、主体状态、商品审核状态、风控状态；只有满足门禁时才创建最小 `delivery.delivery_record` 并允许进入交付/履约；禁止绕过门禁直接进入已交付链路。
+- 前置依赖核对结果：`TRADE-021`、`TRADE-030`、`CAT-010` 已完成且审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-031` 为当前单任务批次，目标是“可交付判定器”，并要求业务规则、状态机、审计、事件与测试齐备。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版解释，强调“只有全部满足时才创建交付任务并把订单推进到待交付；禁止支付成功后绕过前置校验进入已交付”。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按固定流程先写计划中，再编码、验证、更新 TODO 与待审批。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务批次，不跨任务扩展。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批写入计划中与后续待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：后续追加本批追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对 `contract_effective -> payment_locked -> delivery_in_progress` 主链路、交付记录状态机、首批 8 个标准 SKU 交付语义。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认订单编排在 `order`，交付实体在 `delivery`，不得越界实现后续专用交付能力。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：当前任务不新增接口，保持既有 transition API 契约不漂移。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：核对支付锁定后进入待交付的事件语义与审计要求。
+  12. `docs/开发准备/统一错误码字典正式版.md`：维持状态冲突类错误码口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批补统一可交付门禁专项回归。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：在 `order/repo` 下新增独立门禁仓储，不把规则继续堆进单个 transition 文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：验证继续使用 core 栈数据库 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用现有本地 `KAFKA_*` 和 `DATABASE_URL` 配置，不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：沿用 Rust + Axum + PostgreSQL 实现统一门禁仓储与测试。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体边界，本批只补交易主编排与交付证据落库缺口。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：订单主状态必须保持唯一主轴，交付聚合为 `Order 1 -> N Delivery`，`Delivery` 自身状态机为 `prepared -> committed -> available -> consumed | expired`。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：主交易链路必须遵守 `contract_effective -> payment_locked -> delivery_in_progress`，交付/开通前必须通过主体、合同、风控等最终放行链。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：买方锁资后才通知卖方待交付，交付服务先创建 `delivery_id` 再进入各类具体交付/开通动作。
+
+### BATCH-140（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-031
+- 当前批次目标：实现统一“可交付判定器”，在各 SKU 首个交付/开通动作前综合校验支付状态、合同状态、主体状态、商品审核状态、风控状态；只有满足门禁时才创建最小 `delivery.delivery_record` 并允许进入交付/履约；禁止绕过门禁直接进入已交付链路。
+- 前置依赖核对结果：`TRADE-021`、`TRADE-030`、`CAT-010` 已完成且审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-031` 为当前单任务批次，目标是“可交付判定器”，并要求业务规则、状态机、审计、事件与测试齐备。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：核对阅读版解释，强调“只有全部满足时才创建交付任务并把订单推进到待交付；禁止支付成功后绕过前置校验进入已交付”。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按固定流程先写计划中，再编码、验证、更新 TODO 与待审批。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务批次，不跨任务扩展。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：已写入本批计划中与待审批。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：已追加本批追溯记录。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对 `contract_effective -> payment_locked -> delivery_in_progress` 主链路、交付记录状态机、首批 8 个标准 SKU 交付语义。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认订单编排在 `order`，交付实体在 `delivery`，不得越界实现后续专用交付能力。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：当前任务不新增接口，保持既有 transition API 契约不漂移。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：核对支付锁定后进入待交付的事件语义与审计要求。
+  12. `docs/开发准备/统一错误码字典正式版.md`：维持状态冲突类错误码口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批补统一可交付门禁专项回归。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：在 `order/repo` 下新增独立门禁仓储，不把规则继续堆进单个 transition 文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：验证继续使用 core 栈数据库 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用现有本地 `KAFKA_*` 和 `DATABASE_URL` 配置，不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：沿用 Rust + Axum + PostgreSQL 实现统一门禁仓储与测试。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体边界，本批只补交易主编排与交付证据落库缺口。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L620`：订单主状态必须保持唯一主轴，交付聚合为 `Order 1 -> N Delivery`，`Delivery` 自身状态机为 `prepared -> committed -> available -> consumed | expired`。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：主交易链路必须遵守 `contract_effective -> payment_locked -> delivery_in_progress`，交付/开通前必须通过主体、合同、风控等最终放行链。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L204`：买方锁资后才通知卖方待交付，交付服务先创建 `delivery_id` 再进入各类具体交付/开通动作。
+- 已实现功能：
+  1. 新增 `order_deliverability_repository`，统一封装支付状态、合同状态、主体状态、商品状态、商品审核状态、风控状态、资产版本状态、SKU 状态的可交付门禁校验。
+  2. 门禁通过后创建最小 `delivery.delivery_record`，状态固定为 `prepared`，并按 8 个标准 SKU 写入对应 `delivery_type / delivery_route`；若已有 `prepared` 记录则复用，不重复创建。
+  3. 在 `FILE_STD / FILE_SUB / API_SUB / API_PPU / SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 的首个交付/开通动作前接入统一门禁，未通过时返回 `409 ORDER_DELIVERABILITY_CHECK_FAILED:*`。
+  4. 收紧 `API_PPU / SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 首个动作的起始主状态到 `buyer_locked`，与 `payment_locked -> delivery_in_progress` 主轴保持一致，避免支付成功后直接绕过门禁进入已交付/已开通链路。
+  5. 新增 `trade031_deliverability_gate_db_smoke`，覆盖缺少合同、主体风控阻断、商品审核阻断、通过门禁后创建 `prepared` 交付记录并推进状态的完整链路。
+  6. 更新 `trade008~trade015` 状态机 smoke 种子，补齐签署合同与 `buyer_locked/paid` 前提，保证 8 个标准 SKU 在统一门禁接入后仍然可回归通过。
+  7. 更新 `packages/openapi/trade.yaml` 与 `docs/05-test-cases/order-state-machine.md`，补充 TRADE-031 门禁口径与首个动作的冻结说明。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/repo/order_deliverability_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_file_std_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_file_sub_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_api_sub_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_api_ppu_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_share_ro_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_qry_lite_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_sbx_std_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/order_rpt_std_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/trade008_file_std_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade009_file_sub_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade010_api_sub_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade011_api_ppu_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade012_share_ro_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade013_qry_lite_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade014_sbx_std_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade015_rpt_std_state_machine_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade031_deliverability_gate_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/05-test-cases/order-state-machine.md`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade008_file_std_state_machine_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade009_file_sub_state_machine_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade010_api_sub_state_machine_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade011_api_ppu_state_machine_db_smoke -- --nocapture`
+  7. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade012_share_ro_state_machine_db_smoke -- --nocapture`
+  8. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade013_qry_lite_state_machine_db_smoke -- --nocapture`
+  9. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade014_sbx_std_state_machine_db_smoke -- --nocapture`
+  10. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade015_rpt_std_state_machine_db_smoke -- --nocapture`
+  11. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade031_deliverability_gate_db_smoke -- --nocapture`
+  12. 启动服务：`APP_PORT=8091 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  13. `psql` 写入临时 `SHARE_RO` 订单、合同和商品数据，`curl POST /api/v1/orders/{id}/share-ro/transition` 依次验证主体风控阻断、商品审核阻断、门禁放行成功。
+  14. `psql` 回查 `trade.order_main`、`delivery.delivery_record`、`audit.audit_event`，再清理临时业务数据；审计记录按 append-only 保留。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`156 passed, 0 failed, 1 ignored`）。
+  - `trade008~trade015` 8 个标准 SKU 状态机 DB smoke：全部通过。
+  - `trade031_deliverability_gate_db_smoke`：通过；覆盖缺少合同、主体阻断、商品审核阻断、门禁放行四条路径。
+  - 真实 API 联调：
+    - 主体风控阻断：`POST /api/v1/orders/{id}/share-ro/transition` 返回 `HTTP 409`
+    - 商品审核阻断：同接口返回 `HTTP 409`
+    - 放行成功：同接口返回 `HTTP 200`
+  - DB 回查：
+    - 订单状态：`share_enabled / paid / in_progress / not_started / pending_settlement`
+    - 交付记录：`share_grant / share_link / prepared`
+    - 审计：`trade.order.delivery_gate.prepared=1`、`trade.order.share_ro.transition=1`
+  - 清理结果：临时业务数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.4（交易与订单聚合）
+  - `全集成基线-V1` 15（核心交易链路设计）
+  - `业务流程图-V1` 4.3（买方搜索、选购与下单流程）
+- 覆盖的任务清单条目：`TRADE-031`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
 ### BATCH-134（计划中）
 - 状态：计划中
 - 当前任务编号：TRADE-025

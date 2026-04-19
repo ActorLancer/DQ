@@ -70,6 +70,7 @@
 - `TRADE-021` 已补齐锁资前门禁：主体状态、商品状态、审核状态、模板齐备、价格快照完整性；适用于 `FILE_STD / FILE_SUB / API_SUB` 的支付锁定入口。
 - `TRADE-024` 已补齐晚到支付结果的非法回退保护；支付 webhook 不能把已进入更后履约阶段的订单拉回早期状态。
 - `TRADE-027` 已做主交易链路集成验证：下单、合同确认、锁资前阻断/成功、非法跳转、自动断权。
+- `TRADE-031` 已补齐统一可交付门禁：交付/开通首动作前必须满足 `buyer_locked + paid + signed contract + 主体/商品/风控放行`，并先创建 `delivery.delivery_record(status=prepared)`。
 
 ## 5. 标准 SKU 状态转换测试矩阵
 
@@ -132,13 +133,13 @@
 
 ### 5.4 API_PPU
 
-正向主链路：`created -> api_authorized -> quota_ready -> usage_active`
+正向主链路：`buyer_locked -> api_authorized -> quota_ready -> usage_active`
 
 `API_PPU` 的计费特性是：成功调用才把 `payment_status` 提升为 `paid`；失败调用不出账。
 
 | 当前状态 | 动作 | 目标状态 | payment_status 结果 | 关键说明 | 自动化证据 |
 | --- | --- | --- | --- | --- | --- |
-| `created` / `contract_pending` / `contract_effective` | `authorize_access` | `api_authorized` | 保持原值 | 开通访问授权 | `trade011`, repo 单测 |
+| `buyer_locked` | `authorize_access` | `api_authorized` | 保持原值 | 通过 `TRADE-031` 可交付门禁后开通访问授权，并创建 `delivery_record(prepared)` | `trade011`, `trade031`, repo 单测 |
 | `api_authorized` | `configure_quota` | `quota_ready` | 保持原值 | 配额配置完成 | `trade011`, repo 单测 |
 | `quota_ready` / `usage_active` | `record_failed_call` | `usage_active` | 保持原值 | 失败调用不计费 | `trade011`, repo 单测 |
 | `quota_ready` / `usage_active` | `settle_success_call` | `usage_active` | `paid` | 成功调用出账 | `trade011`, repo 单测 |
@@ -149,13 +150,13 @@
 
 ### 5.5 SHARE_RO
 
-正向主链路：`created -> share_enabled -> share_granted -> shared_active`
+正向主链路：`buyer_locked -> share_enabled -> share_granted -> shared_active`
 
 断权/异常分支：`revoked` / `expired` / `dispute_interrupted`
 
 | 当前状态 | 动作 | 目标状态 | payment_status 结果 | 关键说明 | 自动化证据 |
 | --- | --- | --- | --- | --- | --- |
-| `created` / `contract_pending` / `contract_effective` | `enable_share` | `share_enabled` | 保持原值 | 开启共享 | `trade012`, `TRADE-029` API 联调 |
+| `buyer_locked` | `enable_share` | `share_enabled` | 保持原值 | 通过 `TRADE-031` 可交付门禁后开启共享，并创建 `delivery_record(prepared)` | `trade012`, `trade031` |
 | `share_enabled` | `grant_read_access` | `share_granted` | 保持原值 | 发放只读访问 | `trade012` |
 | `share_granted` | `confirm_first_query` | `shared_active` | 保持原值 | 首次查询成功，进入活跃共享态 | `trade012`, repo 单测 |
 | `share_enabled` / `share_granted` / `shared_active` / `expired` | `revoke_share` | `revoked` | 保持原值 | 主动撤销共享 | `trade012`, repo 单测 |
@@ -166,11 +167,11 @@
 
 ### 5.6 QRY_LITE
 
-正向主链路：`created -> template_authorized -> params_validated -> query_executed -> result_available -> closed`
+正向主链路：`buyer_locked -> template_authorized -> params_validated -> query_executed -> result_available -> closed`
 
 | 当前状态 | 动作 | 目标状态 | payment_status 结果 | 关键说明 | 自动化证据 |
 | --- | --- | --- | --- | --- | --- |
-| `created` / `contract_pending` / `contract_effective` | `authorize_template` | `template_authorized` | 保持原值 | 授权模板查询 | `trade013`, repo 单测 |
+| `buyer_locked` | `authorize_template` | `template_authorized` | 保持原值 | 通过 `TRADE-031` 可交付门禁后授权模板查询，并创建 `delivery_record(prepared)` | `trade013`, `trade031`, repo 单测 |
 | `template_authorized` | `validate_params` | `params_validated` | 保持原值 | 校验查询参数 | `trade013`, repo 单测 |
 | `params_validated` | `execute_query` | `query_executed` | `paid` | 执行查询并记账 | `trade013`, repo 单测 |
 | `query_executed` | `make_result_available` | `result_available` | 保持原值 | 结果可下载/查看 | `trade013`, repo 单测 |
@@ -180,11 +181,11 @@
 
 ### 5.7 SBX_STD
 
-正向主链路：`created -> workspace_enabled -> seat_issued -> sandbox_executed -> result_limited_exported`
+正向主链路：`buyer_locked -> workspace_enabled -> seat_issued -> sandbox_executed -> result_limited_exported`
 
 | 当前状态 | 动作 | 目标状态 | payment_status 结果 | 关键说明 | 自动化证据 |
 | --- | --- | --- | --- | --- | --- |
-| `created` / `contract_pending` / `contract_effective` | `enable_workspace` | `workspace_enabled` | 保持原值 | 开通沙箱工作区 | `trade014`, repo 单测 |
+| `buyer_locked` | `enable_workspace` | `workspace_enabled` | 保持原值 | 通过 `TRADE-031` 可交付门禁后开通沙箱工作区，并创建 `delivery_record(prepared)` | `trade014`, `trade031`, repo 单测 |
 | `workspace_enabled` | `issue_account_seat` | `seat_issued` | 保持原值 | 发放席位/账号 | `trade014`, repo 单测 |
 | `seat_issued` | `execute_sandbox_query` | `sandbox_executed` | 保持原值 | 执行沙箱查询 | `trade014`, repo 单测 |
 | `sandbox_executed` | `export_limited_result` | `result_limited_exported` | 保持原值 | 导出受限结果 | `trade014`, repo 单测 |
@@ -195,11 +196,11 @@
 
 ### 5.8 RPT_STD
 
-正向主链路：`created -> report_task_created -> report_generated -> report_delivered -> accepted -> settled`
+正向主链路：`buyer_locked -> report_task_created -> report_generated -> report_delivered -> accepted -> settled`
 
 | 当前状态 | 动作 | 目标状态 | payment_status 结果 | 关键说明 | 自动化证据 |
 | --- | --- | --- | --- | --- | --- |
-| `created` / `contract_pending` / `contract_effective` | `create_report_task` | `report_task_created` | 保持原值 | 创建报告任务 | `trade015`, repo 单测 |
+| `buyer_locked` | `create_report_task` | `report_task_created` | 保持原值 | 通过 `TRADE-031` 可交付门禁后创建报告任务，并创建 `delivery_record(prepared)` | `trade015`, `trade031`, repo 单测 |
 | `report_task_created` | `generate_report` | `report_generated` | 保持原值 | 供方生成报告 | `trade015`, repo 单测 |
 | `report_generated` | `deliver_report` | `report_delivered` | 保持原值 | 交付报告 | `trade015`, repo 单测 |
 | `report_delivered` | `accept_report` | `accepted` | 保持原值 | 买方验收通过 | `trade015`, repo 单测 |

@@ -1,5 +1,6 @@
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::dto::{RptStdTransitionRequest, RptStdTransitionResponseData};
+use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -69,6 +70,13 @@ pub async fn transition_rpt_std_order(
             }),
         ));
     };
+    if normalized_action == "create_report_task" {
+        let prepared = ensure_order_deliverable_and_prepare_delivery(
+            &tx, order_id, actor_role, request_id, trace_id,
+        )
+        .await?;
+        let _ = prepared.delivery_id;
+    }
 
     let updated_row = tx
         .query_one(
@@ -141,18 +149,11 @@ fn derive_rpt_std_transition(
     payment_status: &str,
 ) -> Option<RptStdTransition> {
     let (target_state, target_payment_status, reason_code) = match action {
-        "create_report_task"
-            if matches!(
-                current_state,
-                "created" | "contract_pending" | "contract_effective"
-            ) =>
-        {
-            (
-                "report_task_created",
-                payment_status.to_string(),
-                "rpt_std_task_created",
-            )
-        }
+        "create_report_task" if current_state == "buyer_locked" => (
+            "report_task_created",
+            payment_status.to_string(),
+            "rpt_std_task_created",
+        ),
         "generate_report" if current_state == "report_task_created" => (
             "report_generated",
             payment_status.to_string(),
@@ -239,15 +240,15 @@ mod tests {
 
     #[test]
     fn rpt_std_lifecycle_transitions_to_settled() {
-        let t1 = derive_rpt_std_transition("create_report_task", "created", "unpaid");
+        let t1 = derive_rpt_std_transition("create_report_task", "buyer_locked", "paid");
         assert!(t1.is_some());
-        let t2 = derive_rpt_std_transition("generate_report", "report_task_created", "unpaid");
+        let t2 = derive_rpt_std_transition("generate_report", "report_task_created", "paid");
         assert!(t2.is_some());
-        let t3 = derive_rpt_std_transition("deliver_report", "report_generated", "unpaid");
+        let t3 = derive_rpt_std_transition("deliver_report", "report_generated", "paid");
         assert!(t3.is_some());
-        let t4 = derive_rpt_std_transition("accept_report", "report_delivered", "unpaid");
+        let t4 = derive_rpt_std_transition("accept_report", "report_delivered", "paid");
         assert!(t4.is_some());
-        let t5 = derive_rpt_std_transition("settle_report", "accepted", "unpaid");
+        let t5 = derive_rpt_std_transition("settle_report", "accepted", "paid");
         assert!(t5.is_some());
         assert_eq!(t5.expect("settle").target_state, "settled");
     }

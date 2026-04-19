@@ -1,6 +1,7 @@
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::dto::{SbxStdTransitionRequest, SbxStdTransitionResponseData};
 use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
+use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -70,6 +71,13 @@ pub async fn transition_sbx_std_order(
             }),
         ));
     };
+    if normalized_action == "enable_workspace" {
+        let prepared = ensure_order_deliverable_and_prepare_delivery(
+            &tx, order_id, actor_role, request_id, trace_id,
+        )
+        .await?;
+        let _ = prepared.delivery_id;
+    }
 
     let updated_row = tx
         .query_one(
@@ -155,18 +163,11 @@ fn derive_sbx_std_transition(
     payment_status: &str,
 ) -> Option<SbxStdTransition> {
     let (target_state, target_payment_status, reason_code) = match action {
-        "enable_workspace"
-            if matches!(
-                current_state,
-                "created" | "contract_pending" | "contract_effective"
-            ) =>
-        {
-            (
-                "workspace_enabled",
-                payment_status.to_string(),
-                "sbx_std_workspace_enabled",
-            )
-        }
+        "enable_workspace" if current_state == "buyer_locked" => (
+            "workspace_enabled",
+            payment_status.to_string(),
+            "sbx_std_workspace_enabled",
+        ),
         "issue_account_seat" if current_state == "workspace_enabled" => (
             "seat_issued",
             payment_status.to_string(),
@@ -269,7 +270,7 @@ mod tests {
 
     #[test]
     fn sbx_std_lifecycle_allows_enable_to_expire() {
-        let t1 = derive_sbx_std_transition("enable_workspace", "created", "paid");
+        let t1 = derive_sbx_std_transition("enable_workspace", "buyer_locked", "paid");
         assert!(t1.is_some());
         let t2 = derive_sbx_std_transition("issue_account_seat", "workspace_enabled", "paid");
         assert!(t2.is_some());

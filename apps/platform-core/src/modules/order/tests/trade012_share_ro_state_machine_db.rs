@@ -223,7 +223,7 @@ mod tests {
                    payment_mode, amount, currency_code, price_snapshot_json
                  ) VALUES (
                    $1::text::uuid, $2::text::uuid, $3::text::uuid, $4::text::uuid, $5::text::uuid,
-                   'created', 'paid', 'pending_delivery', 'not_started', 'not_started', 'none',
+                   'buyer_locked', 'paid', 'pending_delivery', 'not_started', 'pending_settlement', 'none',
                    'online', 21.50, 'CNY',
                    '{}'::jsonb
                  )
@@ -232,6 +232,17 @@ mod tests {
             )
             .await?
             .get(0);
+
+        client
+            .execute(
+                "INSERT INTO contract.digital_contract (
+                   order_id, contract_digest, status, signed_at, variables_json
+                 ) VALUES (
+                   $1::text::uuid, $2, 'signed', now(), '{\"term_days\":30}'::jsonb
+                 )",
+                &[&order_id, &format!("sha256:trade012:{suffix}")],
+            )
+            .await?;
 
         Ok(SeedGraph {
             buyer_org_id,

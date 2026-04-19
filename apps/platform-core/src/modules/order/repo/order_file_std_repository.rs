@@ -1,6 +1,7 @@
 use crate::modules::order::domain::{LayeredOrderStatus, derive_layered_status};
 use crate::modules::order::dto::{FileStdTransitionRequest, FileStdTransitionResponseData};
 use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
+use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::ensure_pre_payment_lock_checks;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
@@ -72,6 +73,12 @@ pub async fn transition_file_std_order(
     };
     if normalized_action == "lock_funds" {
         ensure_pre_payment_lock_checks(&tx, order_id, request_id).await?;
+    } else if normalized_action == "start_delivery" {
+        let prepared = ensure_order_deliverable_and_prepare_delivery(
+            &tx, order_id, actor_role, request_id, trace_id,
+        )
+        .await?;
+        let _ = prepared.delivery_id;
     }
 
     let updated_row = tx
