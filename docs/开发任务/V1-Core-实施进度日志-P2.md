@@ -3289,3 +3289,112 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-151（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-009
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-009` 目标为 `POST /api/v1/products/{id}/query-surfaces`，保存可查询区域、执行环境、输出限制。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：复核 `DLV-009` 是 Delivery 阶段的查询面配置起点，完成定义仍是“接口、DTO、权限、审计、错误码与最小测试齐备”。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地 commit”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务顺序、冻结文档先行、实现后必须做真实 API 联调与 DB 回查。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 `BATCH-150`，先登记本批计划中。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `POST /api/v1/products/{id}/query-surfaces` 的权限为 `delivery.query_surface.manage`，额外校验为“资产版本存在、读取区域合法、环境合法、审计”。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：查询面配置属于 Delivery，但商品、资产版本、执行环境真值分布在 Catalog + IAM + Delivery。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结表已列出 `POST /api/v1/products/{id}/query-surfaces`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批先落数据库真值与审计，不提前引入额外异步桥接。
+  12. `docs/开发准备/统一错误码字典正式版.md`：配置冲突/权限/内部错误继续沿用统一错误结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批需要最小 DB smoke + 真实 API 联调 + 数据库回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：查询面接口继续落在 `delivery/api|dto|repo|tests`，不混入 Catalog 已有读接口实现。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批联调继续使用 `datab-postgres` 与本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用本地环境变量与固定 DSN/端口口径。
+  17. `docs/开发准备/技术选型正式版.md`：沿用当前 `SQLx + SeaORM` 数据访问基线，不回退旧实现。
+  18. `docs/开发准备/平台总体架构设计草案.md`：查询面属于正式受控执行入口，必须绑定执行环境、读取范围、输出边界与配额策略。
+- 当前任务额外引用的 `technical_reference` 与约束映射：
+  - `docs/原始PRD/数据商品查询与执行面设计.md:L35`：`QuerySurface` 必须表达“面向哪个资产版本、运行在哪个执行环境、属于哪种查询面类型、可读数据范围、输出边界、频率/配额约束、surface_status”。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L668`：查询面与模板配置页核心模块包含“查询面类型选择、执行环境绑定、输出边界与导出策略、配额与计费单位、模板审核状态”。
+  - `docs/数据库设计/V1/upgrade/065_query_execution_plane.sql:L1`：`catalog.query_surface_definition` 已冻结字段为 `asset_version_id / asset_object_id / environment_id / surface_type / binding_mode / execution_scope / input_contract_json / output_boundary_json / query_policy_json / quota_policy_json / status / metadata`。
+- 补充约束文档：
+  1. `docs/权限设计/接口权限校验清单.md`：`POST /api/v1/products/{id}/query-surfaces` 权限为 `delivery.query_surface.manage`，额外校验为“资产版本存在、读取区域合法、环境合法、审计”。
+  2. `docs/权限设计/角色权限矩阵正式版.md`：`delivery.query_surface.manage` 角色口径为“卖方运营员、租户管理员”。
+  3. `docs/权限设计/后端鉴权中间件规则说明.md`：查询面配置鉴权顺序应为“身份 -> 主体状态 -> `delivery.query_surface.manage` -> 商品/资产作用域 -> 读取分层区域合法性 -> 执行环境合法性 -> 输出边界校验 -> 审计”。
+  4. `docs/数据库设计/数据库表字典正式版.md`、`docs/数据库设计/V1/upgrade/010_identity_and_access.sql`：本批核心表为 `catalog.query_surface_definition`、`catalog.product`、`catalog.asset_version`、`catalog.asset_object_binding`、`core.execution_environment`、`core.connector`。
+- 当前批次目标：实现 `POST /api/v1/products/{id}/query-surfaces`，完成 QuerySurface 的创建/维护、商品作用域与执行环境合法性校验、读取区域与输出边界校验，并落审计。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv009_query_surface_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST /api/v1/products/{id}/query-surfaces` 联调，回查 `catalog.query_surface_definition / audit.audit_event` 后清理业务数据。
+
+### BATCH-151（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-009
+- 前置依赖核对：`TRADE-003`、`TRADE-007`、`DB-006`、`DB-019`、`DB-020`、`CORE-008` 已完成并审批通过；`DLV-008` 已在当前主线完成并本地提交。
+- 当前批次目标：实现 `POST /api/v1/products/{id}/query-surfaces`，保存可查询区域、执行环境、输出限制，并完成商品/资产/环境作用域校验与审计落库。
+- 实现摘要：
+  1. `delivery/api/mod.rs` 新增 `POST /api/v1/products/{id}/query-surfaces` 路由，`delivery/api/handlers.rs` 新增管理处理器。
+  2. `delivery/api/support.rs` 新增 `DeliveryPermission::ManageQuerySurface`，角色口径覆盖 `seller_operator / tenant_admin / platform_*`。
+  3. `delivery/dto/query_surface.rs` 新增 QuerySurface 请求/响应 DTO，冻结 `asset_object_id / environment_id / surface_type / binding_mode / execution_scope / *_json / status / operation` 结构。
+  4. `delivery/repo/query_surface_repository.rs` 新增写仓储：校验卖方主体状态、商品资产版本、执行环境归属与状态、读取分层区域合法性、输出边界限制；支持“显式 `query_surface_id` 更新”与“同 asset_version + surface_type 复用更新”；同步回写 `catalog.asset_version.query_surface_type` 并写入 `delivery.query_surface.manage` 审计。
+  5. `delivery/tests/dlv009_query_surface_db.rs` 新增 DB smoke，覆盖创建、更新、非法 `raw_zone/raw` 拒绝和审计/DB 断言。
+  6. `packages/openapi/delivery.yaml` 已同步新增 `query-surfaces` 路径与 schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/query_surface.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/query_surface_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv009_query_surface_db.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv009_query_surface_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8102 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入临时 `product / asset_version / asset_object_binding / connector / execution_environment` 数据，执行 3 次 `curl POST /api/v1/products/{id}/query-surfaces`（创建、更新、非法 raw_zone），最后回查 `catalog.query_surface_definition / catalog.asset_version / audit.audit_event` 并清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv009_query_surface_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`174 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - 创建 QuerySurface：`HTTP 200`，`operation=created`，`execution_scope=curated_zone`
+    - 更新 QuerySurface：`HTTP 200`，`operation=updated`，`execution_scope=product_zone`，`analysis_rule=whitelist_only`
+    - 非法 raw 区域：`HTTP 409`，`QUERY_SURFACE_MANAGE_FORBIDDEN: execution_scope cannot target raw zone`
+  - DB 回查通过：
+    - `catalog.query_surface_definition`：`execution_scope=product_zone`、`status=active`、`max_rows=200`、`analysis_rule=whitelist_only`、`daily_limit=120`
+    - `catalog.asset_version.query_surface_type=template_query_lite`
+    - 审计：`delivery.query_surface.manage=2`，`result_code=created/updated`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `数据商品查询与执行面设计` 3 / 4.3 / 7 / 8（QuerySurface 核心字段、只读分层、输出边界、配额与审计）
+  - `页面说明书-V1` 7.6（查询面类型、执行环境绑定、输出边界、配额与模板审核状态）
+  - `065_query_execution_plane.sql`（`catalog.query_surface_definition` 字段冻结）
+  - `权限设计` 接口权限校验清单 / 角色矩阵 / 鉴权规则（`delivery.query_surface.manage`、商品/资产/环境作用域、读取区域与输出边界校验、审计）
+- 覆盖的任务清单条目：`DLV-009`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

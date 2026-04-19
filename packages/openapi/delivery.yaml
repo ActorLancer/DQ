@@ -9,7 +9,8 @@ info:
     ticket-validated file download with delivery-receipt logging; DLV-005 adds
     FILE_SUB revision-subscription manage/read APIs; DLV-006 adds SHARE_RO
     share-grant manage/read APIs; DLV-007 adds API delivery enablement; DLV-008
-    adds API usage-log read APIs.
+    adds API usage-log read APIs; DLV-009 adds QuerySurface management for
+    product-scoped query execution configuration.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -231,8 +232,169 @@ paths:
           description: Order not found
         '409':
           description: Order is not an API SKU or API delivery has not been enabled
+  /api/v1/products/{id}/query-surfaces:
+    post:
+      summary: Create or update a product-scoped QuerySurface definition
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageQuerySurfaceRequest'
+      responses:
+        '200':
+          description: QuerySurface created or updated for the product asset version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageQuerySurfaceResponseEnvelope'
+        '400':
+          description: Invalid enum or JSON payload shape
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Product not found
+        '409':
+          description: Asset version, environment, read scope, or output boundary is invalid
 components:
   schemas:
+    ManageQuerySurfaceRequest:
+      type: object
+      properties:
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        surface_type:
+          type: string
+          enum: [template_query_lite, sandbox_query, report_result]
+          nullable: true
+        binding_mode:
+          type: string
+          enum: [managed_surface, seller_managed]
+          nullable: true
+        execution_scope:
+          type: string
+          enum: [curated_zone, product_zone, result_zone]
+          nullable: true
+        input_contract_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        query_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        quota_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        status:
+          type: string
+          enum: [draft, active, disabled]
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageQuerySurfaceResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageQuerySurfaceResponse'
+    ManageQuerySurfaceResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QuerySurfaceResponseData'
+    QuerySurfaceResponseData:
+      type: object
+      required:
+        - query_surface_id
+        - product_id
+        - asset_version_id
+        - environment_id
+        - surface_type
+        - binding_mode
+        - execution_scope
+        - input_contract_json
+        - output_boundary_json
+        - query_policy_json
+        - quota_policy_json
+        - status
+        - operation
+        - created_at
+        - updated_at
+      properties:
+        query_surface_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+        surface_type:
+          type: string
+        binding_mode:
+          type: string
+        execution_scope:
+          type: string
+        input_contract_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        query_policy_json:
+          type: object
+          additionalProperties: true
+        quota_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        operation:
+          type: string
+          enum: [created, updated]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     ApiUsageLogResponseEnvelope:
       type: object
       required: [success, data]

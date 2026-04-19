@@ -13,3 +13,5 @@ mod dlv006_share_grant_db;
 mod dlv007_api_delivery_db;
 
 mod dlv008_api_usage_log_db;
+
+mod dlv009_query_surface_db;

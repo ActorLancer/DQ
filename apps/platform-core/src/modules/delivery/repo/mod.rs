@@ -3,6 +3,7 @@ mod api_usage_log_repository;
 mod download_file_repository;
 mod download_ticket_repository;
 mod file_delivery_repository;
+mod query_surface_repository;
 mod revision_subscription_repository;
 mod share_grant_repository;
 mod storage_gateway_repository;
@@ -16,6 +17,7 @@ pub use download_ticket_repository::{
     parse_download_token, redis_download_ticket_key, set_download_ticket_cache,
 };
 pub use file_delivery_repository::commit_file_delivery;
+pub use query_surface_repository::manage_query_surface;
 pub use revision_subscription_repository::{
     get_revision_subscription, manage_revision_subscription,
 };

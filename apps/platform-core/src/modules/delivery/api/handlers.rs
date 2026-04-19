@@ -4,12 +4,13 @@ use crate::AppState;
 use crate::modules::delivery::dto::{
     ApiUsageLogResponse, CommitOrderDeliveryRequest, CommitOrderDeliveryResponse,
     DownloadFileResponse, DownloadFileResponseData, DownloadTicketResponse,
-    GetRevisionSubscriptionResponse, GetShareGrantResponse, ManageRevisionSubscriptionRequest,
+    GetRevisionSubscriptionResponse, GetShareGrantResponse, ManageQuerySurfaceRequest,
+    ManageQuerySurfaceResponse, ManageRevisionSubscriptionRequest,
     ManageRevisionSubscriptionResponse, ManageShareGrantRequest, ManageShareGrantResponse,
 };
 use crate::modules::delivery::repo::{
     commit_api_delivery, commit_file_delivery, consume_download_ticket, get_api_usage_log,
-    get_revision_subscription, get_share_grants, issue_download_ticket,
+    get_revision_subscription, get_share_grants, issue_download_ticket, manage_query_surface,
     manage_revision_subscription, manage_share_grant,
 };
 use crate::modules::storage::application::fetch_object_bytes;
@@ -150,6 +151,40 @@ pub async fn get_api_usage_log_api(
     .await?;
 
     Ok(ApiResponse::ok(ApiUsageLogResponse { data: usage_log }))
+}
+
+pub async fn manage_query_surface_api(
+    State(state): State<AppState>,
+    Path(product_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<ManageQuerySurfaceRequest>,
+) -> Result<Json<ApiResponse<ManageQuerySurfaceResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::ManageQuerySurface,
+        "query surface management",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let query_surface = manage_query_surface(
+        &mut client,
+        &product_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ManageQuerySurfaceResponse {
+        data: query_surface,
+    }))
 }
 
 pub async fn download_file_api(

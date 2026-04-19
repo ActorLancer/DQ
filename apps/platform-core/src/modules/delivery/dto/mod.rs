@@ -2,6 +2,7 @@ mod api_usage_log;
 mod download_file;
 mod download_ticket;
 mod file_delivery_commit;
+mod query_surface;
 mod revision_subscription;
 mod share_grant;
 
@@ -14,6 +15,9 @@ pub use download_file::{
 };
 pub use file_delivery_commit::{
     CommitOrderDeliveryRequest, CommitOrderDeliveryResponse, CommitOrderDeliveryResponseData,
+};
+pub use query_surface::{
+    ManageQuerySurfaceRequest, ManageQuerySurfaceResponse, QuerySurfaceResponseData,
 };
 
 #[allow(unused_imports)]
