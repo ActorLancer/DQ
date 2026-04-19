@@ -4416,3 +4416,79 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-163（计划中）
+- 任务：DLV-021 delivery 自动断权联动
+- 状态：计划中
+- 说明：在取消、到期、争议升级、风控冻结触发时，统一切断下载票据、API key、共享授权、沙箱席位，并补齐交付审计与联调验证。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+
+### BATCH-163（待审批）
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`（`DLV-021` 定义、依赖、交付自动断权口径）
+  - `docs/开发任务/v1-core-开发任务清单.md`（`DLV-021` 详细说明）
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`（计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> commit）
+  - `docs/开发任务/AI-Agent-执行提示词.md`（单任务严格执行口径）
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`（当前批次续写）
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`（追溯约束续写）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（交付、自动断权、审计闭环）
+  - `docs/开发准备/服务清单与服务边界正式版.md`（Delivery / Trade / Redis 边界）
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（交付、交易状态迁移接口冻结口径）
+  - `docs/开发准备/事件模型与Topic清单正式版.md`（交付侧事件与审计命名口径）
+  - `docs/开发准备/统一错误码字典正式版.md`（复用现有冲突错误码）
+  - `docs/开发准备/测试用例矩阵正式版.md`（自动断权、缓存失效、联调覆盖要求）
+  - `docs/开发准备/仓库拆分与目录结构建议.md`（delivery/order 分层边界继续沿用）
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`（PostgreSQL / Redis / Kafka 本地栈）
+  - `docs/开发准备/配置项与密钥管理清单.md`（`REDIS_PASSWORD` / `REDIS_NAMESPACE` / Redis DB 3）
+  - `docs/开发准备/技术选型正式版.md`（当前基线：SQLx + SeaORM）
+  - `docs/开发准备/平台总体架构设计草案.md`（交付资源与订单状态联动）
+  - `docs/业务流程/业务流程图-V1-完整版.md:L426`（取消、到期、争议升级后的资源切断流程）
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L700`（delivery ticket / api credential / share grant / sandbox workspace 关系）
+  - `docs/原始PRD/敏感数据处理与受控交付设计.md:L118`（敏感交付资源的立即断权要求）
+- 实现内容：
+  - 新增 `delivery/repo/resource_cutoff_repository.rs`，统一处理下载票据、API credential、共享授权、沙箱工作区/会话与对应 `delivery_record` 的自动断权。
+  - 在取消、退款、共享到期/争议中断、API 禁用、沙箱到期等订单状态迁移路径中接入交付资源断权，并在事务提交后失效 Redis 下载票据缓存。
+  - 按断权目标统一映射 `revoked / expired / suspended`，同步写入 `delivery.file|api|share|sandbox.auto_cutoff.*` 审计。
+  - 新增 `dlv021_auto_cutoff_resources_db_smoke`，覆盖文件票据撤销、Redis 失效、共享过期/挂起、API key 挂起、沙箱过期五条联动链路。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv003_download_ticket_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade018_auto_cutoff_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv021_auto_cutoff_resources_db_smoke -- --nocapture`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. 启动服务：`APP_PORT=8114 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  10. 使用真实 PostgreSQL + Redis + `curl` 联调 `download-ticket`、`file-std/request_refund`、`download`、`share-ro/expire_share`、`share-ro/interrupt_dispute`、`api-ppu/disable_access`、`sbx-std/expire_sandbox`
+  11. 通过 `psql` / `redis-cli` 回查交付资源状态、Redis 票据缓存与审计后清理临时业务数据
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`186 passed, 0 failed, 1 ignored`）。
+  - `dlv003 / trade018 / dlv021` DB smoke：全部通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `download-ticket`：`HTTP 200`，签发下载令牌并写入 Redis。
+    - `file-std request_refund`：`HTTP 200`，文件票据与 `delivery_record` 变为 `revoked`。
+    - `download` after cutoff：`HTTP 409`，`DOWNLOAD_TICKET_FORBIDDEN: ticket cache not found or expired`。
+    - `share expire_share`：`HTTP 200`，共享授权/交付变为 `expired`。
+    - `share interrupt_dispute`：`HTTP 200`，共享授权/交付变为 `suspended`。
+    - `api disable_access`：`HTTP 200`，API credential 与交付记录变为 `suspended`。
+    - `sandbox expire_sandbox`：`HTTP 200`，沙箱 workspace/session/交付记录变为 `expired`。
+  - Redis 回查通过：`download-ticket` 缓存 `EXISTS` 由 `1 -> 0`。
+  - DB 回查通过：
+    - 文件：`delivery.delivery_ticket=revoked`，`delivery.delivery_record=revoked`
+    - 共享：`expired/expired` 与 `suspended/suspended`
+    - API：`api_credential=suspended`，`valid_to` 已收敛，`delivery_record=suspended`
+    - 沙箱：`workspace=expired`，`session=expired`，`delivery_record=expired`
+    - 审计命中：`delivery.file.auto_cutoff.revoked`、`delivery.share.auto_cutoff.expired`、`delivery.share.auto_cutoff.suspended`、`delivery.api.auto_cutoff.suspended`、`delivery.sandbox.auto_cutoff.expired`
+- 覆盖的冻结文档条目：
+  - `交付自动断权流程`：取消、到期、争议升级、风控冻结时必须立即切断交付资源
+  - `delivery 聚合关系`：ticket / credential / share grant / sandbox workspace 与 `delivery_record` 必须同步收敛
+  - `敏感交付设计`：下载票据与访问凭据撤权后不得继续访问
+- 覆盖的任务清单条目：`DLV-021`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

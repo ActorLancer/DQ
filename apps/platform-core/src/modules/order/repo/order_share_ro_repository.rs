@@ -1,3 +1,6 @@
+use crate::modules::delivery::repo::{
+    apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
+};
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::dto::{ShareRoTransitionRequest, ShareRoTransitionResponseData};
 use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
@@ -120,6 +123,18 @@ pub async fn transition_share_ro_order(
         trace_id,
     )
     .await?;
+    let delivery_cutoff = apply_delivery_cutoff_if_needed(
+        &tx,
+        order_id,
+        transition.target_state,
+        &transition.layered_status.delivery_status,
+        &transition.layered_status.dispute_status,
+        transition.reason_code,
+        actor_role,
+        request_id,
+        trace_id,
+    )
+    .await?;
 
     write_trade_audit_event(
         &tx,
@@ -133,6 +148,7 @@ pub async fn transition_share_ro_order(
     )
     .await?;
     tx.commit().await.map_err(map_db_error)?;
+    invalidate_delivery_cutoff_download_ticket_caches(&delivery_cutoff).await;
 
     Ok(ShareRoTransitionResponseData {
         order_id: order_id.to_string(),
