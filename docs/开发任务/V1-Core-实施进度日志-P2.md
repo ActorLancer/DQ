@@ -3812,3 +3812,94 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-156（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-014
+- 已阅读证据：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-014` 为 `POST /api/v1/orders/{id}/sandbox-workspaces`，要求接口、DTO、权限校验、审计、错误码和最小测试齐备，交付路径为 `delivery/**`、`storage/**` 与 `packages/openapi/delivery.yaml`。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认本任务完成定义为实现与 OpenAPI 不漂移，且至少一条集成测试或手工 API 验证通过并能在审计/日志中看到痕迹。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md` / `docs/开发任务/AI-Agent-执行提示词.md`：确认单任务批次必须先写日志“计划中”，实现后完整验证、更新 TODO、写“待审批”、本地提交。
+  4. `docs/开发任务/V1-Core-TODO与预留清单.md` / `docs/开发任务/V1-Core-人工审批记录.md`：确认 `TODO-PROC-BIL-001` 追溯约束保持不变，人工审批记录继续由人工维护。
+  5. `docs/业务流程/业务流程图-V1-完整版.md:L349`：确认沙箱交付链路必须创建隔离执行环境、注入最小权限账号与到期时间、控制导出/复制/网络访问，并在到期或次数上限后自动关闭会话。
+  6. `docs/页面说明书/页面说明书-V1-完整版.md:L654`：查询沙箱开通页必须展示沙箱实例状态、账号信息、会话时效、环境限制说明和导出限制提示。
+  7. `docs/原始PRD/数据商品查询与执行面设计.md:L127`：确认 `sandbox_query` 必须绑定正式执行环境、会话时效、导出策略和最小网络边界，不允许直接发放底库账号。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L10072` / `L7128` / `L24052`：确认接口权限为 `delivery.sandbox.enable`，校验项覆盖执行环境、会话策略、导出限制与审计，实体字段以 `delivery.sandbox_workspace / delivery.sandbox_session` 为准。
+  9. `docs/数据库设计/V1/upgrade/030_trade_delivery.sql` / `065_query_execution_plane.sql` / `数据库表字典正式版.md`：确认 `sandbox_workspace` 的冻结字段包含 `query_surface_id / clean_room_mode / data_residency_mode / output_boundary_json`，`sandbox_session` 承载 seat / query_count / export_attempt_count。
+  10. 其余 18 份必读冻结文档已按当前阶段基线复核服务边界、事件、错误码、环境与配置口径，无新增冲突；当前任务未发现需要升级到问题清单的文档矛盾。
+- 当前批次目标：实现沙箱开通接口 `POST /api/v1/orders/{id}/sandbox-workspaces`，完成 `SBX_STD` 订单下工作区与 seat 会话开通，写入执行环境、会话时效、导出限制、状态和审计，并通过真实 API / DB 联调验证。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv014_sandbox_workspace_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST /api/v1/orders/{id}/sandbox-workspaces` 联调，回查 `delivery.sandbox_workspace / delivery.sandbox_session / delivery.delivery_record / audit.audit_event` 后清理业务数据。
+
+### BATCH-156（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-014
+- 实现内容：
+  1. 新增 `POST /api/v1/orders/{id}/sandbox-workspaces`，为 `SBX_STD` 订单提供沙箱工作区与 seat 会话开通/更新接口。
+  2. 落地 `ManageSandboxWorkspaceRequest/Response`，稳定返回 workspace/session、执行环境、导出限制、输出边界、状态与时效字段。
+  3. 新增 `sandbox_workspace_repository`，校验订单租户、SKU、可交付门禁、QuerySurface、执行环境、seat 用户、到期时间与导出策略，并事务内 upsert `delivery.sandbox_workspace / delivery.sandbox_session`。
+  4. 联动更新 `delivery.delivery_record` 与 `trade.order_main`，在开通成功后推进到 `seat_issued / in_progress`，并写入 `delivery.sandbox.enable` 与 `trade.order.sbx_std.transition` 审计。
+  5. 同步更新 `packages/openapi/delivery.yaml` 与 `dlv014_sandbox_workspace_db_smoke`。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/sandbox_workspace.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/sandbox_workspace_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv014_sandbox_workspace_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv014_sandbox_workspace_db_smoke -- --nocapture`
+  7. 启动服务：`APP_PORT=8107 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入临时买卖方/用户/资产/商品/执行环境/QuerySurface/已签约订单数据，执行真实 `curl POST /api/v1/orders/{id}/sandbox-workspaces` 联调，回查 `delivery.sandbox_workspace / delivery.sandbox_session / delivery.delivery_record / trade.order_main / audit.audit_event` 后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`179 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - `dlv014_sandbox_workspace_db_smoke`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/sandbox-workspaces`：`HTTP 200`
+    - 返回 `workspace_id=0073affb-7904-48c6-abd0-acc4ed3c44f2`、`session_id=44e8c7f1-99ff-4c3f-8a52-e5acc531819f`
+    - `current_state=seat_issued`、`workspace_status=active`、`session_status=active`、`environment_type=sandbox`
+    - `allow_export=false`
+  - DB 回查通过：
+    - `trade.order_main` 推进到 `seat_issued / in_progress`
+    - `delivery.sandbox_workspace` 与 `delivery.sandbox_session` 各 1 条
+    - `delivery.delivery_record` 更新为 `sandbox_workspace / sandbox_query`
+    - `audit.audit_event` 命中 `delivery.sandbox.enable=1`
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.5（沙箱交付开通链路）
+  - `页面说明书-V1` 7.5（沙箱实例状态、账号信息、时效与限制提示）
+  - `数据商品查询与执行面设计` 5 / 8（正式执行环境、导出限制、最小网络边界）
+  - `全集成基线-V1` 接口权限与交付模型章节（`delivery.sandbox.enable`、`delivery.sandbox_workspace / sandbox_session`）
+- 覆盖的任务清单条目：`DLV-014`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

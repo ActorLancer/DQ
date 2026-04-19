@@ -6,6 +6,7 @@ mod query_run;
 mod query_surface;
 mod query_template;
 mod revision_subscription;
+mod sandbox_workspace;
 mod share_grant;
 mod template_grant;
 
@@ -28,6 +29,9 @@ pub use query_surface::{
 };
 pub use query_template::{
     ManageQueryTemplateRequest, ManageQueryTemplateResponse, QueryTemplateResponseData,
+};
+pub use sandbox_workspace::{
+    ManageSandboxWorkspaceRequest, ManageSandboxWorkspaceResponse, SandboxWorkspaceResponseData,
 };
 pub use template_grant::{
     ManageTemplateGrantRequest, ManageTemplateGrantResponse, TemplateGrantResponseData,

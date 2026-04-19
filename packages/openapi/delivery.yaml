@@ -16,7 +16,9 @@ info:
     output boundaries, and quota snapshots; DLV-012 adds template query
     execution with QueryExecutionRun persistence, MinIO result artifacts, and
     risk/output-boundary enforcement; DLV-013 adds query-run history read APIs
-    with audit references and policy-hit summaries.
+    with audit references and policy-hit summaries; DLV-014 adds sandbox
+    workspace enablement for SBX_STD orders with workspace/session
+    provisioning, expiry, and export-policy snapshots.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -246,6 +248,38 @@ paths:
           description: Order or query surface not found
         '409':
           description: SKU is not QRY_LITE, selected templates are invalid, or output boundary/quota exceeds the frozen surface policy
+  /api/v1/orders/{id}/sandbox-workspaces:
+    post:
+      summary: Provision or refresh a sandbox workspace for an SBX_STD order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageSandboxWorkspaceRequest'
+      responses:
+        '200':
+          description: Sandbox workspace and seat session provisioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageSandboxWorkspaceResponseEnvelope'
+        '400':
+          description: Invalid query surface, seat user, or expire_at payload
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or query surface not found
+        '409':
+          description: SKU is not SBX_STD, query surface/environment mismatch, or export policy exceeds the sandbox boundary
   /api/v1/orders/{id}/template-runs:
     get:
       summary: Read QRY_LITE query-run history under order scope
@@ -688,6 +722,34 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+    ManageSandboxWorkspaceRequest:
+      type: object
+      properties:
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        workspace_name:
+          type: string
+          nullable: true
+        seat_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        expire_at:
+          type: string
+          format: date-time
+          nullable: true
+        export_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        clean_room_mode:
+          type: string
+          nullable: true
+        data_residency_mode:
+          type: string
+          nullable: true
     ManageTemplateGrantResponseEnvelope:
       type: object
       required: [success, data]
@@ -696,12 +758,26 @@ components:
           type: boolean
         data:
           $ref: '#/components/schemas/ManageTemplateGrantResponse'
+    ManageSandboxWorkspaceResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageSandboxWorkspaceResponse'
     ManageTemplateGrantResponse:
       type: object
       required: [data]
       properties:
         data:
           $ref: '#/components/schemas/TemplateGrantResponseData'
+    ManageSandboxWorkspaceResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SandboxWorkspaceResponseData'
     TemplateGrantResponseData:
       type: object
       required:
@@ -774,6 +850,124 @@ components:
         payment_status:
           type: string
         delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SandboxWorkspaceResponseData:
+      type: object
+      required:
+        - sandbox_workspace_id
+        - sandbox_session_id
+        - order_id
+        - query_surface_id
+        - environment_id
+        - environment_name
+        - environment_type
+        - sku_id
+        - sku_type
+        - workspace_name
+        - workspace_status
+        - session_status
+        - seat_user_id
+        - clean_room_mode
+        - data_residency_mode
+        - export_policy_json
+        - output_boundary_json
+        - environment_limits_json
+        - session_started_at
+        - expire_at
+        - session_query_count
+        - export_attempt_count
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - created_at
+        - updated_at
+      properties:
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+        sandbox_session_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        environment_name:
+          type: string
+        environment_type:
+          type: string
+        network_zone:
+          type: string
+          nullable: true
+        region_code:
+          type: string
+          nullable: true
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        workspace_name:
+          type: string
+        workspace_status:
+          type: string
+        session_status:
+          type: string
+        seat_user_id:
+          type: string
+          format: uuid
+        clean_room_mode:
+          type: string
+        data_residency_mode:
+          type: string
+        export_policy_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        environment_limits_json:
+          type: object
+          additionalProperties: true
+        session_started_at:
+          type: string
+          format: date-time
+        expire_at:
+          type: string
+          format: date-time
+        session_query_count:
+          type: integer
+        export_attempt_count:
+          type: integer
+        operation:
+          type: string
+          enum: [created, updated]
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
           type: string
         created_at:
           type: string
