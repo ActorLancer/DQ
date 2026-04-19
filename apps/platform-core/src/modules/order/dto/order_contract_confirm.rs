@@ -33,6 +33,9 @@ pub struct ConfirmOrderContractResponseData {
     pub signer_type: String,
     pub signer_role: String,
     pub signed_at: String,
+    pub signature_provider_mode: String,
+    pub signature_provider_kind: String,
+    pub signature_provider_ref: String,
     pub variables_json: Value,
     pub onchain_digest_ref: String,
 }

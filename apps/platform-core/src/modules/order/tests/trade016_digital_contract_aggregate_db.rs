@@ -116,6 +116,20 @@ mod tests {
         );
         assert_eq!(json["data"]["data"]["signer_type"].as_str(), Some("user"));
         assert_eq!(
+            json["data"]["data"]["signature_provider_mode"].as_str(),
+            Some("mock")
+        );
+        assert_eq!(
+            json["data"]["data"]["signature_provider_kind"].as_str(),
+            Some("mock")
+        );
+        assert!(
+            json["data"]["data"]["signature_provider_ref"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("mock-signing-ok")
+        );
+        assert_eq!(
             json["data"]["data"]["onchain_digest_ref"].as_str(),
             Some(format!("sha256:trade016-contract:{suffix}").as_str())
         );

@@ -1312,6 +1312,9 @@ components:
           signer_type,
           signer_role,
           signed_at,
+          signature_provider_mode,
+          signature_provider_kind,
+          signature_provider_ref,
           variables_json,
           onchain_digest_ref,
         ]
@@ -1348,6 +1351,13 @@ components:
         signed_at:
           type: string
           format: date-time
+        signature_provider_mode:
+          type: string
+          enum: [mock, real]
+        signature_provider_kind:
+          type: string
+        signature_provider_ref:
+          type: string
         variables_json:
           type: object
           additionalProperties: true

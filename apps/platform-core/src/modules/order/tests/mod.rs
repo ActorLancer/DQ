@@ -22,6 +22,7 @@ mod trade022_order_relations_db;
 mod trade023_order_templates_db;
 mod trade024_illegal_state_regression_db;
 mod trade025_authorization_min_structure_db;
+mod trade026_contract_signing_provider_db;
 
 #[cfg(test)]
 mod tests {

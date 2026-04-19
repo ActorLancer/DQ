@@ -200,3 +200,4 @@
 - `BATCH-132`（`TRADE-023`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - `BATCH-133`（`TRADE-024`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - `BATCH-134`（`TRADE-025`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；修复授权聚合查询中的联表歧义列后，`scope / subject / resource / action` 最小结构已在迁移结果、订单详情聚合与生命周期快照中稳定输出；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- `BATCH-135`（`TRADE-026`，单任务批次）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；合同确认链路已接入签章 provider 占位，`local/mock` 模式下通过 `provider-kit` 生成签章引用并持久化到 `contract.contract_signer.signature_digest`，`TODO-PROC-BIL-001` 追溯约束保持不变。

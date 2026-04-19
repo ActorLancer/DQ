@@ -847,6 +847,90 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
 
+### BATCH-135（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-026
+- 当前批次目标：为合同模块补充电子签章 Provider 占位与 mock 实现；`local` 模式下合同确认链路不依赖真实签章服务。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-025` 已审批通过。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-026` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认本任务重点是“签章 provider 占位 + local mock”，不是引入真实外部服务。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务批次执行“计划中 -> 编码 -> 完整验证 -> 待审批”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：只做当前任务，不跨任务扩展。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 P2 主线批次，保持相同审计格式。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束不变。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：合同步骤必须经过电子签章，签署后进入后续支付/锁定链路。
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L530`：`DigitalContract` 表示订单签署时的合同快照，应明确签署事实与数据契约绑定。
+  - `docs/原始PRD/数据商品元信息与数据契约设计.md:L86`：契约相关事实必须独立建模，不能只靠元数据拼接。
+- technical_reference 约束映射：
+  1. `领域模型/全量领域模型与对象关系说明.md` 4.3：数字合同应承载正式签署结果，签署能力应有明确边界。
+  2. `原始PRD/数据商品元信息与数据契约设计.md` 3.2：契约事实应独立建模，不依赖松散 metadata。
+  3. `全集成文档/数据交易平台-全集成基线-V1.md` 15：统一主链路第 5 步包含电子签章，local 模式允许 mock 实现。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/contract/**`
+  - `apps/platform-core/src/modules/order/repo/order_contract_repository.rs`
+  - `apps/platform-core/src/modules/order/dto/order_contract_confirm.rs`
+  - `apps/platform-core/src/modules/order/tests/*`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade026_contract_signing_provider_db_smoke -- --nocapture`
+  4. 启动服务：`APP_PORT=8083 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `curl POST /api/v1/orders/{id}/contract-confirm` 验证 local/mock 签章结果已进入响应、持久化与审计。
+
+### BATCH-135（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-026
+- 当前批次目标：为合同模块补充电子签章 Provider 占位与 mock 实现；`local` 模式下合同确认链路不依赖真实签章服务。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-025` 已审批通过。
+- 已实现功能：
+  1. 在 `modules/contract/application` 新增签章应用层，按 `RuntimeConfig.PROVIDER_MODE` 选择 `provider-kit` 的 `mock/real SigningProvider`。
+  2. 合同确认链路改为通过签章 provider 生成签章引用，再写入 `contract.contract_signer.signature_digest`。
+  3. 合同确认响应新增 `signature_provider_mode / signature_provider_kind / signature_provider_ref`，明确签章 provider 占位结果。
+  4. `local` 模式默认走 `mock` provider，无需真实电子签章服务即可完成合同确认。
+  5. 新增 `TRADE-026` 专项 DB smoke，并补充 `TRADE-006 / TRADE-016` 断言，验证 mock provider 已实际接入主链路。
+- 涉及文件：
+  - `apps/platform-core/src/modules/contract/mod.rs`
+  - `apps/platform-core/src/modules/contract/application/mod.rs`
+  - `apps/platform-core/src/modules/contract/application/signing.rs`
+  - `apps/platform-core/src/modules/order/dto/order_contract_confirm.rs`
+  - `apps/platform-core/src/modules/order/repo/order_contract_repository.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade006_contract_confirm_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade016_digital_contract_aggregate_db.rs`
+  - `apps/platform-core/src/modules/order/tests/trade026_contract_signing_provider_db.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade026_contract_signing_provider_db_smoke -- --nocapture`
+  4. 启动最新服务：`APP_PORT=8084 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `psql` 插入临时 `FILE_STD` 合同待确认订单、模板与签署用户。
+  6. `curl POST http://127.0.0.1:8084/api/v1/orders/{id}/contract-confirm` 验证返回 mock provider 信息。
+  7. `curl GET http://127.0.0.1:8084/api/v1/orders/{id}` 验证合同已进入 `contract_effective`。
+  8. `psql` 回查 `contract.contract_signer.signature_digest` 与 `audit.audit_event`，然后清理临时业务数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`148 passed, 0 failed, 1 ignored`）。
+  - `trade026_contract_signing_provider_db_smoke`：通过。
+  - 真实 API 联调：`POST /api/v1/orders/3fa6a69f-d0ce-407f-ae29-217460b1ae5d/contract-confirm` 返回 `HTTP 200`，`signature_provider_mode=mock`、`signature_provider_kind=mock`、`signature_provider_ref=mock-signing-ok:6738b03f-8b33-49a9-8e05-dd586cd4be35:SIGN-...`。
+  - 真实 API 联调：`GET /api/v1/orders/3fa6a69f-d0ce-407f-ae29-217460b1ae5d` 返回 `HTTP 200`，订单主状态已推进到 `contract_effective`，合同聚合为 `signed`。
+  - DB 回查：`contract.contract_signer.signature_digest` 已持久化 mock provider 引用；`audit.audit_event` 命中 `trade.contract.confirm` 与 `trade.order.read`。
+  - 清理结果：临时业务测试数据已清理；审计记录按 append-only 规则保留。
+- 覆盖的冻结文档条目：
+  - `领域模型/全量领域模型与对象关系说明.md` 4.3（数字合同聚合）
+  - `原始PRD/数据商品元信息与数据契约设计.md` 3.2（契约事实独立建模）
+  - `全集成文档/数据交易平台-全集成基线-V1.md` 15（统一主链路第 5 步电子签章）
+- 覆盖的任务清单条目：`TRADE-026`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
 ### BATCH-126（计划中）
 - 状态：计划中
 - 当前任务编号：TRADE-017

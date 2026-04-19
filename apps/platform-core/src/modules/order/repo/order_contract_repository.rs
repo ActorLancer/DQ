@@ -1,3 +1,4 @@
+use crate::modules::contract::application::sign_contract_with_provider;
 use crate::modules::order::domain::derive_layered_status;
 use crate::modules::order::dto::{ConfirmOrderContractRequest, ConfirmOrderContractResponseData};
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
@@ -135,6 +136,18 @@ pub async fn confirm_order_contract(
     let contract_status: String = upserted.get(5);
     let signed_at: String = upserted.get(6);
     let variables_json: serde_json::Value = upserted.get(7);
+    let signing = sign_contract_with_provider(&contract_id, signer_id)
+        .await
+        .map_err(|err| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    code: ErrorCode::BilProviderFailed.as_str().to_string(),
+                    message: format!("CONTRACT_SIGNING_PROVIDER_FAILED: {}", err.message()),
+                    request_id: request_id.map(str::to_string),
+                }),
+            )
+        })?;
 
     let signer_exists = tx
         .query_opt(
@@ -159,7 +172,7 @@ pub async fn confirm_order_contract(
                signature_digest,
                signed_at
              ) VALUES (
-               $1::text::uuid,
+                $1::text::uuid,
                'user',
                $2::text::uuid,
                $3,
@@ -170,7 +183,7 @@ pub async fn confirm_order_contract(
                 &contract_id,
                 &signer_id,
                 &payload.signer_role,
-                &payload.contract_digest,
+                &signing.provider_ref,
             ],
         )
         .await
@@ -231,6 +244,9 @@ pub async fn confirm_order_contract(
         signer_type: "user".to_string(),
         signer_role: payload.signer_role.clone(),
         signed_at,
+        signature_provider_mode: signing.provider_mode,
+        signature_provider_kind: signing.provider_kind,
+        signature_provider_ref: signing.provider_ref,
         variables_json,
         onchain_digest_ref: contract_digest,
     })
