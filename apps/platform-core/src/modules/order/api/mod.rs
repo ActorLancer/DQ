@@ -5,8 +5,8 @@ use axum::routing::{get, post};
 pub use handlers::{
     cancel_order_api, confirm_order_contract_api, create_order_api, create_trade_pre_request,
     freeze_order_price_snapshot_api, get_order_detail_api, get_order_lifecycle_snapshots_api,
-    get_trade_pre_request, transition_api_ppu_order_api, transition_api_sub_order_api,
-    transition_file_std_order_api, transition_file_sub_order_api,
+    get_order_templates_api, get_trade_pre_request, transition_api_ppu_order_api,
+    transition_api_sub_order_api, transition_file_std_order_api, transition_file_sub_order_api,
     transition_order_authorization_api, transition_qry_lite_order_api,
     transition_rpt_std_order_api, transition_sbx_std_order_api, transition_share_ro_order_api,
 };
@@ -14,6 +14,10 @@ pub use handlers::{
 pub fn router() -> Router {
     Router::new()
         .route("/api/v1/orders", post(create_order_api))
+        .route(
+            "/api/v1/orders/standard-templates",
+            get(get_order_templates_api),
+        )
         .route("/api/v1/orders/{id}", get(get_order_detail_api))
         .route(
             "/api/v1/orders/{id}/lifecycle-snapshots",

@@ -13,6 +13,18 @@ info:
       - payment failed -> order status payment_failed_pending_resolution
       - payment timeout -> order status payment_timeout_pending_compensation_cancel
 paths:
+  /api/v1/orders/standard-templates:
+    get:
+      summary: List frozen standard order templates for the first five trade scenarios
+      operationId: listStandardOrderTemplates
+      tags: [trade]
+      responses:
+        '200':
+          description: Standard order templates found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderTemplatesResponse'
   /api/v1/orders:
     post:
       summary: Create an order from listed product and sku
@@ -396,6 +408,58 @@ paths:
                 $ref: '#/components/schemas/FreezeOrderPriceSnapshotResponse'
 components:
   schemas:
+    GetOrderTemplatesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderTemplateView'
+    OrderTemplateView:
+      type: object
+      required:
+        [
+          template_code,
+          scenario_code,
+          scenario_name,
+          industry_code,
+          primary_sku,
+          supplementary_skus,
+          contract_template,
+          acceptance_template,
+          refund_template,
+          workflow_steps,
+          order_draft,
+        ]
+      properties:
+        template_code:
+          type: string
+        scenario_code:
+          type: string
+        scenario_name:
+          type: string
+        industry_code:
+          type: string
+        primary_sku:
+          type: string
+        supplementary_skus:
+          type: array
+          items:
+            type: string
+        contract_template:
+          type: string
+        acceptance_template:
+          type: string
+        refund_template:
+          type: string
+        workflow_steps:
+          type: array
+          items:
+            type: string
+        order_draft:
+          type: object
+          additionalProperties: true
     ContractExpectationSnapshot:
       type: object
       properties:

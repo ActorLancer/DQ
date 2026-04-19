@@ -13,6 +13,7 @@ mod order_relations;
 mod order_rpt_std_transition;
 mod order_sbx_std_transition;
 mod order_share_ro_transition;
+mod order_template;
 mod pre_request;
 mod price_snapshot;
 
@@ -61,6 +62,7 @@ pub use order_sbx_std_transition::{
 pub use order_share_ro_transition::{
     ShareRoTransitionRequest, ShareRoTransitionResponse, ShareRoTransitionResponseData,
 };
+pub use order_template::OrderTemplateView;
 pub use pre_request::{
     CreateTradePreRequestRequest, TradePreRequestResponse, TradePreRequestResponseData,
 };

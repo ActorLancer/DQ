@@ -1301,3 +1301,91 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-132（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-023
+- 当前批次目标：实现五条标准链路的订单模板，固化场景到主 SKU / 可选补充 SKU / 合同模板 / 验收模板 / 退款模板 / 交易流程骨架的交易侧只读模板视图。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-022` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-023` 目标、DoD 与 `technical_reference`。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认本任务是“五条标准链路订单模板”，不是新增状态机或支付流程。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续执行“计划中 -> 编码 -> 验证 -> 待审批”。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：单任务批次，不跳步骤。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 批次审计格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯约束不变。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认，按约定不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：冻结五条标准链路与场景到 SKU/模板映射表。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：订单模板属于 `platform-core/order` 交易侧读模型。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：当前未冻结现成交易模板路径，可新增最小只读接口并保持逻辑字段命名。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本任务为静态只读模板，不新增事件主题。
+  12. `docs/开发准备/统一错误码字典正式版.md`：复用 `FORBIDDEN/NOT_FOUND/CONFLICT` 体系，不发明新错误码。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：五条标准链路需支持首批端到端验证，八个标准 SKU 必须全部挂到正式场景。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：新增独立订单模板 DTO/静态模板源/专项测试，避免堆入已有 handler 大块逻辑。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调数据库使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：不新增配置项。
+  17. `docs/开发准备/技术选型正式版.md`：静态模板由 Rust 常量视图输出，审计落 PostgreSQL。
+  18. `docs/开发准备/平台总体架构设计草案.md`：保持模块化单体内聚。
+- technical_reference 约束映射：
+  1. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L216`：五条标准链路必须覆盖工业制造/供应链、零售/本地生活两个首批行业。
+  2. `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：场景必须映射到主标准 SKU、可选补充 SKU、合同模板、验收模板、退款模板，并覆盖全部 8 个 V1 SKU。
+  3. `docs/业务流程/业务流程图-V1-完整版.md:L66`：模板需要与主业务流程对齐，为下单页/合同页/支付锁定页提供可复用标准链路骨架。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/order/dto/*`
+  - `apps/platform-core/src/modules/order/api/*`
+  - `apps/platform-core/src/modules/order/tests/*`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade023_order_templates_db_smoke -- --nocapture`
+  4. 启动服务：`KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  5. `curl` 调用交易模板接口，验证五条模板、八个 SKU 覆盖与审计记录。
+
+### BATCH-132（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-023
+- 当前批次目标：实现五条标准链路的订单模板，固化场景到主 SKU / 可选补充 SKU / 合同模板 / 验收模板 / 退款模板 / 交易流程骨架的交易侧只读模板视图。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-022` 已审批通过。
+- 已实现功能：
+  1. 新增 `GET /api/v1/orders/standard-templates`，输出五条冻结标准链路订单模板。
+  2. 固化 `S1~S5` 场景到交易侧模板视图，覆盖主 SKU、补充 SKU、合同模板、验收模板、退款模板、流程步骤与订单草稿骨架。
+  3. 通过聚合映射保证八个 V1 标准 SKU 全部出现在五条链路模板中。
+  4. 接口接入现有 `TradePermission::ReadOrder` 权限校验与 `trade.order.templates.read` 审计记录。
+  5. OpenAPI 补齐 `OrderTemplateView` 与响应契约，保持只读查询语义。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_template.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/order_templates.rs`
+  - `apps/platform-core/src/modules/order/mod.rs`
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade023_order_templates_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade023_order_templates_db_smoke -- --nocapture`
+  4. `curl -H 'x-user-id: 00000000-0000-0000-0000-000000000001' -H 'x-tenant-id: 11111111-1111-1111-1111-111111111111' -H 'x-role: tenant_admin' -H 'x-request-id: trade023-api-001' http://127.0.0.1:8080/api/v1/orders/standard-templates`
+  5. `psql postgresql://datab:datab_local_pass@127.0.0.1:5432/datab -At -F $'\t' -c "select action_name, ref_type, ref_id, request_id from audit.audit_event where request_id = 'trade023-api-001' order by event_time desc limit 5;"`
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`143 passed, 0 failed, 1 ignored`）。
+  - `trade023_order_templates_db_smoke`：通过。
+  - API 联调：`GET /api/v1/orders/standard-templates` 返回 `HTTP 200`，共 `5` 条模板，场景覆盖 `S1,S2,S3,S4,S5`。
+  - API 联调：返回模板覆盖八个标准 SKU：`API_SUB, API_PPU, FILE_STD, FILE_SUB, SBX_STD, SHARE_RO, QRY_LITE, RPT_STD`。
+  - API 联调：每条模板的 `order_draft.per_sku_snapshot_required=true`，符合冻结要求。
+  - DB 回查：`audit.audit_event` 命中 `trade.order.templates.read / trade_order_templates / 00000000-0000-0000-0000-000000000123 / trade023-api-001`。
+- 覆盖的冻结文档条目：
+  - `数据交易平台-全集成基线-V1` 5.3.2（五条标准链路）
+  - `数据交易平台-全集成基线-V1` 5.3.2A（场景到 SKU/模板映射）
+  - `业务流程图-V1-完整版` 4.1（主业务流程骨架）
+- 覆盖的任务清单条目：`TRADE-023`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

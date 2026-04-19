@@ -6,11 +6,12 @@ use crate::modules::order::dto::{
     FileSubTransitionRequest, FileSubTransitionResponse, FreezeOrderPriceSnapshotResponse,
     FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
     GetOrderLifecycleSnapshotsResponse, OrderAuthorizationTransitionRequest,
-    OrderAuthorizationTransitionResponse, QryLiteTransitionRequest, QryLiteTransitionResponse,
-    RptStdTransitionRequest, RptStdTransitionResponse, SbxStdTransitionRequest,
-    SbxStdTransitionResponse, ShareRoTransitionRequest, ShareRoTransitionResponse,
-    TradePreRequestResponse, TradePreRequestResponseData,
+    OrderAuthorizationTransitionResponse, OrderTemplateView, QryLiteTransitionRequest,
+    QryLiteTransitionResponse, RptStdTransitionRequest, RptStdTransitionResponse,
+    SbxStdTransitionRequest, SbxStdTransitionResponse, ShareRoTransitionRequest,
+    ShareRoTransitionResponse, TradePreRequestResponse, TradePreRequestResponseData,
 };
+use crate::modules::order::order_templates::standard_order_templates;
 use crate::modules::order::repo::{
     cancel_order_with_state_machine, confirm_order_contract, create_order_with_snapshot,
     find_order_by_idempotency, freeze_order_price_snapshot, insert_trade_pre_request,
@@ -27,6 +28,8 @@ use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
 use tokio_postgres::NoTls;
 use tracing::info;
+
+const STANDARD_ORDER_TEMPLATE_REF_ID: &str = "00000000-0000-0000-0000-000000000123";
 
 pub async fn create_order_api(
     headers: HeaderMap,
@@ -81,6 +84,38 @@ pub async fn create_order_api(
         "order created"
     );
     Ok(ApiResponse::ok(CreateOrderResponse { data: created }))
+}
+
+pub async fn get_order_templates_api(
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<Vec<OrderTemplateView>>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(&headers, TradePermission::ReadOrder, "order template read")?;
+    let dsn = database_dsn()?;
+    let (client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    write_trade_audit_event(
+        &client,
+        "trade_order_templates",
+        STANDARD_ORDER_TEMPLATE_REF_ID,
+        &actor_role,
+        "trade.order.templates.read",
+        "success",
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+    info!(
+        action = "trade.order.templates.read",
+        template_count = standard_order_templates().len(),
+        "order templates queried"
+    );
+    Ok(ApiResponse::ok(standard_order_templates()))
 }
 
 pub async fn get_order_detail_api(
