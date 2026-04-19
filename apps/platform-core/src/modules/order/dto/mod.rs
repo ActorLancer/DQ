@@ -1,5 +1,6 @@
 mod order_api_ppu_transition;
 mod order_api_sub_transition;
+mod order_authorization_transition;
 mod order_cancel;
 mod order_contract_confirm;
 mod order_create;
@@ -18,6 +19,10 @@ pub use order_api_ppu_transition::{
 };
 pub use order_api_sub_transition::{
     ApiSubTransitionRequest, ApiSubTransitionResponse, ApiSubTransitionResponseData,
+};
+pub use order_authorization_transition::{
+    OrderAuthorizationTransitionRequest, OrderAuthorizationTransitionResponse,
+    OrderAuthorizationTransitionResponseData,
 };
 pub use order_cancel::{CancelOrderResponse, CancelOrderResponseData};
 pub use order_contract_confirm::{

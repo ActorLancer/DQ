@@ -4,19 +4,21 @@ use crate::modules::order::dto::{
     ConfirmOrderContractResponse, CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData,
     CreateTradePreRequestRequest, FileStdTransitionRequest, FileStdTransitionResponse,
     FileSubTransitionRequest, FileSubTransitionResponse, FreezeOrderPriceSnapshotResponse,
-    FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse, QryLiteTransitionRequest,
-    QryLiteTransitionResponse, RptStdTransitionRequest, RptStdTransitionResponse,
-    SbxStdTransitionRequest, SbxStdTransitionResponse, ShareRoTransitionRequest,
-    ShareRoTransitionResponse, TradePreRequestResponse, TradePreRequestResponseData,
+    FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
+    OrderAuthorizationTransitionRequest, OrderAuthorizationTransitionResponse,
+    QryLiteTransitionRequest, QryLiteTransitionResponse, RptStdTransitionRequest,
+    RptStdTransitionResponse, SbxStdTransitionRequest, SbxStdTransitionResponse,
+    ShareRoTransitionRequest, ShareRoTransitionResponse, TradePreRequestResponse,
+    TradePreRequestResponseData,
 };
 use crate::modules::order::repo::{
     cancel_order_with_state_machine, confirm_order_contract, create_order_with_snapshot,
     find_order_by_idempotency, freeze_order_price_snapshot, insert_trade_pre_request,
     load_order_cancel_context, load_order_contract_confirm_context, load_order_detail,
     load_trade_pre_request, transition_api_ppu_order, transition_api_sub_order,
-    transition_file_std_order, transition_file_sub_order, transition_qry_lite_order,
-    transition_rpt_std_order, transition_sbx_std_order, transition_share_ro_order,
-    write_trade_audit_event,
+    transition_file_std_order, transition_file_sub_order, transition_order_authorization,
+    transition_qry_lite_order, transition_rpt_std_order, transition_sbx_std_order,
+    transition_share_ro_order, write_trade_audit_event,
 };
 use axum::Json;
 use axum::extract::Path;
@@ -241,6 +243,67 @@ pub async fn confirm_order_contract_api(
     );
     Ok(ApiResponse::ok(ConfirmOrderContractResponse {
         data: confirmed,
+    }))
+}
+
+pub async fn transition_order_authorization_api(
+    headers: HeaderMap,
+    Path(order_id): Path<String>,
+    Json(payload): Json<OrderAuthorizationTransitionRequest>,
+) -> Result<
+    Json<ApiResponse<OrderAuthorizationTransitionResponse>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    require_permission(
+        &headers,
+        TradePermission::TransitionAuthorization,
+        "order authorization transition",
+    )?;
+    let dsn = database_dsn()?;
+    let (mut client, connection) = tokio_postgres::connect(&dsn, NoTls)
+        .await
+        .map_err(map_db_connect)?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let Some(order_scope) = load_order_cancel_context(&client, &order_id).await? else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                message: format!("order not found: {order_id}"),
+                request_id: header(&headers, "x-request-id"),
+            }),
+        ));
+    };
+    enforce_order_read_scope(
+        &headers,
+        &order_scope.buyer_org_id,
+        &order_scope.seller_org_id,
+    )?;
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let transitioned = transition_order_authorization(
+        &mut client,
+        &order_id,
+        &payload,
+        &actor_role,
+        header(&headers, "x-request-id").as_deref(),
+        header(&headers, "x-trace-id").as_deref(),
+    )
+    .await?;
+
+    info!(
+        action = "trade.order.authorization.transition",
+        order_id = %transitioned.order_id,
+        authorization_id = %transitioned.authorization_id,
+        transition_action = %transitioned.action,
+        previous_status = ?transitioned.previous_status,
+        current_status = %transitioned.current_status,
+        "order authorization transitioned"
+    );
+    Ok(ApiResponse::ok(OrderAuthorizationTransitionResponse {
+        data: transitioned,
     }))
 }
 
@@ -841,6 +904,7 @@ enum TradePermission {
     ReadOrder,
     CancelOrder,
     ConfirmContract,
+    TransitionAuthorization,
     TransitionFileStd,
     TransitionFileSub,
     TransitionApiSub,
@@ -876,6 +940,14 @@ fn is_allowed(role: &str, permission: TradePermission) -> bool {
         TradePermission::ConfirmContract => {
             matches!(role, "buyer_operator" | "tenant_admin" | "platform_admin")
         }
+        TradePermission::TransitionAuthorization => matches!(
+            role,
+            "buyer_operator"
+                | "seller_operator"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
         TradePermission::TransitionFileStd => matches!(
             role,
             "buyer_operator"

@@ -769,3 +769,96 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-126（计划中）
+- 状态：计划中
+- 当前任务编号：TRADE-017
+- 当前批次目标：实现授权聚合：Authorization、UsagePolicy、grant、revoke、expire、suspend、恢复。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-016` 已审批通过。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `TRADE-017` 描述、DoD、验收与 technical_reference。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：确认 `TRADE-017` 详细语义与顺序执行要求。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：按“计划中→编码→验证→待审批”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：遵循单任务批次与不可跳步。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：延续批次编号与记录格式。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：确认 `TODO-PROC-BIL-001` 持续追溯要求。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读确认（按约定不写入）。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认核心交易链授权节点与审计约束。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：确认授权聚合归属 `platform-core` 且 PostgreSQL 为权威。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：对齐交易接口对象化字段与 OpenAPI 一致性。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：确认授权动作需有可追溯审计留痕。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` / `IAM_UNAUTHORIZED` / `AUTHORIZATION_NOT_ACTIVE` 口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：对齐交易主链授权状态与审计验证要求。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：保持 order/authorization 分层与可审查性。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 `datab-postgres:5432`。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：接口联调沿用环境变量注入方式。
+  17. `docs/开发准备/技术选型正式版.md`：遵循“业务真值回 PostgreSQL”。
+  18. `docs/开发准备/平台总体架构设计草案.md`：维持模块化单体内聚实现，不引入越界能力。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L530`：`Authorization` 作为独立聚合对象，`UsagePolicy 1 -> N Authorization`，实现层可用 `authorization_grant` 存储名。
+  2. `docs/原始PRD/数据商品查询与执行面设计.md:L185`：授权必须表达“主体、模板/范围、时效、导出限制”，并可与审计联动。
+  3. `docs/原始PRD/敏感数据处理与受控交付设计.md:L124`：敏感数据交易需策略快照化，支持风控收口与生命周期控制（含暂停/恢复）。
+
+### BATCH-126（待审批）
+- 状态：待审批
+- 当前任务编号：TRADE-017
+- 当前批次目标：实现授权聚合：Authorization、UsagePolicy、grant、revoke、expire、suspend、恢复。
+- 前置依赖核对结果：`CORE-014; DB-006; IAM-001; CAT-001` 已完成且审批通过；`TRADE-016` 已审批通过。
+- 已实现功能：
+  1. 新增订单授权聚合接口：`POST /api/v1/orders/{id}/authorization/transition`，支持 `grant/revoke/expire/suspend/recover`。
+  2. 新增授权聚合仓储状态机：
+     - `grant`：写入 `trade.authorization_grant(active)`，回填 `trade.order_main.policy_id`；
+     - `suspend/recover`：在 `active <-> suspended` 间切换；
+     - `revoke/expire`：终态落 `revoked/expired` 且补齐 `valid_to`。
+  3. 新增 `UsagePolicy` 解析与绑定规则：优先 `payload.policy_id`，其次 `order_main.policy_id`，否则回退 `contract.policy_binding(product/sku)`。
+  4. 新增授权聚合审计动作：`trade.authorization.grant/revoke/expire/suspend/recover`。
+  5. 新增 `TRADE-017` DB smoke：覆盖 `grant->suspend->recover->expire` 与 `grant->revoke` 两条链路。
+  6. 更新 OpenAPI：新增 path 与请求/响应 schema，保持既有接口不变。
+- 涉及文件：
+  - `apps/platform-core/src/modules/order/dto/order_authorization_transition.rs`
+  - `apps/platform-core/src/modules/order/dto/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_authorization_repository.rs`
+  - `apps/platform-core/src/modules/order/repo/mod.rs`
+  - `apps/platform-core/src/modules/order/api/handlers.rs`
+  - `apps/platform-core/src/modules/order/api/mod.rs`
+  - `apps/platform-core/src/modules/order/tests/trade017_authorization_aggregate_db.rs`
+  - `apps/platform-core/src/modules/order/tests/mod.rs`
+  - `packages/openapi/trade.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade017_authorization_aggregate_db_smoke -- --nocapture`
+  4. `make up-local`
+  5. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+  6. 启动服务：`APP_PORT=18085 DATABASE_URL=... KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+  7. `psql` 插入联调测试数据（buyer/seller/asset/version/product/sku/usage_policy/policy_binding/order）。
+  8. `curl` 调用 `grant -> suspend -> recover -> expire`。
+  9. `psql` 回查 `trade.authorization_grant`、`trade.order_main.policy_id`、`audit.audit_event`。
+  10. 清理临时业务测试数据（审计 append-only 保留）。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo test -p platform-core`：通过（`134 passed, 0 failed, 1 ignored`）。
+  - `trade017_authorization_aggregate_db_smoke`：通过（`1 passed`，连接 `datab-postgres:5432`）。
+  - `make up-local`：通过，核心容器就绪。
+  - `check-local-stack core`：脚本仍报告 `5432` 不可达；但后续 `psql`、DB smoke、`curl` 全部成功，判定为脚本可达性噪声。
+  - API 联调（新鲜测试数据）：
+    - `grant` 返回 `HTTP 200`，`current_status=active`；
+    - `suspend` 返回 `HTTP 200`，`current_status=suspended`；
+    - `recover` 返回 `HTTP 200`，`current_status=active`；
+    - `expire` 返回 `HTTP 200`，`current_status=expired`。
+  - DB 回查：
+    - `trade.authorization_grant.status=expired` 且 `valid_to` 已写入；
+    - `trade.order_main.policy_id` 正确回填为策略 ID；
+    - 审计计数：`trade.authorization.grant/suspend/recover/expire` 各 `1`。
+  - 清理结果：临时业务数据已清理；审计记录保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.3（`UsagePolicy 1->N Authorization`，授权作为独立聚合）
+  - `原始PRD/数据商品查询与执行面设计` 8.1（授权表达主体/范围/时效/导出约束）
+  - `原始PRD/敏感数据处理与受控交付设计` 5（策略快照化与敏感链路风控收口）
+  - `数据库表字典` `trade.authorization_grant`、`contract.usage_policy` 字段口径
+- 覆盖的任务清单条目：`TRADE-017`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
