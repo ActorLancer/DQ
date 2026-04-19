@@ -4331,3 +4331,88 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-162（计划中）
+- 任务：DLV-020 Delivery 回执 outbox 事件
+- 状态：计划中
+- 说明：为文件交付、API 开通、共享开通、模板授权、沙箱开通、报告交付六条路径补齐标准化 outbox 事件，统一写入 `ops.outbox_event` 并完成联调验证。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+
+### BATCH-162（待审批）
+- 任务：`DLV-020` Delivery 回执 outbox 事件
+- 前置依赖：`TRADE-003 / TRADE-007 / DB-006 / DB-019 / DB-020 / CORE-008` 已完成并已审批，本批按单任务流程继续执行。
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`（`DLV-020` 定义、依赖、交付路径、验收口径）
+  - `docs/开发任务/v1-core-开发任务清单.md`（`DLV-020` 详细说明）
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`（计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> commit）
+  - `docs/开发任务/AI-Agent-执行提示词.md`（单任务严格执行口径）
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`（当前批次续写）
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`（追溯约束续写）
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`（交付/验收/审计闭环约束）
+  - `docs/开发准备/服务清单与服务边界正式版.md`（Delivery / Storage / Query / Kafka 边界）
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`（交付 API 冻结口径）
+  - `docs/开发准备/事件模型与Topic清单正式版.md`（领域事件与 topic 命名口径）
+  - `docs/开发准备/统一错误码字典正式版.md`（保持现有错误码口径）
+  - `docs/开发准备/测试用例矩阵正式版.md`（交付事件与联调覆盖要求）
+  - `docs/开发准备/仓库拆分与目录结构建议.md`（delivery 子域分层继续沿用）
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`（Kafka / PostgreSQL 本地栈）
+  - `docs/开发准备/配置项与密钥管理清单.md`（对象存储 bucket / 事件总线配置）
+  - `docs/开发准备/技术选型正式版.md`（当前基线：SQLx + SeaORM）
+  - `docs/开发准备/平台总体架构设计草案.md`（交付聚合与异步桥接关系）
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15`（12.2 事件模型：`DeliveryCommitted` 作为标准领域事件）
+  - `docs/原始PRD/双层权威模型与链上链下一致性设计.md:L329`（7.1 `outbox_event` 必填字段与投递要求）
+  - `docs/业务流程/业务流程图-V1-完整版.md:L268`（4.4 交付、验真与验收主流程）
+- 实现内容：
+  - 新增 `delivery/repo/outbox_repository.rs`，统一构造 `delivery.committed` 标准 outbox payload，并写入 `ops.outbox_event`。
+  - 统一冻结并写入：`event_schema_version / authority_scope / source_of_truth / proof_commit_policy / target_bus / target_topic / partition_key / ordering_key / payload_hash`。
+  - 为以下真实交付/开通路径补齐 outbox 事件：
+    - 文件交付 `file`
+    - API 开通 `api`（覆盖 `API_SUB / API_PPU`）
+    - 共享开通 `share`
+    - 模板授权 `template`
+    - 沙箱开通 `sandbox`
+    - 报告交付 `report`
+  - `delivery` API handler 补传 `x-idempotency-key` 到相关写路径，确保幂等键进入 outbox 落库。
+  - 补强 `dlv002 / dlv006 / dlv007 / dlv011 / dlv014 / dlv017` DB smoke，断言 `ops.outbox_event` 的 topic、branch、order_id、receipt_hash 等关键字段。
+  - `packages/openapi/delivery.yaml` 已补充标准化 Delivery 回执 outbox 事件说明。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv006_share_grant_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv007_api_delivery_db_smoke -- --nocapture`
+  7. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv011_template_grant_db_smoke -- --nocapture`
+  8. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv014_sandbox_workspace_db_smoke -- --nocapture`
+  9. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv017_report_delivery_db_smoke -- --nocapture`
+  10. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  11. `./scripts/check-query-compile.sh`
+  12. 启动服务：`APP_PORT=8113 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  13. 使用真实 PostgreSQL + `curl` 依次联调 `file / api_sub / api_ppu / share / template / sandbox / report` 七条请求路径，回查 `ops.outbox_event / audit.audit_event` 后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`184 passed, 0 failed, 1 ignored`）。
+  - `dlv002 / dlv006 / dlv007 / dlv011 / dlv014 / dlv017` DB smoke：全部通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `file`：`HTTP 200`，并写出 `delivery_branch=file` outbox
+    - `api`：`API_SUB / API_PPU` 两条 `HTTP 200`，并各自写出 `delivery_branch=api` outbox
+    - `share`：`HTTP 200`，并写出 `delivery_branch=share` outbox
+    - `template`：`HTTP 200`，并写出 `delivery_branch=template` outbox
+    - `sandbox`：`HTTP 200`，并写出 `delivery_branch=sandbox` outbox
+    - `report`：`HTTP 200`，并写出 `delivery_branch=report` outbox
+  - DB 回查通过：
+    - `ops.outbox_event`：共命中 `7` 条 `delivery.committed` 记录，`target_topic=dtp.outbox.domain-events`
+    - `audit.audit_event`：共命中 `18` 条相关审计，覆盖 `delivery.file.commit / delivery.api.enable / delivery.share.enable / delivery.template_query.enable / delivery.sandbox.enable / delivery.report.commit` 与对应交易状态推进审计
+  - 清理结果：临时业务数据已删除；审计与 outbox 记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `12.2 事件模型`：`DeliveryCommitted` 作为标准领域事件
+  - `7.1 outbox_event`：请求链路字段、目标总线、幂等与投递元数据齐备
+  - `4.4 交付、验真与验收主流程`：六类交付/开通动作均补齐交付回执事件
+  - `全集成基线-V1` 15：交付、验收、审计、异步桥接链路一致
+- 覆盖的任务清单条目：`DLV-020`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

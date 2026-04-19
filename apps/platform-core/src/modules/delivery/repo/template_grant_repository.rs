@@ -1,3 +1,6 @@
+use super::outbox_repository::{
+    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+};
 use crate::modules::delivery::dto::{ManageTemplateGrantRequest, TemplateGrantResponseData};
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, write_delivery_audit_event,
@@ -23,6 +26,7 @@ pub async fn manage_template_grant(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<TemplateGrantResponseData, (StatusCode, Json<ErrorResponse>)> {
     let tx = client.transaction().await.map_err(map_db_error)?;
     let context = load_template_grant_context(&tx, order_id, request_id).await?;
@@ -281,6 +285,52 @@ pub async fn manage_template_grant(
             "current_state": target_state,
             "delivery_status": delivery_status,
         }),
+    )
+    .await?;
+    let delivery_id = context
+        .committed_delivery_id
+        .clone()
+        .unwrap_or_else(|| prepared.delivery_id.clone());
+    let acceptance_status = "not_started";
+    let settlement_status = if context.payment_status == "paid" {
+        "pending_settlement"
+    } else {
+        "not_started"
+    };
+    write_delivery_receipt_outbox_event(
+        &tx,
+        &delivery_id,
+        &build_delivery_receipt_outbox_payload(
+            "template",
+            order_id,
+            &delivery_id,
+            &context.sku_type,
+            actor_role,
+            &context.buyer_org_id,
+            &context.seller_org_id,
+            target_state,
+            &context.payment_status,
+            &delivery_status,
+            acceptance_status,
+            settlement_status,
+            "none",
+            Some(template_digest.as_str()),
+            Some(template_digest.as_str()),
+            Some("template_grant"),
+            Some("template_query"),
+            None,
+            json!({
+                "template_query_grant_id": row.get::<_, String>(0),
+                "query_surface_id": query_surface_id,
+                "template_type": template_type,
+                "template_digest": template_digest,
+                "allowed_template_ids": allowed_template_ids,
+                "operation": operation,
+            }),
+        ),
+        request_id,
+        trace_id,
+        idempotency_key,
     )
     .await?;
 

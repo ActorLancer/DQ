@@ -20,7 +20,7 @@ info:
     workspace enablement for SBX_STD orders with workspace/session
     provisioning, expiry, and export-policy snapshots; DLV-019 freezes a
     placeholder watermark/fingerprint policy on file/report delivery objects so
-    future watermark pipelines can attach without changing the read contract.
+    future watermark pipelines can attach without changing the read contract; DLV-020 adds standardized delivery receipt outbox events for file/api/share/template/sandbox/report branches.
 servers:
   - url: http://127.0.0.1:8080
 paths:

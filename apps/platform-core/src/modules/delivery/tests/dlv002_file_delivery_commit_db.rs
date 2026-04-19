@@ -221,6 +221,38 @@ mod tests {
             .get(0);
         assert_eq!(audit_count, 1);
 
+        let outbox_row = client
+            .query_one(
+                "SELECT target_topic,
+                        payload ->> 'delivery_branch',
+                        payload ->> 'order_id',
+                        payload ->> 'receipt_hash'
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'delivery.committed'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&request_id],
+            )
+            .await
+            .expect("query outbox row");
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(0).as_deref(),
+            Some("dtp.outbox.domain-events")
+        );
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(1).as_deref(),
+            Some("file")
+        );
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(2).as_deref(),
+            Some(seed.order_id.as_str())
+        );
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(3).as_deref(),
+            Some(format!("receipt-{suffix}").as_str())
+        );
+
         cleanup_seed_graph(&client, &seed).await;
     }
 

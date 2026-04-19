@@ -1,3 +1,6 @@
+use super::outbox_repository::{
+    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+};
 use crate::modules::delivery::domain::{build_watermark_placeholder_patch, merge_snapshot_patch};
 use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponseData};
 use crate::modules::delivery::repo::file_delivery_repository::{
@@ -24,6 +27,7 @@ pub async fn commit_report_delivery(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<CommitOrderDeliveryResponseData, (StatusCode, Json<ErrorResponse>)> {
     validate_report_commit_request(payload, request_id)?;
 
@@ -457,6 +461,43 @@ pub async fn commit_report_delivery(
             "buyer_org_id": buyer_org_id,
             "seller_org_id": seller_org_id,
         }),
+    )
+    .await?;
+    write_delivery_receipt_outbox_event(
+        &tx,
+        &prepared_delivery_id,
+        &build_delivery_receipt_outbox_payload(
+            "report",
+            order_id,
+            &prepared_delivery_id,
+            &sku_type,
+            actor_role,
+            &buyer_org_id,
+            &seller_org_id,
+            "report_delivered",
+            &payment_status,
+            &layered_status.delivery_status,
+            &layered_status.acceptance_status,
+            &layered_status.settlement_status,
+            &layered_status.dispute_status,
+            payload.receipt_hash.as_deref(),
+            payload.delivery_commit_hash.as_deref(),
+            Some("report_delivery"),
+            delivery_route_snapshot.as_deref(),
+            Some(&committed_at),
+            json!({
+                "report_artifact_id": report_artifact_id,
+                "report_type": report_type,
+                "report_version_no": version_no,
+                "report_hash": payload.content_hash,
+                "bucket_name": bucket_name,
+                "object_key": object_key,
+                "object_id": object_id,
+            }),
+        ),
+        request_id,
+        trace_id,
+        idempotency_key,
     )
     .await?;
 

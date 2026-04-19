@@ -70,6 +70,7 @@ pub async fn commit_order_delivery_api(
     let tenant_id = header(&headers, "x-tenant-id");
     let request_id = header(&headers, "x-request-id");
     let trace_id = header(&headers, "x-trace-id");
+    let idempotency_key = header(&headers, "x-idempotency-key");
 
     let mut client = state.db.client().map_err(map_db_connect)?;
     let committed = match branch.as_str() {
@@ -82,6 +83,7 @@ pub async fn commit_order_delivery_api(
                 &actor_role,
                 request_id.as_deref(),
                 trace_id.as_deref(),
+                idempotency_key.as_deref(),
             )
             .await?
         }
@@ -94,6 +96,7 @@ pub async fn commit_order_delivery_api(
                 &actor_role,
                 request_id.as_deref(),
                 trace_id.as_deref(),
+                idempotency_key.as_deref(),
             )
             .await?
         }
@@ -106,6 +109,7 @@ pub async fn commit_order_delivery_api(
                 &actor_role,
                 request_id.as_deref(),
                 trace_id.as_deref(),
+                idempotency_key.as_deref(),
             )
             .await?
         }
@@ -391,6 +395,7 @@ pub async fn manage_sandbox_workspace_api(
     let tenant_id = header(&headers, "x-tenant-id");
     let request_id = header(&headers, "x-request-id");
     let trace_id = header(&headers, "x-trace-id");
+    let idempotency_key = header(&headers, "x-idempotency-key");
 
     let mut client = state.db.client().map_err(map_db_connect)?;
     let workspace = manage_sandbox_workspace(
@@ -401,6 +406,7 @@ pub async fn manage_sandbox_workspace_api(
         &actor_role,
         request_id.as_deref(),
         trace_id.as_deref(),
+        idempotency_key.as_deref(),
     )
     .await?;
 
@@ -555,6 +561,7 @@ pub async fn manage_share_grant_api(
     let tenant_id = header(&headers, "x-tenant-id");
     let request_id = header(&headers, "x-request-id");
     let trace_id = header(&headers, "x-trace-id");
+    let idempotency_key = header(&headers, "x-idempotency-key");
 
     let mut client = state.db.client().map_err(map_db_connect)?;
     let share_grant = manage_share_grant(
@@ -565,6 +572,7 @@ pub async fn manage_share_grant_api(
         &actor_role,
         request_id.as_deref(),
         trace_id.as_deref(),
+        idempotency_key.as_deref(),
     )
     .await?;
 
@@ -589,6 +597,7 @@ pub async fn manage_template_grant_api(
     let tenant_id = header(&headers, "x-tenant-id");
     let request_id = header(&headers, "x-request-id");
     let trace_id = header(&headers, "x-trace-id");
+    let idempotency_key = header(&headers, "x-idempotency-key");
 
     let mut client = state.db.client().map_err(map_db_connect)?;
     let template_grant = manage_template_grant(
@@ -599,6 +608,7 @@ pub async fn manage_template_grant_api(
         &actor_role,
         request_id.as_deref(),
         trace_id.as_deref(),
+        idempotency_key.as_deref(),
     )
     .await?;
 

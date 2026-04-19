@@ -277,7 +277,8 @@ mod tests {
                 "SELECT action_name, ref_type, ref_id::text
                  FROM audit.audit_event
                  WHERE request_id = $1
-                 ORDER BY event_time DESC
+                   AND action_name = 'delivery.sandbox.enable'
+                 ORDER BY event_time DESC, audit_id DESC
                  LIMIT 1",
                 &[&create_request_id],
             )
@@ -289,6 +290,33 @@ mod tests {
         );
         assert_eq!(delivery_audit_row.get::<_, String>(1), "sandbox_workspace");
         assert_eq!(delivery_audit_row.get::<_, String>(2), sandbox_workspace_id);
+
+        let outbox_row = client
+            .query_one(
+                "SELECT target_topic,
+                        payload ->> 'delivery_branch',
+                        payload ->> 'order_id'
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'delivery.committed'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&create_request_id],
+            )
+            .await
+            .expect("sandbox outbox row");
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(0).as_deref(),
+            Some("dtp.outbox.domain-events")
+        );
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(1).as_deref(),
+            Some("sandbox")
+        );
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(2).as_deref(),
+            Some(seed.order_id.as_str())
+        );
 
         cleanup_seed_graph(&client, &seed).await;
     }

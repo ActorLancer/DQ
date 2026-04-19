@@ -1,3 +1,6 @@
+use super::outbox_repository::{
+    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+};
 use crate::modules::delivery::dto::{
     ManageSandboxWorkspaceRequest, SandboxAttestationRefModel, SandboxExecutionEnvironmentModel,
     SandboxExportControlModel, SandboxRuntimeIsolationModel, SandboxSeatModel, SandboxSessionModel,
@@ -33,6 +36,7 @@ pub async fn manage_sandbox_workspace(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<SandboxWorkspaceResponseData, (StatusCode, Json<ErrorResponse>)> {
     let tx = client.transaction().await.map_err(map_db_error)?;
     let context = load_sandbox_context(&tx, order_id, request_id).await?;
@@ -492,6 +496,50 @@ pub async fn manage_sandbox_workspace(
             "operation": operation.to_string(),
             "delivery_id": prepared.delivery_id,
         }),
+    )
+    .await?;
+    write_delivery_receipt_outbox_event(
+        &tx,
+        &prepared.delivery_id,
+        &build_delivery_receipt_outbox_payload(
+            "sandbox",
+            order_id,
+            &prepared.delivery_id,
+            &context.sku_type,
+            actor_role,
+            &context.buyer_org_id,
+            &context.seller_org_id,
+            &target_state,
+            &context.payment_status,
+            &layered_status.delivery_status,
+            &layered_status.acceptance_status,
+            &layered_status.settlement_status,
+            &layered_status.dispute_status,
+            Some(receipt_hash.as_str()),
+            Some(delivery_commit_hash.as_str()),
+            Some("sandbox_workspace"),
+            Some("sandbox_query"),
+            None,
+            json!({
+                "sandbox_workspace_id": sandbox_workspace_id,
+                "sandbox_session_id": sandbox_session_id,
+                "query_surface_id": query_surface_id,
+                "environment_id": environment.environment_id,
+                "seat_user_id": session_user_id,
+                "runtime_provider": execution_environment_model_json["runtime_isolation"]["runtime_provider"].clone(),
+                "runtime_mode": execution_environment_model_json["runtime_isolation"]["runtime_mode"].clone(),
+                "runtime_class": execution_environment_model_json["runtime_isolation"]["runtime_class"].clone(),
+                "sensitive_execution_policy_id": sensitive_execution_policy.sensitive_execution_policy_id,
+                "attestation_record_id": attestation_reference
+                    .as_ref()
+                    .map(|attestation| attestation.attestation_record_id.clone()),
+                "session_expire_at": session_expire_at,
+                "operation": operation,
+            }),
+        ),
+        request_id,
+        trace_id,
+        idempotency_key,
     )
     .await?;
 

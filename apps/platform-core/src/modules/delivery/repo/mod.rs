@@ -4,6 +4,7 @@ mod api_usage_log_repository;
 mod download_file_repository;
 mod download_ticket_repository;
 mod file_delivery_repository;
+mod outbox_repository;
 mod query_run_read_repository;
 mod query_run_repository;
 mod query_surface_repository;

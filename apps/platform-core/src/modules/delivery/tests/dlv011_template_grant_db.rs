@@ -328,6 +328,21 @@ mod tests {
             .get(0);
         assert_eq!(trade_audit_count, 2);
 
+        let outbox_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE event_type = 'delivery.committed'
+                   AND request_id IN ($1, $2)
+                   AND payload ->> 'delivery_branch' = 'template'
+                   AND target_topic = 'dtp.outbox.domain-events'",
+                &[&create_request_id, &update_request_id],
+            )
+            .await
+            .expect("template outbox count")
+            .get(0);
+        assert_eq!(outbox_count, 2);
+
         cleanup_seed_graph(&client, &seed).await;
     }
 

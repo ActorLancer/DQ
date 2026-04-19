@@ -1,3 +1,6 @@
+use super::outbox_repository::{
+    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+};
 use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponseData};
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
@@ -23,6 +26,7 @@ pub async fn commit_api_delivery(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<CommitOrderDeliveryResponseData, (StatusCode, Json<ErrorResponse>)> {
     validate_api_commit_request(payload, request_id)?;
 
@@ -369,6 +373,47 @@ pub async fn commit_api_delivery(
             "upstream_mode": upstream_mode,
             "api_endpoint_object_id": endpoint.asset_object_id,
         }),
+    )
+    .await?;
+    write_delivery_receipt_outbox_event(
+        &tx,
+        &prepared.delivery_id,
+        &build_delivery_receipt_outbox_payload(
+            "api",
+            order_id,
+            &prepared.delivery_id,
+            &sku_type,
+            actor_role,
+            &buyer_org_id,
+            &seller_org_id,
+            &target_state,
+            &payment_status,
+            &layered_status.delivery_status,
+            &layered_status.acceptance_status,
+            &layered_status.settlement_status,
+            &layered_status.dispute_status,
+            payload.receipt_hash.as_deref(),
+            payload.delivery_commit_hash.as_deref(),
+            Some("api_access"),
+            Some(&upstream_mode),
+            Some(&committed_at),
+            json!({
+                "app_id": app.app_id,
+                "app_name": app.app_name,
+                "app_type": app.app_type,
+                "client_id": app.client_id,
+                "api_credential_id": api_credential_id,
+                "api_key_hint": api_key_hint,
+                "endpoint_uri": endpoint.endpoint_uri,
+                "quota_json": quota_json,
+                "rate_limit_json": rate_limit_json,
+                "upstream_mode": upstream_mode,
+                "api_endpoint_object_id": endpoint.asset_object_id,
+            }),
+        ),
+        request_id,
+        trace_id,
+        idempotency_key,
     )
     .await?;
 

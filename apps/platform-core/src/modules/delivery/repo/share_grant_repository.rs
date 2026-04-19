@@ -1,3 +1,6 @@
+use super::outbox_repository::{
+    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+};
 use crate::modules::delivery::dto::{
     ManageShareGrantRequest, ShareGrantListResponseData, ShareGrantResponseData,
 };
@@ -22,6 +25,7 @@ pub async fn manage_share_grant(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<ShareGrantResponseData, (StatusCode, Json<ErrorResponse>)> {
     let tx = client.transaction().await.map_err(map_db_error)?;
     let mut context = load_share_context(&tx, order_id, request_id).await?;
@@ -273,6 +277,50 @@ pub async fn manage_share_grant(
                 "access_locator": access_locator,
                 "current_state": target_state,
             }),
+        )
+        .await?;
+        let delivery_id = context
+            .committed_delivery_id
+            .clone()
+            .or_else(|| context.prepared_delivery_id.clone())
+            .expect("share delivery id must exist");
+        let delivery_commit_hash = format!("share-grant:{share_protocol}:{receipt_hash}");
+        write_delivery_receipt_outbox_event(
+            &tx,
+            &delivery_id,
+            &build_delivery_receipt_outbox_payload(
+                "share",
+                order_id,
+                &delivery_id,
+                &context.sku_type,
+                actor_role,
+                &context.buyer_org_id,
+                &context.seller_org_id,
+                target_state,
+                &context.payment_status,
+                &layered_status.delivery_status,
+                &layered_status.acceptance_status,
+                &layered_status.settlement_status,
+                &layered_status.dispute_status,
+                Some(receipt_hash.as_str()),
+                Some(delivery_commit_hash.as_str()),
+                Some("share_grant"),
+                Some(share_protocol.as_str()),
+                None,
+                json!({
+                    "data_share_grant_id": row.get::<_, String>(0),
+                    "asset_object_id": share_object.asset_object_id,
+                    "recipient_ref": recipient_ref,
+                    "subscriber_ref": subscriber_ref,
+                    "access_locator": access_locator,
+                    "grant_status": row.get::<_, String>(6),
+                    "expires_at": expires_at,
+                    "operation": operation,
+                }),
+            ),
+            request_id,
+            trace_id,
+            idempotency_key,
         )
         .await?;
         tx.commit().await.map_err(map_db_error)?;
