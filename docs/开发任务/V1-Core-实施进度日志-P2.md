@@ -2859,3 +2859,108 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-147（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-005
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-005` 目标为 `POST/GET /api/v1/orders/{id}/subscriptions`，Definition of Done 要求接口、DTO、权限校验、审计、错误码、最小测试与 OpenAPI 一致。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：复核 `DLV-005` 为 `FILE_SUB` 周期交付入口，不能只做状态机占位。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：本批继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地 commit”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：继续遵守单任务顺序、冻结文档先行、禁止跳步简化。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：延续 DLV 阶段批次日志，承接 `BATCH-146`。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯不丢失。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：按约定由人工维护，本批不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `FILE_SUB` 为版本订阅；接口权限为 `delivery.subscription.manage/read`；流程要求记录 `start_version_no / cadence / delivery_channel / last_delivered_version_no / next_delivery_at / subscription_status`。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：订阅属于 Delivery 领域，需与 Trade 订单边界联动。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：核对 DLV 交付接口须保持路径与契约稳定。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批先落订单内订阅真值与审计；若需异步版本推送，后续任务再补 topic/outbox。
+  12. `docs/开发准备/统一错误码字典正式版.md`：冲突/权限/内部错误继续复用统一错误码。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：需要最小 DB smoke + 真实 API 联调 + 数据库回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：继续按 `delivery/api|dto|repo|tests` 组织，避免回到巨型文件。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批联调继续使用 `datab-postgres` 与本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用本地环境变量与固定 DSN/端口口径。
+  17. `docs/开发准备/技术选型正式版.md`：沿用当前 `SQLx + SeaORM` 数据访问基线，不回退旧实现。
+  18. `docs/开发准备/平台总体架构设计草案.md`：订阅 API 作为交付域受控入口，订单仍为主真值来源。
+- 当前任务额外引用的 `technical_reference` 与约束映射：
+  - `docs/业务流程/业务流程图-V1-完整版.md:L290`：订单生效时创建 `revision_subscription`，记录 `start_version_no / cadence / delivery_channel`，后续版本发布更新 `last_delivered_version_no`。
+  - `docs/原始PRD/数据对象产品族与交付模式增强设计.md:L292`：`FILE_SUB` 为“版本订阅 / 周期更新”，V1 必须支持按版本顺序交付与到期断权。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L590`：文件交付页展示交付对象/令牌/回执，本批需补订阅信息查询能力，供文件订阅页承载。
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/subscriptions` 与 `GET /api/v1/orders/{id}/subscriptions`，支持 `FILE_SUB` 订单建立/续订 `delivery.revision_subscription`，补齐权限、审计、OpenAPI、测试与真实 API 联调。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv005_revision_subscription_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST/GET /api/v1/orders/{id}/subscriptions` 联调，回查 `delivery.revision_subscription / trade.order_main / audit.audit_event` 后清理业务数据。
+
+### BATCH-147（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-005
+- 当前批次目标：实现 `POST /api/v1/orders/{id}/subscriptions` 与 `GET /api/v1/orders/{id}/subscriptions`，支持 `FILE_SUB` 周期交付的订阅创建、查询、暂停后状态同步与续订恢复。
+- 已实现功能：
+  1. 在 `modules/delivery` 新增 `revision_subscription` DTO、仓储与 API 处理器，落地 `POST /api/v1/orders/{id}/subscriptions`、`GET /api/v1/orders/{id}/subscriptions`。
+  2. `POST` 已实现 `delivery.subscription.manage` 权限、卖方租户作用域校验、主体状态校验、`FILE_SUB` SKU 校验、产品审核/资产版本状态校验、周期与版本范围校验，并在 `delivery.revision_subscription` 中写入 `cadence / delivery_channel / start_version_no / last_delivered_version_no / next_delivery_at / subscription_status / metadata`。
+  3. 当订单处于 `paused / expired` 时，续订会在同一事务内把 `trade.order_main` 恢复到 `buyer_locked / paid`，并补写 `trade.order.file_sub.transition` 审计，避免出现“订阅记录恢复但订单主状态未恢复”的不一致。
+  4. `GET` 已实现 `delivery.subscription.read` 权限与买/卖双方最小作用域读取；若订单已被 `pause/expire/close`，读取时会把 `delivery.revision_subscription.subscription_status` 与订单主状态同步，避免展示陈旧 `active` 状态。
+  5. `packages/openapi/delivery.yaml` 已同步新增订阅 manage/read 路径和 schema，Delivery OpenAPI 与实现路由保持一致。
+  6. 已兼容当前运行库口径：`catalog.product.subscription_cadence` 实列当前未落地时，回退读取 `trade.order_main.price_snapshot_json.subscription_cadence` 与 `catalog.product.metadata.subscription_cadence`，确保真实数据库联调可通过。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/revision_subscription.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/revision_subscription_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv005_revision_subscription_db.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv005_revision_subscription_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动服务：`APP_PORT=8098 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 临时写入 `FILE_SUB` 订单，执行 `curl POST/GET /api/v1/orders/{id}/subscriptions`、`curl POST /api/v1/orders/{id}/file-sub/transition`（`pause_subscription`），再回查 `delivery.revision_subscription / trade.order_main / audit.audit_event`，最后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `dlv005_revision_subscription_db_smoke`：通过。
+  - `cargo test -p platform-core`：通过（`170 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/subscriptions`：`HTTP 200`，首次返回 `operation=created / subscription_status=active`
+    - `GET /api/v1/orders/{id}/subscriptions`：`HTTP 200`，返回 `subscription_status=active`
+    - `POST /api/v1/orders/{id}/file-sub/transition`（`pause_subscription`）：`HTTP 200`
+    - 暂停后再次 `GET /api/v1/orders/{id}/subscriptions`：`HTTP 200`，返回 `subscription_status=paused`
+    - 再次 `POST /api/v1/orders/{id}/subscriptions`：`HTTP 200`，返回 `operation=renewed / subscription_status=active / current_state=buyer_locked`
+  - DB 回查通过：
+    - `delivery.revision_subscription`：`quarterly | file_ticket | active | metadata.renewal=Q2`
+    - `trade.order_main`：`buyer_locked | paid | pending_delivery`
+    - 审计：`delivery.subscription.manage/read` 共命中 `4` 条，其中 `read=2`；`pause` 过程另有 `trade.order.file_sub.transition` 审计。
+  - 清理结果：临时业务数据已删除，`order_main` 回查为 `0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `业务流程图-V1` 4.4.1A（订阅创建、记录 cadence/channel、停订关闭）
+  - `原始PRD/数据对象产品族与交付模式增强设计` 4.2 / 4. 七类标准交易方式（`FILE_SUB` 周期更新与到期断权）
+  - `全集成基线-V1` 3.5 / 10.2（`delivery.subscription.manage/read` 权限、订单作用域、周期与版本范围校验）
+  - `数据库表字典正式版`（`delivery.revision_subscription` 字段）
+- 覆盖的任务清单条目：`DLV-005`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；当前运行库 `catalog.product.subscription_cadence` 实列未落地，已按快照/metadata 回退兼容，不单独新增 TODO；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

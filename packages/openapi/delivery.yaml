@@ -6,7 +6,8 @@ info:
     Delivery module baseline for V1. DLV-001 freezes storage-gateway shared
     schemas; DLV-002 adds the file-delivery commit endpoint; DLV-003 adds
     short-lived download-ticket issuance backed by Redis cache; DLV-004 adds
-    ticket-validated file download with delivery-receipt logging.
+    ticket-validated file download with delivery-receipt logging; DLV-005 adds
+    FILE_SUB revision-subscription manage/read APIs.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -98,8 +99,180 @@ paths:
           description: Ticket invalid, expired, exhausted, or current order state does not allow download
         '502':
           description: MinIO or object-store fetch failed
+  /api/v1/orders/{id}/subscriptions:
+    post:
+      summary: Create or renew a FILE_SUB revision subscription
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageRevisionSubscriptionRequest'
+      responses:
+        '200':
+          description: Revision subscription created, updated, or renewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageRevisionSubscriptionResponseEnvelope'
+        '400':
+          description: Invalid cadence or delivery_channel
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: SKU is not FILE_SUB, order not paid, or revision range is invalid
+    get:
+      summary: Read FILE_SUB revision subscription status
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Revision subscription visible under order scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRevisionSubscriptionResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or revision subscription not found
 components:
   schemas:
+    ManageRevisionSubscriptionRequest:
+      type: object
+      properties:
+        cadence:
+          type: string
+          enum: [weekly, monthly, quarterly, yearly]
+          nullable: true
+        delivery_channel:
+          type: string
+          enum: [file_ticket]
+          nullable: true
+        start_version_no:
+          type: integer
+          nullable: true
+        last_delivered_version_no:
+          type: integer
+          nullable: true
+        next_delivery_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageRevisionSubscriptionResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageRevisionSubscriptionResponse'
+    ManageRevisionSubscriptionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/RevisionSubscriptionResponseData'
+    GetRevisionSubscriptionResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetRevisionSubscriptionResponse'
+    GetRevisionSubscriptionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/RevisionSubscriptionResponseData'
+    RevisionSubscriptionResponseData:
+      type: object
+      required:
+        - revision_subscription_id
+        - order_id
+        - asset_id
+        - sku_id
+        - sku_type
+        - cadence
+        - delivery_channel
+        - start_version_no
+        - current_version_no
+        - next_delivery_at
+        - subscription_status
+        - current_state
+        - payment_status
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        revision_subscription_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        cadence:
+          type: string
+        delivery_channel:
+          type: string
+        start_version_no:
+          type: integer
+        last_delivered_version_no:
+          type: integer
+          nullable: true
+        current_version_no:
+          type: integer
+        next_delivery_at:
+          type: string
+          format: date-time
+        subscription_status:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        operation:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     CommitOrderDeliveryRequest:
       type: object
       required:

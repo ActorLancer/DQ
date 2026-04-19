@@ -8,6 +8,8 @@ pub enum DeliveryPermission {
     CommitFileDelivery,
     IssueDownloadTicket,
     DownloadFile,
+    ManageRevisionSubscription,
+    ReadRevisionSubscription,
 }
 
 pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
@@ -19,6 +21,24 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
         DeliveryPermission::IssueDownloadTicket | DeliveryPermission::DownloadFile => matches!(
             role,
             "buyer_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ManageRevisionSubscription => matches!(
+            role,
+            "seller_operator"
+                | "seller_storage_operator"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ReadRevisionSubscription => matches!(
+            role,
+            "buyer_operator"
+                | "seller_operator"
+                | "seller_storage_operator"
+                | "procurement_manager"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
         ),
     }
 }

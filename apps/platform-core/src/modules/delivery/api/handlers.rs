@@ -3,10 +3,12 @@ use super::support::{DeliveryPermission, header, map_db_connect, require_permiss
 use crate::AppState;
 use crate::modules::delivery::dto::{
     CommitOrderDeliveryRequest, CommitOrderDeliveryResponse, DownloadFileResponse,
-    DownloadFileResponseData, DownloadTicketResponse,
+    DownloadFileResponseData, DownloadTicketResponse, GetRevisionSubscriptionResponse,
+    ManageRevisionSubscriptionRequest, ManageRevisionSubscriptionResponse,
 };
 use crate::modules::delivery::repo::{
-    commit_file_delivery, consume_download_ticket, issue_download_ticket,
+    commit_file_delivery, consume_download_ticket, get_revision_subscription,
+    issue_download_ticket, manage_revision_subscription,
 };
 use crate::modules::storage::application::fetch_object_bytes;
 use axum::Json;
@@ -141,4 +143,71 @@ pub async fn download_file_api(
     };
 
     Ok(ApiResponse::ok(DownloadFileResponse { data: response }))
+}
+
+pub async fn manage_revision_subscription_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<ManageRevisionSubscriptionRequest>,
+) -> Result<Json<ApiResponse<ManageRevisionSubscriptionResponse>>, (StatusCode, Json<ErrorResponse>)>
+{
+    require_permission(
+        &headers,
+        DeliveryPermission::ManageRevisionSubscription,
+        "revision subscription management",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let subscription = manage_revision_subscription(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ManageRevisionSubscriptionResponse {
+        data: subscription,
+    }))
+}
+
+pub async fn get_revision_subscription_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<GetRevisionSubscriptionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::ReadRevisionSubscription,
+        "revision subscription read",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let subscription = get_revision_subscription(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(GetRevisionSubscriptionResponse {
+        data: subscription,
+    }))
 }
