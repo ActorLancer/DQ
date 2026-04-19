@@ -130,8 +130,21 @@ mod tests {
             .expect("query audit")
             .get(0);
         assert!(audit_count >= 1);
+        let outbox_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND aggregate_type = 'trade.order'
+                   AND event_type = 'trade.order.created'",
+                &[&request_id],
+            )
+            .await
+            .expect("query outbox")
+            .get(0);
+        assert!(outbox_count >= 1);
 
-        cleanup_graph(&client, &seed, &order_id).await;
+        cleanup_graph(&client, &seed, &order_id, &request_id).await;
     }
 
     async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, tokio_postgres::Error> {
@@ -241,7 +254,16 @@ mod tests {
         })
     }
 
-    async fn cleanup_graph(client: &Client, seed: &SeedGraph, order_id: &str) {
+    async fn cleanup_graph(client: &Client, seed: &SeedGraph, order_id: &str, request_id: &str) {
+        let _ = client
+            .execute(
+                "DELETE FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND aggregate_type = 'trade.order'
+                   AND event_type = 'trade.order.created'",
+                &[&request_id],
+            )
+            .await;
         let _ = client
             .execute(
                 "DELETE FROM trade.order_main WHERE order_id = $1::text::uuid",

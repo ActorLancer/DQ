@@ -7,7 +7,7 @@ use crate::modules::order::repo::pre_request_repository::{map_db_error, write_tr
 use axum::Json;
 use axum::http::StatusCode;
 use kernel::{ErrorCode, ErrorResponse};
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio_postgres::Client;
 
 struct ProductSkuContext {
@@ -174,6 +174,8 @@ pub async fn create_order_with_snapshot(
         trace_id,
     )
     .await?;
+    write_order_create_outbox_event(&tx, &created, request_id, trace_id, idempotency_key, &ctx)
+        .await?;
     tx.commit().await.map_err(map_db_error)?;
     Ok(created)
 }
@@ -396,4 +398,64 @@ fn parse_created_order_row(
         price_snapshot,
         created_at: row.get(10),
     })
+}
+
+async fn write_order_create_outbox_event(
+    client: &(impl tokio_postgres::GenericClient + Sync),
+    created: &CreateOrderResponseData,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
+    context: &ProductSkuContext,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let payload = json!({
+        "event_name": "trade.order.created",
+        "order_id": created.order_id,
+        "buyer_org_id": created.buyer_org_id,
+        "seller_org_id": created.seller_org_id,
+        "product_id": created.product_id,
+        "sku_id": created.sku_id,
+        "sku_code": context.sku_code,
+        "sku_type": context.sku_type,
+        "status": created.status,
+        "payment_status": created.payment_status,
+        "amount": created.amount,
+        "currency_code": created.currency_code,
+        "created_at": created.created_at
+    });
+    client
+        .query_one(
+            "INSERT INTO ops.outbox_event (
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               request_id,
+               trace_id,
+               idempotency_key,
+               target_topic,
+               status
+             ) VALUES (
+               'trade.order',
+               $1::text::uuid,
+               'trade.order.created',
+               $2::jsonb,
+               $3,
+               $4,
+               $5,
+               'trade.order.created',
+               'pending'
+             )
+             RETURNING outbox_event_id::text",
+            &[
+                &created.order_id,
+                &payload,
+                &request_id,
+                &trace_id,
+                &idempotency_key,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    Ok(())
 }
