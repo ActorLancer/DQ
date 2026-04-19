@@ -3,14 +3,187 @@ info:
   title: DataB Delivery API
   version: 1.0.0
   description: >-
-    Delivery / storage-gateway domain baseline for V1. DLV-001 freezes shared
-    object locator, integrity, watermark, download restriction and access audit
-    schemas that will be referenced by subsequent delivery endpoints.
+    Delivery module baseline for V1. DLV-001 freezes storage-gateway shared
+    schemas; DLV-002 adds the file-delivery commit endpoint.
 servers:
   - url: http://127.0.0.1:8080
-paths: {}
+paths:
+  /api/v1/orders/{id}/deliver:
+    post:
+      summary: Commit file delivery for a deliverable order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitOrderDeliveryRequest'
+      responses:
+        '200':
+          description: Delivery committed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitOrderDeliveryResponseEnvelope'
+        '400':
+          description: Invalid payload or delivery persistence conflict
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order state does not allow file delivery commit
 components:
   schemas:
+    CommitOrderDeliveryRequest:
+      type: object
+      required:
+        - branch
+        - object_uri
+        - size_bytes
+        - content_hash
+        - key_cipher
+        - expire_at
+        - download_limit
+        - delivery_commit_hash
+        - receipt_hash
+      properties:
+        branch:
+          type: string
+          enum: [file]
+        object_uri:
+          type: string
+        content_type:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          format: int64
+        content_hash:
+          type: string
+        encryption_algo:
+          type: string
+          nullable: true
+        plaintext_visible_to_platform:
+          type: boolean
+          nullable: true
+        storage_namespace_id:
+          type: string
+          format: uuid
+          nullable: true
+        key_cipher:
+          type: string
+        key_control_mode:
+          type: string
+          nullable: true
+        unwrap_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        key_version:
+          type: string
+          nullable: true
+        expire_at:
+          type: string
+          format: date-time
+        download_limit:
+          type: integer
+        delivery_commit_hash:
+          type: string
+        receipt_hash:
+          type: string
+    CommitOrderDeliveryResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/CommitOrderDeliveryResponse'
+    CommitOrderDeliveryResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CommitOrderDeliveryResponseData'
+    CommitOrderDeliveryResponseData:
+      type: object
+      required:
+        - order_id
+        - delivery_id
+        - object_id
+        - envelope_id
+        - ticket_id
+        - branch
+        - previous_state
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - bucket_name
+        - object_key
+        - expires_at
+        - download_limit
+        - receipt_hash
+        - delivery_commit_hash
+        - committed_at
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        object_id:
+          type: string
+          format: uuid
+        envelope_id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        branch:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        bucket_name:
+          type: string
+        object_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        download_limit:
+          type: integer
+        receipt_hash:
+          type: string
+        delivery_commit_hash:
+          type: string
+        committed_at:
+          type: string
+          format: date-time
     StorageGatewaySnapshot:
       type: object
       required: [integrity, watermark_policy, access_audit]
@@ -64,7 +237,6 @@ components:
           type: boolean
     StorageGatewayIntegrity:
       type: object
-      required: []
       properties:
         content_hash:
           type: string

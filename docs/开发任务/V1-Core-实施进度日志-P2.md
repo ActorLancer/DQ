@@ -2526,3 +2526,112 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-144（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-002
+- 当前批次目标：实现文件交付接口 `POST /api/v1/orders/{id}/deliver` 的文件分支，打通 `prepared -> committed`、对象关联、密钥封装、下载票据摘要、回执摘要、订单主状态推进与审计。
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-006`、`DB-019`、`DB-020`、`CORE-008` 已完成且审批通过；`DLV-001` 已完成并本地提交。
+- 已阅读证据（文件+要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-002` 仅覆盖文件交付接口，不提前实现下载票据接口或订阅接口。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：完成定义要求接口、DTO、权限、审计、错误码和最小测试齐备，并与 OpenAPI 不漂移。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续执行“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地提交”，且按新规则直接推进下一个 task。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单 task 实施、模块化拆分，避免把交付 API 继续塞进 `order/api.rs` 这类大文件。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：先登记本批计划中，完成后补待审批记录。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：文件交付中心需覆盖对象关联、下载令牌、限次下载、水印、Hash 校验与回执摘要；文件交付动作权限对应 `delivery.file.commit`。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：交付 API 归属 `delivery` 模块，订单只保留主状态与聚合编排。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结接口路径为 `POST /api/v1/orders/{id}/deliver`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：当前先保持领域事件边界，后续 outbox/Kafka 在 DLV-020/030 再补标准化桥接，不提前发散。
+  12. `docs/开发准备/统一错误码字典正式版.md`：沿用统一错误响应结构与现有错误码口径。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批仍执行编译/单测/DB smoke/真实 API 联调/DB 回查/业务数据清理。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：交付接口、DTO、repo、tests 保持在 `modules/delivery/**` 下独立组织。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批继续使用 `datab-postgres`、`datab-minio`、`datab-kafka` 联调。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用 `DATABASE_URL`、`MINIO_*`、bucket 口径与 Kafka 本地配置。
+  17. `docs/开发准备/技术选型正式版.md`：维持 Rust + Axum + PostgreSQL + MinIO/S3-compatible 技术基线。
+  18. `docs/开发准备/平台总体架构设计草案.md`：交付接口通过独立 delivery 模块挂载，不反向污染订单模块。
+- technical_reference 约束映射：
+  1. `docs/领域模型/全量领域模型与对象关系说明.md:L709`：`Delivery / StorageObject / DeliveryTicket / KeyEnvelope / DeliveryReceipt` 是文件交付主对象，`Order 1 -> N Delivery`。
+  2. `docs/业务流程/业务流程图-V1-完整版.md:L270`：文件类交付需按顺序完成对象上传、`key_envelope`、`delivery_ticket`、`delivery_commit_hash`，并推动订单进入 `delivered`。
+  3. `docs/页面说明书/页面说明书-V1-完整版.md:L590`：文件交付页核心模块包含对象上传区、密钥封装状态、下载令牌状态、交付回执列表、Hash 校验提示。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 MinIO 对象 + `curl POST /api/v1/orders/{id}/deliver` 联调，再回查 `delivery_record / delivery_ticket / key_envelope / audit.audit_event / trade.order_main`。
+
+### BATCH-144（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-002
+- 当前批次目标：实现文件交付接口 `POST /api/v1/orders/{id}/deliver` 的文件分支，打通 `prepared -> committed`、对象关联、密钥封装、下载票据摘要、回执摘要、订单主状态推进与审计。
+- 已实现功能：
+  1. 在 `modules/delivery` 新增文件交付 API handler、DTO、repo，独立承接 `POST /api/v1/orders/{id}/deliver`，未把交付逻辑回塞到订单 API。
+  2. 落地 `commit_file_delivery(...)`：校验角色与卖方租户边界、限定 `branch=file` 与 `FILE_STD`、解析 `s3://` 对象定位、按卖方/桶解析有效 `storage_namespace`。
+  3. 交付提交事务内完成：
+     - 新建 `delivery.storage_object`
+     - 新建 `delivery.key_envelope`
+     - 关闭旧 `active` ticket 并签发新 `delivery.delivery_ticket`
+     - 将 `delivery.delivery_record` 从 `prepared` 推进到 `committed`
+     - 将 `trade.order_main` 推进到 `delivered`
+     - 写入 `delivery.file.commit` 审计
+  4. 已提交交付的订单再次调用时走幂等返回，避免重复创建对象/票据。
+  5. 订单详情聚合已能读到本次提交后的 `storage_gateway.object_locator.bucket_name/object_key`。
+  6. `packages/openapi/delivery.yaml` 已同步新增交付提交路径与请求/响应 schema。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/file_delivery_commit.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/events/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/file_delivery_repository.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv002_file_delivery_commit_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+  7. 启动服务：`APP_PORT=8095 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用真实 MinIO 对象 + `psql` 临时业务数据 + `curl POST /api/v1/orders/{id}/deliver` / `curl GET /api/v1/orders/{id}` 联调，再回查数据库并清理业务数据与 MinIO 测试对象。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`167 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - `dlv002_file_delivery_commit_db_smoke`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/deliver`：`HTTP 200`，返回 `current_state=delivered`、`bucket_name=delivery-objects`、`object_key=orders/{suffix}/payload.enc`、`ticket_id`、`delivery_id`、`download_limit=5`。
+    - `GET /api/v1/orders/{id}`：`HTTP 200`，返回 `relations.deliveries[0].storage_gateway.object_locator.bucket_name=delivery-objects`。
+  - DB 回查通过：
+    - `trade.order_main`：`delivered / paid / delivered / pending_acceptance / pending_settlement`
+    - `delivery.delivery_record`：`committed`，并已写入 `object_id / envelope_id / delivery_commit_hash / receipt_hash`
+    - `delivery.delivery_ticket`：`download_limit=5 / download_count=0 / status=active`
+    - `audit.audit_event`：`delivery.file.commit` 命中 `1` 条
+  - MinIO 实体联动通过：真实对象上传到 `delivery-objects/orders/{suffix}/payload.enc`，接口与 DB 记录的对象路径一致。
+  - 清理结果：临时业务数据与 MinIO 测试对象已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `领域模型` 4.5（交付与执行聚合）
+  - `业务流程图-V1` 4.4.1（文件类交付）
+  - `页面说明书-V1` 7.1（文件交付页）
+- 覆盖的任务清单条目：`DLV-002`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
