@@ -10,6 +10,7 @@ pub enum DeliveryPermission {
     ReadApiUsageLog,
     ManageQuerySurface,
     ManageQueryTemplate,
+    EnableTemplateQuery,
     IssueDownloadTicket,
     DownloadFile,
     ManageRevisionSubscription,
@@ -49,6 +50,14 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
         DeliveryPermission::ManageQueryTemplate => matches!(
             role,
             "seller_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
+        ),
+        DeliveryPermission::EnableTemplateQuery => matches!(
+            role,
+            "seller_operator"
+                | "tenant_developer"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
         ),
         DeliveryPermission::IssueDownloadTicket | DeliveryPermission::DownloadFile => matches!(
             role,

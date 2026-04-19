@@ -11,7 +11,9 @@ info:
     share-grant manage/read APIs; DLV-007 adds API delivery enablement; DLV-008
     adds API usage-log read APIs; DLV-009 adds QuerySurface management for
     product-scoped query execution configuration; DLV-010 adds QueryTemplate
-    version management for a controlled query surface.
+    version management for a controlled query surface; DLV-011 adds
+    template-grant enablement for QRY_LITE orders with whitelisted templates,
+    output boundaries, and quota snapshots.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -209,6 +211,38 @@ paths:
           description: Permission or tenant-scope forbidden
         '404':
           description: Order or share grant not found
+  /api/v1/orders/{id}/template-grants:
+    post:
+      summary: Create or update a QRY_LITE template-query grant with whitelisted templates
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageTemplateGrantRequest'
+      responses:
+        '200':
+          description: Template-query grant created or updated for the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageTemplateGrantResponseEnvelope'
+        '400':
+          description: Invalid JSON shape or required grant fields are missing
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or query surface not found
+        '409':
+          description: SKU is not QRY_LITE, selected templates are invalid, or output boundary/quota exceeds the frozen surface policy
   /api/v1/orders/{id}/usage-log:
     get:
       summary: Read minimal-disclosure API usage logs under order scope
@@ -550,6 +584,139 @@ components:
         operation:
           type: string
           enum: [created, updated]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ManageTemplateGrantRequest:
+      type: object
+      properties:
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_type:
+          type: string
+          nullable: true
+        allowed_template_ids:
+          type: array
+          nullable: true
+          items:
+            type: string
+            format: uuid
+        execution_rule_snapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        run_quota_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageTemplateGrantResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageTemplateGrantResponse'
+    ManageTemplateGrantResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TemplateGrantResponseData'
+    TemplateGrantResponseData:
+      type: object
+      required:
+        - template_query_grant_id
+        - order_id
+        - query_surface_id
+        - asset_object_id
+        - sku_id
+        - sku_type
+        - template_type
+        - template_digest
+        - allowed_template_ids
+        - execution_rule_snapshot
+        - output_boundary_json
+        - run_quota_json
+        - grant_status
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+        - updated_at
+      properties:
+        template_query_grant_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        asset_object_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        template_type:
+          type: string
+        template_digest:
+          type: string
+        allowed_template_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        execution_rule_snapshot:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        run_quota_json:
+          type: object
+          additionalProperties: true
+        grant_status:
+          type: string
+        operation:
+          type: string
+          enum: [granted, updated]
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
         created_at:
           type: string
           format: date-time

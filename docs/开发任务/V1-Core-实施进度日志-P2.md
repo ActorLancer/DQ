@@ -3507,3 +3507,115 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-153（计划中）
+- 状态：计划中
+- 当前任务编号：DLV-011
+- 已阅读证据（文件 + 要点）：
+  1. `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-011` 目标为 `POST /api/v1/orders/{id}/template-grants`，只允许命中白名单模板。
+  2. `docs/开发任务/v1-core-开发任务清单.md`：复核 `DLV-011` 仍要求接口、DTO、权限校验、审计、错误码与最小测试齐备。
+  3. `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地 commit”执行。
+  4. `docs/开发任务/AI-Agent-执行提示词.md`：保持单任务顺序、冻结文档先行、实现后必须做真实 API 联调与 DB 回查。
+  5. `docs/开发任务/V1-Core-实施进度日志-P2.md`：承接 `BATCH-152`，先登记本批计划中。
+  6. `docs/开发任务/V1-Core-TODO与预留清单.md`：完成后追加本批追溯记录，持续保留 `TODO-PROC-BIL-001`。
+  7. `docs/开发任务/V1-Core-人工审批记录.md`：只读，不写入。
+  8. `docs/全集成文档/数据交易平台-全集成基线-V1.md`：`QRY_LITE` 的主交付对象是 `template grant / 白名单模板执行`，买方成交后应创建 `template_query_grant` 并绑定模板摘要、输出边界、执行配额。
+  9. `docs/开发准备/服务清单与服务边界正式版.md`：模板授权归属 Delivery，但状态推进仍需和 Trade 订单主状态一致。
+  10. `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：冻结表已列出 `POST /api/v1/orders/{id}/template-grants`。
+  11. `docs/开发准备/事件模型与Topic清单正式版.md`：本批先落数据库真值与审计，不提前引入额外异步桥接。
+  12. `docs/开发准备/统一错误码字典正式版.md`：模板白名单冲突/权限/内部错误继续沿用统一错误结构。
+  13. `docs/开发准备/测试用例矩阵正式版.md`：本批需要最小 DB smoke + 真实 API 联调 + 数据库回查。
+  14. `docs/开发准备/仓库拆分与目录结构建议.md`：模板授权继续落在 `delivery/api|dto|repo|tests`。
+  15. `docs/开发准备/本地开发环境与中间件部署清单.md`：本批联调继续使用 `datab-postgres` 与本地 core 栈。
+  16. `docs/开发准备/配置项与密钥管理清单.md`：沿用本地环境变量与固定 DSN/端口口径。
+  17. `docs/开发准备/技术选型正式版.md`：沿用当前 `SQLx + SeaORM` 数据访问基线，不回退旧实现。
+  18. `docs/开发准备/平台总体架构设计草案.md`：模板授权必须和受控执行、输出边界、审计可追溯绑定。
+- 当前任务额外引用的 `technical_reference` 与约束映射：
+  - `docs/原始PRD/数据商品查询与执行面设计.md:L127`：`QRY_LITE` 成交后需创建 `template_query_grant`，绑定模板摘要、输出边界、执行配额，执行时按白名单模板/参数范围/导出限制校验。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L639`：模板查询开通页需展示模板白名单、参数 schema 摘要、输出边界与导出限制。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L685`：查询运行记录页依赖 `query surface / template version / 参数摘要 / 结果摘要`，因此授权快照必须足以支撑后续执行与审计。
+  - `docs/数据库设计/V1/upgrade/061_data_object_trade_modes.sql` 与 `065_query_execution_plane.sql`：`delivery.template_query_grant` 冻结字段包含 `query_surface_id / allowed_template_ids / execution_rule_snapshot / output_boundary_json / run_quota_json`。
+  - `docs/权限设计/接口权限校验清单.md` / `角色权限矩阵正式版.md` / `后端鉴权中间件规则说明.md`：鉴权顺序为 身份 -> 主体状态 -> `delivery.template_query.enable` -> 订单作用域 -> 模板白名单 -> 参数校验 -> 输出边界 -> 风控 -> 审计。
+- 当前批次目标：实现模板授权接口 `POST /api/v1/orders/{id}/template-grants`，只允许命中当前 QuerySurface 的白名单模板，并同步交付记录、订单状态与审计。
+- 预计涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/**`
+  - `apps/platform-core/src/modules/delivery/dto/**`
+  - `apps/platform-core/src/modules/delivery/repo/**`
+  - `apps/platform-core/src/modules/delivery/tests/**`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 预计验证方式：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv011_template_grant_db_smoke -- --nocapture`
+  7. 启动服务并使用真实 PostgreSQL + `curl POST /api/v1/orders/{id}/template-grants` 联调，回查 `delivery.template_query_grant / delivery.delivery_record / trade.order_main / audit.audit_event` 后清理业务数据。
+
+### BATCH-153（待审批）
+- 状态：待审批
+- 当前任务编号：DLV-011
+- 当前批次目标：实现模板授权接口 `POST /api/v1/orders/{id}/template-grants`，只允许命中当前 QuerySurface 的白名单模板，并同步交付记录、订单状态与审计。
+- 前置依赖核对结果：`TRADE-003; TRADE-007; DB-006; DB-019; DB-020; CORE-008` 已完成且审批通过；`DLV-010` 已完成并本地提交。
+- 已实现功能：
+  1. 新增模板授权接口 `POST /api/v1/orders/{id}/template-grants`，接入 `delivery.template_query.enable` 权限。
+  2. 新增 DTO：`ManageTemplateGrantRequest/Response` 与 `TemplateGrantResponseData`。
+  3. 新增仓储 `manage_template_grant(...)`，写入/更新 `delivery.template_query_grant`，冻结 `query_surface_id / allowed_template_ids / execution_rule_snapshot / output_boundary_json / run_quota_json`。
+  4. 落地鉴权与作用域校验：平台角色直通；卖方 `seller_operator` 仅限卖方租户；`tenant_developer` 仅限买方租户；`tenant_admin` 允许买卖双方租户。
+  5. 落地模板白名单校验：只允许命中当前 QuerySurface 的 `active` 模板；模板必须共享同一 `template_type`；禁止混入其他 QuerySurface 模板。
+  6. 落地输出边界与配额校验：禁止 raw export；请求的 `allowed_formats / max_rows / max_cells` 不得超出 QuerySurface 与模板导出策略；`run_quota_json.max_runs/daily_limit/monthly_limit` 必须为正整数。
+  7. 落地执行规则快照：写入模板摘要、参数 schema、结果 schema、analysis rule、输出边界、配额和授权角色，供后续 `DLV-012/013` 查询执行与运行记录复用。
+  8. 与订单/交付联动：模板授权首次创建时通过统一交付门禁；更新时复用既有 `committed` 交付记录，不再残留新的 `prepared` 记录；订单状态推进/保持为 `template_authorized`，交付记录保持 `committed/template_grant/template_query`。
+  9. 审计落地：`delivery.template_query.enable` 与 `trade.order.qry_lite.transition`。
+- 涉及文件：
+  - `apps/platform-core/src/modules/delivery/api/handlers.rs`
+  - `apps/platform-core/src/modules/delivery/api/mod.rs`
+  - `apps/platform-core/src/modules/delivery/api/support.rs`
+  - `apps/platform-core/src/modules/delivery/dto/mod.rs`
+  - `apps/platform-core/src/modules/delivery/dto/template_grant.rs`
+  - `apps/platform-core/src/modules/delivery/repo/mod.rs`
+  - `apps/platform-core/src/modules/delivery/repo/template_grant_repository.rs`
+  - `apps/platform-core/src/modules/delivery/tests/dlv011_template_grant_db.rs`
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs`
+  - `apps/platform-core/src/modules/order/repo/order_deliverability_repository.rs`
+  - `packages/openapi/delivery.yaml`
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv011_template_grant_db_smoke -- --nocapture`
+  7. 启动服务：`APP_PORT=8104 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `psql` 写入临时买卖方/资产/商品/执行环境/QuerySurface/QueryTemplate 数据，执行真实 `curl POST /api/v1/orders/{id}/template-grants` 联调（创建、更新、非法跨 QuerySurface 模板），回查 `delivery.template_query_grant / delivery.delivery_record / trade.order_main / audit.audit_event` 后清理业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`176 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过；`.sqlx` 离线元数据已刷新。
+  - `./scripts/check-query-compile.sh`：通过。
+  - `dlv011_template_grant_db_smoke`：通过。
+  - 真实 API 联调通过：
+    - 创建授权：`HTTP 200`，`operation=granted`，`current_state=template_authorized`，`allowed_template_ids=2`
+    - 更新授权：`HTTP 200`，`operation=updated`，`current_state=template_authorized`，`run_quota_json.max_runs=10`
+    - 非法模板：`HTTP 409`，`TEMPLATE_GRANT_FORBIDDEN: allowed_template_ids contains template outside current query surface`
+  - DB 回查通过：
+    - `delivery.template_query_grant`：`grant_status=active`，`template_type=sql_template`，`output_boundary_json.max_rows=25`，`run_quota_json.max_runs=10`，`execution_rule_snapshot.grant_source=buyer_update`，`allowed_template_ids` 已缩减到更新后白名单。
+    - `delivery.delivery_record`：保持 `committed / template_grant / template_query`，`delivery_commit_hash = receipt_hash`，更新授权不再残留新的 `prepared` 记录。
+    - `trade.order_main`：保持 `template_authorized / paid / in_progress / not_started / pending_settlement`。
+    - 审计：`delivery.template_query.enable=2`，`trade.order.qry_lite.transition=2`。
+  - 清理结果：临时业务数据已删除；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `数据商品查询与执行面设计` 5 / 8（V1 闭环、查询权独立表达、模板白名单/输出边界/配额/审计）
+  - `页面说明书-V1` 7.4 / 7.7（模板查询开通页、查询运行与结果记录页）
+  - `061_data_object_trade_modes.sql` / `065_query_execution_plane.sql`（`delivery.template_query_grant`、`delivery.query_execution_run` 字段冻结）
+  - `数据库表字典正式版` / `全量领域模型与对象关系说明`（`TemplateQueryGrant` 职责与关联）
+  - `权限设计` 接口权限校验清单 / 角色矩阵 / 鉴权规则（`delivery.template_query.enable` 与鉴权顺序）
+- 覆盖的任务清单条目：`DLV-011`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

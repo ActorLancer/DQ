@@ -8,6 +8,7 @@ mod query_template_repository;
 mod revision_subscription_repository;
 mod share_grant_repository;
 mod storage_gateway_repository;
+mod template_grant_repository;
 
 pub use api_delivery_repository::commit_api_delivery;
 pub use api_usage_log_repository::get_api_usage_log;
@@ -27,3 +28,4 @@ pub use share_grant_repository::{get_share_grants, manage_share_grant};
 pub use storage_gateway_repository::{
     load_storage_gateway_snapshots, write_storage_gateway_read_audit,
 };
+pub use template_grant_repository::manage_template_grant;

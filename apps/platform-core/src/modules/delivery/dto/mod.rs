@@ -6,6 +6,7 @@ mod query_surface;
 mod query_template;
 mod revision_subscription;
 mod share_grant;
+mod template_grant;
 
 pub use api_usage_log::{
     ApiUsageLogAppData, ApiUsageLogEntryData, ApiUsageLogListResponseData, ApiUsageLogResponse,
@@ -22,6 +23,9 @@ pub use query_surface::{
 };
 pub use query_template::{
     ManageQueryTemplateRequest, ManageQueryTemplateResponse, QueryTemplateResponseData,
+};
+pub use template_grant::{
+    ManageTemplateGrantRequest, ManageTemplateGrantResponse, TemplateGrantResponseData,
 };
 
 #[allow(unused_imports)]

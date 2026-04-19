@@ -125,6 +125,25 @@ pub async fn ensure_order_deliverable_and_prepare_delivery(
             "SELECT delivery_id::text
              FROM delivery.delivery_record
              WHERE order_id = $1::text::uuid
+               AND status = 'committed'
+             ORDER BY committed_at DESC NULLS LAST, updated_at DESC, delivery_id DESC
+             LIMIT 1",
+            &[&order_id],
+        )
+        .await
+        .map_err(map_db_error)?
+        .map(|row| row.get::<_, String>(0))
+    {
+        return Ok(PreparedDeliveryRecord {
+            delivery_id: existing_id,
+        });
+    }
+
+    if let Some(existing_id) = client
+        .query_opt(
+            "SELECT delivery_id::text
+             FROM delivery.delivery_record
+             WHERE order_id = $1::text::uuid
                AND status = 'prepared'
              ORDER BY created_at DESC, delivery_id DESC
              LIMIT 1",

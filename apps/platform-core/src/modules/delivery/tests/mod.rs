@@ -17,3 +17,5 @@ mod dlv008_api_usage_log_db;
 mod dlv009_query_surface_db;
 
 mod dlv010_query_template_db;
+
+mod dlv011_template_grant_db;
