@@ -16,6 +16,7 @@ mod bil015_settlement_aggregate_db;
 mod bil016_settlement_summary_outbox_db;
 mod bil017_api_sku_billing_basis_db;
 mod bil018_default_sku_billing_basis_db;
+mod bil019_payment_billing_integration_db;
 
 #[cfg(test)]
 mod tests {

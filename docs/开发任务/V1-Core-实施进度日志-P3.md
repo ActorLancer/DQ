@@ -1201,3 +1201,57 @@
 - 状态：计划中
 - 说明：在现有 `payment intent / webhook / refund / compensation / dispute / settlement recompute` 主链路上补齐一条覆盖成功、失败、超时、退款、赔付、争议升级、账单重算的统一集成测试与真实联调验证。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-192（待审批）
+- 任务：`BIL-019` 为支付与账单编写集成测试：支付成功、支付失败、超时重试、退款、赔付、争议升级、账单重算
+- 状态：待审批
+- 实现摘要：
+  - 新增 `apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs`，将 `payment intent -> order lock -> webhook(success/failed/timeout) -> billing read` 与 `dispute case -> resolve -> refund/compensation -> settlement recompute` 两条主链路收敛为统一集成 smoke。
+  - 复用新的独立 SQLx pool key 进行 seed 与应用路由联调，避免测试侧共享默认池导致连接耗尽；同时将 webhook timeout 口径对齐现实现的 `payment.timeout -> expired` 语义。
+  - 校正争议解决后的订单断言到当前冻结实现：`trade.order_main.last_reason_code = billing_dispute_resolved`。
+- 验证：
+  - `cargo fmt --all`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil019_ -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：启动 `APP_PORT=8112 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`，随后执行：
+    - `POST /api/v1/payments/intents` x3
+    - `POST /api/v1/orders/{id}/lock` x3
+    - `POST /api/v1/payments/webhooks/mock_payment` x3
+    - `POST /api/v1/cases` x2
+    - `POST /api/v1/cases/{id}/resolve` x2
+    - `POST /api/v1/refunds`
+    - `POST /api/v1/compensations`
+    - `GET /api/v1/billing/{order_id}` x3
+    - `psql` 回查 `trade.order_main / ops.outbox_event / audit.audit_event`
+- 验证结果：
+  - 专项 smoke 通过：`2 passed, 0 failed`。
+  - 全量测试通过：`241 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过，`.sqlx` 已刷新。
+  - 真实 API 联调通过：
+    - payment success -> `processed / succeeded`
+    - payment failed -> `processed / failed`
+    - payment timeout -> `processed / expired`
+    - dispute refund / compensation 两条链路均返回 `HTTP 200`，对应记录状态均为 `succeeded`
+    - `GET /api/v1/billing/{refund_order}` 返回 `refunds=1`、`refund_adjustment_amount=20.00000000`
+    - `GET /api/v1/billing/{comp_order}` 返回 `compensations=1`、`compensation_adjustment_amount=20.00000000`
+  - DB 回查通过：
+    - 支付后三笔订单状态分别为：`buyer_locked/paid`、`payment_failed_pending_resolution/failed`、`payment_timeout_pending_compensation_cancel/expired`
+    - 退款/赔付订单均为：`settlement_status=frozen`、`dispute_status=resolved`、`last_reason_code=billing_dispute_resolved`
+    - `ops.outbox_event` 命中：`support.dispute_case=4`、`billing.refund_record=1`、`billing.compensation_record=1`
+    - `audit.audit_event` 命中：`billing.refund.execute=1`、`billing.compensation.execute=1`
+  - 真实联调临时业务数据已清理，回查 `core.organization / core.user_account / payment.provider_account / trade.order_main = 0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md` `4`
+  - `支付域接口协议正式版.md` `6`
+  - `数据交易平台-全集成基线-V1.md` `15`
+- 覆盖的任务清单条目：`BIL-019`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-193（计划中）
+- 任务：`BIL-020` 生成 `docs/02-openapi/billing.yaml` 第一版并与实现校验
+- 状态：计划中
+- 说明：基于当前 `packages/openapi/billing.yaml` 与 `apps/platform-core/src/modules/billing/api/mod.rs` 的实际路由，归档第一版 `docs/02-openapi/billing.yaml`，并补做实现/契约一致性校验与最小真实 API 读取验证。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
