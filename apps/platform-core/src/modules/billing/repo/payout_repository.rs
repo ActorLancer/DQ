@@ -2,6 +2,7 @@ use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::models::{
     BillingSplitInstructionView, CreateManualPayoutRequest, ManualPayoutExecutionView,
 };
+use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient};
@@ -346,23 +347,13 @@ pub async fn execute_manual_payout(
     )
     .await?;
 
-    let _ = tx
-        .execute(
-            "UPDATE billing.settlement_record
-             SET settlement_status = 'settled',
-                 settled_at = COALESCE(settled_at, now()),
-                 updated_at = now()
-             WHERE settlement_id = $1::text::uuid",
-            &[&payload.settlement_id],
-        )
-        .await
-        .map_err(map_db_error)?;
+    let _ =
+        recompute_settlement_for_order(&tx, &payload.order_id, actor_role, request_id, trace_id)
+            .await?;
     let _ = tx
         .execute(
             "UPDATE trade.order_main
-             SET settlement_status = 'settled',
-                 settled_at = COALESCE(settled_at, now()),
-                 updated_at = now(),
+             SET updated_at = now(),
                  last_reason_code = 'billing_manual_payout_succeeded'
              WHERE order_id = $1::text::uuid",
             &[&payload.order_id],

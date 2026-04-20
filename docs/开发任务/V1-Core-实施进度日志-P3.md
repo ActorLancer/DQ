@@ -905,3 +905,78 @@
 - 状态：计划中
 - 说明：在既有 `billing_event / settlement_record` 基础上补齐聚合重算器、冲销补差回放与摘要更新，不提前展开 `BIL-025` 的拒收/争议升级冲销规则。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-188（待审批）
+- 任务：`BIL-015` 实现 Billing Event 到 Settlement 的聚合计算器，并保证幂等重算能力
+- 当前任务编号：`BIL-015`
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `BIL-015` 的目标是落地 `BillingEvent -> Settlement` 聚合计算器，并保证幂等重算。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认完成定义要求至少一条集成测试或手工 API 验证通过，且业务规则、状态机、审计、事件与测试齐备。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务完整流程执行，先写“计划中”，验证通过后写“待审批”，本地提交后继续推进下一个任务。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续遵守冻结文档优先级、顺序推进、真实联调、日志与 TODO 留痕要求。
+  - `docs/开发任务/V1-Core-实施进度日志-P3.md`：承接 `BIL-014` 之后的 Billing 阶段实现记录。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增无依据 TODO。
+  - `technical_reference`：
+    - `docs/领域模型/全量领域模型与对象关系说明.md:L895`：落实 `BillingEvent` 不是最终账单、`Settlement` 才是单次订单或任务的结算结果。
+    - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql:L1`：复用 `billing.billing_event / billing.settlement_record` 的 V1 冻结表结构，不引入偏移表。
+    - `docs/原始PRD/支付、资金流与轻结算设计.md:L165`：落实平台服务费、渠道手续费、退款、赔付和人工结算共同影响结算结果的收费规则。
+- 实现摘要：
+  - 新增 `settlement_aggregate_repository`，统一负责从 `billing.billing_event + trade.order_main.fee_preview_snapshot + settlement_record` 重算 `Settlement`。
+  - 聚合器支持：
+    - `one_time_charge / recurring_charge / usage_charge` 计入 `payable_amount`
+    - `refund` 计入 `refund_amount`
+    - `compensation` 计入 `compensation_amount`
+    - `manual_settlement` 驱动 `settlement_status=settled`
+  - 聚合器统一回写：
+    - `billing.settlement_record`
+    - `trade.order_main.settlement_status`
+    - `trade.order_main.settled_at`
+    - `audit.audit_event(billing.settlement.recomputed)`
+  - `billing_event / refund / compensation / manual payout` 写路径已改为复用统一聚合器，不再各自直接手改 `settlement_record` 最终金额。
+  - 新增 `bil015_settlement_aggregate_db_smoke`，覆盖多事件累加、重复重算幂等、账单读取摘要一致性。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil015_settlement_aggregate_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动 `APP_PORT=8108` 的 `platform-core`，加载 `infra/docker/.env.local` 并覆盖 `KAFKA_BROKERS/KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`
+  8. 插入临时 buyer/seller/asset/product/sku/order/provider_account 数据后执行真实 API：
+     - `POST /api/v1/payments/intents`
+     - `POST /api/v1/orders/{id}/lock`
+     - `POST /api/v1/payments/webhooks/mock_payment`
+     - 重复调用同一 webhook 做幂等重放
+     - `GET /api/v1/billing/{order_id}`
+     再用 `psql` 回查 `billing.billing_event / billing.settlement_record / trade.order_main / audit.audit_event`，随后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `233 passed, 0 failed, 1 ignored`。
+  - `bil015_settlement_aggregate_db_smoke` 通过，确认 `charge + refund + compensation + manual_settlement` 聚合后只保留单条 `settlement_record`，且重复重算不生成新记录。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/payments/intents` 返回 `HTTP 200`
+    - `POST /api/v1/orders/{id}/lock` 返回 `HTTP 200`
+    - 首次 `POST /api/v1/payments/webhooks/mock_payment` 返回 `processed`
+    - 重复 webhook 返回 `duplicate`
+    - `GET /api/v1/billing/{order_id}` 返回 `HTTP 200`
+  - DB 回查通过：
+    - `billing.billing_event = 1`，且 `one_time_charge` 只生成一次
+    - `billing.settlement_record = 1`
+    - `billing.settlement_record.payable_amount = 88.00000000`
+    - `billing.settlement_record.net_receivable_amount = 85.00000000`
+    - `trade.order_main = buyer_locked / paid / pending_settlement`
+    - `audit.audit_event` 命中 `billing.settlement.recomputed`
+  - 临时业务数据已清理，业务表回查为 0；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql`
+  - `支付、资金流与轻结算设计.md` `7`
+- 覆盖的任务清单条目：`BIL-015`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-189（计划中）
+- 任务：`BIL-016` 实现账单/结算摘要 outbox 事件，为后续 Fabric 存证和审计归档做准备
+- 状态：计划中
+- 说明：在 `BIL-015` 聚合器基础上补齐账单/结算摘要事件，不提前展开 `AUD` 阶段的 Fabric 链上闭环，只先保证 Kafka outbox 边界与审计归档载荷稳定。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

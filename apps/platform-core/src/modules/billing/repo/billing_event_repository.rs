@@ -1,5 +1,6 @@
 use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::domain::BillingEvent;
+use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient, Row};
@@ -174,6 +175,9 @@ pub async fn record_billing_event(
         trace_id,
     )
     .await?;
+    let _ =
+        recompute_settlement_for_order(&tx, &payload.order_id, actor_role, request_id, trace_id)
+            .await?;
     tx.commit().await.map_err(map_db_error)?;
 
     Ok((event, false))

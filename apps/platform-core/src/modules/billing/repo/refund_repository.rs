@@ -1,5 +1,6 @@
 use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::models::{CreateRefundRequest, RefundExecutionView};
+use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient};
@@ -253,28 +254,14 @@ pub async fn execute_refund(
     )
     .await?;
 
-    let _ = tx
-        .execute(
-            "UPDATE billing.settlement_record
-             SET refund_amount = COALESCE(refund_amount, 0) + $2::text::numeric,
-                 updated_at = now()
-             WHERE settlement_id = (
-               SELECT settlement_id
-               FROM billing.settlement_record
-               WHERE order_id = $1::text::uuid
-               ORDER BY created_at DESC, settlement_id DESC
-               LIMIT 1
-             )",
-            &[&payload.order_id, &payload.amount],
-        )
-        .await
-        .map_err(map_db_error)?;
+    let _ =
+        recompute_settlement_for_order(&tx, &payload.order_id, actor_role, request_id, trace_id)
+            .await?;
 
     let _ = tx
         .execute(
             "UPDATE trade.order_main
              SET payment_status = CASE WHEN amount <= $2::text::numeric THEN 'refunded' ELSE payment_status END,
-                 settlement_status = CASE WHEN amount <= $2::text::numeric THEN 'refunded' ELSE settlement_status END,
                  dispute_status = 'resolved',
                  updated_at = now()
              WHERE order_id = $1::text::uuid",
