@@ -1,17 +1,28 @@
 use crate::AppState;
 use crate::modules::billing::handlers::{
-    cancel_payment_intent, create_payment_intent, get_billing_policies, get_payment_intent,
-    get_payout_preferences, handle_payment_webhook, lock_order_payment,
+    cancel_payment_intent, create_payment_intent, get_payment_intent, handle_payment_webhook,
+    lock_order_payment,
+};
+use crate::modules::billing::policy_handlers::{
+    create_payment_corridor, create_payment_jurisdiction, create_payout_preference,
+    get_payment_corridors, get_payment_jurisdictions, list_payout_preferences_v1,
 };
 use axum::Router;
 use axum::routing::{get, post};
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/billing/policies", get(get_billing_policies))
         .route(
-            "/api/v1/billing/payout-preferences/{beneficiary_subject_id}",
-            get(get_payout_preferences),
+            "/api/v1/payment-jurisdictions",
+            get(get_payment_jurisdictions).post(create_payment_jurisdiction),
+        )
+        .route(
+            "/api/v1/payment-corridors",
+            get(get_payment_corridors).post(create_payment_corridor),
+        )
+        .route(
+            "/api/v1/payout-preferences",
+            get(list_payout_preferences_v1).post(create_payout_preference),
         )
         .route("/api/v1/payments/intents", post(create_payment_intent))
         .route("/api/v1/payments/intents/{id}", get(get_payment_intent))

@@ -87,6 +87,8 @@ pub async fn write_audit_event(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = request_id.map(str::to_string);
+    let trace_id = trace_id.map(str::to_string);
     client
         .execute(
             "INSERT INTO audit.audit_event (
@@ -114,6 +116,56 @@ pub async fn write_audit_event(
                 &domain_name,
                 &ref_type,
                 &ref_id,
+                &action_name,
+                &result_code,
+                &request_id,
+                &trace_id,
+                &actor_role,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    Ok(())
+}
+
+pub async fn write_audit_event_without_ref(
+    client: &Client,
+    domain_name: &str,
+    ref_type: &str,
+    actor_role: &str,
+    action_name: &str,
+    result_code: &str,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = request_id.map(str::to_string);
+    let trace_id = trace_id.map(str::to_string);
+    client
+        .execute(
+            "INSERT INTO audit.audit_event (
+               domain_name,
+               ref_type,
+               ref_id,
+               actor_type,
+               action_name,
+               result_code,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1,
+               $2,
+               NULL,
+               'role',
+               $3,
+               $4,
+               $5,
+               $6,
+               jsonb_build_object('actor_role', $7::text)
+             )",
+            &[
+                &domain_name,
+                &ref_type,
                 &action_name,
                 &result_code,
                 &request_id,

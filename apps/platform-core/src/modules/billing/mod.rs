@@ -5,6 +5,8 @@ pub mod db;
 pub mod domain;
 pub mod handlers;
 pub mod models;
+pub mod policy_handlers;
+pub mod repo;
 pub mod service;
 #[cfg(test)]
 mod tests;

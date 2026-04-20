@@ -1,3 +1,5 @@
+mod bil001_payment_policy_db;
+
 #[cfg(test)]
 mod tests {
     use super::super::api::router;
@@ -9,14 +11,55 @@ mod tests {
     use tower::util::ServiceExt;
 
     #[tokio::test]
-    async fn rejects_policy_request_without_role() {
+    async fn rejects_jurisdiction_request_without_role() {
         let app = crate::with_stub_test_state(router());
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v1/billing/policies")
+                    .uri("/api/v1/payment-jurisdictions")
                     .method("GET")
                     .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_jurisdiction_manage_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payment-jurisdictions")
+                    .method("POST")
+                    .header("x-role", "platform_admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"jurisdiction_code":"SG","jurisdiction_name":"Singapore","regulator_name":"MAS","launch_phase":"launch_active","supports_fiat_collection":true,"supports_fiat_payout":true,"supports_crypto_settlement":false,"jurisdiction_status":"active","policy_snapshot":{"price_currency":"USD"}}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_create_payout_preference_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payout-preferences")
+                    .method("POST")
+                    .header("x-role", "tenant_operator")
+                    .header("x-tenant-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"beneficiary_subject_type":"organization","beneficiary_subject_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","destination_jurisdiction_code":"SG","preferred_currency_code":"SGD","payout_method":"bank_transfer","preferred_provider_key":"offline_bank","beneficiary_snapshot":{}}"#,
+                    ))
                     .expect("request should build"),
             )
             .await

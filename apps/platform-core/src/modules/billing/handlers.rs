@@ -66,7 +66,7 @@ pub async fn get_billing_policies(
 ) -> Result<Json<ApiResponse<BillingPolicyView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
-        BillingPermission::ReadPolicy,
+        BillingPermission::JurisdictionRead,
         "billing policy read",
     )?;
     info!(
@@ -85,7 +85,7 @@ pub async fn get_payout_preferences(
 ) -> Result<Json<ApiResponse<Vec<PayoutPreference>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
-        BillingPermission::ReadPolicy,
+        BillingPermission::PayoutPreferenceRead,
         "billing payout preference read",
     )?;
     info!(
@@ -110,7 +110,7 @@ pub async fn create_payment_intent(
     )?;
     let request_id = header(&headers, "x-request-id");
     let idempotency_key = header(&headers, "x-idempotency-key");
-    let mut client = state.db.client().map_err(map_db_connect)?;
+    let client = state.db.client().map_err(map_db_connect)?;
 
     if let Some(ref key) = idempotency_key {
         if let Some(existing) = select_intent_by_idempotency(&client, key).await? {
@@ -874,7 +874,7 @@ pub async fn handle_payment_webhook(
     }))
 }
 
-fn map_db_connect(err: Error) -> (StatusCode, Json<ErrorResponse>) {
+pub(crate) fn map_db_connect(err: Error) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse {

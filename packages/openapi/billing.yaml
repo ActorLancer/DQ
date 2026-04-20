@@ -3,10 +3,9 @@ info:
   title: Billing API
   version: v1
 paths:
-  /api/v1/billing/policies:
+  /api/v1/payment-jurisdictions:
     get:
-      summary: Read billing policy baseline
-      description: Return jurisdiction and corridor placeholder baseline for V1 launch.
+      summary: List payment jurisdiction profiles
       tags: [Billing]
       parameters:
         - in: header
@@ -14,33 +13,164 @@ paths:
           required: true
           schema:
             type: string
-          description: platform_admin | platform_finance_operator | tenant_admin
+          description: platform_admin | platform_finance_operator | platform_risk_settlement | tenant_admin
       responses:
         "200":
-          description: Policy baseline loaded
+          description: Jurisdiction profiles loaded
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BillingPolicyResponse"
+                $ref: "#/components/schemas/JurisdictionProfileListResponse"
         "403":
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/v1/billing/payout-preferences/{beneficiary_subject_id}:
-    get:
-      summary: Read payout preference placeholders
+    post:
+      summary: Create or update payment jurisdiction profile
       tags: [Billing]
       parameters:
-        - in: path
-          name: beneficiary_subject_id
+        - in: header
+          name: x-role
           required: true
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-token
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-challenge-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJurisdictionProfileRequest"
+      responses:
+        "200":
+          description: Jurisdiction profile saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JurisdictionProfileResponse"
+        "400":
+          description: Invalid payload or missing step-up placeholder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/payment-corridors:
+    get:
+      summary: List payment corridor policies
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Corridor policies loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorridorPolicyListResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create or update payment corridor policy
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-token
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-challenge-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCorridorPolicyRequest"
+      responses:
+        "200":
+          description: Corridor policy saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorridorPolicyResponse"
+        "400":
+          description: Invalid payload or missing step-up placeholder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/payout-preferences:
+    get:
+      summary: List payout preferences
+      tags: [Billing]
+      parameters:
+        - in: query
+          name: beneficiary_subject_type
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: beneficiary_subject_id
+          required: false
           schema:
             type: string
         - in: header
           name: x-role
           required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
           schema:
             type: string
       responses:
@@ -50,8 +180,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PayoutPreferenceListResponse"
+        "400":
+          description: Invalid scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Set default payout preference
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePayoutPreferenceRequest"
+      responses:
+        "200":
+          description: Payout preference created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutPreferenceResponse"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden or tenant scope mismatch
           content:
             application/json:
               schema:
@@ -291,14 +471,42 @@ components:
         request_id:
           type: string
           nullable: true
-    ApiEnvelopeBillingPolicy:
+    ApiEnvelopeJurisdictionList:
       type: object
       required: [success, data]
       properties:
         success:
           type: boolean
         data:
-          $ref: "#/components/schemas/BillingPolicyView"
+          type: array
+          items:
+            $ref: "#/components/schemas/JurisdictionProfile"
+    ApiEnvelopeJurisdiction:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/JurisdictionProfile"
+    ApiEnvelopeCorridorList:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CorridorPolicy"
+    ApiEnvelopeCorridor:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/CorridorPolicy"
     ApiEnvelopePayoutPreferenceList:
       type: object
       required: [success, data]
@@ -309,6 +517,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PayoutPreference"
+    ApiEnvelopePayoutPreference:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/PayoutPreference"
     ApiEnvelopePaymentIntent:
       type: object
       required: [success, data]
@@ -333,30 +549,18 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/PaymentWebhookResult"
-    BillingPolicyView:
-      type: object
-      required: [jurisdictions, corridor_policies]
-      properties:
-        jurisdictions:
-          type: array
-          items:
-            $ref: "#/components/schemas/JurisdictionProfile"
-        corridor_policies:
-          type: array
-          items:
-            $ref: "#/components/schemas/CorridorPolicy"
     JurisdictionProfile:
       type: object
       required:
         [
           jurisdiction_code,
           jurisdiction_name,
-          regulator_name,
           launch_phase,
           supports_fiat_collection,
           supports_fiat_payout,
           supports_crypto_settlement,
           jurisdiction_status,
+          policy_snapshot,
         ]
       properties:
         jurisdiction_code:
@@ -365,6 +569,7 @@ components:
           type: string
         regulator_name:
           type: string
+          nullable: true
         launch_phase:
           type: string
         supports_fiat_collection:
@@ -375,6 +580,9 @@ components:
           type: boolean
         jurisdiction_status:
           type: string
+        policy_snapshot:
+          type: object
+          additionalProperties: true
     CorridorPolicy:
       type: object
       required:
@@ -383,6 +591,7 @@ components:
           policy_name,
           payer_jurisdiction_code,
           payee_jurisdiction_code,
+          product_scope,
           price_currency_code,
           allowed_collection_currencies,
           allowed_payout_currencies,
@@ -390,6 +599,7 @@ components:
           requires_manual_review,
           allows_crypto,
           corridor_status,
+          policy_snapshot,
         ]
       properties:
         corridor_policy_id:
@@ -399,6 +609,8 @@ components:
         payer_jurisdiction_code:
           type: string
         payee_jurisdiction_code:
+          type: string
+        product_scope:
           type: string
         price_currency_code:
           type: string
@@ -418,6 +630,15 @@ components:
           type: boolean
         corridor_status:
           type: string
+        effective_from:
+          type: string
+          nullable: true
+        effective_to:
+          type: string
+          nullable: true
+        policy_snapshot:
+          type: object
+          additionalProperties: true
     PayoutPreference:
       type: object
       required:
@@ -429,7 +650,7 @@ components:
           preferred_currency_code,
           payout_method,
           preferred_provider_key,
-          preferred_provider_account_id,
+          beneficiary_snapshot,
           is_default,
           preference_status,
         ]
@@ -450,10 +671,129 @@ components:
           type: string
         preferred_provider_account_id:
           type: string
+          nullable: true
+        beneficiary_snapshot:
+          type: object
+          additionalProperties: true
         is_default:
           type: boolean
         preference_status:
           type: string
+    CreateJurisdictionProfileRequest:
+      type: object
+      required:
+        [
+          jurisdiction_code,
+          jurisdiction_name,
+          launch_phase,
+          supports_fiat_collection,
+          supports_fiat_payout,
+          supports_crypto_settlement,
+          jurisdiction_status,
+        ]
+      properties:
+        jurisdiction_code:
+          type: string
+        jurisdiction_name:
+          type: string
+        regulator_name:
+          type: string
+          nullable: true
+        launch_phase:
+          type: string
+        supports_fiat_collection:
+          type: boolean
+        supports_fiat_payout:
+          type: boolean
+        supports_crypto_settlement:
+          type: boolean
+        jurisdiction_status:
+          type: string
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+    CreateCorridorPolicyRequest:
+      type: object
+      required:
+        [
+          policy_name,
+          payer_jurisdiction_code,
+          payee_jurisdiction_code,
+          product_scope,
+          price_currency_code,
+          allowed_collection_currencies,
+          allowed_payout_currencies,
+          route_mode,
+          requires_manual_review,
+          allows_crypto,
+          corridor_status,
+        ]
+      properties:
+        policy_name:
+          type: string
+        payer_jurisdiction_code:
+          type: string
+        payee_jurisdiction_code:
+          type: string
+        product_scope:
+          type: string
+        price_currency_code:
+          type: string
+        allowed_collection_currencies:
+          type: array
+          items:
+            type: string
+        allowed_payout_currencies:
+          type: array
+          items:
+            type: string
+        route_mode:
+          type: string
+        requires_manual_review:
+          type: boolean
+        allows_crypto:
+          type: boolean
+        corridor_status:
+          type: string
+        effective_from:
+          type: string
+          nullable: true
+        effective_to:
+          type: string
+          nullable: true
+        policy_snapshot:
+          type: object
+          additionalProperties: true
+    CreatePayoutPreferenceRequest:
+      type: object
+      required:
+        [
+          beneficiary_subject_type,
+          beneficiary_subject_id,
+          destination_jurisdiction_code,
+          preferred_currency_code,
+          payout_method,
+          preferred_provider_key,
+        ]
+      properties:
+        beneficiary_subject_type:
+          type: string
+        beneficiary_subject_id:
+          type: string
+        destination_jurisdiction_code:
+          type: string
+        preferred_currency_code:
+          type: string
+        payout_method:
+          type: string
+        preferred_provider_key:
+          type: string
+        preferred_provider_account_id:
+          type: string
+          nullable: true
+        beneficiary_snapshot:
+          type: object
+          additionalProperties: true
     CreatePaymentIntentRequest:
       type: object
       required:
@@ -568,13 +908,7 @@ components:
     OrderLock:
       type: object
       required:
-        [
-          order_id,
-          payment_intent_id,
-          order_status,
-          payment_status,
-          buyer_locked_at,
-        ]
+        [order_id, payment_intent_id, order_status, payment_status, buyer_locked_at]
       properties:
         order_id:
           type: string
@@ -640,12 +974,24 @@ components:
         applied_payment_status:
           type: string
           nullable: true
-    BillingPolicyResponse:
+    JurisdictionProfileListResponse:
       allOf:
-        - $ref: "#/components/schemas/ApiEnvelopeBillingPolicy"
+        - $ref: "#/components/schemas/ApiEnvelopeJurisdictionList"
+    JurisdictionProfileResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeJurisdiction"
+    CorridorPolicyListResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeCorridorList"
+    CorridorPolicyResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeCorridor"
     PayoutPreferenceListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopePayoutPreferenceList"
+    PayoutPreferenceResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopePayoutPreference"
     PaymentIntentResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopePaymentIntent"

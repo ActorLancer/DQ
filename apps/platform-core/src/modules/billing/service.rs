@@ -2,7 +2,12 @@ use crate::modules::billing::domain::{CorridorPolicy, JurisdictionProfile, Payou
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BillingPermission {
-    ReadPolicy,
+    JurisdictionRead,
+    JurisdictionManage,
+    CorridorRead,
+    CorridorManage,
+    PayoutPreferenceRead,
+    PayoutPreferenceManage,
     PaymentIntentRead,
     PaymentIntentCreate,
     PaymentIntentCancel,
@@ -11,7 +16,24 @@ pub enum BillingPermission {
 
 pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
     match permission {
-        BillingPermission::ReadPolicy => matches!(
+        BillingPermission::JurisdictionRead | BillingPermission::CorridorRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_finance_operator"
+                | "platform_risk_settlement"
+                | "tenant_admin"
+        ),
+        BillingPermission::JurisdictionManage | BillingPermission::CorridorManage => {
+            matches!(role, "platform_admin" | "platform_finance_operator")
+        }
+        BillingPermission::PayoutPreferenceRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_finance_operator"
+                | "platform_risk_settlement"
+                | "tenant_admin"
+        ),
+        BillingPermission::PayoutPreferenceManage => matches!(
             role,
             "platform_admin" | "platform_finance_operator" | "tenant_admin"
         ),
@@ -46,12 +68,16 @@ pub fn list_jurisdictions() -> Vec<JurisdictionProfile> {
     vec![JurisdictionProfile {
         jurisdiction_code: "SG".to_string(),
         jurisdiction_name: "Singapore".to_string(),
-        regulator_name: "MAS".to_string(),
+        regulator_name: Some("MAS".to_string()),
         launch_phase: "launch_active".to_string(),
         supports_fiat_collection: true,
         supports_fiat_payout: true,
         supports_crypto_settlement: false,
         jurisdiction_status: "active".to_string(),
+        policy_snapshot: serde_json::json!({
+            "launch_scope": "initial_production",
+            "price_currency": "USD"
+        }),
     }]
 }
 
@@ -61,6 +87,7 @@ pub fn list_corridor_policies() -> Vec<CorridorPolicy> {
         policy_name: "SG Launch Standard Corridor".to_string(),
         payer_jurisdiction_code: "SG".to_string(),
         payee_jurisdiction_code: "SG".to_string(),
+        product_scope: "general".to_string(),
         price_currency_code: "USD".to_string(),
         allowed_collection_currencies: vec!["USD".to_string(), "SGD".to_string()],
         allowed_payout_currencies: vec!["USD".to_string(), "SGD".to_string()],
@@ -68,6 +95,9 @@ pub fn list_corridor_policies() -> Vec<CorridorPolicy> {
         requires_manual_review: false,
         allows_crypto: false,
         corridor_status: "active".to_string(),
+        effective_from: Some("2026-04-08T00:00:00.000Z".to_string()),
+        effective_to: None,
+        policy_snapshot: serde_json::json!({"real_payment_enabled": true}),
     }]
 }
 
@@ -80,7 +110,8 @@ pub fn list_payout_preferences(beneficiary_subject_id: &str) -> Vec<PayoutPrefer
         preferred_currency_code: "SGD".to_string(),
         payout_method: "bank_transfer".to_string(),
         preferred_provider_key: "offline_bank".to_string(),
-        preferred_provider_account_id: "acct-sg-001".to_string(),
+        preferred_provider_account_id: None,
+        beneficiary_snapshot: serde_json::json!({}),
         is_default: true,
         preference_status: "active".to_string(),
     }]
@@ -91,14 +122,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_allowed_roles_can_read_policy() {
-        assert!(is_allowed("platform_admin", BillingPermission::ReadPolicy));
+    fn only_expected_roles_can_read_payment_controls() {
+        assert!(is_allowed(
+            "platform_admin",
+            BillingPermission::JurisdictionRead
+        ));
         assert!(is_allowed(
             "platform_finance_operator",
-            BillingPermission::ReadPolicy
+            BillingPermission::CorridorRead
         ));
-        assert!(is_allowed("tenant_admin", BillingPermission::ReadPolicy));
-        assert!(!is_allowed("tenant_auditor", BillingPermission::ReadPolicy));
+        assert!(is_allowed(
+            "tenant_admin",
+            BillingPermission::PayoutPreferenceRead
+        ));
+        assert!(!is_allowed(
+            "tenant_operator",
+            BillingPermission::JurisdictionRead
+        ));
+    }
+
+    #[test]
+    fn only_platform_roles_can_manage_payment_controls() {
+        assert!(is_allowed(
+            "platform_admin",
+            BillingPermission::JurisdictionManage
+        ));
+        assert!(is_allowed(
+            "platform_finance_operator",
+            BillingPermission::CorridorManage
+        ));
+        assert!(!is_allowed(
+            "tenant_admin",
+            BillingPermission::CorridorManage
+        ));
+    }
+
+    #[test]
+    fn payout_preference_manage_is_tenant_or_platform_scoped() {
+        assert!(is_allowed(
+            "tenant_admin",
+            BillingPermission::PayoutPreferenceManage
+        ));
+        assert!(is_allowed(
+            "platform_admin",
+            BillingPermission::PayoutPreferenceManage
+        ));
+        assert!(!is_allowed(
+            "tenant_operator",
+            BillingPermission::PayoutPreferenceManage
+        ));
     }
 
     #[test]
@@ -125,14 +197,5 @@ mod tests {
             BillingPermission::OrderLock
         ));
         assert!(!is_allowed("tenant_operator", BillingPermission::OrderLock));
-    }
-
-    #[test]
-    fn seed_models_match_sg_launch_baseline() {
-        let jurisdictions = list_jurisdictions();
-        assert_eq!(jurisdictions.len(), 1);
-        assert_eq!(jurisdictions[0].jurisdiction_code, "SG");
-        let corridors = list_corridor_policies();
-        assert_eq!(corridors[0].policy_name, "SG Launch Standard Corridor");
     }
 }
