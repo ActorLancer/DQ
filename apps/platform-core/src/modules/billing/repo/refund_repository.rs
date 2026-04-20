@@ -1,5 +1,6 @@
 use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::models::{CreateRefundRequest, RefundExecutionView};
+use crate::modules::billing::repo::billing_adjustment_repository::release_provisional_dispute_hold_in_tx;
 use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
 use axum::Json;
 use axum::http::StatusCode;
@@ -202,6 +203,17 @@ pub async fn execute_refund(
         .await
         .map_err(map_db_error)?;
     let refund_id: String = row.get(0);
+
+    release_provisional_dispute_hold_in_tx(
+        &tx,
+        &payload.order_id,
+        "refund_execute",
+        &refund_id,
+        actor_role,
+        request_id,
+        trace_id,
+    )
+    .await?;
 
     let billing_event_metadata = build_billing_event_metadata(&refund_metadata, &refund_id);
     let event_row = tx

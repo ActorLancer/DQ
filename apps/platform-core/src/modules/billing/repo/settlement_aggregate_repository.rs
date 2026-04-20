@@ -228,8 +228,10 @@ async fn load_settlement_aggregate_snapshot(
                event_sums AS (
                  SELECT
                    COALESCE(SUM(CASE WHEN event_type IN ('one_time_charge', 'recurring_charge', 'usage_charge') THEN amount ELSE 0 END), 0) AS charge_amount,
-                   COALESCE(SUM(CASE WHEN event_type = 'refund' THEN amount ELSE 0 END), 0) AS refund_amount,
-                   COALESCE(SUM(CASE WHEN event_type = 'compensation' THEN amount ELSE 0 END), 0) AS compensation_amount,
+                   COALESCE(SUM(CASE WHEN event_type IN ('refund', 'refund_adjustment') THEN amount ELSE 0 END), 0) AS refund_amount,
+                   COALESCE(SUM(CASE WHEN event_type IN ('compensation', 'compensation_adjustment') THEN amount ELSE 0 END), 0) AS compensation_amount,
+                   COALESCE(BOOL_OR(event_type IN ('refund', 'refund_adjustment')), false) AS has_refund_events,
+                   COALESCE(BOOL_OR(event_type IN ('compensation', 'compensation_adjustment')), false) AS has_compensation_events,
                    COALESCE(BOOL_OR(event_type = 'manual_settlement'), false) AS has_manual_settlement,
                    MAX(occurred_at) FILTER (WHERE event_type = 'manual_settlement') AS manual_settlement_at
                  FROM billing.billing_event
@@ -244,11 +246,11 @@ async fn load_settlement_aggregate_snapshot(
                    COALESCE(NULLIF(order_ctx.fee_platform_amount, 0), existing.platform_fee_amount, 0) AS platform_fee_amount,
                    COALESCE(NULLIF(order_ctx.fee_channel_amount, 0), existing.channel_fee_amount, 0) AS channel_fee_amount,
                    CASE
-                     WHEN event_sums.refund_amount > 0 THEN event_sums.refund_amount
+                     WHEN event_sums.has_refund_events THEN event_sums.refund_amount
                      ELSE COALESCE(existing.refund_amount, 0)
                    END AS refund_amount,
                    CASE
-                     WHEN event_sums.compensation_amount > 0 THEN event_sums.compensation_amount
+                     WHEN event_sums.has_compensation_events THEN event_sums.compensation_amount
                      ELSE COALESCE(existing.compensation_amount, 0)
                    END AS compensation_amount,
                    existing.reason_code,
@@ -264,7 +266,8 @@ async fn load_settlement_aggregate_snapshot(
                  CASE WHEN settlement_id IS NULL THEN NULL ELSE settlement_id::text END,
                  settlement_type,
                  CASE
-                   WHEN previous_status IN ('frozen', 'closed', 'canceled') THEN previous_status
+                   WHEN previous_status IN ('frozen', 'blocked', 'closed', 'canceled')
+                     THEN CASE WHEN previous_status = 'blocked' THEN 'frozen' ELSE previous_status END
                    WHEN has_manual_settlement OR previous_status = 'settled' OR settled_at IS NOT NULL THEN 'settled'
                    WHEN payable_amount > 0 AND refund_amount >= payable_amount THEN 'refunded'
                    ELSE 'pending'
@@ -280,7 +283,8 @@ async fn load_settlement_aggregate_snapshot(
                  CASE
                    WHEN (
                      CASE
-                       WHEN previous_status IN ('frozen', 'closed', 'canceled') THEN previous_status
+                       WHEN previous_status IN ('frozen', 'blocked', 'closed', 'canceled')
+                         THEN CASE WHEN previous_status = 'blocked' THEN 'frozen' ELSE previous_status END
                        WHEN has_manual_settlement OR previous_status = 'settled' OR settled_at IS NOT NULL THEN 'settled'
                        WHEN payable_amount > 0 AND refund_amount >= payable_amount THEN 'refunded'
                        ELSE 'pending'

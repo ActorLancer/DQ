@@ -488,7 +488,7 @@ mod tests {
             )
             .await
             .expect("query refund order row");
-        assert_eq!(refund_order_row.get::<_, String>(0), "frozen");
+        assert_eq!(refund_order_row.get::<_, String>(0), "pending_settlement");
         assert_eq!(refund_order_row.get::<_, String>(1), "resolved");
         assert_eq!(
             refund_order_row.get::<_, Option<String>>(2).as_deref(),
@@ -529,6 +529,38 @@ mod tests {
                 .as_str(),
             Some("20.00000000")
         );
+
+        let adjustment_counts = client
+            .query_one(
+                "SELECT
+                   (SELECT COUNT(*)::bigint
+                    FROM billing.billing_event
+                    WHERE order_id = $1::text::uuid
+                      AND event_type = 'refund_adjustment'
+                      AND event_source = 'settlement_dispute_hold'),
+                   (SELECT COUNT(*)::bigint
+                    FROM billing.billing_event
+                    WHERE order_id = $1::text::uuid
+                      AND event_type = 'refund_adjustment'
+                      AND event_source = 'settlement_dispute_release'),
+                   (SELECT COUNT(*)::bigint
+                    FROM billing.billing_event
+                    WHERE order_id = $2::text::uuid
+                      AND event_type = 'refund_adjustment'
+                      AND event_source = 'settlement_dispute_hold'),
+                   (SELECT COUNT(*)::bigint
+                    FROM billing.billing_event
+                    WHERE order_id = $2::text::uuid
+                      AND event_type = 'refund_adjustment'
+                      AND event_source = 'settlement_dispute_release')",
+                &[&refund_order.order_id, &compensation_order.order_id],
+            )
+            .await
+            .expect("query adjustment counts");
+        assert_eq!(adjustment_counts.get::<_, i64>(0), 1);
+        assert_eq!(adjustment_counts.get::<_, i64>(1), 1);
+        assert_eq!(adjustment_counts.get::<_, i64>(2), 1);
+        assert_eq!(adjustment_counts.get::<_, i64>(3), 1);
 
         let counts = client
             .query_one(

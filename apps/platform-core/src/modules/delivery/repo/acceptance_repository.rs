@@ -2,6 +2,7 @@ use super::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
 };
 use super::outbox_repository::write_billing_trigger_bridge_event;
+use crate::modules::billing::repo::billing_adjustment_repository::ensure_provisional_dispute_hold_in_tx;
 use crate::modules::delivery::domain::{
     is_manual_acceptance_state, manual_acceptance_delivery_branch,
 };
@@ -332,6 +333,27 @@ pub async fn reject_order_delivery(
              updated_at = now()
          WHERE delivery_id = $1::text::uuid",
         &[&delivery_id, &rejection_snapshot],
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    ensure_provisional_dispute_hold_in_tx(
+        &tx,
+        order_id,
+        payload.reason_code.as_str(),
+        DELIVERY_REJECT_EVENT,
+        actor_role,
+        request_id,
+        trace_id,
+    )
+    .await?;
+
+    tx.execute(
+        "UPDATE trade.order_main
+         SET settlement_status = 'blocked',
+             updated_at = now()
+         WHERE order_id = $1::text::uuid",
+        &[&order_id],
     )
     .await
     .map_err(map_db_error)?;

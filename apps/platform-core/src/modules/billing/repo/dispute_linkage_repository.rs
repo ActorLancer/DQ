@@ -1,4 +1,5 @@
 use crate::modules::billing::db::{map_db_error, write_audit_event};
+use crate::modules::billing::repo::billing_adjustment_repository::ensure_provisional_dispute_hold_in_tx;
 use crate::modules::delivery::repo::{DeliveryCutoffSideEffects, apply_delivery_cutoff_if_needed};
 use axum::Json;
 use axum::http::StatusCode;
@@ -89,6 +90,17 @@ pub async fn apply_dispute_open_linkage(
         )
         .await
         .map_err(map_db_error)?;
+
+    ensure_provisional_dispute_hold_in_tx(
+        client,
+        order_id,
+        reason_code,
+        "dispute_case_opened",
+        actor_role,
+        request_id,
+        trace_id,
+    )
+    .await?;
 
     let governance_action_count = create_governance_actions(
         client,

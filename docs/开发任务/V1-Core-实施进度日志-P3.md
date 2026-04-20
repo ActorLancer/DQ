@@ -1467,3 +1467,54 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-198（计划中）
+- 任务：`BIL-025` 实现 BillingEvent 冲销与 Settlement 冻结规则：拒收、争议升级、裁决退款、赔付、人工修正时必须生成冲销/补差事件，并能重新聚合出正确 Settlement，不允许直接手改最终金额
+- 状态：计划中
+- 说明：在 `BIL-014/015/024` 已有冻结与桥接基础上，补齐“冻结期间的临时冲销事件”和“裁决/人工修正后的释放与重算”规则，重点修复拒收/争议后 settlement 永久停留 `frozen`、以及缺少显式 adjustment 事件的问题。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-198（待审批）
+- 任务：`BIL-025` 实现 BillingEvent 冲销与 Settlement 冻结规则：拒收、争议升级、裁决退款、赔付、人工修正时必须生成冲销/补差事件，并能重新聚合出正确 Settlement，不允许直接手改最终金额
+- 状态：待审批
+- 实现摘要：
+  - 新增 `billing_adjustment_repository`，统一提供争议/拒收触发的临时冻结补差与裁决后释放能力；冻结阶段以 `refund_adjustment + settlement_dispute_hold` 明确落库，释放阶段以 `refund_adjustment + settlement_dispute_release` 明确冲销，不再依赖直接手改 `settlement_record`。
+  - 拒收与争议升级链路现会自动生成 `provisional_dispute_hold` 调整事件，冻结 `billing.settlement_record`，并把 `trade.order_main.settlement_status` 明确回写到业务口径 `blocked`，避免账单聚合与订单主状态失真。
+  - 退款、赔付、人工打款三条执行链路现都会先释放临时冻结，再重算结算聚合；`settlement_aggregate_repository` 改为显式识别 `refund_adjustment / compensation_adjustment`，即使冲销后净额回到 `0` 也不会回退到旧快照。
+  - `manual payout` 路径补齐“排除未释放临时冻结”的有效应收计算，解决争议人工修正后仍误判 `net_receivable_amount` 不足、无法执行打款的问题。
+  - 新增 `bil025_billing_adjustment_freeze_db_smoke`，并补强 `bil019` 断言，覆盖拒收冻结、人工修正释放、结算重算与审计联动。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil014_dispute_linkage_db_smoke -- --nocapture`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil011_manual_payout_db_smoke -- --nocapture`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil019_dispute_refund_compensation_recompute_db_smoke -- --nocapture`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil025_billing_adjustment_freeze_db_smoke -- --nocapture`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：复用 `APP_PORT=8122` 的 `platform-core`，插入两组临时业务数据后执行：
+    - `POST /api/v1/orders/{id}/reject`
+    - `POST /api/v1/cases`
+    - `POST /api/v1/cases/{id}/resolve`
+    - `POST /api/v1/payouts/manual`
+    - `GET /api/v1/billing/{order_id}`
+    - `psql` 回查 `billing.billing_event / billing.settlement_record / trade.order_main / audit.audit_event`
+- 验证结果：
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`246 passed, 0 failed, 1 ignored`。
+  - `bil014`、`bil011`、`bil019`、`bil025` DB smoke 均通过。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过，`.sqlx/` 已刷新。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/reject` 返回 `200`，响应 `rejected / blocked / open`
+    - 拒收后的 DB 回查命中 `refund_adjustment(settlement_dispute_hold)=1`、`settlement_record=frozen / refund_amount=66.60000000 / net_receivable=0.00000000`、`trade.order_main=blocked / open`
+    - `POST /api/v1/cases`、`POST /api/v1/cases/{id}/resolve`、`POST /api/v1/payouts/manual` 全部返回 `200`
+    - 人工修正后的 DB 回查命中 `settlement_dispute_hold=1`、`settlement_dispute_release=1`、调整净额回到 `0`、`settlement_record=settled / refund_amount=0 / net_receivable=85.00000000`、`trade.order_main=settled / resolved`
+    - 审计回查命中 `delivery.reject=1`、`billing.adjustment.provisional_hold=1`、`dispute.case.create=1`、`dispute.case.resolve=1`、`billing.adjustment.provisional_release=1`、`billing.payout.execute_manual=1`
+  - 临时业务数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql` `billing.billing_event / billing.settlement_record / payment.payout_instruction`
+  - `支付、资金流与轻结算设计.md` `7`
+- 覆盖的任务清单条目：`BIL-025`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

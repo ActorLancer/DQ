@@ -2,6 +2,7 @@ use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::models::{
     BillingSplitInstructionView, CreateManualPayoutRequest, ManualPayoutExecutionView,
 };
+use crate::modules::billing::repo::billing_adjustment_repository::release_provisional_dispute_hold_in_tx;
 use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
 use axum::Json;
 use axum::http::StatusCode;
@@ -291,6 +292,17 @@ pub async fn execute_manual_payout(
     )
     .await?;
 
+    release_provisional_dispute_hold_in_tx(
+        &tx,
+        &payload.order_id,
+        "manual_payout_execute",
+        &payout_instruction_id,
+        actor_role,
+        request_id,
+        trace_id,
+    )
+    .await?;
+
     let billing_event_metadata = build_billing_event_metadata(
         &payout_metadata,
         &payout_instruction_id,
@@ -561,7 +573,17 @@ async fn load_payout_context(
                o.order_id::text,
                s.settlement_id::text,
                o.seller_org_id::text,
-               s.net_receivable_amount::text,
+               GREATEST(
+                 s.payable_amount
+                 - s.platform_fee_amount
+                 - s.channel_fee_amount
+                 - GREATEST(
+                     s.refund_amount - COALESCE(provisional_hold.outstanding_amount, 0),
+                     0
+                   )
+                 - s.compensation_amount,
+                 0
+               )::text,
                o.currency_code,
                o.payment_status,
                s.settlement_status,
@@ -586,6 +608,13 @@ async fn load_payout_context(
                ORDER BY updated_at DESC, payment_intent_id DESC
                LIMIT 1
              ) pi ON true
+             LEFT JOIN LATERAL (
+               SELECT COALESCE(SUM(amount), 0) AS outstanding_amount
+               FROM billing.billing_event
+               WHERE order_id = o.order_id
+                 AND event_type = 'refund_adjustment'
+                 AND COALESCE(metadata ->> 'adjustment_class', '') = 'provisional_dispute_hold'
+             ) provisional_hold ON true
              LEFT JOIN payment.provider p
                ON p.provider_key = COALESCE(sp.preferred_provider_key, pi.provider_key, 'mock_payment')
              WHERE o.order_id = $1::text::uuid

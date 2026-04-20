@@ -424,9 +424,12 @@ fn normalize_event_type(
         "one_time_charge" | "one_time" | "one-time-charge" => "one_time_charge",
         "recurring_charge" | "periodic_charge" | "subscription_charge" => "recurring_charge",
         "usage_charge" | "metered_charge" | "overage_charge" => "usage_charge",
-        "refund" | "refund_adjustment" => "refund",
-        "compensation" | "compensation_adjustment" => "compensation",
-        "manual_settlement" | "manual_adjustment" | "manual_payout" => "manual_settlement",
+        "refund" => "refund",
+        "refund_adjustment" => "refund_adjustment",
+        "compensation" => "compensation",
+        "compensation_adjustment" => "compensation_adjustment",
+        "manual_settlement" | "manual_payout" => "manual_settlement",
+        "manual_adjustment" => "manual_adjustment",
         _ => {
             return Err(billing_bad_request(
                 &format!("unsupported billing event_type: {raw}"),
@@ -491,14 +494,29 @@ fn resolve_amount(
             "one_time_charge" | "recurring_charge" => context.order_amount.as_str(),
             _ => "0",
         });
-    match candidate.parse::<f64>() {
-        Ok(value) if value > 0.0 => Ok(candidate.to_string()),
-        _ => Err(billing_bad_request(
-            "billing event amount must be a positive decimal string",
+    let parsed = candidate.parse::<f64>().map_err(|_| {
+        billing_bad_request(
+            "billing event amount must be a decimal string",
             request_id,
             StatusCode::BAD_REQUEST,
-        )),
+        )
+    })?;
+    let allow_signed = matches!(
+        event_type,
+        "refund_adjustment" | "compensation_adjustment" | "manual_adjustment"
+    );
+    if (!allow_signed && parsed <= 0.0) || (allow_signed && parsed == 0.0) {
+        return Err(billing_bad_request(
+            if allow_signed {
+                "adjustment billing event amount must be a non-zero decimal string"
+            } else {
+                "billing event amount must be a positive decimal string"
+            },
+            request_id,
+            StatusCode::BAD_REQUEST,
+        ));
     }
+    Ok(candidate.to_string())
 }
 
 fn resolve_units(
@@ -567,7 +585,7 @@ fn validate_event_semantics(
             request_id,
             StatusCode::BAD_REQUEST,
         )),
-        "refund" | "compensation" => {
+        "refund" | "refund_adjustment" | "compensation" | "compensation_adjustment" => {
             if metadata
                 .get("reason_code")
                 .and_then(Value::as_str)
@@ -584,7 +602,7 @@ fn validate_event_semantics(
                 Ok(())
             }
         }
-        "manual_settlement" => {
+        "manual_settlement" | "manual_adjustment" => {
             let direction = metadata
                 .get("settlement_direction")
                 .and_then(Value::as_str)
@@ -593,7 +611,7 @@ fn validate_event_semantics(
                 Ok(())
             } else {
                 Err(billing_bad_request(
-                    "manual_settlement requires metadata.settlement_direction = payable | receivable | adjustment",
+                    "manual_settlement/manual_adjustment requires metadata.settlement_direction = payable | receivable | adjustment",
                     request_id,
                     StatusCode::BAD_REQUEST,
                 ))
