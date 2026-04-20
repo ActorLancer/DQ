@@ -543,6 +543,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaymentIntentDetailResponse"
+  /api/v1/payments/reconciliation/import:
+    post:
+      summary: Import reconciliation statement
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-token
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-challenge-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ReconciliationImportMultipartRequest"
+      responses:
+        "200":
+          description: Reconciliation statement imported or idempotency replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationImportResponse"
+        "400":
+          description: Invalid multipart payload or missing step-up placeholder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Provider account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Statement already imported with different file signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Forbidden
           content:
@@ -2004,6 +2071,143 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/ManualPayoutExecution"
+    ReconciliationImportMultipartRequest:
+      type: object
+      required:
+        [provider_key, provider_account_id, statement_date, statement_type, file]
+      properties:
+        provider_key:
+          type: string
+        provider_account_id:
+          type: string
+        statement_date:
+          type: string
+          format: date
+        statement_type:
+          type: string
+        diffs_json:
+          type: string
+          description: JSON array string of reconciliation diff entries
+        file:
+          type: string
+          format: binary
+    ReconciliationStatement:
+      type: object
+      required:
+        [
+          reconciliation_statement_id,
+          provider_key,
+          statement_date,
+          statement_type,
+          import_status,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        reconciliation_statement_id:
+          type: string
+        provider_key:
+          type: string
+        provider_account_id:
+          type: string
+          nullable: true
+        statement_date:
+          type: string
+        statement_type:
+          type: string
+        file_uri:
+          type: string
+          nullable: true
+        file_hash:
+          type: string
+          nullable: true
+        import_status:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    ReconciliationDiff:
+      type: object
+      required:
+        [
+          reconciliation_diff_id,
+          reconciliation_statement_id,
+          diff_type,
+          diff_status,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        reconciliation_diff_id:
+          type: string
+        reconciliation_statement_id:
+          type: string
+        diff_type:
+          type: string
+        ref_type:
+          type: string
+          nullable: true
+        ref_id:
+          type: string
+          nullable: true
+        provider_reference_no:
+          type: string
+          nullable: true
+        internal_amount:
+          type: string
+          nullable: true
+        provider_amount:
+          type: string
+          nullable: true
+        diff_status:
+          type: string
+        resolution_note:
+          type: string
+          nullable: true
+        resolved_at:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    ReconciliationImport:
+      type: object
+      required:
+        [
+          statement,
+          diffs,
+          imported_diff_count,
+          open_diff_count,
+          idempotent_replay,
+          step_up_bound,
+        ]
+      properties:
+        statement:
+          $ref: "#/components/schemas/ReconciliationStatement"
+        diffs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationDiff"
+        imported_diff_count:
+          type: integer
+        open_diff_count:
+          type: integer
+        idempotent_replay:
+          type: boolean
+        step_up_bound:
+          type: boolean
+    ReconciliationImportResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/ReconciliationImport"
     BillingRefund:
       type: object
       required: [refund_id, amount, currency_code, current_status, updated_at]

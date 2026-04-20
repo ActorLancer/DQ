@@ -698,3 +698,74 @@
 - 状态：计划中
 - 说明：按冻结支付协议补齐对账导入占位接口，真实保存对账差异结果、导入批次摘要、审计与最小联调；继续沿用 PostgreSQL + Kafka(outbox 边界) + mock provider 的 BIL 期基线。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-185（待审批）
+- 任务：`BIL-012` 支付对账导入接口 `POST /api/v1/payments/reconciliation/import`
+- 状态：待审批
+- 当前任务编号：`BIL-012`
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；`DB-007` 缺口已补齐并完成迁移校验；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `BIL-012` 只要求“支付对账导入占位 + 差异结果落库 + 最小联调”，不提前展开 reconciliation center 全量读模型。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核完成定义为“接口、DTO、权限、审计、错误码和最小测试齐备，且与 OpenAPI 不漂移”。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发任务/AI-Agent-执行提示词.md`：继续按单 task 冻结流程执行，不跳步骤。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：落实对账导入属于支付域分层架构内的对账中心入口，V1 先保存账单摘要和 diff 结果。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：落实 `POST /api/v1/payments/reconciliation/import` 的高风险 step-up、幂等导入口径与差异对象边界。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：对齐 `payment.reconciliation_statement / payment.reconciliation_diff`、`payment.reconciliation.import` 权限与支付/结算对象的 reconcile 状态联动。
+  - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/数据库设计/数据库表字典正式版.md`：核对 `payment.reconciliation_statement / payment.reconciliation_diff` 表结构与字段口径。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：核对渠道账单导入后生成 diff、进入 reconciliation 处理的流程主线。
+  - 其余 18 份必读冻结文档已复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `POST /api/v1/payments/reconciliation/import`，接收 multipart：`provider_key / provider_account_id / statement_date / statement_type / diffs_json / file`。
+  - 新增 `ReconciliationImportDiffInput / ReconciliationStatementView / ReconciliationDiffView / ReconciliationImportView`，把对账导入批次、差异列表、幂等重放状态与 `step_up_bound` 暴露给 API。
+  - 新增 `billing/reconciliation_handlers.rs` 与 `billing/repo/reconciliation_repository.rs`，避免继续把 Billing 路由和仓储堆到单文件。
+  - 导入仓储会：
+    - 校验 provider account 存在且 `active`
+    - 以 `provider_key + provider_account_id + statement_date + statement_type` 做幂等维度
+    - 对相同维度但不同文件 hash 返回 `409`
+    - 计算上传文件 SHA-256 并写入 `payment.reconciliation_statement.file_hash`
+    - 写入 `payment.reconciliation_statement / payment.reconciliation_diff`
+    - 根据 diff 状态回写 `payment.payment_intent / billing.settlement_record / trade.order_main / payment.payout_instruction / payment.refund_intent` 的 `reconcile_status`
+    - 写入审计 `payment.reconciliation.import / payment.reconciliation.import.idempotent_replay`
+  - `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml` 已同步新增 reconciliation import path 与 schema。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core rejects_reconciliation_import_without_permission -- --nocapture`
+  4. `cargo test -p platform-core rejects_reconciliation_import_without_step_up -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil012_reconciliation_import_db_smoke -- --nocapture`
+  6. `cargo test -p platform-core`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. 启动 `APP_PORT=8105` 的 `platform-core`，插入临时 provider account / order / payment_intent / settlement 数据后执行真实 API 联调：
+     - `POST /api/v1/payments/reconciliation/import`（首次导入）
+     - `POST /api/v1/payments/reconciliation/import`（同文件同维度幂等重放）
+     并用 `psql` 回查 `payment.reconciliation_statement / payment.reconciliation_diff / payment.payment_intent / billing.settlement_record / audit.audit_event`，随后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `227 passed, 0 failed, 0 ignored`，live integration 维持 `1 ignored`。
+  - 权限/step-up 定向测试通过，确认无权限返回 `403`，缺 step-up 返回 `400`。
+  - `bil012_reconciliation_import_db_smoke` 通过，确认导入成功、幂等重放、statement/diff 落库和 `reconcile_status` 回写成立。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - 首次导入 `HTTP 200`，返回 `import_status=mismatched`、`imported_diff_count=2`、`open_diff_count=1`、`idempotent_replay=false`
+    - 同文件同维度重放 `HTTP 200`，返回同一 `reconciliation_statement_id` 且 `idempotent_replay=true`
+  - DB 回查通过：
+    - `payment.reconciliation_statement.import_status = mismatched`
+    - `payment.reconciliation_diff = 2`
+    - `payment.payment_intent.reconcile_status = mismatched`
+    - `billing.settlement_record.reconcile_status = resolved`
+    - `audit.payment.reconciliation.import = 1`
+    - `audit.payment.reconciliation.import.idempotent_replay = 1`
+  - 临时业务数据已清理，业务表回查为 0；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md` `4`
+  - `支付域接口协议正式版.md` `6`
+  - `数据交易平台-全集成基线-V1.md` `27`
+- 覆盖的任务清单条目：`BIL-012`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-186（计划中）
+- 任务：`BIL-013` 争议案件接口 `POST /api/v1/cases`、证据上传 `POST /api/v1/cases/{id}/evidence`、裁决 `POST /api/v1/cases/{id}/resolve`
+- 状态：计划中
+- 说明：按冻结争议流程补齐案件创建、证据上传、裁决三条接口与争议/订单/结算联动；证据对象优先走 MinIO 实存，继续沿用 PostgreSQL + Kafka(outbox 边界) + MinIO 的 BIL 期基线。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

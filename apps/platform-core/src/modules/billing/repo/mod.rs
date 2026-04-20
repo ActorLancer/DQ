@@ -6,4 +6,5 @@ pub mod order_lock_repository;
 pub mod payment_intent_repository;
 pub mod payout_repository;
 pub mod policy_repository;
+pub mod reconciliation_repository;
 pub mod refund_repository;

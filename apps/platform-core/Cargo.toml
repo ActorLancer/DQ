@@ -10,7 +10,7 @@ async-trait = "0.1"
 audit-kit = { path = "crates/audit-kit" }
 auth = { path = "crates/auth" }
 aws-sdk-s3 = "1"
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "multipart"] }
 base64 = "0.22"
 config = { path = "crates/config" }
 db = { path = "crates/db" }
@@ -28,6 +28,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

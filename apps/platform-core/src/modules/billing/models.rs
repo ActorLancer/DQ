@@ -68,6 +68,72 @@ pub struct BillingSplitInstructionView {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReconciliationImportDiffInput {
+    pub diff_type: String,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub provider_reference_no: Option<String>,
+    pub internal_amount: Option<String>,
+    pub provider_amount: Option<String>,
+    pub diff_status: Option<String>,
+    pub resolution_note: Option<String>,
+    pub resolved_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateReconciliationImportRequest {
+    pub provider_key: String,
+    pub provider_account_id: String,
+    pub statement_date: String,
+    pub statement_type: String,
+    pub file_name: String,
+    pub file_content_type: Option<String>,
+    pub file_bytes: Vec<u8>,
+    pub diffs: Vec<ReconciliationImportDiffInput>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReconciliationStatementView {
+    pub reconciliation_statement_id: String,
+    pub provider_key: String,
+    pub provider_account_id: Option<String>,
+    pub statement_date: String,
+    pub statement_type: String,
+    pub file_uri: Option<String>,
+    pub file_hash: Option<String>,
+    pub import_status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReconciliationDiffView {
+    pub reconciliation_diff_id: String,
+    pub reconciliation_statement_id: String,
+    pub diff_type: String,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub provider_reference_no: Option<String>,
+    pub internal_amount: Option<String>,
+    pub provider_amount: Option<String>,
+    pub diff_status: String,
+    pub resolution_note: Option<String>,
+    pub resolved_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ReconciliationImportView {
+    pub statement: ReconciliationStatementView,
+    pub diffs: Vec<ReconciliationDiffView>,
+    pub imported_diff_count: usize,
+    pub open_diff_count: usize,
+    pub idempotent_replay: bool,
+    pub step_up_bound: bool,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BillingInvoiceView {
     pub invoice_request_id: String,

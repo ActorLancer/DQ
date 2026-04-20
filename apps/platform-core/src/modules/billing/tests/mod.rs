@@ -9,6 +9,7 @@ mod bil008_settlement_summary_db;
 mod bil009_refund_db;
 mod bil010_compensation_db;
 mod bil011_manual_payout_db;
+mod bil012_reconciliation_import_db;
 
 #[cfg(test)]
 mod tests {
@@ -154,6 +155,56 @@ mod tests {
                     .body(Body::from(
                         r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","settlement_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","amount":"10.00"}"#,
                     ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_reconciliation_import_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let boundary = "BOUNDARY-BIL012-FORBIDDEN";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"provider_key\"\r\n\r\nmock_payment\r\n--{boundary}--\r\n"
+        );
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payments/reconciliation/import")
+                    .method("POST")
+                    .header("x-role", "tenant_admin")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_reconciliation_import_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let boundary = "BOUNDARY-BIL012-STEPUP";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"provider_key\"\r\n\r\nmock_payment\r\n--{boundary}--\r\n"
+        );
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payments/reconciliation/import")
+                    .method("POST")
+                    .header("x-role", "platform_risk_settlement")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
                     .expect("request should build"),
             )
             .await

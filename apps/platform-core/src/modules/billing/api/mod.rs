@@ -13,6 +13,7 @@ use crate::modules::billing::policy_handlers::{
     create_payment_corridor, create_payment_jurisdiction, create_payout_preference,
     get_payment_corridors, get_payment_jurisdictions, list_payout_preferences_v1,
 };
+use crate::modules::billing::reconciliation_handlers::import_reconciliation_statement;
 use crate::modules::billing::refund_handlers::create_refund;
 use crate::modules::billing::webhook_handlers::handle_payment_webhook;
 use axum::Router;
@@ -34,6 +35,10 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/v1/payments/intents", post(create_payment_intent))
         .route("/api/v1/payments/intents/{id}", get(get_payment_intent))
+        .route(
+            "/api/v1/payments/reconciliation/import",
+            post(import_reconciliation_statement),
+        )
         .route("/api/v1/billing/{order_id}", get(get_billing_order))
         .route("/api/v1/payouts/manual", post(create_manual_payout))
         .route("/api/v1/compensations", post(create_compensation))
