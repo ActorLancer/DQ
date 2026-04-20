@@ -3612,3 +3612,37 @@
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 待人工审批结论：待审批
 - 备注：`V1-Core-人工审批记录.md` 继续由你手工维护，本批未写入。
+
+### BATCH-184（DB-007 纠偏修复）
+
+- 状态：通过
+- 当前任务编号：DB-007
+- 当前批次目标：按方案 A 补齐 `040_billing_support_risk.sql` 中缺失的 `payment.sub_merchant_binding`、`payment.split_instruction` 以及 `risk.freeze_ticket / risk.governance_action_log`，并把 `reward_id` 的 `V1` 占位语义落到冻结文档与 TODO 追溯中。
+- 前置依赖核对结果：`BOOT-008; ENV-005; ENV-006; CORE-005` 已完成且审批通过；本批为 `DB-007` 历史缺口纠偏，不扩大到 `BIL-011` 或 `V2` profitshare schema。
+- 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`、`docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/数据库设计/V1/downgrade/040_billing_support_risk.sql`、`docs/领域模型/全量领域模型与对象关系说明.md`、`docs/数据库设计/数据库表字典正式版.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/原始PRD/支付、资金流与轻结算设计.md`
+- 已实现功能：
+  - 在 `040_billing_support_risk.sql` 中新增 `payment.sub_merchant_binding`。
+  - 在 `040_billing_support_risk.sql` 中新增 `payment.split_instruction`，并将 `reward_id` 明确为 `V1` 可空 `uuid` 占位字段，不建立到 `billing.reward_record` 的外键。
+  - 在 `040_billing_support_risk.sql` 中新增 `risk.freeze_ticket` 与 `risk.governance_action_log`，补齐 `DB-007` 任务描述里的“风险处置、冻结记录”落库。
+  - 新增 `idx_split_instruction_settlement_id`、`idx_split_instruction_reward_id`、`idx_freeze_ticket_ref_status`、`idx_governance_action_log_ticket_id` 以及 `trg_sub_merchant_binding_updated_at`、`trg_split_instruction_updated_at`、`trg_freeze_ticket_updated_at`。
+  - 更新 `040` downgrade，确保 roundtrip 可回滚。
+  - 更新 `db/scripts/verify-migration-040-056.sh`，补充新表/索引/触发器校验。
+  - 更新冻结表字典、全集成基线、TODO 清单与 migration checksum，记录方案 A 的偏差口径和 V2 升级点。
+- 涉及文件：`docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`、`docs/数据库设计/V1/downgrade/040_billing_support_risk.sql`、`db/scripts/verify-migration-040-056.sh`、`db/migrations/v1/checksums.sha256`、`docs/数据库设计/数据库表字典正式版.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志-P1.md`
+- 验证步骤：
+  1. `./db/scripts/migrate-reset.sh`
+  2. `./db/scripts/seed-up.sh`
+  3. `./db/scripts/migrate-reset.sh`
+  4. `./db/scripts/migrate-up.sh`
+  5. `./db/scripts/verify-migration-040-056.sh`
+  6. `./db/scripts/migrate-down.sh`
+  7. `./db/scripts/migrate-up.sh`
+  8. `psql` 校验 `payment.sub_merchant_binding` / `payment.split_instruction`、索引、触发器与 `reward_id` 非 FK 口径
+  9. `./db/scripts/migrate-status.sh`
+  10. `sha256sum -c db/migrations/v1/checksums.sha256`
+- 验证结果：通过。`migrate-reset -> seed-up -> reset -> migrate-up` 全链路通过；`verify-migration-040-056.sh` 返回 `[ok]`；`migrate-down -> migrate-up` roundtrip 通过；`migrate-status.sh` 显示 `001~071` 无 pending。`psql` 复核结果：`table_sub_merchant_binding=payment.sub_merchant_binding`、`table_split_instruction=payment.split_instruction`、`table_freeze_ticket=risk.freeze_ticket`、`table_governance_action_log=risk.governance_action_log`、`index_split_settlement=true`、`index_split_reward=true`、`index_freeze_ticket_ref=true`、`index_governance_ticket=true`、`trigger_sub_binding=true`、`trigger_split_instruction=true`、`trigger_freeze_ticket=true`、`reward_fk_count=0`；列注释明确记录 `reward_id` 为 `V1` 占位字段。
+- 覆盖的冻结文档条目：`数据库设计/数据库设计总说明.md`（设计范围、迁移顺序）、`数据库设计/V1/upgrade/040_billing_support_risk.sql`、`领域模型/全量领域模型与对象关系说明.md`（4.6 账单、托管与分润聚合；4.8.6 FreezeTicket）、`数据库设计/数据库表字典正式版.md`、`数据交易平台-全集成基线-V1.md`、`原始PRD/支付、资金流与轻结算设计.md`（6.2/6.3 V1/V2 边界）
+- 覆盖的任务清单条目：`DB-007`
+- 未覆盖项：不前置 `billing.reward_record` 与整套 `V2` profitshare schema；该部分已通过 `TODO-DB-007-001` 留痕。
+- 新增 TODO / 预留项：新增 `TODO-DB-007-001`（`V2-reserved`，追踪 `reward_id` 从占位 `uuid` 升级为正式外键），并关闭 `TODO-DB-007-002`（`risk.freeze_ticket / risk.governance_action_log` 缺口已补齐）。
+- 待人工审批结论：待审批

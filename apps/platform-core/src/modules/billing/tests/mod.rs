@@ -8,6 +8,7 @@ mod bil007_billing_read_db;
 mod bil008_settlement_summary_db;
 mod bil009_refund_db;
 mod bil010_compensation_db;
+mod bil011_manual_payout_db;
 
 #[cfg(test)]
 mod tests {
@@ -109,6 +110,49 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","provider_key":"mock_payment","payer_subject_type":"organization","payer_subject_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","payment_amount":"10.00","payment_method":"wallet"}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_manual_payout_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payouts/manual")
+                    .method("POST")
+                    .header("x-role", "tenant_admin")
+                    .header("x-step-up-token", "payout-stepup")
+                    .header("x-idempotency-key", "payout:test:settlement")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","settlement_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","amount":"10.00"}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_manual_payout_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payouts/manual")
+                    .method("POST")
+                    .header("x-role", "platform_finance_operator")
+                    .header("x-idempotency-key", "payout:test:settlement")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","settlement_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","amount":"10.00"}"#,
                     ))
                     .expect("request should build"),
             )

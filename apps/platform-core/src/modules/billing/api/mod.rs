@@ -8,6 +8,7 @@ use crate::modules::billing::order_lock_handlers::lock_order_payment;
 use crate::modules::billing::payment_intent_handlers::{
     cancel_payment_intent, create_payment_intent, get_payment_intent,
 };
+use crate::modules::billing::payout_handlers::create_manual_payout;
 use crate::modules::billing::policy_handlers::{
     create_payment_corridor, create_payment_jurisdiction, create_payout_preference,
     get_payment_corridors, get_payment_jurisdictions, list_payout_preferences_v1,
@@ -34,6 +35,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/payments/intents", post(create_payment_intent))
         .route("/api/v1/payments/intents/{id}", get(get_payment_intent))
         .route("/api/v1/billing/{order_id}", get(get_billing_order))
+        .route("/api/v1/payouts/manual", post(create_manual_payout))
         .route("/api/v1/compensations", post(create_compensation))
         .route("/api/v1/refunds", post(create_refund))
         .route(

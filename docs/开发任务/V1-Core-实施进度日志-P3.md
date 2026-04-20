@@ -622,3 +622,79 @@
 - 状态：计划中
 - 说明：在退款/赔付链路基础上补齐人工打款/人工分账占位对象、状态机、审计、事件与最小联调；V1 先支持人工执行但对象、状态、账单摘要与 OpenAPI 必须完整。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-184（待审批）
+- 任务：`BIL-011` 人工打款/人工分账占位模型
+- 状态：待审批
+- 当前任务编号：`BIL-011`
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；`DB-007` 缺口已补齐并完成迁移校验；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `BIL-011` 只要求“人工打款执行 + 人工分账对象完整占位”，不提前实现 V2 分账控制面。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核完成定义为“业务规则、状态机、审计、事件与测试齐备，并与上下游联调通过”。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发任务/AI-Agent-执行提示词.md`：继续按单 task 冻结流程执行，不跳步骤。
+  - `docs/领域模型/全量领域模型与对象关系说明.md` `4.6`：落实 `payout_instruction / split_instruction / sub_merchant_binding / settlement_record` 聚合关系。
+  - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`：核对 `payment.payout_instruction / payment.split_instruction / payment.sub_merchant_binding` 表结构，确认你补齐的 schema 缺口已可用。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md` `7`：确认人工打款属于平台收费/结算域动作，V1 允许人工执行，分账对象先完整占位。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：沿用高风险 step-up、幂等、一致性与支付 provider 交互口径。
+  - `docs/权限设计/角色权限矩阵正式版.md`、`docs/权限设计/接口权限校验清单.md`：确认 `payment.payout.execute_manual` 仅平台侧高风险角色可执行。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：对齐人工打款、账单事件、`billing.events` outbox 边界与 mock provider 联动要求。
+  - 其余 18 份必读冻结文档已复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `POST /api/v1/payouts/manual`，要求 `x-idempotency-key` 与 step-up，占位但真实执行人工打款。
+  - 新增 `billing/payout_handlers.rs` 与 `billing/repo/payout_repository.rs`，避免继续把 Billing 路由和仓储堆到单文件。
+  - `CreateManualPayoutRequest / ManualPayoutExecutionView / BillingPayoutView / BillingSplitInstructionView` 已落到 `models.rs`，`GET /api/v1/billing/{order_id}` 同步返回 `payouts` 与 `split_placeholders`。
+  - 人工打款执行会真实调用 live `mock-payment-provider` 的 `manual-transfer/success`，并写入：
+    - `payment.payout_instruction(status=succeeded, payout_mode=manual)`
+    - `payment.sub_merchant_binding` 占位绑定
+    - `payment.split_instruction(split_mode=platform_ledger_then_payout, status=succeeded)`
+    - `billing.billing_event(event_type=manual_settlement)`
+    - `ops.outbox_event(target_topic=billing.events)`
+    - `audit.audit_event(billing.payout.execute_manual / billing.payout.execute_manual.idempotent_replay / billing.event.generated)`
+  - `billing.settlement_record` 与 `trade.order_main` 会同步推进到 `settled`，并回写 `billing_manual_payout_succeeded`。
+  - OpenAPI 已同步更新到 `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 MOCK_PAYMENT_ADAPTER_MODE=live MOCK_PAYMENT_BASE_URL=http://127.0.0.1:8089 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil011_manual_payout_db_smoke -- --nocapture`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. `curl http://127.0.0.1:8089/__admin/` 确认 live mock-payment-provider 可达
+  8. 启动 `APP_PORT=8104` 的 `platform-core`，插入临时订单/结算数据后执行真实 API 联调：
+     - `POST /api/v1/payouts/manual`（首次成功）
+     - `POST /api/v1/payouts/manual`（同幂等键重放）
+     - `GET /api/v1/billing/{order_id}`
+     并用 `psql` 回查 `payment.payout_instruction / payment.split_instruction / payment.sub_merchant_binding / billing.billing_event / billing.settlement_record / trade.order_main / ops.outbox_event / audit.audit_event`，随后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `224 passed, 0 failed, 1 ignored`。
+  - `bil011_manual_payout_db_smoke` 通过，确认真实 DB 写入、幂等重放、账单聚合读取、审计与 outbox 全链路成立。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `mock-payment-provider` `__admin` 返回 `HTTP 200`。
+  - 真实 API 联调通过：
+    - 首次人工打款 `HTTP 200`，返回 `current_status=succeeded`、`step_up_bound=true`、`idempotent_replay=false`
+    - 同幂等键重放 `HTTP 200`，返回同一 `payout_instruction_id` 且 `idempotent_replay=true`
+    - `GET /api/v1/billing/{order_id}` 返回 `settlement_status=settled`、`summary_state=order_settlement:settled:manual`，且 `payouts/split_placeholders` 均为 `1`
+  - DB 回查通过：
+    - `payment.payout_instruction = succeeded / manual / mock-mtf-* / 85.00000000 / SGD`
+    - `payment.split_instruction = succeeded / platform_ledger_then_payout / 85.00000000 / SGD`
+    - `payment.sub_merchant_binding = active / organization / seller_org_id`
+    - `billing.settlement_record = settled`
+    - `trade.order_main = settled / billing_manual_payout_succeeded`
+    - `billing.billing_event(manual_settlement)=1`
+    - `ops.outbox_event(target_topic=billing.events)=1`
+    - `audit.billing.payout.execute_manual=1`、`audit.billing.payout.execute_manual.idempotent_replay=1`
+  - 临时业务数据已清理，回查 `order_main=0 / provider_account=0 / settlement=0`；审计按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql` `payment.payout_instruction / payment.split_instruction / payment.sub_merchant_binding`
+  - `支付、资金流与轻结算设计.md` `7`
+  - `支付域接口协议正式版.md` `6`
+- 覆盖的任务清单条目：`BIL-011`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：`TODO-BIL-011-001` 保持有效，明确 `V2` 再补正式分账控制面；本批无新增 `V1-gap`。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-185（计划中）
+- 任务：`BIL-012` 支付对账导入接口 `POST /api/v1/payments/reconciliation/import`
+- 状态：计划中
+- 说明：按冻结支付协议补齐对账导入占位接口，真实保存对账差异结果、导入批次摘要、审计与最小联调；继续沿用 PostgreSQL + Kafka(outbox 边界) + mock provider 的 BIL 期基线。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

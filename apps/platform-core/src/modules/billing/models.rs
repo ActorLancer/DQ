@@ -35,6 +35,40 @@ pub struct BillingCompensationView {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingPayoutView {
+    pub payout_instruction_id: String,
+    pub settlement_id: Option<String>,
+    pub provider_key: String,
+    pub provider_account_id: Option<String>,
+    pub payout_preference_id: Option<String>,
+    pub beneficiary_subject_type: String,
+    pub beneficiary_subject_id: String,
+    pub destination_jurisdiction_code: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub payout_mode: String,
+    pub current_status: String,
+    pub provider_payout_no: Option<String>,
+    pub executed_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingSplitInstructionView {
+    pub split_instruction_id: String,
+    pub settlement_id: Option<String>,
+    pub reward_id: Option<String>,
+    pub provider_account_id: Option<String>,
+    pub sub_merchant_binding_id: Option<String>,
+    pub split_mode: String,
+    pub amount: String,
+    pub currency_code: String,
+    pub current_status: String,
+    pub provider_split_no: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BillingInvoiceView {
     pub invoice_request_id: String,
     pub settlement_id: Option<String>,
@@ -137,6 +171,44 @@ pub struct CompensationExecutionView {
     pub metadata: Value,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateManualPayoutRequest {
+    pub order_id: String,
+    pub settlement_id: String,
+    pub amount: String,
+    pub currency_code: Option<String>,
+    pub payout_preference_id: Option<String>,
+    pub provider_key: Option<String>,
+    pub provider_account_id: Option<String>,
+    pub payout_mode: Option<String>,
+    #[serde(default = "default_json_object")]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ManualPayoutExecutionView {
+    pub payout_instruction_id: String,
+    pub order_id: String,
+    pub settlement_id: String,
+    pub beneficiary_subject_type: String,
+    pub beneficiary_subject_id: String,
+    pub destination_jurisdiction_code: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub payout_mode: String,
+    pub current_status: String,
+    pub provider_key: String,
+    pub provider_account_id: Option<String>,
+    pub payout_preference_id: Option<String>,
+    pub provider_payout_no: Option<String>,
+    pub step_up_bound: bool,
+    pub idempotent_replay: bool,
+    pub executed_at: Option<String>,
+    pub updated_at: String,
+    pub metadata: Value,
+    pub split_placeholder: BillingSplitInstructionView,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct BillingOrderDetailView {
     pub order_id: String,
@@ -151,6 +223,8 @@ pub struct BillingOrderDetailView {
     pub settlement_summary: Option<BillingSettlementSummaryView>,
     pub refunds: Vec<BillingRefundView>,
     pub compensations: Vec<BillingCompensationView>,
+    pub payouts: Vec<BillingPayoutView>,
+    pub split_placeholders: Vec<BillingSplitInstructionView>,
     pub invoices: Vec<BillingInvoiceView>,
     pub tax_placeholder: BillingTaxPlaceholderView,
     pub invoice_placeholder: BillingInvoicePlaceholderView,

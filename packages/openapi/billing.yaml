@@ -448,6 +448,79 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/payouts/manual:
+    post:
+      summary: Execute manual payout
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-token
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-challenge-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-idempotency-key
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key. Manual payout execute is a high-risk action and must also carry step-up evidence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateManualPayoutRequest"
+      responses:
+        "200":
+          description: Manual payout executed or idempotency replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManualPayoutExecutionResponse"
+        "400":
+          description: Invalid payload or missing step-up placeholder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order or settlement not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Manual payout conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/payments/intents/{id}:
     get:
       summary: Query payment intent
@@ -1736,6 +1809,201 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/CompensationExecution"
+    CreateManualPayoutRequest:
+      type: object
+      required: [order_id, settlement_id, amount]
+      properties:
+        order_id:
+          type: string
+        settlement_id:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+          nullable: true
+        payout_preference_id:
+          type: string
+          nullable: true
+        provider_key:
+          type: string
+          nullable: true
+        provider_account_id:
+          type: string
+          nullable: true
+        payout_mode:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    BillingPayout:
+      type: object
+      required:
+        [
+          payout_instruction_id,
+          provider_key,
+          beneficiary_subject_type,
+          beneficiary_subject_id,
+          amount,
+          currency_code,
+          payout_mode,
+          current_status,
+          updated_at,
+        ]
+      properties:
+        payout_instruction_id:
+          type: string
+        settlement_id:
+          type: string
+          nullable: true
+        provider_key:
+          type: string
+        provider_account_id:
+          type: string
+          nullable: true
+        payout_preference_id:
+          type: string
+          nullable: true
+        beneficiary_subject_type:
+          type: string
+        beneficiary_subject_id:
+          type: string
+        destination_jurisdiction_code:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency_code:
+          type: string
+        payout_mode:
+          type: string
+        current_status:
+          type: string
+        provider_payout_no:
+          type: string
+          nullable: true
+        executed_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+    BillingSplitInstruction:
+      type: object
+      required:
+        [
+          split_instruction_id,
+          split_mode,
+          amount,
+          currency_code,
+          current_status,
+          updated_at,
+        ]
+      properties:
+        split_instruction_id:
+          type: string
+        settlement_id:
+          type: string
+          nullable: true
+        reward_id:
+          type: string
+          nullable: true
+        provider_account_id:
+          type: string
+          nullable: true
+        sub_merchant_binding_id:
+          type: string
+          nullable: true
+        split_mode:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        provider_split_no:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+    ManualPayoutExecution:
+      type: object
+      required:
+        [
+          payout_instruction_id,
+          order_id,
+          settlement_id,
+          beneficiary_subject_type,
+          beneficiary_subject_id,
+          amount,
+          currency_code,
+          payout_mode,
+          current_status,
+          provider_key,
+          step_up_bound,
+          idempotent_replay,
+          updated_at,
+          metadata,
+          split_placeholder,
+        ]
+      properties:
+        payout_instruction_id:
+          type: string
+        order_id:
+          type: string
+        settlement_id:
+          type: string
+        beneficiary_subject_type:
+          type: string
+        beneficiary_subject_id:
+          type: string
+        destination_jurisdiction_code:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency_code:
+          type: string
+        payout_mode:
+          type: string
+        current_status:
+          type: string
+        provider_key:
+          type: string
+        provider_account_id:
+          type: string
+          nullable: true
+        payout_preference_id:
+          type: string
+          nullable: true
+        provider_payout_no:
+          type: string
+          nullable: true
+        step_up_bound:
+          type: boolean
+        idempotent_replay:
+          type: boolean
+        executed_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        split_placeholder:
+          $ref: "#/components/schemas/BillingSplitInstruction"
+    ManualPayoutExecutionResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/ManualPayoutExecution"
     BillingRefund:
       type: object
       required: [refund_id, amount, currency_code, current_status, updated_at]
@@ -1859,6 +2127,8 @@ components:
           settlement_summary,
           refunds,
           compensations,
+          payouts,
+          split_placeholders,
           invoices,
           tax_placeholder,
           invoice_placeholder,
@@ -1898,6 +2168,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BillingCompensation"
+        payouts:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingPayout"
+        split_placeholders:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingSplitInstruction"
         invoices:
           type: array
           items:

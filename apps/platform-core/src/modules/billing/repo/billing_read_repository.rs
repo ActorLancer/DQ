@@ -1,8 +1,8 @@
 use crate::modules::billing::db::map_db_error;
 use crate::modules::billing::models::{
     BillingCompensationView, BillingInvoicePlaceholderView, BillingInvoiceView,
-    BillingOrderDetailView, BillingRefundView, BillingSettlementSummaryView, BillingSettlementView,
-    BillingTaxPlaceholderView,
+    BillingOrderDetailView, BillingPayoutView, BillingRefundView, BillingSettlementSummaryView,
+    BillingSettlementView, BillingSplitInstructionView, BillingTaxPlaceholderView,
 };
 use crate::modules::billing::repo::billing_event_repository::list_billing_events_for_order;
 use axum::Json;
@@ -38,6 +38,8 @@ pub async fn get_billing_order_detail(
     let settlements = load_settlements(client, order_id).await?;
     let refunds = load_refunds(client, order_id).await?;
     let compensations = load_compensations(client, order_id).await?;
+    let payouts = load_payouts(client, order_id).await?;
+    let split_placeholders = load_split_placeholders(client, order_id).await?;
     let invoices = load_invoices(client, order_id).await?;
     let settlement_summary = build_settlement_summary(&settlements);
 
@@ -57,6 +59,8 @@ pub async fn get_billing_order_detail(
         settlement_summary,
         refunds,
         compensations,
+        payouts,
+        split_placeholders,
         invoices,
         tax_placeholder,
         invoice_placeholder,
@@ -232,6 +236,104 @@ async fn load_compensations(
             current_status: row.get(3),
             executed_at: row.get(4),
             updated_at: row.get(5),
+        })
+        .collect())
+}
+
+async fn load_payouts(
+    client: &Client,
+    order_id: &str,
+) -> Result<Vec<BillingPayoutView>, (StatusCode, Json<ErrorResponse>)> {
+    let rows = client
+        .query(
+            "SELECT
+               p.payout_instruction_id::text,
+               p.settlement_id::text,
+               p.provider_key,
+               p.provider_account_id::text,
+               p.payout_preference_id::text,
+               p.beneficiary_subject_type,
+               p.beneficiary_subject_id::text,
+               p.destination_jurisdiction_code,
+               p.amount::text,
+               p.currency_code,
+               p.payout_mode,
+               p.status,
+               p.provider_payout_no,
+               to_char(p.executed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(p.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM payment.payout_instruction p
+             JOIN billing.settlement_record s ON s.settlement_id = p.settlement_id
+             WHERE s.order_id = $1::text::uuid
+             ORDER BY p.updated_at DESC, p.payout_instruction_id DESC",
+            &[&order_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| BillingPayoutView {
+            payout_instruction_id: row.get(0),
+            settlement_id: row.get(1),
+            provider_key: row.get(2),
+            provider_account_id: row.get(3),
+            payout_preference_id: row.get(4),
+            beneficiary_subject_type: row.get(5),
+            beneficiary_subject_id: row.get(6),
+            destination_jurisdiction_code: row.get(7),
+            amount: row.get(8),
+            currency_code: row.get(9),
+            payout_mode: row.get(10),
+            current_status: row.get(11),
+            provider_payout_no: row.get(12),
+            executed_at: row.get(13),
+            updated_at: row.get(14),
+        })
+        .collect())
+}
+
+async fn load_split_placeholders(
+    client: &Client,
+    order_id: &str,
+) -> Result<Vec<BillingSplitInstructionView>, (StatusCode, Json<ErrorResponse>)> {
+    let rows = client
+        .query(
+            "SELECT
+               si.split_instruction_id::text,
+               si.settlement_id::text,
+               si.reward_id::text,
+               si.provider_account_id::text,
+               si.sub_merchant_binding_id::text,
+               si.split_mode,
+               si.amount::text,
+               si.currency_code,
+               si.status,
+               si.provider_split_no,
+               to_char(si.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM payment.split_instruction si
+             JOIN billing.settlement_record s ON s.settlement_id = si.settlement_id
+             WHERE s.order_id = $1::text::uuid
+             ORDER BY si.updated_at DESC, si.split_instruction_id DESC",
+            &[&order_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| BillingSplitInstructionView {
+            split_instruction_id: row.get(0),
+            settlement_id: row.get(1),
+            reward_id: row.get(2),
+            provider_account_id: row.get(3),
+            sub_merchant_binding_id: row.get(4),
+            split_mode: row.get(5),
+            amount: row.get(6),
+            currency_code: row.get(7),
+            current_status: row.get(8),
+            provider_split_no: row.get(9),
+            updated_at: row.get(10),
         })
         .collect())
 }

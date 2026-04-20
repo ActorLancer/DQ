@@ -422,6 +422,37 @@ CREATE TABLE IF NOT EXISTS payment.payout_instruction (
   UNIQUE (idempotency_key)
 );
 
+CREATE TABLE IF NOT EXISTS payment.sub_merchant_binding (
+  sub_merchant_binding_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider_account_id uuid NOT NULL REFERENCES payment.provider_account(provider_account_id) ON DELETE CASCADE,
+  beneficiary_type text NOT NULL,
+  beneficiary_id uuid NOT NULL,
+  external_sub_merchant_id text NOT NULL,
+  status text NOT NULL DEFAULT 'active',
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (provider_account_id, beneficiary_type, beneficiary_id)
+);
+
+-- V1 note: reward_id is intentionally kept as a nullable UUID placeholder without FK.
+-- billing.reward_record is introduced by the V2 profitshare schema; DB-007 only restores
+-- the V1 placeholder object so later BIL-011/V2 work can upgrade in place without drift.
+CREATE TABLE IF NOT EXISTS payment.split_instruction (
+  split_instruction_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  reward_id uuid,
+  settlement_id uuid REFERENCES billing.settlement_record(settlement_id) ON DELETE SET NULL,
+  provider_account_id uuid REFERENCES payment.provider_account(provider_account_id) ON DELETE SET NULL,
+  sub_merchant_binding_id uuid REFERENCES payment.sub_merchant_binding(sub_merchant_binding_id) ON DELETE SET NULL,
+  split_mode text NOT NULL DEFAULT 'platform_ledger_then_payout',
+  amount numeric(24, 8) NOT NULL DEFAULT 0,
+  currency_code text NOT NULL DEFAULT 'CNY',
+  status text NOT NULL DEFAULT 'pending',
+  provider_split_no text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS payment.reconciliation_statement (
   reconciliation_statement_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   provider_key text NOT NULL REFERENCES payment.provider(provider_key),
@@ -526,6 +557,29 @@ CREATE TABLE IF NOT EXISTS risk.blacklist_entry (
   released_at timestamptz
 );
 
+CREATE TABLE IF NOT EXISTS risk.freeze_ticket (
+  freeze_ticket_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ref_type text NOT NULL,
+  ref_id uuid,
+  freeze_type text NOT NULL,
+  status text NOT NULL DEFAULT 'requested',
+  reason_code text NOT NULL,
+  requested_by uuid REFERENCES core.user_account(user_id) ON DELETE SET NULL,
+  approved_by uuid REFERENCES core.user_account(user_id) ON DELETE SET NULL,
+  executed_at timestamptz,
+  released_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS risk.governance_action_log (
+  governance_action_log_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  freeze_ticket_id uuid NOT NULL REFERENCES risk.freeze_ticket(freeze_ticket_id) ON DELETE CASCADE,
+  action_type text NOT NULL,
+  action_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_billing_event_order_id ON billing.billing_event(order_id);
 CREATE INDEX IF NOT EXISTS idx_fee_preview_order_id ON billing.fee_preview(order_id);
 CREATE INDEX IF NOT EXISTS idx_dispute_case_order_id ON support.dispute_case(order_id);
@@ -534,9 +588,13 @@ CREATE INDEX IF NOT EXISTS idx_payment_intent_status ON payment.payment_intent(s
 CREATE INDEX IF NOT EXISTS idx_payment_intent_corridor_policy_id ON payment.payment_intent(corridor_policy_id);
 CREATE INDEX IF NOT EXISTS idx_payment_transaction_intent_id ON payment.payment_transaction(payment_intent_id);
 CREATE INDEX IF NOT EXISTS idx_payout_instruction_settlement_id ON payment.payout_instruction(settlement_id);
+CREATE INDEX IF NOT EXISTS idx_split_instruction_settlement_id ON payment.split_instruction(settlement_id);
+CREATE INDEX IF NOT EXISTS idx_split_instruction_reward_id ON payment.split_instruction(reward_id);
 CREATE INDEX IF NOT EXISTS idx_corridor_policy_pair_status ON payment.corridor_policy(payer_jurisdiction_code, payee_jurisdiction_code, status);
 CREATE INDEX IF NOT EXISTS idx_payout_preference_beneficiary ON payment.payout_preference(beneficiary_subject_type, beneficiary_subject_id, is_default);
 CREATE INDEX IF NOT EXISTS idx_reputation_snapshot_subject ON risk.reputation_snapshot(subject_type, subject_id, effective_at DESC);
+CREATE INDEX IF NOT EXISTS idx_freeze_ticket_ref_status ON risk.freeze_ticket(ref_type, ref_id, status);
+CREATE INDEX IF NOT EXISTS idx_governance_action_log_ticket_id ON risk.governance_action_log(freeze_ticket_id, created_at DESC);
 
 CREATE TRIGGER trg_fee_rule_updated_at BEFORE UPDATE ON billing.fee_rule
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
@@ -570,13 +628,25 @@ CREATE TRIGGER trg_refund_intent_updated_at BEFORE UPDATE ON payment.refund_inte
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_payout_instruction_updated_at BEFORE UPDATE ON payment.payout_instruction
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+CREATE TRIGGER trg_sub_merchant_binding_updated_at BEFORE UPDATE ON payment.sub_merchant_binding
+FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+CREATE TRIGGER trg_split_instruction_updated_at BEFORE UPDATE ON payment.split_instruction
+FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_reconciliation_statement_updated_at BEFORE UPDATE ON payment.reconciliation_statement
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_reconciliation_diff_updated_at BEFORE UPDATE ON payment.reconciliation_diff
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_dispute_case_updated_at BEFORE UPDATE ON support.dispute_case
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+CREATE TRIGGER trg_freeze_ticket_updated_at BEFORE UPDATE ON risk.freeze_ticket
+FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 CREATE TRIGGER trg_dispute_status_history AFTER INSERT OR UPDATE ON support.dispute_case
 FOR EACH ROW EXECUTE FUNCTION common.tg_dispute_status_history();
+COMMENT ON TABLE payment.sub_merchant_binding IS
+  'V1 placeholder for future provider sub-merchant binding used by manual payout and split expansion.';
+COMMENT ON TABLE payment.split_instruction IS
+  'V1 placeholder split instruction. reward_id stays as nullable UUID in 040; formal FK lands with the V2 profitshare schema.';
+COMMENT ON COLUMN payment.split_instruction.reward_id IS
+  'V1 placeholder reference to future billing.reward_record.reward_id; intentionally no FK in 040_billing_support_risk.sql.';
 -- Trust-boundary baseline sync: billing/support/risk schema remains valid; storage-trust disputes are represented through existing dispute/evidence objects.
 -- Payment settlement sync: V1 adds fee rule, payment intent, payout and reconciliation objects while preserving manual settlement as the initial execution baseline.

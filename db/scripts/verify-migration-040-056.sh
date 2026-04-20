@@ -16,9 +16,13 @@ required_tables=(
   payment.payment_intent
   payment.payment_transaction
   payment.payout_instruction
+  payment.sub_merchant_binding
+  payment.split_instruction
   support.dispute_case
   support.dispute_status_history
   risk.reputation_snapshot
+  risk.freeze_ticket
+  risk.governance_action_log
   audit.audit_event
   audit.evidence_package
   audit.evidence_manifest
@@ -37,8 +41,12 @@ required_tables=(
 required_indexes=(
   billing.idx_billing_event_order_id
   payment.idx_payment_intent_status
+  payment.idx_split_instruction_settlement_id
+  payment.idx_split_instruction_reward_id
   support.idx_dispute_case_order_id
   risk.idx_reputation_snapshot_subject
+  risk.idx_freeze_ticket_ref_status
+  risk.idx_governance_action_log_ticket_id
   search.idx_product_search_document_tsv
   audit.idx_audit_event_trace
   audit.idx_anchor_batch_status
@@ -48,7 +56,10 @@ required_indexes=(
 
 required_triggers=(
   payment.trg_payment_intent_updated_at
+  payment.trg_sub_merchant_binding_updated_at
+  payment.trg_split_instruction_updated_at
   support.trg_dispute_status_history
+  risk.trg_freeze_ticket_updated_at
   catalog.trg_product_search_refresh
   trade.trg_order_outbox
   audit.trg_anchor_batch_updated_at
