@@ -27,7 +27,7 @@ mod tests {
         }
         let dsn = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".into());
-        let (mut client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+        let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
         tokio::spawn(async move {
             let _ = connection.await;
         });

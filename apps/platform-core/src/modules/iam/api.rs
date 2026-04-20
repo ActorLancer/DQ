@@ -131,7 +131,7 @@ async fn register_org(
     Json(payload): Json<RegisterOrganizationRequest>,
 ) -> Result<Json<ApiResponse<OrganizationAggregateView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::OrgRegister, "org register")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
 
     let metadata = serde_json::json!({
         "certification_level": payload.certification_level,
@@ -197,7 +197,7 @@ async fn get_org(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<OrganizationAggregateView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::OrgRead, "org read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -248,7 +248,7 @@ async fn list_orgs(
     Query(query): Query<OrganizationListQuery>,
 ) -> Result<Json<ApiResponse<Vec<OrganizationAggregateView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::OrgRead, "org list")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT
@@ -294,7 +294,7 @@ async fn patch_org_party_review_linkage(
         IamPermission::IdentityWrite,
         "party review linkage patch",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -354,7 +354,7 @@ async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<ApiResponse<LoginView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionWrite, "login")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -423,7 +423,7 @@ async fn logout(
     Json(payload): Json<LogoutRequest>,
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionWrite, "logout")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -467,7 +467,7 @@ async fn update_user_roles(
         IamPermission::RoleChangeWrite,
         "user role change write",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let roles = serde_json::Value::Array(
         payload
             .roles
@@ -521,7 +521,7 @@ async fn create_department(
     Json(payload): Json<CreateDepartmentRequest>,
 ) -> Result<Json<ApiResponse<DepartmentView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "department create")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_department(&tx, &payload)
         .await
@@ -547,7 +547,7 @@ async fn get_department(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<DepartmentView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "department read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_department(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -561,7 +561,7 @@ async fn list_departments(
     Query(query): Query<DepartmentListQuery>,
 ) -> Result<Json<ApiResponse<Vec<DepartmentView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "department list")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_departments(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -574,7 +574,7 @@ async fn create_user(
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<ApiResponse<UserView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "user create")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_user(&tx, &payload)
         .await
@@ -600,7 +600,7 @@ async fn get_user(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<UserView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "user read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_user(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -614,7 +614,7 @@ async fn list_users(
     Query(query): Query<UserListQuery>,
 ) -> Result<Json<ApiResponse<Vec<UserView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "user list")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_users(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -627,7 +627,7 @@ async fn create_app(
     Json(payload): Json<CreateApplicationRequest>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "app create")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_app(&tx, &payload)
         .await
@@ -654,7 +654,7 @@ async fn patch_app(
     Json(payload): Json<PatchApplicationRequest>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "app patch")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::patch_app(&tx, &id, &payload)
         .await
@@ -681,7 +681,7 @@ async fn get_app(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ApplicationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "app read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_app(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -695,7 +695,7 @@ async fn list_apps(
     Query(query): Query<ApplicationListQuery>,
 ) -> Result<Json<ApiResponse<Vec<ApplicationView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "application list")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_apps(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -713,7 +713,7 @@ async fn rotate_app_secret(
         IamPermission::IdentityWrite,
         "application credential rotate",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let secret_hash = payload
         .client_secret_hash
         .unwrap_or_else(|| new_external_readable_id("appsec"));
@@ -775,7 +775,7 @@ async fn revoke_app_secret(
         IamPermission::IdentityWrite,
         "application credential revoke",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -858,7 +858,7 @@ async fn create_invitation_internal(
         ));
     }
 
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let expires_hours = payload.expires_in_hours.unwrap_or(72).max(1);
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
@@ -924,7 +924,7 @@ async fn list_invitations(
     Query(query): Query<InvitationListQuery>,
 ) -> Result<Json<ApiResponse<Vec<InvitationView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "invitation read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT invitation_id::text, org_id::text, invited_email::text, invited_phone,
@@ -960,7 +960,7 @@ async fn cancel_invitation(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<InvitationView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "invitation cancel")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1006,7 +1006,7 @@ async fn list_sessions(
     Query(query): Query<SessionListQuery>,
 ) -> Result<Json<ApiResponse<Vec<SessionView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionRead, "session list")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT session_id::text, user_id::text, trusted_device_id::text, session_type,
@@ -1088,7 +1088,7 @@ async fn list_devices(
     Query(query): Query<DeviceListQuery>,
 ) -> Result<Json<ApiResponse<Vec<DeviceView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SessionRead, "device list")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT trusted_device_id::text, user_id::text, device_name, platform, browser,
@@ -1125,7 +1125,7 @@ async fn revoke_device(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<DeviceView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "device revoke")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1171,7 +1171,7 @@ async fn create_connector(
     Json(payload): Json<CreateConnectorRequest>,
 ) -> Result<Json<ApiResponse<ConnectorView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "connector create")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_connector(&tx, &payload)
         .await
@@ -1197,7 +1197,7 @@ async fn get_connector(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<ConnectorView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "connector read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_connector(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -1211,7 +1211,7 @@ async fn list_connectors(
     Query(query): Query<ConnectorListQuery>,
 ) -> Result<Json<ApiResponse<Vec<ConnectorView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityRead, "connector list")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_connectors(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -1228,7 +1228,7 @@ async fn create_execution_environment(
         IamPermission::IdentityWrite,
         "execution environment create",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let view = PostgresIamRepository::create_execution_environment(&tx, &payload)
         .await
@@ -1258,7 +1258,7 @@ async fn get_execution_environment(
         IamPermission::IdentityRead,
         "execution environment read",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let view = PostgresIamRepository::get_execution_environment(&client, &id)
         .await
         .map_err(map_db_error)?
@@ -1281,7 +1281,7 @@ async fn list_execution_environments(
         IamPermission::IdentityRead,
         "execution environment list",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let views = PostgresIamRepository::list_execution_environments(&client, &query)
         .await
         .map_err(map_db_error)?;
@@ -1473,7 +1473,7 @@ async fn check_step_up(
         )
     })?;
 
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_one(
@@ -1536,7 +1536,7 @@ async fn verify_step_up(
         "rejected"
     };
 
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1584,7 +1584,7 @@ async fn list_mfa_authenticators(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<MfaAuthenticatorView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::MfaRead, "mfa authenticator read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let user_id = header(&headers, "x-user-id");
     let rows = client
         .query(
@@ -1632,7 +1632,7 @@ async fn create_mfa_authenticator(
         ));
     }
 
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_one(
@@ -1683,7 +1683,7 @@ async fn delete_mfa_authenticator(
         IamPermission::MfaWrite,
         "mfa authenticator delete",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1729,7 +1729,7 @@ async fn create_sso_connection(
     Json(payload): Json<CreateSsoConnectionRequest>,
 ) -> Result<Json<ApiResponse<SsoConnectionView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SsoWrite, "sso connection create")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_one(
@@ -1784,7 +1784,7 @@ async fn list_sso_connections(
     Query(query): Query<SsoConnectionListQuery>,
 ) -> Result<Json<ApiResponse<Vec<SsoConnectionView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SsoRead, "sso connection read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT sso_connection_id::text, org_id::text, connection_name, protocol_type, issuer, status
@@ -1817,7 +1817,7 @@ async fn patch_sso_connection(
     Json(payload): Json<PatchSsoConnectionRequest>,
 ) -> Result<Json<ApiResponse<SsoConnectionView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::SsoWrite, "sso connection patch")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1869,7 +1869,7 @@ async fn list_fabric_identities(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<FabricIdentityView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::FabricRead, "fabric identity read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT fabric_identity_binding_id::text, msp_id, enrollment_id, identity_type, status
@@ -1903,7 +1903,7 @@ async fn issue_fabric_identity(
         IamPermission::FabricWrite,
         "fabric identity issue placeholder",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1950,7 +1950,7 @@ async fn revoke_fabric_identity(
         IamPermission::FabricWrite,
         "fabric identity revoke placeholder",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1992,7 +1992,7 @@ async fn list_certificates(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<CertificateView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::FabricRead, "certificate read")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
             "SELECT certificate_id::text, serial_number, status
@@ -2024,7 +2024,7 @@ async fn revoke_certificate(
         IamPermission::FabricWrite,
         "certificate revoke placeholder",
     )?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(

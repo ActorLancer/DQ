@@ -88,7 +88,7 @@ pub async fn get_order_templates_api(
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<OrderTemplateView>>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::ReadOrder, "order template read")?;
-    let mut client = state.db.client().map_err(map_db_connect)?;
+    let client = state.db.client().map_err(map_db_connect)?;
 
     let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
     write_trade_audit_event(
@@ -116,7 +116,7 @@ pub async fn get_order_detail_api(
     Path(order_id): Path<String>,
 ) -> Result<Json<ApiResponse<GetOrderDetailResponse>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::ReadOrder, "order read")?;
-    let mut client = state.db.client().map_err(map_db_connect)?;
+    let client = state.db.client().map_err(map_db_connect)?;
 
     let Some(order) = load_order_detail(&client, &order_id).await? else {
         return Err((
@@ -180,7 +180,7 @@ pub async fn get_order_lifecycle_snapshots_api(
         TradePermission::ReadOrder,
         "order lifecycle snapshots read",
     )?;
-    let mut client = state.db.client().map_err(map_db_connect)?;
+    let client = state.db.client().map_err(map_db_connect)?;
 
     let Some(snapshot) = load_order_lifecycle_snapshots(&client, &order_id).await? else {
         return Err((
@@ -819,7 +819,7 @@ pub async fn create_trade_pre_request(
         TradePermission::CreatePreRequest,
         "trade pre-request create",
     )?;
-    let mut client = state.db.client().map_err(map_db_connect)?;
+    let client = state.db.client().map_err(map_db_connect)?;
 
     let created = insert_trade_pre_request(&client, &payload).await?;
     let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
@@ -856,7 +856,7 @@ pub async fn get_trade_pre_request(
         TradePermission::ReadPreRequest,
         "trade pre-request read",
     )?;
-    let mut client = state.db.client().map_err(map_db_connect)?;
+    let client = state.db.client().map_err(map_db_connect)?;
 
     let Some(found) = load_trade_pre_request(&client, &id).await? else {
         return Err((
@@ -902,7 +902,7 @@ pub async fn freeze_order_price_snapshot_api(
         TradePermission::CreatePreRequest,
         "order price snapshot freeze",
     )?;
-    let mut client = state.db.client().map_err(map_db_connect)?;
+    let client = state.db.client().map_err(map_db_connect)?;
     let Some(snapshot) = freeze_order_price_snapshot(&client, &order_id).await? else {
         return Err((
             StatusCode::NOT_FOUND,

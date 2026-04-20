@@ -6,7 +6,7 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use db::{Client, GenericClient, NoTls, connect};
-    use serde_json::{Value, json};
+    use serde_json::Value;
     use tower::util::ServiceExt;
 
     #[derive(Debug)]
