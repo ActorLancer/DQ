@@ -1255,3 +1255,40 @@
 - 状态：计划中
 - 说明：基于当前 `packages/openapi/billing.yaml` 与 `apps/platform-core/src/modules/billing/api/mod.rs` 的实际路由，归档第一版 `docs/02-openapi/billing.yaml`，并补做实现/契约一致性校验与最小真实 API 读取验证。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-193（待审批）
+- 任务：`BIL-020` 生成 `docs/02-openapi/billing.yaml` 第一版并与实现校验
+- 状态：待审批
+- 实现摘要：
+  - 复核并确认 `docs/02-openapi/billing.yaml` 已与 `packages/openapi/billing.yaml` 保持同步，作为 Billing/Payment/Settlement/Dispute 子域的归档第一版。
+  - 更新 `docs/02-openapi/README.md`，将 `billing.yaml` 纳入 OpenAPI 归档索引，明确它与 `packages/openapi/billing.yaml` 的同步关系。
+  - 对 `apps/platform-core/src/modules/billing/api/mod.rs` 的实际路由与归档 OpenAPI 进行了路径/方法一致性校验，确认无缺失、无漂移。
+- 验证：
+  - `cmp -s docs/02-openapi/billing.yaml packages/openapi/billing.yaml`
+  - Billing OpenAPI vs `apps/platform-core/src/modules/billing/api/mod.rs` 路径/方法一致性校验
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：复用 `APP_PORT=8112` 的 `platform-core` 进程，插入临时 `FILE_STD` 订单后执行 `GET /api/v1/billing/{order_id}`，再用 `psql` 回查 `audit.audit_event`
+- 验证结果：
+  - `billing_openapi_synced=yes`
+  - 路径/方法一致性校验：`missing_paths=[] extra_paths=[] method_mismatch=[]`
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`241 passed, 0 failed, 1 ignored`
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过。
+  - 真实 API 联调通过：`GET /api/v1/billing/{order_id}` 返回 `HTTP 200`，账单读取摘要 `billing_events=0`；审计回查 `billing.order.read=1`。
+  - 临时业务数据已清理，回查 `trade.order_main / core.organization = 0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md` `4`
+  - `支付域接口协议正式版.md` `6`
+  - `数据交易平台-全集成基线-V1.md` `27`
+- 覆盖的任务清单条目：`BIL-020`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-194（计划中）
+- 任务：`BIL-021` 生成 `docs/05-test-cases/payment-billing-cases.md`，覆盖回调乱序、重复回调、重复扣费防护、结算冻结
+- 状态：计划中
+- 说明：基于当前 Billing/Payment/Dispute/Settlement 已落地实现与 smoke，用冻结测试矩阵文档沉淀支付回调乱序、重复回调、重复扣费防护、结算冻结等最小可信校验用例，并补做文档索引与最小真实联调验证。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
