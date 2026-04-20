@@ -1,33 +1,102 @@
 # SKU Billing Trigger Matrix (BIL-023)
 
-本文件定义 V1 首批 8 个 SKU 的计费触发业务口径，作为 `BillingEvent` 生成与测试回归的唯一业务基线。
+本文件冻结 V1 首批 8 个标准 SKU 的 Billing 触发口径，作为 `BillingEvent` 生成、`Settlement` 重算、交付桥接和测试回归的唯一业务基线。
 
-## 口径字段
+## 单一事实源
 
-- 支付触发点
-- 交付触发点
-- 验收触发点
-- 计费触发点
-- 结算周期
-- 退款入口
-- 赔付入口
-- 争议冻结点
-- 恢复结算点
+以下三处必须保持一一对应，不允许口径漂移：
 
-## SKU 矩阵
+1. 本文档
+2. `db/seeds/031_sku_trigger_matrix.sql`
+3. 运行时回退快照
+   - `apps/platform-core/src/modules/billing/domain/sku_billing_basis.rs`
+   - `apps/platform-core/src/modules/delivery/repo/outbox_repository.rs`
 
-| SKU | 支付触发点 | 交付触发点 | 验收触发点 | 计费触发点 | 结算周期 | 退款入口 | 赔付入口 | 争议冻结点 | 恢复结算点 |
+如果其中任意一处调整，另外两处必须同步更新并完成回归验证。
+
+## 字段定义
+
+- `default_event_type`：该 SKU 的标准基础账单事件；`null` 表示仅按用量事件计费。
+- `usage_event_type`：该 SKU 的用量事件类型；`null` 表示不按量计费。
+- `payment_trigger`：支付/锁资进入业务链路的冻结触发条件。
+- `delivery_trigger`：交付、开通或结果准备完成的最小触发条件。
+- `acceptance_trigger`：进入验收语义的最小触发条件。
+- `billing_trigger`：允许生成标准 `BillingEvent` 的唯一业务触发点。
+- `settlement_cycle`：`Settlement` 的聚合周期。
+- `refund_entry`：退款合法入口。
+- `compensation_entry`：赔付合法入口。
+- `dispute_freeze_trigger`：争议立案后冻结结算的触发点。
+- `resume_settlement_trigger`：争议关闭后恢复结算的触发点。
+
+## 标准事件映射
+
+| SKU | `default_event_type` | `usage_event_type` | 当前口径说明 |
+| --- | --- | --- | --- |
+| `FILE_STD` | `one_time_charge` | `null` | 单次文件交易，验收后一次性计费 |
+| `FILE_SUB` | `recurring_charge` | `null` | 订阅制文件交付，按周期计费 |
+| `SHARE_RO` | `one_time_charge` | `null` | 共享开通费先按最小占位口径处理，后续 `BIL-026` 补齐周期共享费与撤权退款占位 |
+| `API_SUB` | `recurring_charge` | `usage_charge` | 订阅基础费 + 用量附加费并存 |
+| `API_PPU` | `null` | `usage_charge` | 按量计费，不生成基础固定账单 |
+| `QRY_LITE` | `one_time_charge` | `null` | 单次查询任务，验收后一次性计费 |
+| `SBX_STD` | `recurring_charge` | `null` | 沙箱/席位类按周期计费 |
+| `RPT_STD` | `one_time_charge` | `null` | 单次报告交付，验收后一次性计费 |
+
+## 8 SKU 触发矩阵
+
+下表中的代码字符串必须与 `031_sku_trigger_matrix.sql`、运行时代码快照、`billing.sku_billing_trigger_matrix` 查询结果完全一致。
+
+| SKU | `payment_trigger` | `delivery_trigger` | `acceptance_trigger` | `billing_trigger` | `settlement_cycle` | `refund_entry` | `compensation_entry` | `dispute_freeze_trigger` | `resume_settlement_trigger` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `FILE_STD` | 订单合同生效后发起一次性锁资 | 卖方上传并发布一次性交付包 | 买方人工验收或超时自动验收 | 验收通过一次性计费 | T+1 单次结算 | 验收前取消 / 验收失败退款 | 交付缺陷或逾期触发赔付 | 争议立案即冻结待结算资金 | 争议关闭且责任归属已裁定 |
-| `FILE_SUB` | 首期订阅周期开始前锁资 | 每周期按订阅计划生成交付批次 | 每周期验收窗口内确认 | 每周期验收通过后计费 | 月结（按订阅周期） | 当期未交付或未验收可退当期 | 连续缺交触发违约赔付 | 任一周期争议立案即冻结后续周期结算 | 争议关闭后按裁定恢复当期/后续结算 |
-| `SHARE_RO` | 授权开通前一次性锁资 | 共享权限（只读）开通即视为交付 | 权限可用性检查通过 | 授权生效即计费 | T+1 单次结算 | 授权未开通或开通失败可退款 | 权限错误开放/未按范围共享触发赔付 | 争议立案冻结未结算款项 | 权限修复并争议关闭后恢复结算 |
-| `API_SUB` | 首期订阅周期开始前锁资 | API key/配额开通并健康探测通过 | 首次成功调用或周期验收确认 | 周期开始+周期验收双条件计费 | 月结（订阅） | 周期内未开通或不可用可退当期 | SLA 违约触发赔付 | SLA 争议立案冻结当期结算 | SLA 争议关闭后恢复结算 |
-| `API_PPU` | 预付额度充值或最低消费锁资 | API key 开通并允许调用 | 对账窗口内调用量确认 | 调用量归集后按量计费 | 日结（可汇总月账单） | 调用失败批次或未使用额度退款 | 计量错误或限流异常触发赔付 | 计量争议立案冻结待结算调用账单 | 计量复核通过后恢复结算 |
-| `QRY_LITE` | 查询任务提交前锁资 | 查询任务执行成功并结果可下载 | 结果可用性与完整性验收 | 任务成功并验收通过计费 | T+1 单次结算 | 任务失败或结果不可用退款 | 执行异常导致不可用触发赔付 | 查询结果争议立案冻结结算 | 结果复核通过且争议关闭恢复结算 |
-| `SBX_STD` | 沙箱实例开通前锁资 | 沙箱空间、账号与资源配额开通 | 可登录并通过基线探测验收 | 沙箱开通并通过验收计费 | 月结（按席位/资源包） | 沙箱未开通或开通失败可退款 | 资源不可用或隔离失效触发赔付 | 安全/隔离争议立案冻结结算 | 风险解除与争议关闭后恢复结算 |
-| `RPT_STD` | 报告任务下单后锁资 | 报告生成并可下载 | 买方确认报告可用或超时自动验收 | 报告交付验收通过后计费 | T+1 单次结算 | 报告未生成或不符合约定退款 | 报告严重缺陷触发赔付 | 报告质量争议立案冻结结算 | 复核通过并争议关闭后恢复结算 |
+| `FILE_STD` | `order_contract_effective_lock_once` | `seller_publish_single_package` | `buyer_manual_accept_or_timeout` | `bill_once_after_acceptance` | `t_plus_1_once` | `pre_acceptance_cancel_or_acceptance_failed` | `delivery_defect_or_delay` | `freeze_on_dispute_opened` | `resume_on_dispute_closed_with_ruling` |
+| `FILE_SUB` | `lock_before_each_subscription_cycle` | `generate_delivery_batch_each_cycle` | `cycle_window_manual_acceptance` | `bill_per_cycle_after_acceptance` | `monthly_cycle` | `refund_current_cycle_if_not_delivered` | `compensate_on_repeated_missing_delivery` | `freeze_future_cycles_on_dispute_opened` | `resume_after_dispute_closed_for_cycle` |
+| `SHARE_RO` | `lock_before_share_grant_activation` | `readonly_share_grant_enabled` | `accessibility_check_passed` | `bill_once_on_grant_effective` | `t_plus_1_once` | `refund_if_grant_not_effective` | `compensate_on_scope_or_access_violation` | `freeze_on_share_dispute_opened` | `resume_on_dispute_closed_after_fix` |
+| `API_SUB` | `lock_before_subscription_cycle_start` | `api_key_and_quota_provisioned` | `first_success_call_or_cycle_acceptance` | `bill_cycle_after_enable_and_acceptance` | `monthly_cycle` | `refund_current_cycle_if_unavailable` | `compensate_on_sla_breach` | `freeze_current_cycle_on_sla_dispute` | `resume_on_sla_dispute_closed` |
+| `API_PPU` | `lock_prepaid_quota_or_minimum_commit` | `api_key_enabled_for_metering` | `usage_reconciliation_window_confirmed` | `bill_by_metered_usage` | `daily_with_monthly_statement` | `refund_failed_batch_or_unused_quota` | `compensate_on_metering_or_throttling_fault` | `freeze_metered_settlement_on_dispute` | `resume_after_metering_reconcile` |
+| `QRY_LITE` | `lock_before_query_job_execution` | `query_job_succeeded_result_available` | `result_integrity_and_download_check` | `bill_once_after_task_acceptance` | `t_plus_1_once` | `refund_if_task_failed_or_unavailable` | `compensate_on_execution_unavailability` | `freeze_on_query_result_dispute` | `resume_after_result_recheck_closed` |
+| `SBX_STD` | `lock_before_workspace_provision` | `workspace_account_quota_ready` | `login_and_probe_check_passed` | `bill_after_workspace_activation_acceptance` | `monthly_resource_cycle` | `refund_if_workspace_not_ready` | `compensate_on_resource_or_isolation_fault` | `freeze_on_security_or_isolation_dispute` | `resume_after_risk_cleared_dispute_closed` |
+| `RPT_STD` | `lock_after_report_order_created` | `report_generated_and_downloadable` | `buyer_accept_or_timeout_acceptance` | `bill_once_after_report_acceptance` | `t_plus_1_once` | `refund_if_report_not_generated_or_rejected` | `compensate_on_critical_report_defect` | `freeze_on_report_quality_dispute` | `resume_on_review_passed_dispute_closed` |
 
-## 与 DB-034 的映射关系
+## 业务解释补充
 
-- 本文档字段与 `db/seeds/031_sku_trigger_matrix.sql` 一一对应。
-- 该 SQL 种子将上述 8 行固化到可查询配置表，供后端、测试和审计统一读取。
+### `FILE_STD`
+- 基础路径是：合同生效 -> 锁资 -> 交付 -> 验收 -> 一次性计费 -> `T+1` 结算。
+- 退款入口严格限制在验收通过前或验收失败。
+
+### `FILE_SUB`
+- Billing 的最小粒度是“订阅周期”，不是整单。
+- 争议打开后，冻结的是后续周期结算，而不是直接覆盖历史已完成周期的最终金额。
+
+### `SHARE_RO`
+- 当前 `V1` 先冻结共享开通费口径，满足授权开通、争议冻结、结算恢复的最小闭环。
+- 周期共享费、撤权退款占位在 `BIL-026` 扩展，但不得改写本表已冻结字段语义。
+
+### `API_SUB`
+- 周期账单必须同时满足“已开通”与“周期验收/首次成功调用”两个条件，避免只开通未可用就出账。
+
+### `API_PPU`
+- 只有 `usage_charge`，没有基础 `default_event_type`。
+- 支付与结算允许按日聚合，但对外仍可输出月账单摘要。
+
+### `QRY_LITE`
+- 查询成功且结果可用不等于可计费；仍必须经过结果完整性/可下载性验收。
+
+### `SBX_STD`
+- 账单口径围绕“工作区/席位资源可用”展开，不以对象下载或文件签收为准。
+
+### `RPT_STD`
+- 报告生成完成后仍要以买方验收或超时验收作为最终计费条件。
+
+## 与数据库和运行时的关系
+
+- `db/seeds/031_sku_trigger_matrix.sql` 将上述 8 行固化到 `billing.sku_billing_trigger_matrix`。
+- Delivery 到 Billing 的桥接器优先读取 `billing.sku_billing_trigger_matrix`；如果表不存在或缺少 SKU 记录，则回退到与本文件一致的冻结代码快照。
+- `GET /api/v1/billing/{order_id}` 通过 `sku_billing_basis` / `api_billing_basis` 向外暴露运行时口径；该响应必须可回溯到本矩阵。
+
+## 回归要求
+
+至少覆盖以下校验：
+
+- `db/scripts/verify-seed-031.sh`：验证 8 个 SKU 矩阵 seed 已落库且关键字段正确。
+- `bil017_api_sku_billing_basis_db_smoke`：验证 `API_SUB / API_PPU` 的最小计费规则与事件类型。
+- `bil018_default_sku_billing_basis_db_smoke`：验证 `FILE_STD / FILE_SUB / SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 的默认计费规则。
+- 至少一条真实 API 联调：通过 `GET /api/v1/billing/{order_id}` 回查 `sku_billing_basis` 或 `api_billing_basis`，确认返回值与本文档一致。

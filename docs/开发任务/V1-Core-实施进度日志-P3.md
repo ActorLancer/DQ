@@ -1377,3 +1377,49 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-196（计划中）
+- 任务：`BIL-023` 输出 `docs/03-db/sku-billing-trigger-matrix.md`，逐个写清 8 个 SKU 的计费触发点、结算周期、退款入口、赔付入口、争议冻结点、恢复结算点
+- 状态：计划中
+- 说明：基于已落地的 `billing_event`、SKU 计费规则、默认 SKU 规则和交付桥接实现，收敛 8 个标准 SKU 的最小计费触发矩阵，作为 BillingEvent 生成与 Settlement 重算的唯一业务口径，并补齐索引引用与最小真实联调验证。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-196（待审批）
+- 任务：`BIL-023` 输出 `docs/03-db/sku-billing-trigger-matrix.md`，逐个写清 8 个 SKU 的计费触发点、结算周期、退款入口、赔付入口、争议冻结点、恢复结算点
+- 状态：待审批
+- 实现摘要：
+  - 重写 `docs/03-db/sku-billing-trigger-matrix.md`，把 8 个标准 SKU 的 `default_event_type / usage_event_type / payment_trigger / delivery_trigger / acceptance_trigger / billing_trigger / settlement_cycle / refund_entry / compensation_entry / dispute_freeze_trigger / resume_settlement_trigger` 冻结成单一业务标准。
+  - 文档显式声明三处单一事实源必须保持一致：`docs/03-db/sku-billing-trigger-matrix.md`、`db/seeds/031_sku_trigger_matrix.sql`、运行时回退快照 `sku_billing_basis.rs / delivery/outbox_repository.rs`。
+  - 对 `SHARE_RO` 保留 `BIL-026` 扩展说明，但不提前改变本批冻结字段语义；当前仍按最小开通费口径输出。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil017_api_sku_billing_basis_db_smoke -- --nocapture`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil018_default_sku_billing_basis_db_smoke -- --nocapture`
+  - `DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=luna_data_trading DB_USER=luna DB_PASSWORD=5686 ./db/scripts/verify-seed-031.sh`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：复用 `APP_PORT=8122` 的 `platform-core`，插入临时 `SHARE_RO` 订单后执行：
+    - `GET /api/v1/billing/{order_id}`
+    - `POST /api/v1/orders/{id}/share-ro/transition`
+    - 再次 `GET /api/v1/billing/{order_id}`
+    - `psql` 回查 `billing.billing_event / ops.outbox_event / audit.audit_event`
+- 验证结果：
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`244 passed, 0 failed, 1 ignored`。
+  - `bil017_api_sku_billing_basis_db_smoke` 与 `bil018_default_sku_billing_basis_db_smoke` 均通过。
+  - `verify-seed-031.sh` 通过，确认测试库 `billing.sku_billing_trigger_matrix` 的 8 SKU 种子已落库且关键字段一致。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过。
+  - 真实 API 联调通过：
+    - 首次 `GET /api/v1/billing/{order_id}` 返回 `sku_billing_basis.sku_type=SHARE_RO`、`billing_trigger=bill_once_on_grant_effective`、`billing_events=[]`
+    - `POST /api/v1/orders/{id}/share-ro/transition` 返回 `current_state=share_enabled`、`billing_event_type=one_time_charge`
+    - 二次 `GET /api/v1/billing/{order_id}` 返回 `settlement_cycle=t_plus_1_once` 且 `billing_events[0].event_type=one_time_charge`
+  - DB 回查通过：`billing.billing_event=1`、`ops.outbox_event(target_topic=billing.events)=1`、`audit.audit_event(action_name=billing.order.read)=1`
+  - 临时业务数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql` `billing.billing_event / billing.settlement_record / billing.sku_billing_trigger_matrix`
+  - `支付、资金流与轻结算设计.md` `7`
+- 覆盖的任务清单条目：`BIL-023`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
