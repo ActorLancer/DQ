@@ -538,6 +538,24 @@ mod tests {
     async fn cleanup_seed_graph(client: &Client, seed: &SeedGraph) {
         let _ = client
             .execute(
+                "DELETE FROM billing.billing_event WHERE order_id = $1::text::uuid",
+                &[&seed.order_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM billing.settlement_record WHERE order_id = $1::text::uuid",
+                &[&seed.order_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM contract.digital_contract WHERE order_id = $1::text::uuid",
+                &[&seed.order_id],
+            )
+            .await;
+        let _ = client
+            .execute(
                 "DELETE FROM trade.order_main WHERE order_id = $1::text::uuid",
                 &[&seed.order_id],
             )

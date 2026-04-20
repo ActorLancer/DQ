@@ -38,13 +38,17 @@ pub async fn load_sku_billing_basis_view(
     Ok(Some(SkuBillingBasisView {
         sku_type,
         default_event_type: rule.default_event_type.map(str::to_string),
+        cycle_event_type: rule.cycle_event_type.map(str::to_string),
         usage_event_type: rule.usage_event_type.map(str::to_string),
         payment_trigger: rule.payment_trigger.to_string(),
         delivery_trigger: rule.delivery_trigger.to_string(),
         acceptance_trigger: rule.acceptance_trigger.to_string(),
         billing_trigger: rule.billing_trigger.to_string(),
         settlement_cycle: rule.settlement_cycle.to_string(),
+        periodic_settlement_cycle: rule.periodic_settlement_cycle.map(str::to_string),
         refund_entry: rule.refund_entry.to_string(),
+        refund_placeholder_entry: rule.refund_placeholder_entry.map(str::to_string),
+        refund_placeholder_event_type: rule.refund_placeholder_event_type.map(str::to_string),
         refund_mode: json_value_to_string(price_snapshot_json.get("refund_mode")),
         refund_template_code: json_value_to_string(
             price_snapshot_json
@@ -54,7 +58,11 @@ pub async fn load_sku_billing_basis_view(
         compensation_entry: rule.compensation_entry.to_string(),
         dispute_freeze_trigger: rule.dispute_freeze_trigger.to_string(),
         resume_settlement_trigger: rule.resume_settlement_trigger.to_string(),
-        policy_stage: "v1_default_placeholder".to_string(),
+        policy_stage: if rule.sku_type == "SHARE_RO" {
+            "v1_share_ro_opening_cycle_placeholder".to_string()
+        } else {
+            "v1_default_placeholder".to_string()
+        },
     }))
 }
 
@@ -115,13 +123,17 @@ fn sku_billing_basis_snapshot(basis: &SkuBillingBasisView) -> Value {
     json!({
         "sku_type": basis.sku_type,
         "default_event_type": basis.default_event_type,
+        "cycle_event_type": basis.cycle_event_type,
         "usage_event_type": basis.usage_event_type,
         "payment_trigger": basis.payment_trigger,
         "delivery_trigger": basis.delivery_trigger,
         "acceptance_trigger": basis.acceptance_trigger,
         "billing_trigger": basis.billing_trigger,
         "settlement_cycle": basis.settlement_cycle,
+        "periodic_settlement_cycle": basis.periodic_settlement_cycle,
         "refund_entry": basis.refund_entry,
+        "refund_placeholder_entry": basis.refund_placeholder_entry,
+        "refund_placeholder_event_type": basis.refund_placeholder_event_type,
         "refund_mode": basis.refund_mode,
         "refund_template_code": basis.refund_template_code,
         "compensation_entry": basis.compensation_entry,

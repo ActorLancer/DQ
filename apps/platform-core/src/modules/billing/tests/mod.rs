@@ -20,6 +20,7 @@ mod bil019_payment_billing_integration_db;
 mod bil022_payment_result_processor_db;
 mod bil024_billing_trigger_bridge_db;
 mod bil025_billing_adjustment_freeze_db;
+mod bil026_share_ro_billing_db;
 
 #[cfg(test)]
 mod tests {

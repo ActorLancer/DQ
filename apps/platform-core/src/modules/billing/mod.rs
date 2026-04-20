@@ -20,6 +20,7 @@ pub mod reconciliation_handlers;
 pub mod refund_handlers;
 pub mod repo;
 pub mod service;
+pub mod share_ro_handlers;
 #[cfg(test)]
 mod tests;
 pub mod webhook;

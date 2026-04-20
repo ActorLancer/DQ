@@ -20,6 +20,7 @@ use crate::modules::billing::policy_handlers::{
 };
 use crate::modules::billing::reconciliation_handlers::import_reconciliation_statement;
 use crate::modules::billing::refund_handlers::create_refund;
+use crate::modules::billing::share_ro_handlers::create_share_ro_cycle_charge;
 use crate::modules::billing::webhook_handlers::handle_payment_webhook;
 use axum::Router;
 use axum::routing::{get, post};
@@ -52,6 +53,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/cases/{id}/evidence", post(upload_dispute_evidence))
         .route("/api/v1/cases/{id}/resolve", post(resolve_dispute_case))
         .route("/api/v1/billing/{order_id}", get(get_billing_order))
+        .route(
+            "/api/v1/billing/{order_id}/share-ro/cycle-charge",
+            post(create_share_ro_cycle_charge),
+        )
         .route(
             "/api/v1/billing/{order_id}/bridge-events/process",
             post(process_billing_bridge_for_order_api),

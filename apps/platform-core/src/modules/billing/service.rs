@@ -19,6 +19,7 @@ pub enum BillingPermission {
     ReconciliationRead,
     ReconciliationImport,
     PayoutExecuteManual,
+    ShareRoCycleCharge,
     RefundExecute,
     CompensationExecute,
     DisputeCaseCreate,
@@ -81,7 +82,8 @@ pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
         BillingPermission::RefundExecute
         | BillingPermission::CompensationExecute
         | BillingPermission::ReconciliationImport
-        | BillingPermission::PayoutExecuteManual => matches!(
+        | BillingPermission::PayoutExecuteManual
+        | BillingPermission::ShareRoCycleCharge => matches!(
             role,
             "platform_admin" | "platform_finance_operator" | "platform_risk_settlement"
         ),

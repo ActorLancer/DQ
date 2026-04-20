@@ -1518,3 +1518,54 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-199（计划中）
+- 任务：`BIL-026` 为 `SHARE_RO` 补齐最小计费口径：共享开通费、周期共享费、撤权退款占位、争议冻结规则，并补充相应账单样例、API 响应样例与测试用例
+- 状态：计划中
+- 说明：在 `BIL-018/024/025` 已有默认计费规则、桥接器与冻结/冲销基础上，聚焦补齐 `SHARE_RO` 的最小专属计费口径，确保共享开通、周期共享、撤权退款占位与争议冻结都能稳定映射到 `billing_event / settlement / billing read` 聚合与测试样例。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-199（待审批）
+- 任务：`BIL-026` 为 `SHARE_RO` 补齐最小计费口径：共享开通费、周期共享费、撤权退款占位、争议冻结规则，并补充相应账单样例、API 响应样例与测试用例
+- 状态：待审批
+- 实现摘要：
+  - 扩展 `SkuBillingBasisView / SkuBillingBasisRule` 与 `billing read` 聚合，新增 `cycle_event_type / periodic_settlement_cycle / refund_placeholder_entry / refund_placeholder_event_type`，并将 `SHARE_RO` 策略阶段固定为 `v1_share_ro_opening_cycle_placeholder`。
+  - 新增 `share_ro_billing_repository` 与 `POST /api/v1/billing/{order_id}/share-ro/cycle-charge`，使 `SHARE_RO` 可在共享开通后落库 `recurring_charge`；按 `billing_cycle_code` 维持幂等重放，真实响应返回 `billing_event_replayed`。
+  - 撤权路径新增 `share_revoke_refund_placeholder` 占位退款逻辑：汇总 `one_time_charge + recurring_charge - refund/refund_adjustment`，生成 `refund_adjustment` 并重算结算聚合。
+  - `delivery` 撤权链路与 `BIL-013` 争议建案联动后，`SHARE_RO` 现在可稳定触发 `settlement_dispute_hold` 冻结规则；账单读取会同时回传开通费、周期费、撤权退款占位与争议冻结后的 `settlement_summary`。
+  - 同步更新 `packages/openapi/billing.yaml`、`docs/03-db/sku-billing-trigger-matrix.md`、`docs/05-test-cases/payment-billing-cases.md`，补齐 `SHARE_RO` 的 API 样例与测试矩阵。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core bil026_share_ro_billing_db_smoke -- --nocapture`
+  - `cargo test -p platform-core dlv006_share_grant_db_smoke -- --nocapture`
+  - `cargo test -p platform-core bil018_default_sku_billing_basis_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：启动 `APP_PORT=8122` 的 `platform-core` 后，插入两组临时 `SHARE_RO` 订单并执行：
+    - `GET /api/v1/billing/{order_id}`
+    - `POST /api/v1/orders/{id}/share-ro/transition`
+    - `POST /api/v1/orders/{id}/share-grants`
+    - `POST /api/v1/billing/{order_id}/share-ro/cycle-charge`
+    - `POST /api/v1/cases`
+    - `psql` 回查 `billing.billing_event / billing.settlement_record / trade.order_main / audit.audit_event`
+- 验证结果：
+  - `cargo check -p platform-core` 通过。
+  - `bil026`、`dlv006`、`bil018` 定向 smoke 均通过。
+  - `cargo test -p platform-core` 通过：`247 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过，`.sqlx/` 已刷新。
+  - 真实 API 联调通过：
+    - `GET /api/v1/billing/{order_id}` 返回 `200`，`sku_billing_basis` 已含 `cycle_event_type=recurring_charge`、`periodic_settlement_cycle=monthly_cycle`、`refund_placeholder_event_type=refund_adjustment`
+    - `POST /api/v1/orders/{id}/share-ro/transition` 返回 `200`，开通时生成 `one_time_charge`
+    - `POST /api/v1/billing/{order_id}/share-ro/cycle-charge` 返回 `200`，首个周期计费为 `recurring_charge`，重复请求返回同一 `billing_event_id` 且 `billing_event_replayed=true`
+    - 撤权后 `GET /api/v1/billing/{order_id}` 返回 `200`，账单事件数为 `3`，`refund_adjustment_amount=99.00000000`，真实运行时订单 `settlement_status=refunded`
+    - `POST /api/v1/cases` 返回 `200`，争议状态为 `opened`，争议订单 `settlement_status=frozen`
+  - DB 回查通过：`one_time_charge=1`、`recurring_charge=1`、`refund_adjustment(event_source=share_revoke_refund_placeholder)=1`、`placeholder_amount=99.00000000`、`billing.adjustment.provisional_hold=1`、相关审计动作均命中。
+  - 临时业务数据已清理，回查 `trade.order_main=0`、`core.organization=0`、`support.dispute_case(share_scope_invalid orphan)=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql` `billing.billing_event / billing.settlement_record`
+  - `支付、资金流与轻结算设计.md` `7`
+- 覆盖的任务清单条目：`BIL-026`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `V1-gap / V2-reserved / V3-reserved` 项；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

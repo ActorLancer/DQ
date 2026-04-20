@@ -2,6 +2,7 @@ use super::outbox_repository::{
     build_delivery_receipt_outbox_payload, write_billing_trigger_bridge_event,
     write_delivery_receipt_outbox_event,
 };
+use crate::modules::billing::repo::share_ro_billing_repository::record_share_ro_revoke_refund_placeholder_in_tx;
 use crate::modules::delivery::domain::is_accepted_state;
 use crate::modules::delivery::dto::{
     ManageShareGrantRequest, ShareGrantListResponseData, ShareGrantResponseData,
@@ -453,6 +454,15 @@ pub async fn manage_share_grant(
         actor_role,
         request_id,
         trace_id,
+    )
+    .await?;
+    let _ = record_share_ro_revoke_refund_placeholder_in_tx(
+        &tx,
+        order_id,
+        actor_role,
+        request_id,
+        trace_id,
+        "share_ro_revoked_placeholder_refund",
     )
     .await?;
     write_trade_audit_event(

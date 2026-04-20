@@ -394,19 +394,43 @@ pub struct ApiBillingBasisView {
 pub struct SkuBillingBasisView {
     pub sku_type: String,
     pub default_event_type: Option<String>,
+    pub cycle_event_type: Option<String>,
     pub usage_event_type: Option<String>,
     pub payment_trigger: String,
     pub delivery_trigger: String,
     pub acceptance_trigger: String,
     pub billing_trigger: String,
     pub settlement_cycle: String,
+    pub periodic_settlement_cycle: Option<String>,
     pub refund_entry: String,
+    pub refund_placeholder_entry: Option<String>,
+    pub refund_placeholder_event_type: Option<String>,
     pub refund_mode: Option<String>,
     pub refund_template_code: Option<String>,
     pub compensation_entry: String,
     pub dispute_freeze_trigger: String,
     pub resume_settlement_trigger: String,
     pub policy_stage: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateShareRoCycleChargeRequest {
+    pub billing_cycle_code: String,
+    pub billing_amount: Option<String>,
+    pub reason_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ShareRoCycleChargeView {
+    pub order_id: String,
+    pub billing_cycle_code: String,
+    pub billing_event_id: String,
+    pub billing_event_type: String,
+    pub billing_event_replayed: bool,
+    pub current_state: String,
+    pub payment_status: String,
+    pub settlement_status: String,
+    pub dispute_status: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

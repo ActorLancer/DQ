@@ -67,8 +67,9 @@
 - 争议打开后，冻结的是后续周期结算，而不是直接覆盖历史已完成周期的最终金额。
 
 ### `SHARE_RO`
-- 当前 `V1` 先冻结共享开通费口径，满足授权开通、争议冻结、结算恢复的最小闭环。
-- 周期共享费、撤权退款占位在 `BIL-026` 扩展，但不得改写本表已冻结字段语义。
+- `billing.sku_billing_trigger_matrix` 中的 `billing_trigger=bill_once_on_grant_effective` 继续只表达“共享开通费”主触发点，不扩写成多义字段。
+- `BIL-026` 在运行时 `sku_billing_basis` 视图中补充 `cycle_event_type=recurring_charge`、`periodic_settlement_cycle=monthly_cycle`、`refund_placeholder_entry=placeholder_on_share_revoke_or_scope_cutoff`，用于表达周期共享费与撤权退款占位，但不回写本表冻结字段语义。
+- 争议冻结仍沿用 `freeze_on_share_dispute_opened / resume_on_dispute_closed_after_fix`，由 `support.dispute_case + billing.adjustment.provisional_hold` 驱动最小冻结闭环。
 
 ### `API_SUB`
 - 周期账单必须同时满足“已开通”与“周期验收/首次成功调用”两个条件，避免只开通未可用就出账。

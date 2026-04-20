@@ -36,15 +36,18 @@
 | `PWB-010` | 赔付后结算重算 | 争议裁决 `compensation_full` 后执行 `POST /api/v1/compensations` | `billing.compensation_record.status=succeeded`；`settlement_summary.compensation_adjustment_amount` 正确；保留 `billing.compensation_record` outbox | `apps/platform-core/src/modules/billing/tests/bil010_compensation_db.rs`、`apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs` |
 | `PWB-011` | 统一结算聚合 | 支付、退款、赔付、人工打款任意组合后读取账单 | `billing.settlement_record` 只保留单条聚合结果，且金额由事件重算得到 | `apps/platform-core/src/modules/billing/tests/bil015_settlement_aggregate_db.rs` |
 | `PWB-012` | 结算摘要 outbox 边界 | 结算汇总创建/完成 | `ops.outbox_event(target_topic=billing.events)` 命中 `settlement.created / settlement.completed` | `apps/platform-core/src/modules/billing/tests/bil016_settlement_summary_outbox_db.rs` |
+| `PWB-013` | SHARE_RO 开通费 + 周期共享费 + 撤权退款占位 | `enable_share -> POST /api/v1/billing/{order_id}/share-ro/cycle-charge -> revoke share` | `billing_events` 依次出现 `one_time_charge / recurring_charge / refund_adjustment`；`sku_billing_basis` 暴露 `cycle_event_type / periodic_settlement_cycle / refund_placeholder_entry`；撤权后账单摘要按 placeholder 重算 | `apps/platform-core/src/modules/billing/tests/bil026_share_ro_billing_db.rs` |
+| `PWB-014` | SHARE_RO 争议冻结 | 已开通共享订单执行 `POST /api/v1/cases` | `trade.order_main.settlement_status=frozen`；`billing.billing_event(event_source=settlement_dispute_hold)=1`；`sku_billing_basis.dispute_freeze_trigger=freeze_on_share_dispute_opened` | `apps/platform-core/src/modules/billing/tests/bil026_share_ro_billing_db.rs` |
 
 ## Manual Smoke Baseline
 
-最小手工回归至少覆盖以下 4 步：
+最小手工回归至少覆盖以下 5 步：
 
 1. 创建支付意图并锁单，然后发送 success webhook，确认 `payment_intent.status=succeeded`。
 2. 重放相同 success webhook，确认 `processed_status=duplicate`。
 3. 再发送旧时间戳 failed webhook，确认 `processed_status=out_of_order_ignored`。
 4. 为已交付订单创建争议，确认 `trade.order_main.settlement_status=frozen` 且 `billing.order.read` 可联查冻结后的账单摘要。
+5. 对 `SHARE_RO` 订单依次执行开通、周期计费、撤权，确认 `GET /api/v1/billing/{order_id}` 返回 `one_time_charge / recurring_charge / refund_adjustment` 三类事件。
 
 ## Traceability
 

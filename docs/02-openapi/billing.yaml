@@ -920,6 +920,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BillingOrderDetailResponse"
+              examples:
+                shareRoOpeningAndCycle:
+                  summary: SHARE_RO opening fee + periodic share fee + revoke placeholder
+                  value:
+                    code: 0
+                    message: ok
+                    data:
+                      order_id: "7c7d39f8-20af-4f5b-9c54-793c5f04fd65"
+                      order_status: "revoked"
+                      payment_status: "paid"
+                      settlement_status: "closed"
+                      dispute_status: "none"
+                      order_amount: "66.00000000"
+                      currency_code: "CNY"
+                      sku_billing_basis:
+                        sku_type: "SHARE_RO"
+                        default_event_type: "one_time_charge"
+                        cycle_event_type: "recurring_charge"
+                        usage_event_type: null
+                        payment_trigger: "lock_before_share_grant_activation"
+                        delivery_trigger: "readonly_share_grant_enabled"
+                        acceptance_trigger: "accessibility_check_passed"
+                        billing_trigger: "bill_once_on_grant_effective"
+                        settlement_cycle: "t_plus_1_once"
+                        periodic_settlement_cycle: "monthly_cycle"
+                        refund_entry: "refund_if_grant_not_effective"
+                        refund_placeholder_entry: "placeholder_on_share_revoke_or_scope_cutoff"
+                        refund_placeholder_event_type: "refund_adjustment"
+                        refund_mode: "manual_refund"
+                        refund_template_code: "REFUND_SHARE_RO_V1"
+                        compensation_entry: "compensate_on_scope_or_access_violation"
+                        dispute_freeze_trigger: "freeze_on_share_dispute_opened"
+                        resume_settlement_trigger: "resume_on_dispute_closed_after_fix"
+                        policy_stage: "v1_share_ro_opening_cycle_placeholder"
+                      api_billing_basis: null
+                      billing_events:
+                        - billing_event_id: "2d0e2b22-8b98-4ccf-9054-4d8db4aaae1a"
+                          order_id: "7c7d39f8-20af-4f5b-9c54-793c5f04fd65"
+                          event_type: "one_time_charge"
+                          event_source: "share_enable"
+                          amount: "66.00000000"
+                          currency_code: "CNY"
+                          units: "1"
+                          occurred_at: "2026-04-20T10:00:00.000Z"
+                          updated_at: "2026-04-20T10:00:00.000Z"
+                          metadata: {}
+                        - billing_event_id: "5d8ed81c-1bf5-4508-b099-35d829840225"
+                          order_id: "7c7d39f8-20af-4f5b-9c54-793c5f04fd65"
+                          event_type: "recurring_charge"
+                          event_source: "share_cycle"
+                          amount: "33.00000000"
+                          currency_code: "CNY"
+                          units: "1"
+                          occurred_at: "2026-04-20T10:30:00.000Z"
+                          updated_at: "2026-04-20T10:30:00.000Z"
+                          metadata: {}
+                        - billing_event_id: "8d9f23dc-f856-4fca-9305-fd4d7c9797d4"
+                          order_id: "7c7d39f8-20af-4f5b-9c54-793c5f04fd65"
+                          event_type: "refund_adjustment"
+                          event_source: "share_revoke_refund_placeholder"
+                          amount: "99.00000000"
+                          currency_code: "CNY"
+                          units: "1"
+                          occurred_at: "2026-04-20T11:00:00.000Z"
+                          updated_at: "2026-04-20T11:00:00.000Z"
+                          metadata: {}
+                      settlements: []
+                      settlement_summary:
+                        gross_amount: "99.00000000"
+                        platform_commission_amount: "0.00000000"
+                        channel_fee_amount: "0.00000000"
+                        refund_adjustment_amount: "99.00000000"
+                        compensation_adjustment_amount: "0.00000000"
+                        supplier_receivable_amount: "0.00000000"
+                        summary_state: "order_settlement:closed:manual"
+                        proof_commit_state: "pending_anchor"
+                      refunds: []
+                      compensations: []
+                      payouts: []
+                      split_placeholders: []
+                      invoices: []
+                      tax_placeholder:
+                        tax_mode: "manual_placeholder"
+                        tax_required: false
+                        latest_invoice_request_id: null
+                        latest_invoice_status: null
+                        latest_tax_no: null
+                        tax_breakdown_ready: false
+                      invoice_placeholder:
+                        invoice_mode: "manual_placeholder"
+                        invoice_required: false
+                        latest_invoice_request_id: null
+                        latest_invoice_status: null
+                        latest_invoice_title: null
+                        pending_invoice_count: 0
         "403":
           description: Forbidden
           content:
@@ -928,6 +1023,83 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/billing/{order_id}/share-ro/cycle-charge:
+    post:
+      summary: Record SHARE_RO recurring cycle charge
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: order_id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-trace-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShareRoCycleChargeRequest"
+            examples:
+              monthlyShareCycle:
+                value:
+                  billing_cycle_code: "2026-04"
+                  billing_amount: "33.00000000"
+                  reason_note: "monthly share cycle"
+      responses:
+        "200":
+          description: SHARE_RO cycle charge recorded or idempotency replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareRoCycleChargeResponse"
+              examples:
+                recorded:
+                  value:
+                    code: 0
+                    message: ok
+                    data:
+                      order_id: "7c7d39f8-20af-4f5b-9c54-793c5f04fd65"
+                      billing_cycle_code: "2026-04"
+                      billing_event_id: "5d8ed81c-1bf5-4508-b099-35d829840225"
+                      billing_event_type: "recurring_charge"
+                      billing_event_replayed: false
+                      current_state: "share_granted"
+                      payment_status: "paid"
+                      settlement_status: "pending_settlement"
+                      dispute_status: "none"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: SHARE_RO basis missing or current state does not allow cycle charge
           content:
             application/json:
               schema:
@@ -1437,6 +1609,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/BillingBridgeProcess"
+    ApiEnvelopeShareRoCycleCharge:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ShareRoCycleCharge"
     ApiEnvelopeOrderLock:
       type: object
       required: [success, data]
@@ -3020,6 +3200,9 @@ components:
         default_event_type:
           type: string
           nullable: true
+        cycle_event_type:
+          type: string
+          nullable: true
         usage_event_type:
           type: string
           nullable: true
@@ -3033,8 +3216,17 @@ components:
           type: string
         settlement_cycle:
           type: string
+        periodic_settlement_cycle:
+          type: string
+          nullable: true
         refund_entry:
           type: string
+        refund_placeholder_entry:
+          type: string
+          nullable: true
+        refund_placeholder_event_type:
+          type: string
+          nullable: true
         refund_mode:
           type: string
           nullable: true
@@ -3048,6 +3240,51 @@ components:
         resume_settlement_trigger:
           type: string
         policy_stage:
+          type: string
+    CreateShareRoCycleChargeRequest:
+      type: object
+      required: [billing_cycle_code]
+      properties:
+        billing_cycle_code:
+          type: string
+        billing_amount:
+          type: string
+          nullable: true
+        reason_note:
+          type: string
+          nullable: true
+    ShareRoCycleCharge:
+      type: object
+      required:
+        [
+          order_id,
+          billing_cycle_code,
+          billing_event_id,
+          billing_event_type,
+          billing_event_replayed,
+          current_state,
+          payment_status,
+          settlement_status,
+          dispute_status,
+        ]
+      properties:
+        order_id:
+          type: string
+        billing_cycle_code:
+          type: string
+        billing_event_id:
+          type: string
+        billing_event_type:
+          type: string
+        billing_event_replayed:
+          type: boolean
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
           type: string
     LockOrderRequest:
       type: object
@@ -3333,6 +3570,9 @@ components:
     BillingBridgeProcessResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBillingBridgeProcess"
+    ShareRoCycleChargeResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeShareRoCycleCharge"
     OrderLockResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeOrderLock"
