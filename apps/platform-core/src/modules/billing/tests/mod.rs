@@ -5,6 +5,7 @@ mod bil004_mock_payment_adapter_db;
 mod bil005_payment_webhook_db;
 mod bil006_billing_event_db;
 mod bil007_billing_read_db;
+mod bil008_settlement_summary_db;
 
 #[cfg(test)]
 mod tests {

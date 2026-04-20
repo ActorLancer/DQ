@@ -1,7 +1,8 @@
 use crate::modules::billing::db::map_db_error;
 use crate::modules::billing::models::{
     BillingCompensationView, BillingInvoicePlaceholderView, BillingInvoiceView,
-    BillingOrderDetailView, BillingRefundView, BillingSettlementView, BillingTaxPlaceholderView,
+    BillingOrderDetailView, BillingRefundView, BillingSettlementSummaryView, BillingSettlementView,
+    BillingTaxPlaceholderView,
 };
 use crate::modules::billing::repo::billing_event_repository::list_billing_events_for_order;
 use axum::Json;
@@ -38,6 +39,7 @@ pub async fn get_billing_order_detail(
     let refunds = load_refunds(client, order_id).await?;
     let compensations = load_compensations(client, order_id).await?;
     let invoices = load_invoices(client, order_id).await?;
+    let settlement_summary = build_settlement_summary(&settlements);
 
     let tax_placeholder = build_tax_placeholder(&context, &invoices);
     let invoice_placeholder = build_invoice_placeholder(&settlements, &invoices);
@@ -52,6 +54,7 @@ pub async fn get_billing_order_detail(
         currency_code: context.currency_code,
         billing_events,
         settlements,
+        settlement_summary,
         refunds,
         compensations,
         invoices,
@@ -305,4 +308,23 @@ fn build_invoice_placeholder(
         latest_invoice_title: latest_invoice.map(|invoice| invoice.invoice_title.clone()),
         pending_invoice_count,
     }
+}
+
+fn build_settlement_summary(
+    settlements: &[BillingSettlementView],
+) -> Option<BillingSettlementSummaryView> {
+    let latest = settlements.first()?;
+    Some(BillingSettlementSummaryView {
+        gross_amount: latest.payable_amount.clone(),
+        platform_commission_amount: latest.platform_fee_amount.clone(),
+        channel_fee_amount: latest.channel_fee_amount.clone(),
+        refund_adjustment_amount: latest.refund_amount.clone(),
+        compensation_adjustment_amount: latest.compensation_amount.clone(),
+        supplier_receivable_amount: latest.net_receivable_amount.clone(),
+        summary_state: format!(
+            "{}:{}:{}",
+            latest.settlement_type, latest.settlement_status, latest.settlement_mode
+        ),
+        proof_commit_state: "pending_anchor".to_string(),
+    })
 }

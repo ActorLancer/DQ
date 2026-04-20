@@ -1511,6 +1511,7 @@ components:
           currency_code,
           billing_events,
           settlements,
+          settlement_summary,
           refunds,
           compensations,
           invoices,
@@ -1540,6 +1541,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BillingSettlement"
+        settlement_summary:
+          allOf:
+            - $ref: "#/components/schemas/BillingSettlementSummary"
+          nullable: true
         refunds:
           type: array
           items:
@@ -1556,6 +1561,36 @@ components:
           $ref: "#/components/schemas/BillingTaxPlaceholder"
         invoice_placeholder:
           $ref: "#/components/schemas/BillingInvoicePlaceholder"
+    BillingSettlementSummary:
+      type: object
+      required:
+        [
+          gross_amount,
+          platform_commission_amount,
+          channel_fee_amount,
+          refund_adjustment_amount,
+          compensation_adjustment_amount,
+          supplier_receivable_amount,
+          summary_state,
+          proof_commit_state,
+        ]
+      properties:
+        gross_amount:
+          type: string
+        platform_commission_amount:
+          type: string
+        channel_fee_amount:
+          type: string
+        refund_adjustment_amount:
+          type: string
+        compensation_adjustment_amount:
+          type: string
+        supplier_receivable_amount:
+          type: string
+        summary_state:
+          type: string
+        proof_commit_state:
+          type: string
     LockOrderRequest:
       type: object
       required: [payment_intent_id]

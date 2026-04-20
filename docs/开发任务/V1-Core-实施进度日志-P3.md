@@ -448,3 +448,64 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-181（计划中）
+- 任务：`BIL-008` Settlement 模型
+- 状态：计划中
+- 说明：在现有 `billing.settlement_record` 冻结表结构基础上补齐 `Settlement` 领域模型、最小聚合/摘要视图与计算仓储，明确应结金额、平台抽佣、渠道手续费、供方应收、退款/赔付调整和结算摘要，并通过 DB smoke + 真实 API/DB 联调验证读写口径。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-181（待审批）
+- 任务：`BIL-008` Settlement 模型
+- 状态：待审批
+- 当前任务编号：`BIL-008`
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；`BIL-007` 已完成并本地提交；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `BIL-008` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：复核 `Settlement / SettlementSummary` 在账单、托管与分润聚合中的职责与生命周期。
+  - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`：核对 `billing.settlement_record` 冻结字段、金额列与状态列。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：确认应结金额、平台抽佣、渠道手续费、退款/赔付调整、供方应收的冻结口径。
+  - `packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`：同步补齐 `BillingSettlementSummary` schema 与 `BillingOrderDetail.settlement_summary`。
+  - `scripts/check-query-compile.sh`、`.sqlx/`：确认 SQLx 元数据与离线编译基线继续有效。
+  - 其余 18 份必读冻结文档已按流程复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `Settlement` 领域模型，冻结 `settlement_id / settlement_type / settlement_status / settlement_mode / payable_amount / platform_fee_amount / channel_fee_amount / net_receivable_amount / refund_amount / compensation_amount / reason_code / settled_at / updated_at`。
+  - 新增 `SettlementSummary` 领域模型，冻结 `gross_amount / platform_commission_amount / channel_fee_amount / refund_adjustment_amount / compensation_adjustment_amount / supplier_receivable_amount / summary_state / proof_commit_state` 最小摘要。
+  - `billing_read_repository.rs` 现在会在加载 `settlements` 后统一计算 `settlement_summary`，并挂入 `BillingOrderDetailView`。
+  - `BillingSettlementView` 改为直接复用 `Settlement` 领域模型，减少读模型与领域模型漂移。
+  - 新增 `bil008_settlement_summary_db_smoke`，覆盖账单详情读取时结算摘要金额与状态输出。
+  - OpenAPI 同步新增 `BillingSettlementSummary` 组件，保证读接口契约与实现一致。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core bil008_settlement_summary_db_smoke -- --nocapture`
+  4. 启动 `APP_PORT=8102` 的 `platform-core`，插入一组临时结算数据后执行真实 `curl GET /api/v1/billing/{order_id}`，再用 `psql` 回查 `audit.audit_event / trade.order_main` 并清理临时业务数据。
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过。
+  - `bil008_settlement_summary_db_smoke` 通过，覆盖结算摘要金额、状态与审计读取。
+  - 真实 API 联调通过：
+    - `GET /api/v1/billing/{order_id}` 返回 `HTTP 200`
+    - 返回 `gross_amount=88.00000000`
+    - 返回 `platform_commission_amount=2.00000000`
+    - 返回 `channel_fee_amount=1.00000000`
+    - 返回 `refund_adjustment_amount=5.00000000`
+    - 返回 `compensation_adjustment_amount=3.00000000`
+    - 返回 `supplier_receivable_amount=85.00000000`
+    - 返回 `summary_state=order_settlement:pending:manual`
+    - 返回 `proof_commit_state=pending_anchor`
+  - DB 回查通过：
+    - `audit.audit_event` 命中 `billing.order.read=1`
+    - `trade.order_main` 保持 `buyer_locked / paid / pending_settlement`
+  - 临时业务数据已清理，回查 `order_main=0 | settlement_record=0 | organization=0`；审计记录按 append-only 保留。
+  - `cargo test -p platform-core` 通过：`217 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md`：4.6
+  - `040_billing_support_risk.sql`：账单/结算支撑 schema
+  - `支付、资金流与轻结算设计.md`：7
+- 覆盖的任务清单条目：`BIL-008`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

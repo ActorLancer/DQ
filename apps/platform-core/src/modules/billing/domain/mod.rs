@@ -60,3 +60,32 @@ pub struct BillingEvent {
     pub occurred_at: String,
     pub metadata: Value,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Settlement {
+    pub settlement_id: String,
+    pub settlement_type: String,
+    pub settlement_status: String,
+    pub settlement_mode: String,
+    pub payable_amount: String,
+    pub platform_fee_amount: String,
+    pub channel_fee_amount: String,
+    pub net_receivable_amount: String,
+    pub refund_amount: String,
+    pub compensation_amount: String,
+    pub reason_code: Option<String>,
+    pub settled_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SettlementSummary {
+    pub gross_amount: String,
+    pub platform_commission_amount: String,
+    pub channel_fee_amount: String,
+    pub refund_adjustment_amount: String,
+    pub compensation_adjustment_amount: String,
+    pub supplier_receivable_amount: String,
+    pub summary_state: String,
+    pub proof_commit_state: String,
+}

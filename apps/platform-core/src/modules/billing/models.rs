@@ -1,4 +1,6 @@
-use crate::modules::billing::domain::{BillingEvent, CorridorPolicy, JurisdictionProfile};
+use crate::modules::billing::domain::{
+    BillingEvent, CorridorPolicy, JurisdictionProfile, Settlement, SettlementSummary,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -9,23 +11,8 @@ pub struct BillingPolicyView {
 }
 
 pub type BillingEventView = BillingEvent;
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct BillingSettlementView {
-    pub settlement_id: String,
-    pub settlement_type: String,
-    pub settlement_status: String,
-    pub settlement_mode: String,
-    pub payable_amount: String,
-    pub platform_fee_amount: String,
-    pub channel_fee_amount: String,
-    pub net_receivable_amount: String,
-    pub refund_amount: String,
-    pub compensation_amount: String,
-    pub reason_code: Option<String>,
-    pub settled_at: Option<String>,
-    pub updated_at: String,
-}
+pub type BillingSettlementView = Settlement;
+pub type BillingSettlementSummaryView = SettlementSummary;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BillingRefundView {
@@ -91,6 +78,7 @@ pub struct BillingOrderDetailView {
     pub currency_code: String,
     pub billing_events: Vec<BillingEventView>,
     pub settlements: Vec<BillingSettlementView>,
+    pub settlement_summary: Option<BillingSettlementSummaryView>,
     pub refunds: Vec<BillingRefundView>,
     pub compensations: Vec<BillingCompensationView>,
     pub invoices: Vec<BillingInvoiceView>,
