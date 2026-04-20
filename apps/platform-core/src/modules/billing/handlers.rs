@@ -1,14 +1,11 @@
 //! 所有 HTTP handler 函数
 
 use crate::AppState;
-use crate::modules::billing::db::{
-    map_db_error, parse_intent_row, select_intent_by_idempotency, set_webhook_processed_status,
-    write_audit_event,
-};
+use crate::modules::billing::db::{map_db_error, set_webhook_processed_status, write_audit_event};
 use crate::modules::billing::domain::PayoutPreference;
 use crate::modules::billing::models::{
-    BillingPolicyView, CreatePaymentIntentRequest, LockOrderRequest, OrderLockView,
-    PaymentIntentView, PaymentWebhookRequest, PaymentWebhookResultView,
+    BillingPolicyView, LockOrderRequest, OrderLockView, PaymentWebhookRequest,
+    PaymentWebhookResultView,
 };
 use crate::modules::billing::service::{
     BillingPermission, is_allowed, list_corridor_policies, list_jurisdictions,
@@ -59,6 +56,25 @@ pub fn require_permission(
     ))
 }
 
+pub fn require_step_up_placeholder(
+    headers: &HeaderMap,
+    action: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if header(headers, "x-step-up-token").is_some()
+        || header(headers, "x-step-up-challenge-id").is_some()
+    {
+        return Ok(());
+    }
+    Err((
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            message: format!("x-step-up-token or x-step-up-challenge-id is required for {action}"),
+            request_id: header(headers, "x-request-id"),
+        }),
+    ))
+}
+
 // ── handlers ─────────────────────────────────────────────────────────────────
 
 pub async fn get_billing_policies(
@@ -99,288 +115,38 @@ pub async fn get_payout_preferences(
 }
 
 pub async fn create_payment_intent(
-    State(state): State<AppState>,
+    state: State<AppState>,
     headers: HeaderMap,
-    Json(payload): Json<CreatePaymentIntentRequest>,
-) -> Result<Json<ApiResponse<PaymentIntentView>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
-        &headers,
-        BillingPermission::PaymentIntentCreate,
-        "payment intent create",
-    )?;
-    let request_id = header(&headers, "x-request-id");
-    let idempotency_key = header(&headers, "x-idempotency-key");
-    let client = state.db.client().map_err(map_db_connect)?;
-
-    if let Some(ref key) = idempotency_key {
-        if let Some(existing) = select_intent_by_idempotency(&client, key).await? {
-            write_audit_event(
-                &client,
-                "payment",
-                "payment_intent",
-                &existing.payment_intent_id,
-                header(&headers, "x-role").as_deref().unwrap_or("unknown"),
-                "payment.intent.create.idempotent_replay",
-                "success",
-                header(&headers, "x-request-id").as_deref(),
-                header(&headers, "x-trace-id").as_deref(),
-            )
-            .await?;
-            info!(
-                action = "payment.intent.create.idempotent_replay",
-                payment_intent_id = %existing.payment_intent_id,
-                idempotency_key = %key,
-                "payment intent idempotent replay"
-            );
-            return Ok(ApiResponse::ok(existing));
-        }
-    }
-
-    let row = client
-        .query_one(
-            "INSERT INTO payment.payment_intent (
-               order_id, intent_type, provider_key, payer_subject_type, payer_subject_id,
-               payee_subject_type, payee_subject_id, payer_jurisdiction_code, payee_jurisdiction_code,
-               launch_jurisdiction_code, amount, payment_method, currency_code, price_currency_code,
-               status, request_id, idempotency_key, metadata
-             ) VALUES (
-               $1::text::uuid, $2, $3, $4, $5::text::uuid, $6, $7::text::uuid, $8, $9, 'SG',
-               $10::text::numeric, $11, $12, $13, 'created', $14, $15, '{}'::jsonb
-             )
-             RETURNING
-               payment_intent_id::text,
-               order_id::text,
-               intent_type,
-               provider_key,
-               payer_subject_type,
-               payer_subject_id::text,
-               payee_subject_type,
-               payee_subject_id::text,
-               amount::text,
-               payment_method,
-               currency_code,
-               price_currency_code,
-               status,
-               idempotency_key,
-               request_id,
-               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
-            &[
-                &payload.order_id,
-                &payload
-                    .intent_type
-                    .clone()
-                    .unwrap_or_else(|| "order_payment".to_string()),
-                &payload.provider_key,
-                &payload.payer_subject_type,
-                &payload.payer_subject_id,
-                &payload.payee_subject_type,
-                &payload.payee_subject_id,
-                &payload
-                    .payer_jurisdiction_code
-                    .clone()
-                    .unwrap_or_else(|| "SG".to_string()),
-                &payload
-                    .payee_jurisdiction_code
-                    .clone()
-                    .unwrap_or_else(|| "SG".to_string()),
-                &payload.amount,
-                &payload.payment_method,
-                &payload
-                    .currency_code
-                    .clone()
-                    .unwrap_or_else(|| "SGD".to_string()),
-                &payload
-                    .price_currency_code
-                    .clone()
-                    .unwrap_or_else(|| "USD".to_string()),
-                &request_id,
-                &idempotency_key,
-            ],
-        )
+    payload: Json<crate::modules::billing::models::CreatePaymentIntentRequest>,
+) -> Result<
+    Json<ApiResponse<crate::modules::billing::models::PaymentIntentView>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    crate::modules::billing::payment_intent_handlers::create_payment_intent(state, headers, payload)
         .await
-        .map_err(map_db_error)?;
-
-    let intent = parse_intent_row(&row)?;
-    write_audit_event(
-        &client,
-        "payment",
-        "payment_intent",
-        &intent.payment_intent_id,
-        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
-        "payment.intent.create",
-        "success",
-        header(&headers, "x-request-id").as_deref(),
-        header(&headers, "x-trace-id").as_deref(),
-    )
-    .await?;
-    info!(
-        action = "payment.intent.create",
-        payment_intent_id = %intent.payment_intent_id,
-        provider_key = %intent.provider_key,
-        amount = %intent.amount,
-        "payment intent created"
-    );
-    Ok(ApiResponse::ok(intent))
 }
 
 pub async fn get_payment_intent(
-    State(state): State<AppState>,
+    state: State<AppState>,
     headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse<PaymentIntentView>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
-        &headers,
-        BillingPermission::PaymentIntentRead,
-        "payment intent read",
-    )?;
-    let client = state.db.client().map_err(map_db_connect)?;
-    let row = client
-        .query_opt(
-            "SELECT
-               payment_intent_id::text,
-               order_id::text,
-               intent_type,
-               provider_key,
-               payer_subject_type,
-               payer_subject_id::text,
-               payee_subject_type,
-               payee_subject_id::text,
-               amount::text,
-               payment_method,
-               currency_code,
-               price_currency_code,
-               status,
-               idempotency_key,
-               request_id,
-               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
-             FROM payment.payment_intent
-             WHERE payment_intent_id = $1::text::uuid",
-            &[&id],
-        )
-        .await
-        .map_err(map_db_error)?;
-
-    if let Some(row) = row {
-        let intent = parse_intent_row(&row)?;
-        write_audit_event(
-            &client,
-            "payment",
-            "payment_intent",
-            &intent.payment_intent_id,
-            header(&headers, "x-role").as_deref().unwrap_or("unknown"),
-            "payment.intent.read",
-            "success",
-            header(&headers, "x-request-id").as_deref(),
-            header(&headers, "x-trace-id").as_deref(),
-        )
-        .await?;
-        info!(
-            action = "payment.intent.read",
-            payment_intent_id = %intent.payment_intent_id,
-            "payment intent queried"
-        );
-        Ok(ApiResponse::ok(intent))
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                code: ErrorCode::BilProviderFailed.as_str().to_string(),
-                message: format!("payment intent not found: {id}"),
-                request_id: header(&headers, "x-request-id"),
-            }),
-        ))
-    }
+    id: Path<String>,
+) -> Result<
+    Json<ApiResponse<crate::modules::billing::models::PaymentIntentDetailView>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    crate::modules::billing::payment_intent_handlers::get_payment_intent(state, headers, id).await
 }
 
 pub async fn cancel_payment_intent(
-    State(state): State<AppState>,
+    state: State<AppState>,
     headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse<PaymentIntentView>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
-        &headers,
-        BillingPermission::PaymentIntentCancel,
-        "payment intent cancel",
-    )?;
-    let client = state.db.client().map_err(map_db_connect)?;
-
-    let status_row = client
-        .query_opt(
-            "SELECT status FROM payment.payment_intent WHERE payment_intent_id = $1::text::uuid",
-            &[&id],
-        )
+    id: Path<String>,
+) -> Result<
+    Json<ApiResponse<crate::modules::billing::models::PaymentIntentView>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    crate::modules::billing::payment_intent_handlers::cancel_payment_intent(state, headers, id)
         .await
-        .map_err(map_db_error)?;
-    let Some(status_row) = status_row else {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                code: ErrorCode::BilProviderFailed.as_str().to_string(),
-                message: format!("payment intent not found: {id}"),
-                request_id: header(&headers, "x-request-id"),
-            }),
-        ));
-    };
-    let current_status: String = status_row.get(0);
-    if matches!(current_status.as_str(), "succeeded" | "failed" | "expired") {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                code: ErrorCode::BilProviderFailed.as_str().to_string(),
-                message: format!("payment intent cannot be canceled from status {current_status}"),
-                request_id: header(&headers, "x-request-id"),
-            }),
-        ));
-    }
-
-    let row = client
-        .query_one(
-            "UPDATE payment.payment_intent
-             SET status = 'canceled', updated_at = now()
-             WHERE payment_intent_id = $1::text::uuid
-             RETURNING
-               payment_intent_id::text,
-               order_id::text,
-               intent_type,
-               provider_key,
-               payer_subject_type,
-               payer_subject_id::text,
-               payee_subject_type,
-               payee_subject_id::text,
-               amount::text,
-               payment_method,
-               currency_code,
-               price_currency_code,
-               status,
-               idempotency_key,
-               request_id,
-               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
-            &[&id],
-        )
-        .await
-        .map_err(map_db_error)?;
-    let intent = parse_intent_row(&row)?;
-    write_audit_event(
-        &client,
-        "payment",
-        "payment_intent",
-        &intent.payment_intent_id,
-        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
-        "payment.intent.cancel",
-        "success",
-        header(&headers, "x-request-id").as_deref(),
-        header(&headers, "x-trace-id").as_deref(),
-    )
-    .await?;
-    info!(
-        action = "payment.intent.cancel",
-        payment_intent_id = %intent.payment_intent_id,
-        "payment intent canceled"
-    );
-    Ok(ApiResponse::ok(intent))
 }
 
 pub async fn lock_order_payment(

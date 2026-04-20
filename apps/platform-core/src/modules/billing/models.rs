@@ -64,38 +64,87 @@ pub struct ListPayoutPreferenceQuery {
 pub struct CreatePaymentIntentRequest {
     pub order_id: String,
     pub provider_key: String,
+    pub provider_account_id: Option<String>,
     pub payer_subject_type: String,
     pub payer_subject_id: String,
     pub payee_subject_type: Option<String>,
     pub payee_subject_id: Option<String>,
-    pub amount: String,
+    #[serde(alias = "amount")]
+    pub payment_amount: String,
     pub payment_method: String,
     pub currency_code: Option<String>,
     pub price_currency_code: Option<String>,
     pub intent_type: Option<String>,
     pub payer_jurisdiction_code: Option<String>,
     pub payee_jurisdiction_code: Option<String>,
+    pub launch_jurisdiction_code: Option<String>,
+    pub corridor_policy_id: Option<String>,
+    pub fee_preview_id: Option<String>,
+    pub expire_at: Option<String>,
+    #[serde(default = "default_json_object")]
+    pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct PaymentIntentView {
     pub payment_intent_id: String,
     pub order_id: String,
     pub intent_type: String,
     pub provider_key: String,
+    pub provider_account_id: Option<String>,
     pub payer_subject_type: String,
     pub payer_subject_id: String,
     pub payee_subject_type: Option<String>,
     pub payee_subject_id: Option<String>,
-    pub amount: String,
+    pub payer_jurisdiction_code: Option<String>,
+    pub payee_jurisdiction_code: Option<String>,
+    pub launch_jurisdiction_code: String,
+    pub corridor_policy_id: Option<String>,
+    pub fee_preview_id: Option<String>,
+    pub payment_amount: String,
     pub payment_method: String,
     pub currency_code: String,
     pub price_currency_code: String,
-    pub status: String,
+    pub payment_status: String,
+    pub provider_intent_no: Option<String>,
+    pub channel_reference_no: Option<String>,
     pub idempotency_key: Option<String>,
     pub request_id: Option<String>,
+    pub expire_at: Option<String>,
+    pub capability_snapshot: Value,
+    pub metadata: Value,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PaymentTransactionSummaryView {
+    pub payment_transaction_id: String,
+    pub transaction_type: String,
+    pub provider_transaction_no: Option<String>,
+    pub provider_status: Option<String>,
+    pub transaction_amount: String,
+    pub currency_code: String,
+    pub occurred_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PaymentWebhookSummaryView {
+    pub webhook_event_id: String,
+    pub provider_event_id: String,
+    pub event_type: String,
+    pub processed_status: String,
+    pub duplicate_flag: bool,
+    pub signature_verified: bool,
+    pub received_at: String,
+    pub processed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct PaymentIntentDetailView {
+    pub payment_intent: PaymentIntentView,
+    pub latest_transaction_summary: Option<PaymentTransactionSummaryView>,
+    pub webhook_summary: Option<PaymentWebhookSummaryView>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

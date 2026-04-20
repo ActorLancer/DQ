@@ -252,10 +252,21 @@ paths:
           schema:
             type: string
         - in: header
-          name: x-idempotency-key
+          name: x-step-up-token
           required: false
           schema:
             type: string
+        - in: header
+          name: x-step-up-challenge-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-idempotency-key
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key. Payment intent create is a high-risk action and must also carry step-up evidence.
       requestBody:
         required: true
         content:
@@ -302,7 +313,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaymentIntentResponse"
+                $ref: "#/components/schemas/PaymentIntentDetailResponse"
         "403":
           description: Forbidden
           content:
@@ -533,6 +544,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/PaymentIntent"
+    ApiEnvelopePaymentIntentDetail:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/PaymentIntentDetail"
     ApiEnvelopeOrderLock:
       type: object
       required: [success, data]
@@ -799,17 +818,23 @@ components:
       required:
         [
           order_id,
+          intent_type,
           provider_key,
           payer_subject_type,
           payer_subject_id,
-          amount,
+          payment_amount,
           payment_method,
         ]
       properties:
         order_id:
           type: string
+        intent_type:
+          type: string
         provider_key:
           type: string
+        provider_account_id:
+          type: string
+          nullable: true
         payer_subject_type:
           type: string
         payer_subject_id:
@@ -820,7 +845,22 @@ components:
         payee_subject_id:
           type: string
           nullable: true
-        amount:
+        payer_jurisdiction_code:
+          type: string
+          nullable: true
+        payee_jurisdiction_code:
+          type: string
+          nullable: true
+        launch_jurisdiction_code:
+          type: string
+          nullable: true
+        corridor_policy_id:
+          type: string
+          nullable: true
+        fee_preview_id:
+          type: string
+          nullable: true
+        payment_amount:
           type: string
         payment_method:
           type: string
@@ -830,15 +870,12 @@ components:
         price_currency_code:
           type: string
           nullable: true
-        intent_type:
+        expire_at:
           type: string
           nullable: true
-        payer_jurisdiction_code:
-          type: string
-          nullable: true
-        payee_jurisdiction_code:
-          type: string
-          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
     PaymentIntent:
       type: object
       required:
@@ -847,13 +884,16 @@ components:
           order_id,
           intent_type,
           provider_key,
+          launch_jurisdiction_code,
           payer_subject_type,
           payer_subject_id,
-          amount,
+          payment_amount,
           payment_method,
           currency_code,
           price_currency_code,
-          status,
+          payment_status,
+          capability_snapshot,
+          metadata,
           created_at,
           updated_at,
         ]
@@ -866,6 +906,9 @@ components:
           type: string
         provider_key:
           type: string
+        provider_account_id:
+          type: string
+          nullable: true
         payer_subject_type:
           type: string
         payer_subject_id:
@@ -876,7 +919,21 @@ components:
         payee_subject_id:
           type: string
           nullable: true
-        amount:
+        payer_jurisdiction_code:
+          type: string
+          nullable: true
+        payee_jurisdiction_code:
+          type: string
+          nullable: true
+        launch_jurisdiction_code:
+          type: string
+        corridor_policy_id:
+          type: string
+          nullable: true
+        fee_preview_id:
+          type: string
+          nullable: true
+        payment_amount:
           type: string
         payment_method:
           type: string
@@ -884,18 +941,104 @@ components:
           type: string
         price_currency_code:
           type: string
-        status:
+        payment_status:
           type: string
+        provider_intent_no:
+          type: string
+          nullable: true
+        channel_reference_no:
+          type: string
+          nullable: true
         idempotency_key:
           type: string
           nullable: true
         request_id:
           type: string
           nullable: true
+        expire_at:
+          type: string
+          nullable: true
+        capability_snapshot:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
         created_at:
           type: string
         updated_at:
           type: string
+    PaymentTransactionSummary:
+      type: object
+      required:
+        [
+          payment_transaction_id,
+          transaction_type,
+          transaction_amount,
+          currency_code,
+          occurred_at,
+        ]
+      properties:
+        payment_transaction_id:
+          type: string
+        transaction_type:
+          type: string
+        provider_transaction_no:
+          type: string
+          nullable: true
+        provider_status:
+          type: string
+          nullable: true
+        transaction_amount:
+          type: string
+        currency_code:
+          type: string
+        occurred_at:
+          type: string
+    PaymentWebhookSummary:
+      type: object
+      required:
+        [
+          webhook_event_id,
+          provider_event_id,
+          event_type,
+          processed_status,
+          duplicate_flag,
+          signature_verified,
+          received_at,
+        ]
+      properties:
+        webhook_event_id:
+          type: string
+        provider_event_id:
+          type: string
+        event_type:
+          type: string
+        processed_status:
+          type: string
+        duplicate_flag:
+          type: boolean
+        signature_verified:
+          type: boolean
+        received_at:
+          type: string
+        processed_at:
+          type: string
+          nullable: true
+    PaymentIntentDetail:
+      type: object
+      required: [payment_intent]
+      properties:
+        payment_intent:
+          $ref: "#/components/schemas/PaymentIntent"
+        latest_transaction_summary:
+          allOf:
+            - $ref: "#/components/schemas/PaymentTransactionSummary"
+          nullable: true
+        webhook_summary:
+          allOf:
+            - $ref: "#/components/schemas/PaymentWebhookSummary"
+          nullable: true
     LockOrderRequest:
       type: object
       required: [payment_intent_id]
@@ -995,6 +1138,9 @@ components:
     PaymentIntentResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopePaymentIntent"
+    PaymentIntentDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopePaymentIntentDetail"
     OrderLockResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeOrderLock"

@@ -1,4 +1,5 @@
 mod bil001_payment_policy_db;
+mod bil002_payment_intent_db;
 
 #[cfg(test)]
 mod tests {
@@ -84,6 +85,50 @@ mod tests {
             .await
             .expect("router should respond");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_create_payment_intent_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payments/intents")
+                    .method("POST")
+                    .header("x-role", "tenant_admin")
+                    .header("x-tenant-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header("x-idempotency-key", "pay:test-order:order_payment:1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","provider_key":"mock_payment","payer_subject_type":"organization","payer_subject_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","payment_amount":"10.00","payment_method":"wallet"}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_create_payment_intent_without_idempotency_key() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/payments/intents")
+                    .method("POST")
+                    .header("x-role", "tenant_admin")
+                    .header("x-tenant-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header("x-step-up-token", "bil002-stepup")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","provider_key":"mock_payment","payer_subject_type":"organization","payer_subject_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","payment_amount":"10.00","payment_method":"wallet"}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
