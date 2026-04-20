@@ -3,6 +3,8 @@ use crate::modules::billing::models::{
     CreateDisputeCaseRequest, DisputeCaseView, DisputeEvidenceView, DisputeResolutionView,
     ResolveDisputeCaseRequest, UploadDisputeEvidenceRequest,
 };
+use crate::modules::billing::repo::dispute_linkage_repository::apply_dispute_open_linkage;
+use crate::modules::delivery::repo::invalidate_delivery_cutoff_download_ticket_caches;
 use crate::modules::storage::application::{delete_object, put_object_bytes};
 use axum::Json;
 use axum::http::StatusCode;
@@ -104,17 +106,17 @@ pub async fn create_dispute_case(
         .map_err(map_db_error)?;
     let mut dispute_case = parse_case_row(&row, 0);
 
-    let _ = tx
-        .execute(
-            "UPDATE trade.order_main
-             SET dispute_status = 'opened',
-                 updated_at = now(),
-                 last_reason_code = 'billing_dispute_opened'
-             WHERE order_id = $1::text::uuid",
-            &[&payload.order_id],
-        )
-        .await
-        .map_err(map_db_error)?;
+    let linkage = apply_dispute_open_linkage(
+        &tx,
+        &payload.order_id,
+        &dispute_case.case_id,
+        &payload.reason_code,
+        actor_user_id,
+        actor_role,
+        request_id,
+        trace_id,
+    )
+    .await?;
 
     let outbox_payload = json!({
         "event_schema_version": "v1",
@@ -133,6 +135,15 @@ pub async fn create_dispute_case(
         "blocking_effect": payload.blocking_effect,
         "actor_user_id": actor_user_id,
         "request_metadata": payload.metadata,
+        "linkage": {
+            "freeze_ticket_id": &linkage.freeze_ticket_id,
+            "legal_hold_id": &linkage.legal_hold_id,
+            "settlement_freeze_count": linkage.settlement_freeze_count,
+            "governance_action_count": linkage.governance_action_count,
+            "order_delivery_status": &linkage.order_delivery_status,
+            "order_acceptance_status": &linkage.order_acceptance_status,
+            "order_settlement_status": &linkage.order_settlement_status,
+        },
     });
     write_dispute_outbox(
         &tx,
@@ -159,6 +170,7 @@ pub async fn create_dispute_case(
 
     dispute_case.evidence_count = 0;
     tx.commit().await.map_err(map_db_error)?;
+    invalidate_delivery_cutoff_download_ticket_caches(&linkage.delivery_cutoff_side_effects).await;
     Ok(dispute_case)
 }
 

@@ -40,7 +40,8 @@ pub use query_surface_repository::manage_query_surface;
 pub use query_template_repository::manage_query_template;
 pub use report_delivery_repository::commit_report_delivery;
 pub use resource_cutoff_repository::{
-    apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
+    DeliveryCutoffSideEffects, apply_delivery_cutoff_if_needed,
+    invalidate_delivery_cutoff_download_ticket_caches,
 };
 pub use result_disclosure_review_repository::review_result_disclosure;
 pub use revision_subscription_repository::{

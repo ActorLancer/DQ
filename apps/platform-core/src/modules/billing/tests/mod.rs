@@ -11,6 +11,7 @@ mod bil010_compensation_db;
 mod bil011_manual_payout_db;
 mod bil012_reconciliation_import_db;
 mod bil013_dispute_case_db;
+mod bil014_dispute_linkage_db;
 
 #[cfg(test)]
 mod tests {

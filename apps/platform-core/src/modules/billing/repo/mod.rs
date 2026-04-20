@@ -1,6 +1,7 @@
 pub mod billing_event_repository;
 pub mod billing_read_repository;
 pub mod compensation_repository;
+pub mod dispute_linkage_repository;
 pub mod dispute_repository;
 pub mod mock_payment_repository;
 pub mod order_lock_repository;

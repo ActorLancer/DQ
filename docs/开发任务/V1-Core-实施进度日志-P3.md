@@ -835,3 +835,73 @@
 - 状态：计划中
 - 说明：在 `BIL-013` 的 dispute case 基础上补齐对 `trade.order_main / delivery.delivery_record / billing.settlement_record` 的联动冻结与审计保全，不提前展开后续 Settlement 重算器。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-187（待审批）
+- 任务：`BIL-014` 实现 Dispute 对 Order/Delivery/Billing 的联动：争议发起时可冻结结算、可中止交付、可触发审计保全
+- 当前任务编号：`BIL-014`
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `BIL-014` 只要求在争议发起时补齐 Order/Delivery/Billing 三侧联动，不提前实现 `BIL-015` 的 Settlement 重算器。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认完成定义为业务规则、状态机、审计、事件与测试齐备，且至少一条集成测试或手工 API 验证通过。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务完整流程执行，先写“计划中”，验证通过后写“待审批”，本地提交后继续下一个任务。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续遵守冻结文档优先级、顺序推进、真实联调和留痕要求。
+  - `docs/开发任务/V1-Core-实施进度日志-P3.md`：承接 `BIL-013` 之后的 Billing 阶段实现记录。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增无依据 TODO。
+  - `technical_reference`：
+    - `docs/领域模型/全量领域模型与对象关系说明.md:L1002`：落实 `support.dispute_case` 打开后对结算冻结、交付中止、审计保全的聚合联动。
+    - `docs/业务流程/业务流程图-V1-完整版.md:L473`：落实“争议发起 -> 冻结结算/中止交付 -> 平台裁决”的业务链路。
+    - `docs/页面说明书/页面说明书-V1-完整版.md:L773`：保持争议提交页仍由买方入口触发，但后端补齐冻结/保全副作用。
+- 实现摘要：
+  - 新增 `dispute_linkage_repository`，将争议开启时的三侧联动收敛为同一事务内编排。
+  - `POST /api/v1/cases` 创建案件后，现在会同步：
+    - 冻结 `billing.settlement_record`
+    - 中止 `delivery.delivery_record` 与 `delivery.delivery_ticket`
+    - 更新 `trade.order_main.delivery_status / acceptance_status / settlement_status / dispute_status`
+    - 生成 `risk.freeze_ticket`
+    - 生成 `risk.governance_action_log`
+    - 生成 `audit.legal_hold`
+    - 扩展 `ops.outbox_event(dispute.created)` 的 linkage 快照
+  - 争议开启后会在提交完成后主动失效 Redis 下载票据缓存，避免被挂起的文件交付继续使用旧票据访问。
+  - 修正结算冻结回写口径：`billing.settlement_record.reason_code` 统一覆盖为 `dispute_opened:{reason_code}`，保证冻结原因可追溯。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil014_dispute_linkage_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动 `APP_PORT=8107` 的 `platform-core`，加载 `infra/docker/.env.local` 并覆盖 `KAFKA_BROKERS/KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`
+  8. 插入临时 buyer/seller/user/asset/product/sku/order/payment_intent/settlement/delivery/ticket 数据，写入 Redis 下载票据缓存后执行真实 API：
+     - `POST /api/v1/cases`
+     再用 `psql + redis-cli` 回查 `trade.order_main / billing.settlement_record / delivery.delivery_record / delivery.delivery_ticket / risk.freeze_ticket / audit.legal_hold / ops.outbox_event / audit.audit_event / Redis ticket key`，随后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过。
+  - `bil014_dispute_linkage_db_smoke` 首次命中 `settlement_record.reason_code` 未覆盖争议原因的问题，已修正后重跑通过。
+  - `cargo test -p platform-core` 通过；全量结果 `232 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 顺序重跑后通过；并发执行时曾先读到旧缓存，已确认不是业务缺陷。
+  - 真实 API 联调通过：
+    - `POST /api/v1/cases` 返回 `HTTP 200`
+    - 响应 `current_status=opened`
+  - DB/Redis 回查通过：
+    - `trade.order_main = blocked / blocked / frozen / opened`
+    - `billing.settlement_record = frozen / dispute_opened:delivery_failed`
+    - `delivery.delivery_record.status = suspended`
+    - `delivery.delivery_ticket.status = suspended`
+    - `risk.freeze_ticket = dispute_hold / executed / delivery_failed`
+    - `audit.legal_hold = active / delivery_failed`
+    - `ops.outbox_event = dispute.created -> dtp.outbox.domain-events`，且 `payload.linkage.order_settlement_status = frozen`
+    - `audit.audit_event` 命中 `dispute.case.create / billing.settlement.freeze / audit.legal_hold.activate / delivery.file.auto_cutoff.suspended`
+    - Redis 下载票据缓存 `EXISTS` 从 `1 -> 0`
+  - 临时业务数据已清理，业务表回查为 0；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.7`
+  - `业务流程图-V1-完整版.md` `5.3`
+  - `页面说明书-V1-完整版.md` `8.3`
+- 覆盖的任务清单条目：`BIL-014`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-188（计划中）
+- 任务：`BIL-015` 实现 Billing Event 到 Settlement 的聚合计算器，并保证幂等重算能力
+- 状态：计划中
+- 说明：在既有 `billing_event / settlement_record` 基础上补齐聚合重算器、冲销补差回放与摘要更新，不提前展开 `BIL-025` 的拒收/争议升级冲销规则。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
