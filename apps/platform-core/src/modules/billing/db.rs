@@ -99,7 +99,7 @@ pub async fn set_webhook_processed_status(
 }
 
 pub async fn write_audit_event(
-    client: &Client,
+    client: &(impl GenericClient + Sync),
     domain_name: &str,
     ref_type: &str,
     ref_id: &str,
@@ -151,7 +151,7 @@ pub async fn write_audit_event(
 }
 
 pub async fn write_audit_event_without_ref(
-    client: &Client,
+    client: &(impl GenericClient + Sync),
     domain_name: &str,
     ref_type: &str,
     actor_role: &str,

@@ -3,6 +3,7 @@ mod bil002_payment_intent_db;
 mod bil003_order_lock_db;
 mod bil004_mock_payment_adapter_db;
 mod bil005_payment_webhook_db;
+mod bil006_billing_event_db;
 
 #[cfg(test)]
 mod tests {

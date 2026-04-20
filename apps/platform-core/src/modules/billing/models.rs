@@ -1,4 +1,4 @@
-use crate::modules::billing::domain::{CorridorPolicy, JurisdictionProfile};
+use crate::modules::billing::domain::{BillingEvent, CorridorPolicy, JurisdictionProfile};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -7,6 +7,8 @@ pub struct BillingPolicyView {
     pub jurisdictions: Vec<JurisdictionProfile>,
     pub corridor_policies: Vec<CorridorPolicy>,
 }
+
+pub type BillingEventView = BillingEvent;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateJurisdictionProfileRequest {

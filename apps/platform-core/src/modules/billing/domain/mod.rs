@@ -47,3 +47,16 @@ pub struct PayoutPreference {
     pub is_default: bool,
     pub preference_status: String,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct BillingEvent {
+    pub billing_event_id: String,
+    pub order_id: String,
+    pub event_type: String,
+    pub event_source: String,
+    pub amount: String,
+    pub currency_code: String,
+    pub units: Option<String>,
+    pub occurred_at: String,
+    pub metadata: Value,
+}

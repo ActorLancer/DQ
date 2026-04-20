@@ -330,3 +330,65 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-179（计划中）
+- 任务：`BIL-006` 账单事件模型 `BillingEvent`
+- 状态：计划中
+- 说明：在现有支付成功主链路上补齐 `BillingEvent` 领域模型、最小幂等仓储、审计与 `billing.events` outbox 边界；事件类型覆盖一次性收费、周期收费、调用量收费、退款、赔付、人工结算，并通过 DB smoke + 真实支付成功 API 联调验证 `billing.billing_event / ops.outbox_event / audit.audit_event` 联动。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-179（待审批）
+- 任务：`BIL-006` 账单事件模型 `BillingEvent`
+- 状态：待审批
+- 当前任务编号：`BIL-006`
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；`BIL-005` 已完成并本地提交；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `BIL-006` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：复核 `BillingEvent`、`Settlement`、退款/赔付/人工结算在账单聚合中的最小结构与关系约束。
+  - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`：核对 `billing.billing_event` 及相关列/索引/JSONB 承载能力。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：对齐一次性收费、周期收费、调用量收费、退款、赔付、人工结算的冻结口径与结算影响。
+  - `packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`：确认本批未新增公共路由，仅补内部模型与事件边界，不引入契约漂移。
+  - `scripts/check-query-compile.sh`、`.sqlx/`：确认 SQLx 元数据与离线编译基线继续有效。
+  - 其余 18 份必读冻结文档已按流程复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `BillingEvent` 领域模型，冻结 `billing_event_id / order_id / event_type / event_source / amount / currency_code / units / occurred_at / metadata` 最小结构。
+  - 新增 `billing_event_repository.rs`，提供 `record_billing_event(...) / list_billing_events_for_order(...)` 与 `infer_payment_success_event_type(...)`。
+  - `record_billing_event(...)` 在事务内补齐：订单上下文加载、租户范围校验、事件类型/来源标准化、幂等键解析、退款/赔付/人工结算语义校验、closed order 阻断、`charge_snapshot / consistency_state` 元数据冻结。
+  - 新增 `billing.event.recorded` outbox，目标 `target_bus=kafka`、`target_topic=billing.events`，并写入 `payload_hash / ordering_key / partition_key`。
+  - 支付 webhook 成功链路现在会自动生成一次性/周期性 `BillingEvent`，并落 `billing.event.generated` 审计；重复 webhook 通过 `idempotency_key` 复用同一账单事件，不重复出账。
+  - `payment_transaction` 插入补充 `(payment_intent_id, transaction_type, provider_transaction_no)` 级别幂等复用，避免 pending webhook 重试时重复写交易流水。
+  - 新增 `BillingPermission::BillingEventRead`，为后续 `BIL-007` 账单查看接口预留权限口径。
+  - 新增 `bil006_billing_event_db_smoke`，覆盖一次性收费、周期收费、调用量收费、退款、赔付、人工结算与 idempotent replay。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core bil006_billing_event_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil006_billing_event_db_smoke -- --nocapture`
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `MOCK_BASE_URL=http://127.0.0.1:8089 ./scripts/check-mock-payment.sh`
+  9. 启动 `APP_PORT=8100` 的 `platform-core`，插入一组临时 `FILE_STD` 订单数据后执行真实 `curl`：create intent、lock、`POST /api/v1/payments/webhooks/mock_payment` success，再用 `psql` 回查 `billing.billing_event / ops.outbox_event / audit.audit_event / trade.order_main` 并清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过。
+  - `bil006_billing_event_db_smoke` 普通编译跑通，`TRADE_DB_SMOKE=1` 实库 smoke 通过。
+  - `cargo test -p platform-core` 通过：`215 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-mock-payment.sh` 通过，确认 WireMock 本地支付场景可用。
+  - 真实 API 联调通过：
+    - create intent 返回 `HTTP 200`，摘要 `payment_status=created`
+    - lock 返回 `HTTP 200`，摘要 `payment_status=locked`
+    - webhook success 返回 `HTTP 200`，摘要 `processed|false|succeeded`
+  - DB 回查通过：
+    - `billing.billing_event` 命中 `one_time_charge / payment_webhook / 88.00000000 / SGD`
+    - `ops.outbox_event` 命中 `billing.event.recorded / kafka / billing.events / pending`
+    - `trade.order_main` 命中 `buyer_locked / paid / pending_settlement / payment_succeeded_to_buyer_locked`
+    - 审计命中 `payment.intent.create=1`、`order.payment.lock=1`、`order.payment.result.applied=1`、`billing.event.generated=1`、`payment.webhook.processed=1`
+  - 临时业务数据已清理，回查 `order_main=0 | billing_event=0 | payment_intent=0 | organization=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md`：4.6
+  - `040_billing_support_risk.sql`：账单/结算支撑 schema
+  - `支付、资金流与轻结算设计.md`：7
+- 覆盖的任务清单条目：`BIL-006`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

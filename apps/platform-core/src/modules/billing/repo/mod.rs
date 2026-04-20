@@ -1,3 +1,4 @@
+pub mod billing_event_repository;
 pub mod mock_payment_repository;
 pub mod order_lock_repository;
 pub mod payment_intent_repository;

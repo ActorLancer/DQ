@@ -2,6 +2,9 @@ use crate::AppState;
 use crate::modules::billing::db::{map_db_error, set_webhook_processed_status, write_audit_event};
 use crate::modules::billing::handlers::{header, map_db_connect};
 use crate::modules::billing::models::{PaymentWebhookRequest, PaymentWebhookResultView};
+use crate::modules::billing::repo::billing_event_repository::{
+    RecordBillingEventRequest, infer_payment_success_event_type, record_billing_event,
+};
 use crate::modules::billing::webhook::{
     is_replay_window_valid, map_webhook_target_status, map_webhook_transaction_shape, now_utc_ms,
     parse_webhook_timestamp_ms, payment_status_rank, verify_webhook_signature_placeholder,
@@ -14,6 +17,7 @@ use axum::http::{HeaderMap, StatusCode};
 use db::GenericClient;
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
+use serde_json::json;
 
 pub async fn handle_payment_webhook(
     State(state): State<AppState>,
@@ -45,51 +49,56 @@ pub async fn handle_payment_webhook(
 
     let existing_row = client
         .query_opt(
-            "SELECT webhook_event_id::text, signature_verified, payment_intent_id::text, payment_transaction_id::text
+            "SELECT webhook_event_id::text, signature_verified, payment_intent_id::text, payment_transaction_id::text, processed_status
              FROM payment.payment_webhook_event
              WHERE provider_key = $1 AND provider_event_id = $2",
             &[&provider, &payload.provider_event_id],
         )
         .await
         .map_err(map_db_error)?;
-    if let Some(existing) = existing_row {
-        let webhook_event_id: String = existing.get(0);
-        let signature_verified: bool = existing.get(1);
-        let payment_intent_id: Option<String> = existing.get(2);
-        let payment_transaction_id: Option<String> = existing.get(3);
-        client
-            .execute(
-                "UPDATE payment.payment_webhook_event
+    if let Some(existing) = existing_row.as_ref() {
+        let processed_status: String = existing.get(4);
+        if processed_status == "pending" {
+            // Resume a previously interrupted webhook processing attempt.
+        } else {
+            let webhook_event_id: String = existing.get(0);
+            let signature_verified: bool = existing.get(1);
+            let payment_intent_id: Option<String> = existing.get(2);
+            let payment_transaction_id: Option<String> = existing.get(3);
+            client
+                .execute(
+                    "UPDATE payment.payment_webhook_event
                  SET duplicate_flag = true, processed_status = 'duplicate', processed_at = now()
                  WHERE webhook_event_id = $1::text::uuid",
-                &[&webhook_event_id],
+                    &[&webhook_event_id],
+                )
+                .await
+                .map_err(map_db_error)?;
+            write_audit_event(
+                &client,
+                "payment",
+                "payment_webhook_event",
+                &webhook_event_id,
+                "provider_callback",
+                "payment.webhook.duplicate",
+                "duplicate",
+                request_id.as_deref(),
+                trace_id.as_deref(),
             )
-            .await
-            .map_err(map_db_error)?;
-        write_audit_event(
-            &client,
-            "payment",
-            "payment_webhook_event",
-            &webhook_event_id,
-            "provider_callback",
-            "payment.webhook.duplicate",
-            "duplicate",
-            request_id.as_deref(),
-            trace_id.as_deref(),
-        )
-        .await?;
-        return Ok(ApiResponse::ok(PaymentWebhookResultView {
-            webhook_event_id,
-            provider_key: provider,
-            provider_event_id: payload.provider_event_id,
-            processed_status: "duplicate".to_string(),
-            duplicate: true,
-            signature_verified,
-            out_of_order_ignored: false,
-            payment_intent_id,
-            payment_transaction_id,
-            applied_payment_status: None,
-        }));
+            .await?;
+            return Ok(ApiResponse::ok(PaymentWebhookResultView {
+                webhook_event_id,
+                provider_key: provider,
+                provider_event_id: payload.provider_event_id,
+                processed_status: "duplicate".to_string(),
+                duplicate: true,
+                signature_verified,
+                out_of_order_ignored: false,
+                payment_intent_id,
+                payment_transaction_id,
+                applied_payment_status: None,
+            }));
+        }
     }
 
     let occurred_at_ms =
@@ -100,39 +109,42 @@ pub async fn handle_payment_webhook(
                 request_id.as_deref(),
             )
             .await?);
-    let signature_verified = verify_webhook_signature_placeholder(
+    let signature_verified_candidate = verify_webhook_signature_placeholder(
         &provider,
         header(&headers, "x-provider-signature").as_deref(),
         &payload,
     );
-
-    let webhook_insert = client
-        .query_one(
-            "INSERT INTO payment.payment_webhook_event (
-               provider_key,
-               provider_event_id,
-               event_type,
-               signature_verified,
-               payment_intent_id,
-               payload,
-               processed_status,
-               duplicate_flag
-             ) VALUES (
-               $1, $2, $3, $4, $5::text::uuid, $6::jsonb, 'pending', false
-             )
-             RETURNING webhook_event_id::text",
-            &[
-                &provider,
-                &payload.provider_event_id,
-                &payload.event_type,
-                &signature_verified,
-                &payload.payment_intent_id,
-                &payload.raw_payload,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
-    let webhook_event_id: String = webhook_insert.get(0);
+    let (webhook_event_id, signature_verified) = if let Some(existing) = existing_row.as_ref() {
+        (existing.get::<_, String>(0), existing.get::<_, bool>(1))
+    } else {
+        let webhook_insert = client
+            .query_one(
+                "INSERT INTO payment.payment_webhook_event (
+                   provider_key,
+                   provider_event_id,
+                   event_type,
+                   signature_verified,
+                   payment_intent_id,
+                   payload,
+                   processed_status,
+                   duplicate_flag
+                 ) VALUES (
+                   $1, $2, $3, $4, $5::text::uuid, $6::jsonb, 'pending', false
+                 )
+                 RETURNING webhook_event_id::text",
+                &[
+                    &provider,
+                    &payload.provider_event_id,
+                    &payload.event_type,
+                    &signature_verified_candidate,
+                    &payload.payment_intent_id,
+                    &payload.raw_payload,
+                ],
+            )
+            .await
+            .map_err(map_db_error)?;
+        (webhook_insert.get(0), signature_verified_candidate)
+    };
 
     if !signature_verified {
         set_webhook_processed_status(&client, &webhook_event_id, "rejected_signature").await?;
@@ -221,13 +233,15 @@ pub async fn handle_payment_webhook(
     let intent_row = client
         .query_opt(
             "SELECT
-               status,
-               order_id::text,
-               metadata ->> 'webhook_last_occurred_at_ms',
-               amount::text,
-               currency_code
-             FROM payment.payment_intent
-             WHERE payment_intent_id = $1::text::uuid",
+               i.status,
+               i.order_id::text,
+               i.metadata ->> 'webhook_last_occurred_at_ms',
+               i.amount::text,
+               i.currency_code,
+               COALESCE(o.price_snapshot_json, '{}'::jsonb)
+             FROM payment.payment_intent i
+             LEFT JOIN trade.order_main o ON o.order_id = i.order_id
+             WHERE i.payment_intent_id = $1::text::uuid",
             &[&payment_intent_id],
         )
         .await
@@ -267,6 +281,7 @@ pub async fn handle_payment_webhook(
         .and_then(|v| v.parse::<i64>().ok());
     let fallback_amount: String = intent_row.get(3);
     let fallback_currency: String = intent_row.get(4);
+    let price_snapshot_json: serde_json::Value = intent_row.get(5);
     let incoming_occurred_at_ms = occurred_at_ms.unwrap_or_else(now_utc_ms);
     if last_event_occurred_at_ms
         .map(|last| incoming_occurred_at_ms < last)
@@ -419,6 +434,37 @@ pub async fn handle_payment_webhook(
         trace_id.as_deref(),
     )
     .await?;
+    if target_status == "succeeded" {
+        if let Some(event_type) = infer_payment_success_event_type(&price_snapshot_json) {
+            let _ = record_billing_event(
+                &client,
+                &RecordBillingEventRequest {
+                    order_id: order_id.clone(),
+                    event_type: event_type.to_string(),
+                    event_source: "payment_webhook".to_string(),
+                    amount: Some(fallback_amount.clone()),
+                    currency_code: Some(fallback_currency.clone()),
+                    units: Some("1".to_string()),
+                    occurred_at: payload.occurred_at.clone(),
+                    metadata: json!({
+                        "idempotency_key": format!("billing_event:payment_webhook:{}:{}", payment_intent_id, payload.provider_event_id),
+                        "payment_intent_id": payment_intent_id,
+                        "provider_event_id": payload.provider_event_id,
+                        "provider_transaction_no": payload.provider_transaction_no,
+                        "provider_status": payload.provider_status,
+                        "webhook_event_id": webhook_event_id,
+                        "raw_payload": payload.raw_payload
+                    }),
+                },
+                None,
+                "provider_callback",
+                "billing.event.generated",
+                request_id.as_deref(),
+                trace_id.as_deref(),
+            )
+            .await?;
+        }
+    }
     set_webhook_processed_status(&client, &webhook_event_id, "processed").await?;
     write_audit_event(
         &client,
@@ -490,6 +536,26 @@ async fn insert_payment_transaction(
         .provider_transaction_no
         .as_deref()
         .unwrap_or(payload.provider_event_id.as_str());
+    if let Some(existing) = client
+        .query_opt(
+            "SELECT payment_transaction_id::text
+             FROM payment.payment_transaction
+             WHERE payment_intent_id = $1::text::uuid
+               AND transaction_type = $2
+               AND provider_transaction_no = $3
+             ORDER BY occurred_at DESC, payment_transaction_id DESC
+             LIMIT 1",
+            &[
+                &payment_intent_id,
+                &transaction_type,
+                &provider_transaction_no,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?
+    {
+        return Ok(Some(existing.get(0)));
+    }
 
     let row = client
         .query_one(
