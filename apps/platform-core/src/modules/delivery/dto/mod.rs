@@ -8,6 +8,7 @@ mod query_surface;
 mod query_template;
 mod revision_subscription;
 mod sandbox_workspace;
+mod sensitive_execution_policy;
 mod share_grant;
 mod template_grant;
 
@@ -54,6 +55,10 @@ pub use download_ticket::{DownloadTicketResponse, DownloadTicketResponseData};
 pub use revision_subscription::{
     GetRevisionSubscriptionResponse, ManageRevisionSubscriptionRequest,
     ManageRevisionSubscriptionResponse, RevisionSubscriptionResponseData,
+};
+pub use sensitive_execution_policy::{
+    ManageSensitiveExecutionPolicyRequest, ManageSensitiveExecutionPolicyResponse,
+    SensitiveExecutionPolicyModel, SensitiveExecutionPolicyResponseData,
 };
 pub use share_grant::{
     GetShareGrantResponse, ManageShareGrantRequest, ManageShareGrantResponse,

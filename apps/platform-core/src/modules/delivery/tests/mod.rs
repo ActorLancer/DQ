@@ -29,3 +29,4 @@ mod dlv017_report_delivery_db;
 mod dlv018_acceptance_db;
 mod dlv019_watermark_policy_db;
 mod dlv021_auto_cutoff_resources_db;
+mod dlv022_sensitive_execution_policy_db;

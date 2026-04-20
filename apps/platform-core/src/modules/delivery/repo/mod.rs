@@ -14,6 +14,7 @@ mod resource_cutoff_repository;
 mod revision_subscription_repository;
 mod sandbox_workspace_model_repository;
 mod sandbox_workspace_repository;
+mod sensitive_execution_policy_repository;
 mod share_grant_repository;
 mod storage_gateway_repository;
 mod template_grant_repository;
@@ -40,6 +41,7 @@ pub use revision_subscription_repository::{
     get_revision_subscription, manage_revision_subscription,
 };
 pub use sandbox_workspace_repository::manage_sandbox_workspace;
+pub use sensitive_execution_policy_repository::manage_sensitive_execution_policy;
 pub use share_grant_repository::{get_share_grants, manage_share_grant};
 pub use storage_gateway_repository::{
     load_storage_gateway_snapshots, write_storage_gateway_read_audit,

@@ -14,6 +14,7 @@ pub enum DeliveryPermission {
     ManageQuerySurface,
     ManageQueryTemplate,
     EnableSandboxWorkspace,
+    ManageSensitiveExecutionPolicy,
     EnableTemplateQuery,
     UseTemplateQuery,
     IssueDownloadTicket,
@@ -69,6 +70,16 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
             "seller_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
         ),
         DeliveryPermission::EnableSandboxWorkspace => matches!(
+            role,
+            "seller_operator"
+                | "seller_storage_operator"
+                | "sandbox_operator"
+                | "tenant_developer"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ManageSensitiveExecutionPolicy => matches!(
             role,
             "seller_operator"
                 | "seller_storage_operator"

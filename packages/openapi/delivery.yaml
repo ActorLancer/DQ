@@ -344,6 +344,38 @@ paths:
           description: Order or query surface not found
         '409':
           description: SKU is not SBX_STD, query surface/environment mismatch, or export policy exceeds the sandbox boundary
+  /api/v1/orders/{id}/sensitive-execution-policies:
+    post:
+      summary: Create or update a sensitive execution policy snapshot under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageSensitiveExecutionPolicyRequest'
+      responses:
+        '200':
+          description: Sensitive execution policy snapshot created or updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageSensitiveExecutionPolicyResponseEnvelope'
+        '400':
+          description: Invalid JSON shape for output boundary or export control
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order, query surface, template grant, or sandbox workspace not found
+        '409':
+          description: Order payment/path is illegal, or policy scope/execution mode conflicts with the frozen delivery path
   /api/v1/orders/{id}/template-runs:
     get:
       summary: Read QRY_LITE query-run history under order scope
@@ -814,6 +846,49 @@ components:
         data_residency_mode:
           type: string
           nullable: true
+    ManageSensitiveExecutionPolicyRequest:
+      type: object
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+          nullable: true
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+        policy_scope:
+          type: string
+          nullable: true
+        execution_mode:
+          type: string
+          nullable: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        export_control_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        step_up_required:
+          type: boolean
+          nullable: true
+        attestation_required:
+          type: boolean
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
     ManageTemplateGrantResponseEnvelope:
       type: object
       required: [success, data]
@@ -830,6 +905,14 @@ components:
           type: boolean
         data:
           $ref: '#/components/schemas/ManageSandboxWorkspaceResponse'
+    ManageSensitiveExecutionPolicyResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageSensitiveExecutionPolicyResponse'
     ManageTemplateGrantResponse:
       type: object
       required: [data]
@@ -842,6 +925,12 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/SandboxWorkspaceResponseData'
+    ManageSensitiveExecutionPolicyResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SensitiveExecutionPolicyResponseData'
     TemplateGrantResponseData:
       type: object
       required:
@@ -1258,6 +1347,106 @@ components:
           type: boolean
         attestation_required:
           type: boolean
+    SensitiveExecutionPolicyResponseData:
+      type: object
+      required:
+        - sensitive_execution_policy_id
+        - order_id
+        - sku_id
+        - sku_type
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - operation
+        - created_at
+        - updated_at
+        - policy
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        operation:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        policy:
+          $ref: '#/components/schemas/SensitiveExecutionPolicyModel'
+    SensitiveExecutionPolicyModel:
+      type: object
+      required:
+        - sensitive_execution_policy_id
+        - policy_scope
+        - execution_mode
+        - policy_status
+        - output_boundary_json
+        - export_control_json
+        - policy_snapshot_json
+        - step_up_required
+        - attestation_required
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+        policy_scope:
+          type: string
+        execution_mode:
+          type: string
+        policy_status:
+          type: string
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        export_control_json:
+          type: object
+          additionalProperties: true
+        policy_snapshot_json:
+          type: object
+          additionalProperties: true
+        step_up_required:
+          type: boolean
+        attestation_required:
+          type: boolean
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
     SandboxAttestationRefModel:
       type: object
       required:

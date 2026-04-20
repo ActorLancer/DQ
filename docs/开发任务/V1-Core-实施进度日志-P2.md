@@ -4492,3 +4492,67 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-164（计划中）
+- 任务：DLV-022 敏感执行策略接口
+- 状态：计划中
+- 说明：实现 `POST /api/v1/orders/{id}/sensitive-execution-policies`，冻结 `policy_scope / execution_mode / output_boundary / export_control / step_up / attestation / snapshot` 结构，并与现有沙箱/模板执行链路保持一致。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+
+### BATCH-164（待审批）
+- 任务：`DLV-022` 敏感执行策略接口
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-022` 为 `POST /api/v1/orders/{id}/sensitive-execution-policies`，要求接口/DTO/权限/审计/错误码与最小测试齐备。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核 DLV 阶段目标，确认敏感交付链路需保持冻结结构并与现有交付主线衔接。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：按单任务流程执行“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：复核不得跳步骤、不得省略联调与数据库回查。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 日志口径补充本批计划中/待审批。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定仅阅读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对敏感数据受控交付补充基线、权限按钮与接口冻结口径。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认交付/存储/query execution 边界仍在 `platform-core` + `delivery/storage` 子域内。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认新增接口需同步 `packages/openapi/delivery.yaml`。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：确认本批无新增 topic，仅保留审计与既有异步边界。
+  - `docs/开发准备/统一错误码字典正式版.md`：沿用冲突/参数/未找到的统一错误前缀。
+  - `docs/开发准备/测试用例矩阵正式版.md`：确认需包含最小 smoke + 手工 API 联调证据。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：实现保留在 `modules/delivery` 内，DTO/Repo/Handler 分层。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 PostgreSQL/Kafka，本批无需新增 Redis/MinIO 写路径但需保证服务可启动。
+  - `docs/开发准备/配置项与密钥管理清单.md`：沿用本地栈固定连接配置。
+  - `docs/开发准备/技术选型正式版.md`：遵守当前 `SQLx + SeaORM` 基线，不引回旧驱动。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认敏感执行策略属于交付/执行边界的策略冻结层。
+  - `docs/原始PRD/敏感数据处理与受控交付设计.md:L124`：落实敏感执行策略、输出边界、导出控制、step-up、证明要求的冻结字段。
+  - `docs/原始PRD/数据商品查询与执行面设计.md:L185`：落实与授权、计费、审计、查询面/模板授权/沙箱的耦合关系。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L7458`：落实敏感受控交付补充基线。
+- 实现要点：
+  - 新增 `POST /api/v1/orders/{id}/sensitive-execution-policies`，支持创建/更新敏感执行策略。
+  - 新增 `DeliveryPermission::ManageSensitiveExecutionPolicy`，接入 seller/operator/admin 侧权限矩阵。
+  - 冻结 `policy_scope / execution_mode / output_boundary_json / export_control_json / step_up_required / attestation_required / policy_snapshot` 最小结构。
+  - 按 SKU + 交付路由派生执行模式：`QRY_LITE -> template_query_lite`，`SBX_STD -> sandbox_query`，`API_SUB/API_PPU -> seller_hosted_api`，`RPT_STD -> report_result`。
+  - 接入 `template_query_grant / sandbox_workspace / query_surface_definition` 约束校验，修正 query surface 按 `asset_version_id` 校验而非错误 `product_id` 假设。
+  - 写入 `delivery.sensitive_execution.manage` 审计并同步更新 OpenAPI。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv022_sensitive_execution_policy_db_smoke -- --nocapture`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 使用本地服务 `APP_PORT=8115` + `curl` 对创建/更新接口做真实联调，并通过 `psql` 回查落库与审计
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`187 passed, 0 failed, 0 ignored`）。
+  - `dlv022_sensitive_execution_policy_db_smoke`：通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：创建 `HTTP 200 / created / template_query_lite`，更新 `HTTP 200 / updated`。
+  - DB 回查通过：`delivery.sensitive_execution_policy` 落库 `template_query_lite / order / max_rows=700 / template_query`，审计命中 2 次 `delivery.sensitive_execution.manage`。
+  - 临时业务数据已清理；审计按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `敏感数据受控交付补充基线`：敏感执行策略需冻结输出边界、导出控制、step-up、证明要求。
+  - `查询执行面设计`：模板授权/沙箱/查询面三者的约束关系必须稳定落入策略快照。
+  - `接口冻结表`：新增接口与 OpenAPI 必须一致。
+- 覆盖的任务清单条目：`DLV-022`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
