@@ -1,6 +1,8 @@
 mod acceptance_repository;
 mod api_delivery_repository;
 mod api_usage_log_repository;
+mod attestation_read_repository;
+mod destruction_attestation_repository;
 mod download_file_repository;
 mod download_ticket_repository;
 mod file_delivery_repository;
@@ -23,6 +25,8 @@ mod template_grant_repository;
 pub use acceptance_repository::{accept_order_delivery, reject_order_delivery};
 pub use api_delivery_repository::commit_api_delivery;
 pub use api_usage_log_repository::get_api_usage_log;
+pub use attestation_read_repository::get_order_attestations;
+pub use destruction_attestation_repository::manage_destruction_attestation;
 pub use download_file_repository::consume_download_ticket;
 pub use download_ticket_repository::{
     DownloadTicketCachePayload, delete_download_ticket_cache, enforce_buyer_scope,

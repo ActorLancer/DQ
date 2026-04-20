@@ -31,3 +31,4 @@ mod dlv019_watermark_policy_db;
 mod dlv021_auto_cutoff_resources_db;
 mod dlv022_sensitive_execution_policy_db;
 mod dlv023_result_disclosure_review_db;
+mod dlv024_attestation_records_db;

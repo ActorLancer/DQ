@@ -9,8 +9,9 @@ use axum::routing::{get, post};
 use download_middleware::validate_download_ticket_middleware;
 pub use handlers::{
     accept_order_api, commit_order_delivery_api, download_file_api, execute_template_run_api,
-    get_api_usage_log_api, get_query_runs_api, get_revision_subscription_api, get_share_grants_api,
-    issue_download_ticket_api, manage_query_surface_api, manage_query_template_api,
+    get_api_usage_log_api, get_order_attestations_api, get_query_runs_api,
+    get_revision_subscription_api, get_share_grants_api, issue_download_ticket_api,
+    manage_destruction_attestation_api, manage_query_surface_api, manage_query_template_api,
     manage_revision_subscription_api, manage_sandbox_workspace_api,
     manage_sensitive_execution_policy_api, manage_share_grant_api, manage_template_grant_api,
     reject_order_api, review_result_disclosure_api,
@@ -60,6 +61,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/query-runs/{id}/disclosure-review",
             post(review_result_disclosure_api),
+        )
+        .route(
+            "/api/v1/orders/{id}/attestations",
+            get(get_order_attestations_api),
+        )
+        .route(
+            "/api/v1/orders/{id}/destruction-attestations",
+            post(manage_destruction_attestation_api),
         )
         .route("/api/v1/orders/{id}/usage-log", get(get_api_usage_log_api))
         .route(

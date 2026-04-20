@@ -20,7 +20,11 @@ info:
     workspace enablement for SBX_STD orders with workspace/session
     provisioning, expiry, and export-policy snapshots; DLV-019 freezes a
     placeholder watermark/fingerprint policy on file/report delivery objects so
-    future watermark pipelines can attach without changing the read contract; DLV-020 adds standardized delivery receipt outbox events for file/api/share/template/sandbox/report branches.
+    future watermark pipelines can attach without changing the read contract;
+    DLV-020 adds standardized delivery receipt outbox events for
+    file/api/share/template/sandbox/report branches; DLV-024 adds order-scoped
+    execution attestation read and destruction-attestation recording APIs for
+    sensitive delivery evidence.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -463,6 +467,62 @@ paths:
           description: Query run not found
         '409':
           description: Query run status, output boundary, reviewer, or approval ticket violates the frozen placeholder contract
+  /api/v1/orders/{id}/attestations:
+    get:
+      summary: Read execution attestation records visible under an order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Execution attestation records returned for the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderAttestationsResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: No execution attestation exists for the current order
+  /api/v1/orders/{id}/destruction-attestations:
+    post:
+      summary: Create or update a destruction or retention attestation after revocation, expiry, dispute, or legal hold
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageDestructionAttestationRequest'
+      responses:
+        '200':
+          description: Destruction or retention attestation persisted for the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageDestructionAttestationResponseEnvelope'
+        '400':
+          description: Invalid payload structure or enum value
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order has not reached expiry or revocation stage, object not linked, or approval proof is incomplete
   /api/v1/orders/{id}/usage-log:
     get:
       summary: Read minimal-disclosure API usage logs under order scope
@@ -952,6 +1012,51 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+    ManageDestructionAttestationRequest:
+      type: object
+      properties:
+        destruction_attestation_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        ref_type:
+          type: string
+          nullable: true
+        retention_action:
+          type: string
+          nullable: true
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        executed_by_type:
+          type: string
+          nullable: true
+        executed_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
     ManageTemplateGrantResponseEnvelope:
       type: object
       required: [success, data]
@@ -984,6 +1089,22 @@ components:
           type: boolean
         data:
           $ref: '#/components/schemas/ReviewResultDisclosureResponse'
+    GetOrderAttestationsResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetOrderAttestationsResponse'
+    ManageDestructionAttestationResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageDestructionAttestationResponse'
     ManageTemplateGrantResponse:
       type: object
       required: [data]
@@ -1008,6 +1129,18 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/ResultDisclosureReviewResponseData'
+    GetOrderAttestationsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderAttestationListResponseData'
+    ManageDestructionAttestationResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DestructionAttestationResponseData'
     TemplateGrantResponseData:
       type: object
       required:
@@ -1858,6 +1991,175 @@ components:
           type: string
           format: date-time
           nullable: true
+    OrderAttestationListResponseData:
+      type: object
+      required: [order_id, current_state, payment_status, delivery_status, attestations]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        attestations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderAttestationResponseData'
+    OrderAttestationResponseData:
+      type: object
+      required:
+        - attestation_record_id
+        - order_id
+        - attestation_type
+        - status
+        - metadata_json
+        - source_type
+        - created_at
+        - updated_at
+      properties:
+        attestation_record_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        sandbox_session_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_name:
+          type: string
+          nullable: true
+        environment_type:
+          type: string
+          nullable: true
+        attestation_type:
+          type: string
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        verifier_ref:
+          type: string
+          nullable: true
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        metadata_json:
+          type: object
+          additionalProperties: true
+        source_type:
+          type: string
+        query_run_status:
+          type: string
+          nullable: true
+        sandbox_session_status:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DestructionAttestationResponseData:
+      type: object
+      required:
+        - destruction_attestation_id
+        - order_id
+        - ref_type
+        - retention_action
+        - executed_by_type
+        - status
+        - metadata
+        - object_link_type
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+        - updated_at
+      properties:
+        destruction_attestation_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        ref_type:
+          type: string
+        retention_action:
+          type: string
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        executed_by_type:
+          type: string
+        executed_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        object_bucket_name:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        object_link_type:
+          type: string
+        object_link_status:
+          type: string
+          nullable: true
+        operation:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     ApiUsageLogResponseEnvelope:
       type: object
       required: [success, data]

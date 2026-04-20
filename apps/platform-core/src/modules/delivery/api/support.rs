@@ -11,6 +11,8 @@ pub enum DeliveryPermission {
     AcceptDelivery,
     RejectDelivery,
     ReadApiUsageLog,
+    ReadAttestation,
+    ManageDestructionAttestation,
     ManageQuerySurface,
     ManageQueryTemplate,
     ReviewResultDisclosure,
@@ -61,6 +63,34 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
                 | "tenant_admin"
                 | "platform_admin"
                 | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ReadAttestation => matches!(
+            role,
+            "buyer_operator"
+                | "procurement_manager"
+                | "tenant_admin"
+                | "tenant_audit_readonly"
+                | "seller_operator"
+                | "seller_storage_operator"
+                | "sandbox_operator"
+                | "platform_admin"
+                | "platform_audit_security"
+                | "platform_risk_settlement"
+                | "compliance_reviewer"
+                | "audit_admin"
+        ),
+        DeliveryPermission::ManageDestructionAttestation => matches!(
+            role,
+            "buyer_operator"
+                | "procurement_manager"
+                | "seller_operator"
+                | "seller_storage_operator"
+                | "tenant_admin"
+                | "platform_admin"
+                | "platform_audit_security"
+                | "platform_risk_settlement"
+                | "audit_admin"
+                | "retention_admin"
         ),
         DeliveryPermission::ManageQuerySurface => matches!(
             role,

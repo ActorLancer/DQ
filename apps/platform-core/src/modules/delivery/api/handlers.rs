@@ -5,9 +5,10 @@ use crate::modules::delivery::dto::{
     AcceptOrderRequest, AcceptOrderResponse, ApiUsageLogResponse, CommitOrderDeliveryRequest,
     CommitOrderDeliveryResponse, DownloadFileResponse, DownloadFileResponseData,
     DownloadTicketResponse, ExecuteTemplateRunRequest, ExecuteTemplateRunResponse,
-    GetQueryRunsResponse, GetRevisionSubscriptionResponse, GetShareGrantResponse,
-    ManageQuerySurfaceRequest, ManageQuerySurfaceResponse, ManageQueryTemplateRequest,
-    ManageQueryTemplateResponse, ManageRevisionSubscriptionRequest,
+    GetOrderAttestationsResponse, GetQueryRunsResponse, GetRevisionSubscriptionResponse,
+    GetShareGrantResponse, ManageDestructionAttestationRequest,
+    ManageDestructionAttestationResponse, ManageQuerySurfaceRequest, ManageQuerySurfaceResponse,
+    ManageQueryTemplateRequest, ManageQueryTemplateResponse, ManageRevisionSubscriptionRequest,
     ManageRevisionSubscriptionResponse, ManageSandboxWorkspaceRequest,
     ManageSandboxWorkspaceResponse, ManageSensitiveExecutionPolicyRequest,
     ManageSensitiveExecutionPolicyResponse, ManageShareGrantRequest, ManageShareGrantResponse,
@@ -16,11 +17,11 @@ use crate::modules::delivery::dto::{
 };
 use crate::modules::delivery::repo::{
     accept_order_delivery, commit_api_delivery, commit_file_delivery, commit_report_delivery,
-    consume_download_ticket, execute_template_run, get_api_usage_log, get_query_runs,
-    get_revision_subscription, get_share_grants, issue_download_ticket, manage_query_surface,
-    manage_query_template, manage_revision_subscription, manage_sandbox_workspace,
-    manage_sensitive_execution_policy, manage_share_grant, manage_template_grant,
-    reject_order_delivery, review_result_disclosure,
+    consume_download_ticket, execute_template_run, get_api_usage_log, get_order_attestations,
+    get_query_runs, get_revision_subscription, get_share_grants, issue_download_ticket,
+    manage_destruction_attestation, manage_query_surface, manage_query_template,
+    manage_revision_subscription, manage_sandbox_workspace, manage_sensitive_execution_policy,
+    manage_share_grant, manage_template_grant, reject_order_delivery, review_result_disclosure,
 };
 use crate::modules::storage::application::fetch_object_bytes;
 use axum::Json;
@@ -380,6 +381,75 @@ pub async fn review_result_disclosure_api(
 
     Ok(ApiResponse::ok(ReviewResultDisclosureResponse {
         data: review,
+    }))
+}
+
+pub async fn get_order_attestations_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<GetOrderAttestationsResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::ReadAttestation,
+        "order attestation read",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let attestations = get_order_attestations(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(GetOrderAttestationsResponse {
+        data: attestations,
+    }))
+}
+
+pub async fn manage_destruction_attestation_api(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<ManageDestructionAttestationRequest>,
+) -> Result<
+    Json<ApiResponse<ManageDestructionAttestationResponse>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    require_permission(
+        &headers,
+        DeliveryPermission::ManageDestructionAttestation,
+        "destruction attestation management",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let attestation = manage_destruction_attestation(
+        &mut client,
+        &order_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ManageDestructionAttestationResponse {
+        data: attestation,
     }))
 }
 
