@@ -10,6 +10,7 @@ pub mod models;
 pub mod order_lock_handlers;
 pub mod payment_intent_handlers;
 pub mod policy_handlers;
+pub mod refund_handlers;
 pub mod repo;
 pub mod service;
 #[cfg(test)]

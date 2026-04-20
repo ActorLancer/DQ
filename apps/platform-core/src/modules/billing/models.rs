@@ -67,6 +67,41 @@ pub struct BillingInvoicePlaceholderView {
     pub pending_invoice_count: i64,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateRefundRequest {
+    pub order_id: String,
+    pub case_id: String,
+    pub decision_code: String,
+    pub penalty_code: Option<String>,
+    pub amount: String,
+    pub currency_code: Option<String>,
+    pub reason_code: String,
+    pub refund_mode: Option<String>,
+    pub refund_template: Option<String>,
+    #[serde(default = "default_json_object")]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct RefundExecutionView {
+    pub refund_id: String,
+    pub order_id: String,
+    pub case_id: String,
+    pub decision_code: String,
+    pub penalty_code: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub current_status: String,
+    pub provider_key: String,
+    pub provider_refund_id: Option<String>,
+    pub provider_status: Option<String>,
+    pub step_up_bound: bool,
+    pub idempotent_replay: bool,
+    pub executed_at: Option<String>,
+    pub updated_at: String,
+    pub metadata: Value,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct BillingOrderDetailView {
     pub order_id: String,
