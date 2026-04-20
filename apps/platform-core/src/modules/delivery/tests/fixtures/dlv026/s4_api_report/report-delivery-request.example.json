@@ -1,0 +1,16 @@
+{
+  "scenario_id": "S4",
+  "sku_type": "RPT_STD",
+  "payload": {
+    "branch": "report",
+    "object_uri": "s3://report-results/dlv026/s4/monthly-report.pdf",
+    "content_type": "application/pdf",
+    "size_bytes": 4096,
+    "content_hash": "sha256:dlv026:s4:report",
+    "report_type": "pdf_report",
+    "storage_namespace_id": "__STORAGE_NAMESPACE_ID__",
+    "delivery_commit_hash": "dlv026-s4-report-commit-hash",
+    "receipt_hash": "dlv026-s4-report-receipt-hash",
+    "metadata": {"title": "DLV026 S4 retail report", "template_code": "REPORT_V1"}
+  }
+}

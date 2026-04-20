@@ -1,0 +1,142 @@
+{
+  "manifest_id": "dlv026-standard-delivery-demo-assets-v1",
+  "generated_for_task": "DLV-026",
+  "source_scenario_manifest": "fixtures/local/standard-scenarios-manifest.json",
+  "scenarios": [
+    {
+      "scenario_id": "S1",
+      "scenario_name": "工业设备运行指标 API 订阅",
+      "primary_sku_type": "API_SUB",
+      "supplementary_sku_types": ["API_PPU"],
+      "demo_script": "apps/platform-core/src/modules/delivery/tests/scripts/dlv026_s1_api_sub_demo.sh",
+      "minimal_delivery_objects": [
+        {
+          "sku_type": "API_SUB",
+          "delivery_object_kind": "api_access",
+          "api_path": "/api/v1/orders/{id}/deliver",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s1_api_sub/api-enable-request.example.json",
+          "expected_audit_action": "delivery.api.enable",
+          "expected_outbox_event": "delivery.committed"
+        },
+        {
+          "sku_type": "API_PPU",
+          "delivery_object_kind": "api_usage_log",
+          "api_path": "/api/v1/orders/{id}/usage-log",
+          "http_method": "GET",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s1_api_sub/api-usage-log-read.example.json",
+          "expected_audit_action": "delivery.api.usage_log.read",
+          "expected_outbox_event": null
+        }
+      ]
+    },
+    {
+      "scenario_id": "S2",
+      "scenario_name": "工业质量与产线日报文件包交付",
+      "primary_sku_type": "FILE_STD",
+      "supplementary_sku_types": ["FILE_SUB"],
+      "demo_script": "apps/platform-core/src/modules/delivery/tests/scripts/dlv026_s2_file_std_demo.sh",
+      "minimal_delivery_objects": [
+        {
+          "sku_type": "FILE_STD",
+          "delivery_object_kind": "encrypted_file_package",
+          "api_path": "/api/v1/orders/{id}/deliver",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s2_file_std/file-delivery-request.example.json",
+          "expected_audit_action": "delivery.file.commit",
+          "expected_outbox_event": "delivery.committed"
+        },
+        {
+          "sku_type": "FILE_SUB",
+          "delivery_object_kind": "revision_subscription",
+          "api_path": "/api/v1/orders/{id}/subscriptions",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s2_file_std/revision-subscription-request.example.json",
+          "expected_audit_action": "delivery.subscription.manage",
+          "expected_outbox_event": null
+        }
+      ]
+    },
+    {
+      "scenario_id": "S3",
+      "scenario_name": "供应链协同查询沙箱",
+      "primary_sku_type": "SBX_STD",
+      "supplementary_sku_types": ["SHARE_RO"],
+      "demo_script": "apps/platform-core/src/modules/delivery/tests/scripts/dlv026_s3_sbx_std_demo.sh",
+      "minimal_delivery_objects": [
+        {
+          "sku_type": "SBX_STD",
+          "delivery_object_kind": "sandbox_workspace",
+          "api_path": "/api/v1/orders/{id}/sandbox-workspaces",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s3_sbx_std/sandbox-workspace-request.example.json",
+          "expected_audit_action": "delivery.sandbox.enable",
+          "expected_outbox_event": "delivery.committed"
+        },
+        {
+          "sku_type": "SHARE_RO",
+          "delivery_object_kind": "share_grant",
+          "api_path": "/api/v1/orders/{id}/share-grants",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s3_sbx_std/share-grant-request.example.json",
+          "expected_audit_action": "delivery.share.manage",
+          "expected_outbox_event": "delivery.committed"
+        }
+      ]
+    },
+    {
+      "scenario_id": "S4",
+      "scenario_name": "零售门店经营分析 API / 报告订阅",
+      "primary_sku_type": "API_SUB",
+      "supplementary_sku_types": ["RPT_STD"],
+      "demo_script": "apps/platform-core/src/modules/delivery/tests/scripts/dlv026_s4_api_report_demo.sh",
+      "minimal_delivery_objects": [
+        {
+          "sku_type": "API_SUB",
+          "delivery_object_kind": "api_access",
+          "api_path": "/api/v1/orders/{id}/deliver",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s4_api_report/api-enable-request.example.json",
+          "expected_audit_action": "delivery.api.enable",
+          "expected_outbox_event": "delivery.committed"
+        },
+        {
+          "sku_type": "RPT_STD",
+          "delivery_object_kind": "report_artifact",
+          "api_path": "/api/v1/orders/{id}/deliver",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s4_api_report/report-delivery-request.example.json",
+          "expected_audit_action": "delivery.report.commit",
+          "expected_outbox_event": "delivery.committed"
+        }
+      ]
+    },
+    {
+      "scenario_id": "S5",
+      "scenario_name": "商圈/门店选址查询服务",
+      "primary_sku_type": "QRY_LITE",
+      "supplementary_sku_types": ["RPT_STD"],
+      "demo_script": "apps/platform-core/src/modules/delivery/tests/scripts/dlv026_s5_qry_lite_demo.sh",
+      "minimal_delivery_objects": [
+        {
+          "sku_type": "QRY_LITE",
+          "delivery_object_kind": "template_query_grant",
+          "api_path": "/api/v1/orders/{id}/template-grants",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s5_qry_lite/template-grant-request.example.json",
+          "expected_audit_action": "delivery.template_query.enable",
+          "expected_outbox_event": "delivery.committed"
+        },
+        {
+          "sku_type": "QRY_LITE",
+          "delivery_object_kind": "query_result_artifact",
+          "api_path": "/api/v1/orders/{id}/template-runs",
+          "http_method": "POST",
+          "fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s5_qry_lite/template-run-request.example.json",
+          "expected_audit_action": "delivery.template_query.use",
+          "expected_outbox_event": null
+        }
+      ]
+    }
+  ]
+}

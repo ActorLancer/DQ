@@ -33,3 +33,4 @@ mod dlv022_sensitive_execution_policy_db;
 mod dlv023_result_disclosure_review_db;
 mod dlv024_attestation_records_db;
 mod dlv025_delivery_integration_db;
+mod dlv026_standard_delivery_assets_db;

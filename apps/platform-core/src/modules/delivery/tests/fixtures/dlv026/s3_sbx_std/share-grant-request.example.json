@@ -1,0 +1,16 @@
+{
+  "scenario_id": "S3",
+  "sku_type": "SHARE_RO",
+  "payload": {
+    "operation": "grant",
+    "asset_object_id": "__ASSET_OBJECT_ID__",
+    "recipient_ref": "warehouse://buyer/dlv026/s3",
+    "subscriber_ref": "dlv026-s3-subscriber",
+    "share_protocol": "share_grant",
+    "access_locator": "share://seller/dlv026/s3/dataset",
+    "scope_json": {"schema": "analytics", "tables": ["orders", "inventory"]},
+    "expires_at": "2027-01-01T00:00:00Z",
+    "receipt_hash": "dlv026-s3-share-receipt-hash",
+    "metadata": {"channel": "demo"}
+  }
+}

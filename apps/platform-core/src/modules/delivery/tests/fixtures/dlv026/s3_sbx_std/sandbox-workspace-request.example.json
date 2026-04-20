@@ -1,0 +1,13 @@
+{
+  "scenario_id": "S3",
+  "sku_type": "SBX_STD",
+  "payload": {
+    "query_surface_id": "__QUERY_SURFACE_ID__",
+    "workspace_name": "dlv026-s3-workspace",
+    "seat_user_id": "__SEAT_USER_ID__",
+    "expire_at": "2027-01-01T00:00:00Z",
+    "export_policy_json": {"allow_export": false, "allowed_formats": ["json"], "max_exports": 0, "network_access": "deny"},
+    "clean_room_mode": "lite",
+    "data_residency_mode": "seller_self_hosted"
+  }
+}

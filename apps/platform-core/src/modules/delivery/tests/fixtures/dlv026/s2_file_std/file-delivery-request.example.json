@@ -1,0 +1,20 @@
+{
+  "scenario_id": "S2",
+  "sku_type": "FILE_STD",
+  "payload": {
+    "branch": "file",
+    "object_uri": "s3://delivery-objects/dlv026/s2/payload.enc",
+    "content_type": "application/octet-stream",
+    "size_bytes": 2048,
+    "content_hash": "sha256:dlv026:s2:file",
+    "encryption_algo": "AES-GCM",
+    "key_cipher": "cipher-dlv026-s2",
+    "key_control_mode": "seller_managed",
+    "unwrap_policy_json": {"kms": "local-mock", "buyer_org_id": "__BUYER_ORG_ID__"},
+    "key_version": "v1",
+    "expire_at": "2027-01-01T00:00:00Z",
+    "download_limit": 3,
+    "delivery_commit_hash": "dlv026-s2-file-commit-hash",
+    "receipt_hash": "dlv026-s2-file-receipt-hash"
+  }
+}

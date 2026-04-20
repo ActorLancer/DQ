@@ -1,0 +1,11 @@
+{
+  "scenario_id": "S5",
+  "sku_type": "QRY_LITE",
+  "payload": {
+    "query_surface_id": "__QUERY_SURFACE_ID__",
+    "allowed_template_ids": ["__QUERY_TEMPLATE_ID__"],
+    "execution_rule_snapshot": {"entrypoint": "template_query_lite", "grant_source": "dlv026-demo"},
+    "output_boundary_json": {"allowed_formats": ["json"], "max_rows": 5, "max_cells": 15},
+    "run_quota_json": {"max_runs": 5, "daily_limit": 2, "monthly_limit": 8}
+  }
+}

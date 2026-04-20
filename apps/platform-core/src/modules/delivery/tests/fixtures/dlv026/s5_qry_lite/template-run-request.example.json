@@ -1,0 +1,13 @@
+{
+  "scenario_id": "S5",
+  "sku_type": "QRY_LITE",
+  "payload": {
+    "template_query_grant_id": "__TEMPLATE_QUERY_GRANT_ID__",
+    "query_template_id": "__QUERY_TEMPLATE_ID__",
+    "requester_user_id": "__REQUESTER_USER_ID__",
+    "request_payload_json": {"start_date": "2026-01-01", "limit": 2},
+    "output_boundary_json": {"selected_format": "json", "allowed_formats": ["json"], "max_rows": 2, "max_cells": 6},
+    "approval_ticket_id": "__APPROVAL_TICKET_ID__",
+    "execution_metadata_json": {"entrypoint": "dlv026-demo"}
+  }
+}

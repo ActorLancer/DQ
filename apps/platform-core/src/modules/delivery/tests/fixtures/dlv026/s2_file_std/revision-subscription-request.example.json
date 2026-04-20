@@ -1,0 +1,13 @@
+{
+  "scenario_id": "S2",
+  "sku_type": "FILE_SUB",
+  "payload": {
+    "action": "create_subscription",
+    "start_version_no": 1,
+    "end_version_no": null,
+    "delivery_channel": "object_package",
+    "cadence": "monthly",
+    "next_delivery_at": "2027-01-01T00:00:00Z",
+    "reason_code": "dlv026_demo_subscription"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "scenario_id": "S4",
+  "sku_type": "API_SUB",
+  "payload": {
+    "branch": "api",
+    "asset_object_id": "__ASSET_OBJECT_ID__",
+    "app_name": "dlv026-s4-api-app",
+    "quota_json": {"billing_mode": "subscription", "period": "monthly", "included_calls": 500},
+    "rate_limit_json": {"requests_per_minute": 30, "burst": 5, "concurrency": 2},
+    "upstream_mode": "platform_proxy",
+    "expire_at": "2027-01-01T00:00:00Z",
+    "delivery_commit_hash": "dlv026-s4-api-commit-hash",
+    "receipt_hash": "dlv026-s4-api-receipt-hash"
+  }
+}

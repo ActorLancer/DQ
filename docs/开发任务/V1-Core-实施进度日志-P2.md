@@ -4759,3 +4759,79 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-168（计划中）
+- 任务：DLV-026 五条标准链路最小交付对象与演示脚本
+- 状态：计划中
+- 说明：为 S1~S5 五条标准链路补齐最小交付对象清单与可执行 `curl` 演示脚本，要求资产与冻结场景映射一致，可被交付测试与文档复用。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+### BATCH-168（待审批）
+- 任务：`DLV-026` 五条标准链路最小交付对象与演示脚本
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-026` 交付目标是为五条标准链路准备最小交付对象与演示脚本，交付范围落在 `apps/platform-core/src/modules/delivery/**; apps/platform-core/src/modules/storage/**; packages/openapi/delivery.yaml`。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核 DLV 阶段在 Delivery/Storage/Query 场景中要求演示资产可复用、可联调、可被测试与文档消费。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：按单任务流程执行“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：复核不得跳过真实 API/DB/Redis/MinIO 联调。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 日志记录本批计划中/待审批。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定仅阅读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核交付、验真、验收、对象存储和查询结果主轴。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认交付对象、对象存储、查询执行仍由 `platform-core` 内联到 MinIO/Redis/Kafka。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认本批只复用现有交付接口，不新增路径。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：确认交付脚本联调仍以 `delivery.committed -> dtp.outbox.domain-events` 为标准 outbox 事件。
+  - `docs/开发准备/统一错误码字典正式版.md`：复核交付脚本的状态冲突、权限拒绝与错误前缀。
+  - `docs/开发准备/测试用例矩阵正式版.md`：对齐“资产完整性测试 + 真实 API 演示”口径。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：演示资产收敛到 `modules/delivery/tests` 下，避免分散到全局 fixtures。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 PostgreSQL、Redis、MinIO、Kafka 本地栈。
+  - `docs/开发准备/配置项与密钥管理清单.md`：沿用本地固定连接参数。
+  - `docs/开发准备/技术选型正式版.md`：遵守当前 `SQLx + SeaORM` 基线。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认演示资产应复用真实交付接口，而不是另造演示旁路。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L268`：落实 4.4 交付、验真与验收主流程，五条标准链路演示对象分别落在 API、文件、沙箱、报告、模板查询交付面。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5`：落实集成测试/对象存储/消息总线/数据库投影的状态闭环验证。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L996`：确认交付页、订单详情、验收页和开发者调试页都需要有可复用演示资产。
+  - `docs/00-context/first-5-scenarios.md`：复核 S1~S5 的主 SKU 与最小验收路径。
+  - `fixtures/local/standard-scenarios-manifest.json`：将 DLV 演示资产与冻结的五条标准场景映射绑定，确保 8 个 V1 SKU 都有挂点。
+- 实现要点：
+  - 新增 `apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/manifest.json`，把 S1~S5 五条标准链路的主/补充 SKU、最小交付对象、API 路径、预期审计动作、预期 outbox 事件和 demo 脚本统一冻结。
+  - 在 `apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/**` 下为五条标准链路分别补齐最小示例对象：
+    - `S1`：`API_SUB` 开通请求、`API_PPU` usage-log 读取样例
+    - `S2`：`FILE_STD` 文件交付请求、`FILE_SUB` 版本订阅请求
+    - `S3`：`SBX_STD` 沙箱开通请求、`SHARE_RO` 共享授权请求
+    - `S4`：`API_SUB` API 开通请求、`RPT_STD` 报告交付请求
+    - `S5`：`QRY_LITE` 模板授权请求、模板执行请求
+  - 新增 5 个可执行脚本 `apps/platform-core/src/modules/delivery/tests/scripts/dlv026_*.sh`，直接通过 `curl` 驱动真实交付接口，作为本地演示和后续文档/测试复用入口。
+  - 新增 `apps/platform-core/src/modules/delivery/tests/dlv026_standard_delivery_assets_db.rs`，校验 manifest 与 `fixtures/local/standard-scenarios-manifest.json` 不漂移，并断言所有脚本/示例对象都存在且字段匹配。
+  - `apps/platform-core/src/modules/delivery/tests/mod.rs` 已接入本批测试文件。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p platform-core dlv026_standard_delivery_demo_assets_are_frozen_and_complete -- --nocapture`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 复用本地服务 `APP_PORT=8118`，通过临时建数脚本插入 5 条场景数据，再调用仓库内 `dlv026_s1~s5` demo 脚本做真实 API 联调。
+  8. 通过 `psql`、Redis、Outbox 回查审计与交付痕迹，并清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `dlv026_standard_delivery_demo_assets_are_frozen_and_complete`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`191 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：按顺序在 `sqlx prepare` 之后重跑，通过。
+  - 真实 API 脚本联调通过：
+    - `S1`：`api_key_issued`，并可读取 usage-log 视图。
+    - `S2`：`delivered`，下载票据已写入 Redis，`remaining_downloads=3`。
+    - `S3`：`seat_issued`。
+    - `S4`：组合脚本命中 API 开通与报告交付，最终 `report_delivered`。
+    - `S5`：`query_executed`，返回 MinIO 结果对象 `report-results/query-runs/.../result.json`。
+  - 审计回查通过：命中 `delivery.api.enable`、`delivery.api.log.read`、`delivery.file.commit`、`delivery.file.download`、`delivery.sandbox.enable`、`delivery.report.commit`、`delivery.template_query.enable`、`delivery.template_query.use`。
+  - Outbox 回查通过：`S1/S2/S3/S4/S5(grant)` 均命中 `delivery.committed` 事件。
+  - 临时业务数据已清理；发现临时脚本第一版清理遗漏后已补做依赖顺序清理，回查剩余组织数为 `0`；审计按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `4.4 交付、验真与验收主流程`：五条标准链路的交付对象和演示脚本均直接对应真实交付入口。
+  - `15.1 测试策略`：本批同时落实资产完整性校验与对象存储/消息总线/数据库的真实联调。
+  - `14. 页面覆盖校验`：交付页、验收页、订单详情和开发调试页所需的最小演示对象已经落盘可复用。
+- 覆盖的任务清单条目：`DLV-026`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

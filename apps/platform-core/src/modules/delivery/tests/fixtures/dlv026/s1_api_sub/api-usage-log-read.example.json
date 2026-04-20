@@ -1,0 +1,12 @@
+{
+  "scenario_id": "S1",
+  "sku_type": "API_PPU",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/orders/{id}/usage-log"
+  },
+  "notes": {
+    "expected_fields": ["api_credential_id", "usage_entries", "usage_summary"],
+    "intended_demo": "验证 API 开通后，买方侧开发者可联查 usage-log 视图。"
+  }
+}
