@@ -4,9 +4,11 @@ use crate::modules::billing::models::{
     BillingInvoicePlaceholderView, BillingInvoiceView, BillingOrderDetailView, BillingPayoutView,
     BillingRefundView, BillingSettlementSummaryView, BillingSettlementView,
     BillingSplitInstructionView, BillingTaxPlaceholderView,
+    SkuBillingBasisView as SkuBillingBasisResponseView,
 };
 use crate::modules::billing::repo::api_billing_repository::load_api_billing_basis_view;
 use crate::modules::billing::repo::billing_event_repository::list_billing_events_for_order;
+use crate::modules::billing::repo::sku_billing_repository::load_sku_billing_basis_view;
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient};
@@ -37,6 +39,25 @@ pub async fn get_billing_order_detail(
 
     let billing_events =
         list_billing_events_for_order(client, order_id, tenant_scope_id, request_id).await?;
+    let sku_billing_basis = load_sku_billing_basis_view(client, order_id, request_id)
+        .await?
+        .map(|basis| SkuBillingBasisResponseView {
+            sku_type: basis.sku_type,
+            default_event_type: basis.default_event_type,
+            usage_event_type: basis.usage_event_type,
+            payment_trigger: basis.payment_trigger,
+            delivery_trigger: basis.delivery_trigger,
+            acceptance_trigger: basis.acceptance_trigger,
+            billing_trigger: basis.billing_trigger,
+            settlement_cycle: basis.settlement_cycle,
+            refund_entry: basis.refund_entry,
+            refund_mode: basis.refund_mode,
+            refund_template_code: basis.refund_template_code,
+            compensation_entry: basis.compensation_entry,
+            dispute_freeze_trigger: basis.dispute_freeze_trigger,
+            resume_settlement_trigger: basis.resume_settlement_trigger,
+            policy_stage: basis.policy_stage,
+        });
     let api_billing_basis = load_api_billing_basis_view(client, order_id, request_id)
         .await?
         .map(|basis| ApiBillingBasisResponseView {
@@ -70,6 +91,7 @@ pub async fn get_billing_order_detail(
         dispute_status: context.dispute_status,
         order_amount: context.order_amount,
         currency_code: context.currency_code,
+        sku_billing_basis,
         api_billing_basis,
         billing_events,
         settlements,

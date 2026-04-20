@@ -1163,3 +1163,41 @@
 - 状态：计划中
 - 说明：在既有 `BillingEvent / Settlement / Refund / Outbox` 链路上补齐剩余 6 个标准 SKU 的默认计费规则和退款入口占位，不提前实现 V2 阶段的复杂价规引擎。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-191（待审批）
+- 任务：`BIL-018` 为 FILE_STD/FILE_SUB/SHARE_RO/QRY_LITE/SBX_STD/RPT_STD 设计默认计费口径与退款逻辑占位，并补充共享开通类 SKU 的计费触发点
+- 状态：待审批
+- 实现摘要：
+  - 新增统一 `SkuBillingBasisRule / SkuBillingBasisView`，为 `FILE_STD / FILE_SUB / SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 冻结默认计费、退款、赔付、争议冻结与恢复口径；`GET /api/v1/billing/{order_id}` 新增 `sku_billing_basis` 聚合视图。
+  - `SHARE_RO enable_share` 现在会在订单事务内生成占位 `one_time_charge` 计费事件，补写 `billing.events` outbox 并写入 `billing.event.record.share_ro_enable` 审计。
+  - 更新 `ShareRoTransitionResponseData` 与 Billing OpenAPI，使共享开通响应与账单详情对新计费视图保持一致。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil018_default_sku_billing_basis_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：启动 `APP_PORT=8111 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`，随后执行：
+    - `GET /api/v1/billing/{file_order_id}`
+    - `GET /api/v1/billing/{share_order_id}`
+    - `POST /api/v1/orders/{share_order_id}/share-ro/transition`
+    - `GET /api/v1/billing/{share_order_id}`
+    - `psql` 回查 `billing.billing_event / ops.outbox_event / audit.audit_event`
+- 验证结果：
+  - 专项 smoke 通过；全量测试通过：`239 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过，`.sqlx` 已刷新。
+  - 真实 API 联调通过：四个 HTTP 调用全部返回 `200`；`FILE_STD` 账单详情返回 `sku_billing_basis=FILE_STD/one_time_charge/REFUND_FILE_STD_V1`；`SHARE_RO` 开通后返回 `billing_event_type=one_time_charge`、`billing_event_replayed=false`，二次账单读取显示 `billing_events=1`。
+  - DB 回查通过：`billing.billing_event(one_time_charge)=1`、`ops.outbox_event(target_topic=billing.events)=1`、审计命中 `billing.event.record.share_ro_enable`、`trade.order.share_ro.transition`、`billing.order.read`；临时业务数据已清理，审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql`
+  - `支付、资金流与轻结算设计.md` `7`
+- 覆盖的任务清单条目：`BIL-018`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-192（计划中）
+- 任务：`BIL-019` 为支付与账单编写集成测试：支付成功、支付失败、超时重试、退款、赔付、争议升级、账单重算
+- 状态：计划中
+- 说明：在现有 `payment intent / webhook / refund / compensation / dispute / settlement recompute` 主链路上补齐一条覆盖成功、失败、超时、退款、赔付、争议升级、账单重算的统一集成测试与真实联调验证。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

@@ -23,5 +23,8 @@ pub struct ShareRoTransitionResponseData {
     pub settlement_status: String,
     pub dispute_status: String,
     pub reason_code: String,
+    pub billing_event_id: Option<String>,
+    pub billing_event_type: Option<String>,
+    pub billing_event_replayed: bool,
     pub transitioned_at: String,
 }

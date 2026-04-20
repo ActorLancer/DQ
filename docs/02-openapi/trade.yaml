@@ -1975,6 +1975,7 @@ components:
           settlement_status,
           dispute_status,
           reason_code,
+          billing_event_replayed,
           transitioned_at,
         ]
       properties:
@@ -1999,6 +2000,16 @@ components:
           type: string
         reason_code:
           type: string
+        billing_event_id:
+          type: string
+          nullable: true
+          description: Billing event id created or replayed for `enable_share`.
+        billing_event_type:
+          type: string
+          nullable: true
+          description: Billing event type created or replayed for `enable_share`.
+        billing_event_replayed:
+          type: boolean
         transitioned_at:
           type: string
           format: date-time

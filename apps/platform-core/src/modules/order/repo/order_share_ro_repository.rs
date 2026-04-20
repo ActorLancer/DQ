@@ -1,3 +1,4 @@
+use crate::modules::billing::repo::sku_billing_repository::record_share_ro_enable_charge_in_tx;
 use crate::modules::delivery::domain::is_accepted_state;
 use crate::modules::delivery::repo::{
     apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
@@ -111,6 +112,20 @@ pub async fn transition_share_ro_order(
         .await
         .map_err(map_db_error)?;
     let transitioned_at: String = updated_row.get(0);
+    let (billing_event_id, billing_event_type, billing_event_replayed) = if normalized_action
+        == "enable_share"
+    {
+        let (event, replayed) =
+            record_share_ro_enable_charge_in_tx(&tx, order_id, actor_role, request_id, trace_id)
+                .await?;
+        (
+            Some(event.billing_event_id),
+            Some(event.event_type),
+            replayed,
+        )
+    } else {
+        (None, None, false)
+    };
 
     apply_authorization_cutoff_if_needed(
         &tx,
@@ -162,6 +177,9 @@ pub async fn transition_share_ro_order(
         settlement_status: transition.layered_status.settlement_status,
         dispute_status: transition.layered_status.dispute_status,
         reason_code: transition.reason_code.to_string(),
+        billing_event_id,
+        billing_event_type,
+        billing_event_replayed,
         transitioned_at,
     })
 }

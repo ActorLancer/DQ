@@ -12,3 +12,4 @@ pub mod policy_repository;
 pub mod reconciliation_repository;
 pub mod refund_repository;
 pub mod settlement_aggregate_repository;
+pub mod sku_billing_repository;

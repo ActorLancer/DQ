@@ -2731,6 +2731,7 @@ components:
           dispute_status,
           order_amount,
           currency_code,
+          sku_billing_basis,
           api_billing_basis,
           billing_events,
           settlements,
@@ -2758,6 +2759,10 @@ components:
           type: string
         currency_code:
           type: string
+        sku_billing_basis:
+          allOf:
+            - $ref: "#/components/schemas/SkuBillingBasis"
+          nullable: true
         api_billing_basis:
           allOf:
             - $ref: "#/components/schemas/ApiBillingBasis"
@@ -2863,6 +2868,57 @@ components:
         latest_usage_call_count:
           type: string
         latest_usage_units:
+          type: string
+    SkuBillingBasis:
+      type: object
+      required:
+        [
+          sku_type,
+          payment_trigger,
+          delivery_trigger,
+          acceptance_trigger,
+          billing_trigger,
+          settlement_cycle,
+          refund_entry,
+          compensation_entry,
+          dispute_freeze_trigger,
+          resume_settlement_trigger,
+          policy_stage,
+        ]
+      properties:
+        sku_type:
+          type: string
+        default_event_type:
+          type: string
+          nullable: true
+        usage_event_type:
+          type: string
+          nullable: true
+        payment_trigger:
+          type: string
+        delivery_trigger:
+          type: string
+        acceptance_trigger:
+          type: string
+        billing_trigger:
+          type: string
+        settlement_cycle:
+          type: string
+        refund_entry:
+          type: string
+        refund_mode:
+          type: string
+          nullable: true
+        refund_template_code:
+          type: string
+          nullable: true
+        compensation_entry:
+          type: string
+        dispute_freeze_trigger:
+          type: string
+        resume_settlement_trigger:
+          type: string
+        policy_stage:
           type: string
     LockOrderRequest:
       type: object
