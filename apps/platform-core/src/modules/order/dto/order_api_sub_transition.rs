@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct ApiSubTransitionRequest {
     pub action: String,
     pub reason_note: Option<String>,
+    pub billing_cycle_code: Option<String>,
+    pub billing_amount: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,5 +25,8 @@ pub struct ApiSubTransitionResponseData {
     pub settlement_status: String,
     pub dispute_status: String,
     pub reason_code: String,
+    pub billing_event_id: Option<String>,
+    pub billing_event_type: Option<String>,
+    pub billing_event_replayed: bool,
     pub transitioned_at: String,
 }

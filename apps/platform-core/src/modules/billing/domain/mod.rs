@@ -1,5 +1,12 @@
+mod api_billing_basis;
+
 use serde::Serialize;
 use serde_json::Value;
+
+pub use api_billing_basis::{
+    API_PPU_BILLING_RULE, API_SUB_BILLING_RULE, ApiBillingBasisRule, ApiBillingBasisView,
+    api_billing_basis_rule_for_sku,
+};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct JurisdictionProfile {

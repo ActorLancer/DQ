@@ -1562,6 +1562,12 @@ components:
             ]
         reason_note:
           type: string
+        billing_cycle_code:
+          type: string
+          description: Frozen billing cycle code for API_SUB recurring charge, for example `2026-04`.
+        billing_amount:
+          type: string
+          description: Optional recurring charge amount snapshot for the current billing cycle.
     ApiPpuTransitionRequest:
       type: object
       required: [action]
@@ -1579,6 +1585,15 @@ components:
             ]
         reason_note:
           type: string
+        billing_amount:
+          type: string
+          description: Required when `action=settle_success_call`; amount snapshot for the successful-call billing batch.
+        usage_units:
+          type: string
+          description: Required when `action=settle_success_call`; total metered usage units for the billing batch.
+        meter_window_code:
+          type: string
+          description: Optional usage aggregation window code; defaults to request id when omitted.
     ShareRoTransitionRequest:
       type: object
       required: [action]
@@ -1856,6 +1871,7 @@ components:
           settlement_status,
           dispute_status,
           reason_code,
+          billing_event_replayed,
           transitioned_at,
         ]
       properties:
@@ -1880,6 +1896,16 @@ components:
           type: string
         reason_code:
           type: string
+        billing_event_id:
+          type: string
+          nullable: true
+          description: Billing event id created or replayed for `bill_cycle`.
+        billing_event_type:
+          type: string
+          nullable: true
+          description: Billing event type created or replayed for `bill_cycle`.
+        billing_event_replayed:
+          type: boolean
         transitioned_at:
           type: string
           format: date-time
@@ -1897,6 +1923,7 @@ components:
           settlement_status,
           dispute_status,
           reason_code,
+          billing_event_replayed,
           transitioned_at,
         ]
       properties:
@@ -1921,6 +1948,16 @@ components:
           type: string
         reason_code:
           type: string
+        billing_event_id:
+          type: string
+          nullable: true
+          description: Billing event id created or replayed for `settle_success_call`.
+        billing_event_type:
+          type: string
+          nullable: true
+          description: Billing event type created or replayed for `settle_success_call`.
+        billing_event_replayed:
+          type: boolean
         transitioned_at:
           type: string
           format: date-time

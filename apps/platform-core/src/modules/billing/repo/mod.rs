@@ -1,3 +1,4 @@
+pub mod api_billing_repository;
 pub mod billing_event_repository;
 pub mod billing_read_repository;
 pub mod compensation_repository;

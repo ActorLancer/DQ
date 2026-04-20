@@ -2731,6 +2731,7 @@ components:
           dispute_status,
           order_amount,
           currency_code,
+          api_billing_basis,
           billing_events,
           settlements,
           settlement_summary,
@@ -2757,6 +2758,10 @@ components:
           type: string
         currency_code:
           type: string
+        api_billing_basis:
+          allOf:
+            - $ref: "#/components/schemas/ApiBillingBasis"
+          nullable: true
         billing_events:
           type: array
           items:
@@ -2822,6 +2827,42 @@ components:
         summary_state:
           type: string
         proof_commit_state:
+          type: string
+    ApiBillingBasis:
+      type: object
+      required:
+        [
+          sku_type,
+          success_only,
+          latest_usage_call_count,
+          latest_usage_units,
+        ]
+      properties:
+        sku_type:
+          type: string
+        base_event_type:
+          type: string
+          nullable: true
+        usage_event_type:
+          type: string
+          nullable: true
+        cycle_period:
+          type: string
+          nullable: true
+        included_units:
+          type: string
+          nullable: true
+        overage_policy:
+          type: string
+          nullable: true
+        usage_meter_source:
+          type: string
+          nullable: true
+        success_only:
+          type: boolean
+        latest_usage_call_count:
+          type: string
+        latest_usage_units:
           type: string
     LockOrderRequest:
       type: object

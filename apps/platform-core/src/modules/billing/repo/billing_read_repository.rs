@@ -1,9 +1,11 @@
 use crate::modules::billing::db::map_db_error;
 use crate::modules::billing::models::{
-    BillingCompensationView, BillingInvoicePlaceholderView, BillingInvoiceView,
-    BillingOrderDetailView, BillingPayoutView, BillingRefundView, BillingSettlementSummaryView,
-    BillingSettlementView, BillingSplitInstructionView, BillingTaxPlaceholderView,
+    ApiBillingBasisView as ApiBillingBasisResponseView, BillingCompensationView,
+    BillingInvoicePlaceholderView, BillingInvoiceView, BillingOrderDetailView, BillingPayoutView,
+    BillingRefundView, BillingSettlementSummaryView, BillingSettlementView,
+    BillingSplitInstructionView, BillingTaxPlaceholderView,
 };
+use crate::modules::billing::repo::api_billing_repository::load_api_billing_basis_view;
 use crate::modules::billing::repo::billing_event_repository::list_billing_events_for_order;
 use axum::Json;
 use axum::http::StatusCode;
@@ -35,6 +37,20 @@ pub async fn get_billing_order_detail(
 
     let billing_events =
         list_billing_events_for_order(client, order_id, tenant_scope_id, request_id).await?;
+    let api_billing_basis = load_api_billing_basis_view(client, order_id, request_id)
+        .await?
+        .map(|basis| ApiBillingBasisResponseView {
+            sku_type: basis.sku_type,
+            base_event_type: basis.base_event_type,
+            usage_event_type: basis.usage_event_type,
+            cycle_period: basis.cycle_period,
+            included_units: basis.included_units,
+            overage_policy: basis.overage_policy,
+            usage_meter_source: basis.usage_meter_source,
+            success_only: basis.success_only,
+            latest_usage_call_count: basis.latest_usage_call_count,
+            latest_usage_units: basis.latest_usage_units,
+        });
     let settlements = load_settlements(client, order_id).await?;
     let refunds = load_refunds(client, order_id).await?;
     let compensations = load_compensations(client, order_id).await?;
@@ -54,6 +70,7 @@ pub async fn get_billing_order_detail(
         dispute_status: context.dispute_status,
         order_amount: context.order_amount,
         currency_code: context.currency_code,
+        api_billing_basis,
         billing_events,
         settlements,
         settlement_summary,

@@ -45,7 +45,31 @@ pub async fn record_billing_event(
     trace_id: Option<&str>,
 ) -> Result<(BillingEvent, bool), (StatusCode, Json<ErrorResponse>)> {
     let tx = client.transaction().await.map_err(map_db_error)?;
-    let context = load_order_billing_context(&tx, &payload.order_id, request_id).await?;
+    let result = record_billing_event_in_tx(
+        &tx,
+        payload,
+        tenant_scope_id,
+        actor_role,
+        action_name,
+        request_id,
+        trace_id,
+    )
+    .await?;
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(result)
+}
+
+pub async fn record_billing_event_in_tx(
+    client: &(impl GenericClient + Sync),
+    payload: &RecordBillingEventRequest,
+    tenant_scope_id: Option<&str>,
+    actor_role: &str,
+    action_name: &str,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+) -> Result<(BillingEvent, bool), (StatusCode, Json<ErrorResponse>)> {
+    let context = load_order_billing_context(client, &payload.order_id, request_id).await?;
     enforce_order_scope(tenant_scope_id, &context, request_id)?;
 
     let event_type = normalize_event_type(&payload.event_type, request_id)?;
@@ -62,7 +86,7 @@ pub async fn record_billing_event(
     )?;
 
     if let Some(existing) = find_existing_event(
-        &tx,
+        client,
         &payload.order_id,
         &event_type,
         &event_source,
@@ -72,7 +96,7 @@ pub async fn record_billing_event(
     {
         let replay_action = format!("{action_name}.idempotent_replay");
         write_audit_event(
-            &tx,
+            client,
             "billing",
             "billing_event",
             &existing.billing_event_id,
@@ -83,7 +107,6 @@ pub async fn record_billing_event(
             trace_id,
         )
         .await?;
-        tx.commit().await.map_err(map_db_error)?;
         return Ok((existing, true));
     }
 
@@ -108,7 +131,7 @@ pub async fn record_billing_event(
     let units_param = units.as_deref();
     let occurred_at_param = payload.occurred_at.as_deref();
 
-    let row = tx
+    let row = client
         .query_one(
             "INSERT INTO billing.billing_event (
                order_id,
@@ -155,7 +178,7 @@ pub async fn record_billing_event(
     let event = parse_billing_event_row(&row);
 
     write_billing_event_outbox(
-        &tx,
+        client,
         &event,
         &idempotency_key,
         request_id,
@@ -164,7 +187,7 @@ pub async fn record_billing_event(
     )
     .await?;
     write_audit_event(
-        &tx,
+        client,
         "billing",
         "billing_event",
         &event.billing_event_id,
@@ -176,9 +199,8 @@ pub async fn record_billing_event(
     )
     .await?;
     let _ =
-        recompute_settlement_for_order(&tx, &payload.order_id, actor_role, request_id, trace_id)
+        recompute_settlement_for_order(client, &payload.order_id, actor_role, request_id, trace_id)
             .await?;
-    tx.commit().await.map_err(map_db_error)?;
 
     Ok((event, false))
 }

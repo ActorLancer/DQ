@@ -1061,3 +1061,105 @@
 - 状态：计划中
 - 说明：在既有 `BillingEvent / Settlement / Outbox` 链路上补齐 API 类 SKU 的订阅周期账单与调用量追加事件口径，不提前展开更高阶计费策略引擎。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-190（待审批）
+- 任务：`BIL-017` 为 API_SUB/API_PPU 设计最小计费口径：订阅周期账单 + 按调用量追加事件
+- 当前任务编号：`BIL-017`
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `BIL-017` 目标是为 API 类 SKU 建立最小计费口径，要求业务规则、状态机、审计、事件与测试齐备。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认 `API_SUB` 需要周期账单，`API_PPU` 需要按成功调用追加账单事件，且需与现有 Billing/Settlement 主编排联动。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务完整流程执行，验证通过后写“待审批”，本地提交后直接推进下个任务。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续遵守冻结文档优先级、顺序推进、真实联调、日志与 TODO 留痕要求。
+  - `docs/开发任务/V1-Core-实施进度日志-P3.md`：承接 `BIL-016` 后的 Billing 阶段连续实现记录。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增无依据 TODO。
+  - `technical_reference`：
+    - `docs/领域模型/全量领域模型与对象关系说明.md:L895`：落实 `BillingEvent / Settlement` 作为账单与轻结算聚合的基础事件层，支持不同 SKU 以稳定计费基元驱动结算。
+    - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql:L1`：复用 V1 冻结的 `billing.billing_event / billing.settlement_record / ops.outbox_event` 结构，不提前引入后续阶段的独立计费引擎表。
+    - `docs/原始PRD/支付、资金流与轻结算设计.md:L165`：落实 API 订阅周期收费与按量计费的最小口径，要求成功调用计费、周期账单与轻结算可追溯。
+  - 补充参考：
+    - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对 API_SUB 的订阅周期收费与 API_PPU 的成功调用收费口径。
+    - `docs/03-db/sku-billing-trigger-matrix.md`：核对 `API_SUB / API_PPU` 的计费触发点、结算周期与后续账单矩阵口径。
+- 实现摘要：
+  - 新增 `billing::domain::api_billing_basis`，冻结 `API_SUB / API_PPU` 的最小计费规则：
+    - `API_SUB`：`base_event_type=recurring_charge`，默认周期 `monthly`，计量来源来自 `delivery.api_credential.quota_json`
+    - `API_PPU`：`usage_event_type=usage_charge`，默认周期 `per_call`，仅成功调用计费，计量来源为 `delivery.api_usage_log`
+  - 新增 `billing::repo::api_billing_repository`：
+    - `load_api_billing_basis_view(...)`：按订单、SKU、最新 API 凭证与使用日志构造稳定 `api_billing_basis`
+    - `record_api_sub_cycle_charge_in_tx(...)`：在订单事务内为 `bill_cycle` 生成 `recurring_charge`
+    - `record_api_ppu_usage_charge_in_tx(...)`：在订单事务内为 `settle_success_call` 生成 `usage_charge`
+  - 将 `billing_event_repository` 拆出 `record_billing_event_in_tx(...)`，让 API 类 SKU 状态机能在单事务内同时推进订单状态、写账单事件、重算结算、写 outbox 和审计。
+  - 扩展 `API_SUB / API_PPU` 状态机请求/响应：
+    - `API_SUB` 请求新增 `billing_cycle_code / billing_amount`
+    - `API_PPU` 请求新增 `billing_amount / usage_units / meter_window_code`
+    - 两者响应新增 `billing_event_id / billing_event_type / billing_event_replayed`
+  - `GET /api/v1/billing/{order_id}` 新增可选 `api_billing_basis` 聚合，稳定回传 SKU 类型、周期、包含量、超额策略、成功调用统计、最近使用量等只读视图。
+  - OpenAPI 同步更新：
+    - `packages/openapi/trade.yaml`
+    - `packages/openapi/billing.yaml`
+    - 并同步复制到 `docs/02-openapi/*.yaml`
+  - 新增 `bil017_api_sku_billing_basis_db_smoke`，覆盖：
+    - API_SUB 周期收费生成/重放
+    - API_PPU 成功调用收费生成/重放
+    - `billing.read` 返回 `api_billing_basis`
+    - `billing.events` outbox 命中
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil017_api_sku_billing_basis_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动 `APP_PORT=8110` 的 `platform-core`，覆盖 `KAFKA_BROKERS/KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`
+  8. 插入临时 buyer/seller/api 产品、SKU、订单、API 凭证和 API usage 数据后执行真实 API：
+     - `POST /api/v1/orders/{api_sub_order_id}/api-sub/transition`（`bill_cycle`）
+     - 同周期重放一次 `bill_cycle`
+     - `POST /api/v1/orders/{api_ppu_order_id}/api-ppu/transition`（`settle_success_call`）
+     - 同 request_id 重放一次 `settle_success_call`
+     - `GET /api/v1/billing/{api_sub_order_id}`
+     - `GET /api/v1/billing/{api_ppu_order_id}`
+     再用 `psql` 回查 `billing.billing_event / billing.settlement_record / ops.outbox_event / audit.audit_event`，随后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `235 passed, 0 failed, 1 ignored`。
+  - `bil017_api_sku_billing_basis_db_smoke` 通过，确认：
+    - `API_SUB` 同一 `billing_cycle_code` 只生成一条 `recurring_charge`
+    - `API_PPU` 同一 `request_id` 只生成一条 `usage_charge`
+    - `GET /api/v1/billing/{order_id}` 稳定返回 `api_billing_basis`
+    - 对应 `billing.events` outbox 命中 1 条
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - `API_SUB bill_cycle` 返回 `HTTP 200`，`current_state=active`，`billing_event_type=recurring_charge`，首次 `billing_event_replayed=false`
+    - 同周期重放返回同一 `billing_event_id`，`billing_event_replayed=true`
+    - `API_PPU settle_success_call` 返回 `HTTP 200`，`current_state=usage_active`，`billing_event_type=usage_charge`，首次 `billing_event_replayed=false`
+    - 同 request_id 重放返回同一 `billing_event_id`，`billing_event_replayed=true`
+    - `GET /api/v1/billing/{api_sub_order_id}` 返回 `api_billing_basis = {sku_type=API_SUB, base_event_type=recurring_charge, cycle_period=monthly, included_units=1000}`
+    - `GET /api/v1/billing/{api_ppu_order_id}` 返回 `api_billing_basis = {sku_type=API_PPU, usage_event_type=usage_charge, cycle_period=per_call, latest_usage_call_count=2, latest_usage_units=128.00000000}`
+  - DB 回查通过：
+    - `billing.billing_event` 命中 `recurring_charge=1`、`usage_charge=1`
+    - 两条事件均写入 `ops.outbox_event(target_topic=billing.events)`
+    - 事件 `metadata.api_billing_basis` 分别保留 `cycle_period=monthly`、`latest_usage_units=128.00000000`
+    - `audit.audit_event` 命中：
+      - `trade.order.api_sub.transition`
+      - `trade.order.api_ppu.transition`
+      - `billing.event.record.api_sub_cycle`
+      - `billing.event.record.api_sub_cycle.idempotent_replay`
+      - `billing.event.record.api_ppu_usage`
+      - `billing.event.record.api_ppu_usage.idempotent_replay`
+      - `billing.order.read`
+      - `billing.settlement.recomputed`
+      - `billing.settlement.summary.outbox`
+  - 临时业务数据已清理，回查 `trade.order_main / billing.billing_event / ops.outbox_event / core.organization = 0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql`
+  - `支付、资金流与轻结算设计.md` `7`
+  - `全集成基线-V1.md` 中 API_SUB/API_PPU 收费口径
+  - `docs/03-db/sku-billing-trigger-matrix.md` 中 API 类 SKU 计费矩阵
+- 覆盖的任务清单条目：`BIL-017`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-191（计划中）
+- 任务：`BIL-018` 为 FILE_STD/FILE_SUB/SHARE_RO/QRY_LITE/SBX_STD/RPT_STD 设计默认计费口径与退款逻辑占位，并补充共享开通类 SKU 的计费触发点
+- 状态：计划中
+- 说明：在既有 `BillingEvent / Settlement / Refund / Outbox` 链路上补齐剩余 6 个标准 SKU 的默认计费规则和退款入口占位，不提前实现 V2 阶段的复杂价规引擎。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

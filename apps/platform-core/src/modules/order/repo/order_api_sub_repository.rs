@@ -1,3 +1,6 @@
+use crate::modules::billing::repo::api_billing_repository::{
+    ApiSubCycleChargeParams, record_api_sub_cycle_charge_in_tx,
+};
 use crate::modules::delivery::repo::{
     apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
 };
@@ -113,6 +116,29 @@ pub async fn transition_api_sub_order(
         .await
         .map_err(map_db_error)?;
     let transitioned_at: String = updated_row.get(0);
+    let (billing_event_id, billing_event_type, billing_event_replayed) =
+        if normalized_action == "bill_cycle" {
+            let (event, replayed) = record_api_sub_cycle_charge_in_tx(
+                &tx,
+                order_id,
+                actor_role,
+                request_id,
+                trace_id,
+                &ApiSubCycleChargeParams {
+                    billing_cycle_code: payload.billing_cycle_code.clone().unwrap_or_default(),
+                    billing_amount: payload.billing_amount.clone(),
+                    reason_note: payload.reason_note.clone(),
+                },
+            )
+            .await?;
+            (
+                Some(event.billing_event_id),
+                Some(event.event_type),
+                replayed,
+            )
+        } else {
+            (None, None, false)
+        };
     if normalized_action == "lock_funds" {
         let _ = auto_create_delivery_task_if_needed(
             &tx,
@@ -175,6 +201,9 @@ pub async fn transition_api_sub_order(
         settlement_status: transition.layered_status.settlement_status,
         dispute_status: transition.layered_status.dispute_status,
         reason_code: transition.reason_code.to_string(),
+        billing_event_id,
+        billing_event_type,
+        billing_event_replayed,
         transitioned_at,
     })
 }

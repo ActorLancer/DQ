@@ -1,3 +1,6 @@
+use crate::modules::billing::repo::api_billing_repository::{
+    ApiPpuUsageChargeParams, record_api_ppu_usage_charge_in_tx,
+};
 use crate::modules::delivery::repo::{
     apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
 };
@@ -110,6 +113,30 @@ pub async fn transition_api_ppu_order(
         .await
         .map_err(map_db_error)?;
     let transitioned_at: String = updated_row.get(0);
+    let (billing_event_id, billing_event_type, billing_event_replayed) =
+        if normalized_action == "settle_success_call" {
+            let (event, replayed) = record_api_ppu_usage_charge_in_tx(
+                &tx,
+                order_id,
+                actor_role,
+                request_id,
+                trace_id,
+                &ApiPpuUsageChargeParams {
+                    billing_amount: payload.billing_amount.clone().unwrap_or_default(),
+                    usage_units: payload.usage_units.clone().unwrap_or_default(),
+                    meter_window_code: payload.meter_window_code.clone(),
+                    reason_note: payload.reason_note.clone(),
+                },
+            )
+            .await?;
+            (
+                Some(event.billing_event_id),
+                Some(event.event_type),
+                replayed,
+            )
+        } else {
+            (None, None, false)
+        };
 
     apply_authorization_cutoff_if_needed(
         &tx,
@@ -162,6 +189,9 @@ pub async fn transition_api_ppu_order(
         settlement_status: transition.layered_status.settlement_status,
         dispute_status: transition.layered_status.dispute_status,
         reason_code: transition.reason_code.to_string(),
+        billing_event_id,
+        billing_event_type,
+        billing_event_replayed,
         transitioned_at,
     })
 }

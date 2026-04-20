@@ -362,6 +362,7 @@ pub struct BillingOrderDetailView {
     pub dispute_status: String,
     pub order_amount: String,
     pub currency_code: String,
+    pub api_billing_basis: Option<ApiBillingBasisView>,
     pub billing_events: Vec<BillingEventView>,
     pub settlements: Vec<BillingSettlementView>,
     pub settlement_summary: Option<BillingSettlementSummaryView>,
@@ -372,6 +373,20 @@ pub struct BillingOrderDetailView {
     pub invoices: Vec<BillingInvoiceView>,
     pub tax_placeholder: BillingTaxPlaceholderView,
     pub invoice_placeholder: BillingInvoicePlaceholderView,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ApiBillingBasisView {
+    pub sku_type: String,
+    pub base_event_type: Option<String>,
+    pub usage_event_type: Option<String>,
+    pub cycle_period: Option<String>,
+    pub included_units: Option<String>,
+    pub overage_policy: Option<String>,
+    pub usage_meter_source: Option<String>,
+    pub success_only: bool,
+    pub latest_usage_call_count: String,
+    pub latest_usage_units: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
