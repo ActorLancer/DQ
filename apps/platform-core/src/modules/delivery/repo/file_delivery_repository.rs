@@ -380,7 +380,7 @@ pub async fn commit_file_delivery(
                  status = 'committed',
                  delivery_commit_hash = $4,
                  envelope_id = $5::text::uuid,
-                 trust_boundary_snapshot = $6::jsonb,
+                 trust_boundary_snapshot = COALESCE(trust_boundary_snapshot, '{}'::jsonb) || $6::jsonb,
                  receipt_hash = $7,
                  committed_at = now(),
                  expires_at = $8::timestamptz,

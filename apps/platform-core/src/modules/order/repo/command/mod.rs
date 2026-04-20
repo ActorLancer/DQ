@@ -10,6 +10,8 @@ mod confirm_contract;
 mod create_order;
 #[path = "../order_deliverability_repository.rs"]
 mod deliverability_gate;
+#[path = "../order_delivery_task_repository.rs"]
+mod delivery_task_autocreation;
 #[path = "../price_snapshot_repository.rs"]
 mod freeze_price_snapshot;
 #[path = "../order_pre_payment_lock_repository.rs"]
@@ -36,7 +38,11 @@ pub use authorization_transition::transition_order_authorization;
 pub use cancel_order::{cancel_order_with_state_machine, load_order_cancel_context};
 pub use confirm_contract::{confirm_order_contract, load_order_contract_confirm_context};
 pub use create_order::{create_order_with_snapshot, find_order_by_idempotency};
-pub use deliverability_gate::ensure_order_deliverable_and_prepare_delivery;
+pub use deliverability_gate::{
+    ensure_order_deliverable_and_prepare_delivery,
+    ensure_order_deliverable_and_prepare_delivery_with_options,
+};
+pub use delivery_task_autocreation::auto_create_delivery_task_if_needed;
 pub use freeze_price_snapshot::freeze_order_price_snapshot;
 pub use pre_payment_lock::ensure_pre_payment_lock_checks;
 pub use transition_api_ppu::transition_api_ppu_order;

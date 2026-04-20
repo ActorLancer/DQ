@@ -1,12 +1,23 @@
+use crate::modules::delivery::domain::merge_snapshot_patch;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
 use axum::Json;
 use axum::http::StatusCode;
-use db::{Client, Error, GenericClient, Row};
+use db::GenericClient;
 use kernel::{ErrorCode, ErrorResponse};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 pub struct PreparedDeliveryRecord {
     pub delivery_id: String,
+    pub current_status: String,
+    pub created: bool,
+}
+
+pub struct PreparedDeliveryOptions<'a> {
+    pub creation_source: &'a str,
+    pub executor_type: &'a str,
+    pub executor_ref_id: Option<&'a str>,
+    pub responsible_scope: &'a str,
+    pub audit_action_name: &'a str,
 }
 
 pub async fn ensure_order_deliverable_and_prepare_delivery(
@@ -16,12 +27,41 @@ pub async fn ensure_order_deliverable_and_prepare_delivery(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<PreparedDeliveryRecord, (StatusCode, Json<ErrorResponse>)> {
+    ensure_order_deliverable_and_prepare_delivery_with_options(
+        client,
+        order_id,
+        actor_role,
+        request_id,
+        trace_id,
+        &PreparedDeliveryOptions {
+            creation_source: "deliverability_gate",
+            executor_type: "platform",
+            executor_ref_id: None,
+            responsible_scope: "platform_delivery",
+            audit_action_name: "trade.order.delivery_gate.prepared",
+        },
+    )
+    .await
+}
+
+pub async fn ensure_order_deliverable_and_prepare_delivery_with_options(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    actor_role: &str,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+    options: &PreparedDeliveryOptions<'_>,
+) -> Result<PreparedDeliveryRecord, (StatusCode, Json<ErrorResponse>)> {
     let row = client
         .query_opt(
             "SELECT
+               o.status,
                o.payment_status,
+               o.delivery_status,
                o.trust_boundary_snapshot,
                o.delivery_route_snapshot,
+               o.buyer_org_id::text,
+               o.seller_org_id::text,
                buyer.status,
                buyer.metadata,
                seller.status,
@@ -50,20 +90,24 @@ pub async fn ensure_order_deliverable_and_prepare_delivery(
         return Err(not_found(order_id, request_id));
     };
 
-    let payment_status: String = row.get(0);
-    let trust_boundary_snapshot: Value = row.get(1);
-    let delivery_route_snapshot: Option<String> = row.get(2);
-    let buyer_status: String = row.get(3);
-    let buyer_metadata: Value = row.get(4);
-    let seller_status: String = row.get(5);
-    let seller_metadata: Value = row.get(6);
-    let product_status: String = row.get(7);
-    let product_metadata: Value = row.get(8);
-    let asset_version_status: String = row.get(9);
-    let sku_status: String = row.get(10);
-    let sku_type: String = row.get(11);
-    let contract_id: Option<String> = row.get(12);
-    let contract_status: Option<String> = row.get(13);
+    let order_status: String = row.get(0);
+    let payment_status: String = row.get(1);
+    let delivery_status: String = row.get(2);
+    let trust_boundary_snapshot: Value = row.get(3);
+    let delivery_route_snapshot: Option<String> = row.get(4);
+    let buyer_org_id: String = row.get(5);
+    let seller_org_id: String = row.get(6);
+    let buyer_status: String = row.get(7);
+    let buyer_metadata: Value = row.get(8);
+    let seller_status: String = row.get(9);
+    let seller_metadata: Value = row.get(10);
+    let product_status: String = row.get(11);
+    let product_metadata: Value = row.get(12);
+    let asset_version_status: String = row.get(13);
+    let sku_status: String = row.get(14);
+    let sku_type: String = row.get(15);
+    let contract_id: Option<String> = row.get(16);
+    let contract_status: Option<String> = row.get(17);
 
     if payment_status != "paid" {
         return Err(conflict(
@@ -125,25 +169,6 @@ pub async fn ensure_order_deliverable_and_prepare_delivery(
             "SELECT delivery_id::text
              FROM delivery.delivery_record
              WHERE order_id = $1::text::uuid
-               AND status = 'committed'
-             ORDER BY committed_at DESC NULLS LAST, updated_at DESC, delivery_id DESC
-             LIMIT 1",
-            &[&order_id],
-        )
-        .await
-        .map_err(map_db_error)?
-        .map(|row| row.get::<_, String>(0))
-    {
-        return Ok(PreparedDeliveryRecord {
-            delivery_id: existing_id,
-        });
-    }
-
-    if let Some(existing_id) = client
-        .query_opt(
-            "SELECT delivery_id::text
-             FROM delivery.delivery_record
-             WHERE order_id = $1::text::uuid
                AND status = 'prepared'
              ORDER BY created_at DESC, delivery_id DESC
              LIMIT 1",
@@ -151,35 +176,104 @@ pub async fn ensure_order_deliverable_and_prepare_delivery(
         )
         .await
         .map_err(map_db_error)?
-        .map(|row| row.get::<_, String>(0))
+        .map(|existing| existing.get::<_, String>(0))
     {
+        write_trade_audit_event(
+            client,
+            "order",
+            order_id,
+            actor_role,
+            options.audit_action_name,
+            "already_exists",
+            request_id,
+            trace_id,
+        )
+        .await?;
         return Ok(PreparedDeliveryRecord {
             delivery_id: existing_id,
+            current_status: "prepared".to_string(),
+            created: false,
         });
     }
 
+    if delivery_status != "pending_delivery" {
+        if let Some(existing_id) = client
+            .query_opt(
+                "SELECT delivery_id::text
+                 FROM delivery.delivery_record
+                 WHERE order_id = $1::text::uuid
+                   AND status = 'committed'
+                 ORDER BY committed_at DESC NULLS LAST, updated_at DESC, delivery_id DESC
+                 LIMIT 1",
+                &[&order_id],
+            )
+            .await
+            .map_err(map_db_error)?
+            .map(|existing| existing.get::<_, String>(0))
+        {
+            write_trade_audit_event(
+                client,
+                "order",
+                order_id,
+                actor_role,
+                options.audit_action_name,
+                "already_exists",
+                request_id,
+                trace_id,
+            )
+            .await?;
+            return Ok(PreparedDeliveryRecord {
+                delivery_id: existing_id,
+                current_status: "committed".to_string(),
+                created: false,
+            });
+        }
+    }
+
     let (delivery_type, default_route) = default_delivery_shape(&sku_type);
+    let delivery_trust_boundary_snapshot = merge_snapshot_patch(
+        &trust_boundary_snapshot,
+        &build_delivery_task_snapshot(
+            &order_status,
+            options.creation_source,
+            options.executor_type,
+            options.executor_ref_id,
+            options.responsible_scope,
+            resolve_responsible_subject_id(
+                options.executor_type,
+                &buyer_org_id,
+                &seller_org_id,
+                options.executor_ref_id,
+            ),
+        ),
+    );
     let delivery_id: String = client
         .query_one(
             "INSERT INTO delivery.delivery_record (
                order_id,
                delivery_type,
                delivery_route,
+               executor_type,
+               executor_ref_id,
                status,
                trust_boundary_snapshot
              ) VALUES (
                $1::text::uuid,
                $2,
                $3,
+               $4,
+               $5::text::uuid,
                'prepared',
-               $4::jsonb
+               $6::jsonb
              )
              RETURNING delivery_id::text",
             &[
                 &order_id,
                 &delivery_type,
                 &delivery_route_snapshot.as_deref().unwrap_or(default_route),
-                &trust_boundary_snapshot,
+                &options.executor_type,
+                &options.executor_ref_id,
+                &delivery_trust_boundary_snapshot,
             ],
         )
         .await
@@ -191,14 +285,56 @@ pub async fn ensure_order_deliverable_and_prepare_delivery(
         "order",
         order_id,
         actor_role,
-        "trade.order.delivery_gate.prepared",
+        options.audit_action_name,
         "success",
         request_id,
         trace_id,
     )
     .await?;
 
-    Ok(PreparedDeliveryRecord { delivery_id })
+    Ok(PreparedDeliveryRecord {
+        delivery_id,
+        current_status: "prepared".to_string(),
+        created: true,
+    })
+}
+
+fn build_delivery_task_snapshot(
+    order_status: &str,
+    creation_source: &str,
+    executor_type: &str,
+    executor_ref_id: Option<&str>,
+    responsible_scope: &str,
+    responsible_subject_id: Option<String>,
+) -> Value {
+    let responsible_subject_type = responsible_subject_id.as_ref().map(|_| "organization");
+    json!({
+        "delivery_task": {
+            "auto_created": true,
+            "creation_source": creation_source,
+            "origin_order_state": order_status,
+            "retry_count": 0,
+            "manual_takeover": false,
+            "responsible_scope": responsible_scope,
+            "responsible_subject_type": responsible_subject_type,
+            "responsible_subject_id": responsible_subject_id,
+            "executor_type": executor_type,
+            "executor_ref_id": executor_ref_id,
+        }
+    })
+}
+
+fn resolve_responsible_subject_id(
+    executor_type: &str,
+    buyer_org_id: &str,
+    seller_org_id: &str,
+    executor_ref_id: Option<&str>,
+) -> Option<String> {
+    match executor_type {
+        "buyer_org" => Some(executor_ref_id.unwrap_or(buyer_org_id).to_string()),
+        "seller_org" => Some(executor_ref_id.unwrap_or(seller_org_id).to_string()),
+        _ => executor_ref_id.map(str::to_string),
+    }
 }
 
 fn default_delivery_shape(sku_type: &str) -> (&'static str, &'static str) {
@@ -293,7 +429,10 @@ fn not_found(order_id: &str, request_id: Option<&str>) -> (StatusCode, Json<Erro
 
 #[cfg(test)]
 mod tests {
-    use super::{default_delivery_shape, is_subject_deliverable};
+    use super::{
+        build_delivery_task_snapshot, default_delivery_shape, is_subject_deliverable,
+        resolve_responsible_subject_id,
+    };
     use serde_json::json;
 
     #[test]
@@ -323,5 +462,42 @@ mod tests {
             "risk_status": "normal",
             "sellable_status": "enabled"
         })));
+    }
+
+    #[test]
+    fn resolves_responsible_subject_by_executor() {
+        assert_eq!(
+            resolve_responsible_subject_id("buyer_org", "buyer-1", "seller-1", Some("buyer-2")),
+            Some("buyer-2".to_string())
+        );
+        assert_eq!(
+            resolve_responsible_subject_id("seller_org", "buyer-1", "seller-1", None),
+            Some("seller-1".to_string())
+        );
+    }
+
+    #[test]
+    fn builds_delivery_task_snapshot_with_required_flags() {
+        let snapshot = build_delivery_task_snapshot(
+            "buyer_locked",
+            "payment_webhook",
+            "seller_org",
+            Some("seller-1"),
+            "seller_delivery_operator",
+            Some("seller-1".to_string()),
+        );
+        assert_eq!(
+            snapshot["delivery_task"]["creation_source"].as_str(),
+            Some("payment_webhook")
+        );
+        assert_eq!(snapshot["delivery_task"]["retry_count"].as_i64(), Some(0));
+        assert_eq!(
+            snapshot["delivery_task"]["manual_takeover"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            snapshot["delivery_task"]["responsible_subject_id"].as_str(),
+            Some("seller-1")
+        );
     }
 }

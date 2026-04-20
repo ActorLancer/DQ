@@ -21,6 +21,10 @@ info:
     provisioning, expiry, and export-policy snapshots; DLV-019 freezes a
     placeholder watermark/fingerprint policy on file/report delivery objects so
     future watermark pipelines can attach without changing the read contract;
+    DLV-029 auto-creates a prepared delivery task as soon as an order enters
+    pending_delivery, freezing creation_source, responsible subject, retry
+    count, and manual_takeover metadata per SKU before the first concrete
+    delivery branch call; 
     DLV-020 adds standardized delivery receipt outbox events for
     file/api/share/template/sandbox/report branches; DLV-024 adds order-scoped
     execution attestation read and destruction-attestation recording APIs for
@@ -31,6 +35,7 @@ paths:
   /api/v1/orders/{id}/deliver:
     post:
       summary: Commit file/report delivery or enable API access for a deliverable order
+      description: Uses the prepared delivery task auto-created when the order entered pending_delivery.
       tags: [delivery]
       parameters:
         - name: id
@@ -181,6 +186,7 @@ paths:
   /api/v1/orders/{id}/subscriptions:
     post:
       summary: Create or renew a FILE_SUB revision subscription
+      description: FILE_SUB pending_delivery renewal should already own a prepared revision task auto-created by DLV-029.
       tags: [delivery]
       parameters:
         - name: id
@@ -234,6 +240,7 @@ paths:
   /api/v1/orders/{id}/share-grants:
     post:
       summary: Create, update, or revoke a SHARE_RO grant
+      description: SHARE_RO enablement reuses the prepared share_grant task auto-created at pending_delivery.
       tags: [delivery]
       parameters:
         - name: id

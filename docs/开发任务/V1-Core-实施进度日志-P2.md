@@ -4973,3 +4973,96 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-171（计划中）
+- 任务：DLV-029 Delivery 任务自动创建器
+- 状态：计划中
+- 说明：当订单进入 `pending_delivery` 时按 SKU 自动生成 `delivery.delivery_record(status=prepared)`，并记录创建来源、责任主体、重试次数与人工接管标识；补齐审计与测试。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，按 DLV 主线顺序继续。
+### BATCH-171（待审批）
+- 任务：`DLV-029` Delivery 任务自动创建器
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-029` 必须在订单进入“待交付”后按 SKU 自动创建交付任务，并记录创建来源、责任主体、重试次数与人工接管标识。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核该任务是交付主编排的一部分，不能只做单条路径或只补测试。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：按单任务流程继续执行“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续按冻结流程执行，不跳步、不简化。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 日志格式记录计划中与待审批。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定只读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核交付阶段必须承接交易主状态、审计与事件链。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 Delivery / Storage / Query Execution 仍归 `platform-core` 子域承接。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认本批不新增路由，但需要补交付自动创建器的 API 行为说明。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：确认自动创建器需要输出标准化事件供下游消费。
+  - `docs/开发准备/统一错误码字典正式版.md`：沿用 `TRD_STATE_CONFLICT` 等既有口径，不额外造错码。
+  - `docs/开发准备/测试用例矩阵正式版.md`：确认本批需要自动化 smoke、真实 API、DB/outbox 审计联动证据。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：新增仓储与测试文件按模块目录落位，不回退到巨型文件。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调继续使用本地 PostgreSQL/Kafka/MinIO/Redis 栈。
+  - `docs/开发准备/配置项与密钥管理清单.md`：沿用本地固定连接参数和环境变量。
+  - `docs/开发准备/技术选型正式版.md`：维持 `SQLx + SeaORM` 数据库基线。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认交付自动创建器应在事务内承接订单推进与 outbox 事件，不让 Billing 猜测状态。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L268`：落实 4.4 交付、验真与验收主流程中“进入待交付后生成 delivery_id/交付任务”的主线要求。
+  - `docs/领域模型/全量领域模型与对象关系说明.md:L709`：落实 4.5 交付与执行聚合，`delivery_record` 需要承载类型、路线、执行者和信任边界快照。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L1723`：落实核心交易闭环中支付后进入交付准备、事件驱动下游联动的要求。
+- 实现要点：
+  - 新增 `order_delivery_task_repository.rs`，实现按 `FILE_STD / FILE_SUB / API_SUB / API_PPU / SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 自动路由的交付任务创建器。
+  - 扩展 `ensure_order_deliverable_and_prepare_delivery` 为带 options 的版本，落库 `creation_source / executor_type / executor_ref_id / responsible_scope / retry_count / manual_takeover` 等信任边界快照。
+  - 在 `FILE_STD lock_funds`、`FILE_SUB establish/renew`、`API_SUB lock_funds` 与支付结果编排推进到 `buyer_locked` 时接入自动创建器。
+  - 仅当可交付门禁满足时创建任务；门禁不满足时跳过自动创建，不再反向打断支付 webhook 编排。
+  - 新增标准化 outbox 事件 `delivery.task.auto_created`，目标主题 `dtp.outbox.domain-events`。
+  - 调整文件交付提交路径，保留 `prepared` 阶段写入的 `delivery_task` 元数据，避免 `committed` 覆盖丢失。
+  - 新增 `dlv029_delivery_task_autocreation_db_smoke`，覆盖 `FILE_STD`、`FILE_SUB` 续订、`API_SUB` webhook 三条主路径。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade008_file_std_state_machine_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade009_file_sub_state_machine_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade010_api_sub_state_machine_db_smoke -- --nocapture`
+  7. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade030_payment_result_orchestrator_db_smoke -- --nocapture`
+  8. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade031_deliverability_gate_db_smoke -- --nocapture`
+  9. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+  10. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv007_api_delivery_db_smoke -- --nocapture`
+  11. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv017_report_delivery_db_smoke -- --nocapture`
+  12. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv029_delivery_task_autocreation_db_smoke -- --nocapture`
+  13. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  14. `./scripts/check-query-compile.sh`
+  15. 启动服务：`APP_PORT=8119 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  16. `psql` 写入临时 `FILE_STD` / `API_SUB` 数据；`curl` 联调 `POST /api/v1/orders/{id}/file-std/transition` 与 `POST /api/v1/payments/webhooks/mock_payment`
+  17. `psql` 回查 `delivery.delivery_record`、`ops.outbox_event`、`audit.audit_event`
+  18. 清理临时业务数据，保留审计 append-only
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过。
+  - `trade008_file_std_state_machine_db_smoke`：通过。
+  - `trade009_file_sub_state_machine_db_smoke`：通过。
+  - `trade010_api_sub_state_machine_db_smoke`：通过。
+  - `trade030_payment_result_orchestrator_db_smoke`：通过；本批修复了支付 webhook 成功推进后，交付任务自动创建不应因合同门禁未满足而反向打断支付结果编排的回归。
+  - `trade031_deliverability_gate_db_smoke`：通过。
+  - `dlv002_file_delivery_commit_db_smoke`：通过。
+  - `dlv007_api_delivery_db_smoke`：通过。
+  - `dlv017_report_delivery_db_smoke`：通过。
+  - `dlv029_delivery_task_autocreation_db_smoke`：通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/file-std/transition` 返回 `HTTP 200`
+    - 订单推进到 `buyer_locked / paid / pending_delivery`
+    - DB 回查新增 `delivery.delivery_record(status=prepared)`，`delivery_type=file_download`，`delivery_route=signed_url`，`executor_type=seller_org`，`creation_source=file_std_lock_funds`
+    - `audit.audit_event` 命中 `trade.order.delivery_task.auto_created = 1`
+    - `ops.outbox_event` 命中 `delivery.task.auto_created = 1`
+  - 真实 API 联调通过：
+    - `POST /api/v1/payments/webhooks/mock_payment` 返回 `HTTP 200`
+    - 回包：`processed_status=processed`，`applied_payment_status=succeeded`
+    - DB 回查新增 `delivery.delivery_record(status=prepared)`，`delivery_type=api_access`，`delivery_route=api_gateway`，`executor_type=buyer_org`，`creation_source=payment_result_orchestrator`，`responsible_scope=buyer_api_binding`
+    - `audit.audit_event` 命中 `trade.order.delivery_task.auto_created = 1`
+    - `ops.outbox_event` 命中 `delivery.task.auto_created = 1`
+  - 临时业务数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `4.4 交付、验真与验收主流程`：订单进入交付阶段后需要先生成 `delivery_id / delivery task`，再进入实际交付或开通。
+  - `4.5 交付与执行聚合`：`delivery_record` 必须作为交付事实源，承接类型、路线、执行者与边界快照。
+  - `15. 核心交易链路设计（完整闭环）`：支付后或锁资后进入交付准备时，需要生成下游可消费的标准化事件，而不是让下游猜测状态。
+- 覆盖的任务清单条目：`DLV-029`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

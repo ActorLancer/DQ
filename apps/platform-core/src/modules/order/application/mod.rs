@@ -1,6 +1,7 @@
 use crate::modules::order::domain::{
     PaymentResultKind, derive_layered_status, derive_target_state,
 };
+use crate::modules::order::repo::auto_create_delivery_task_if_needed;
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, Error, GenericClient, Row};
@@ -105,6 +106,17 @@ pub async fn apply_payment_result_to_order(
         Some(next_order_status),
     )
     .await?;
+    if next_order_status == "buyer_locked" {
+        let _ = auto_create_delivery_task_if_needed(
+            &tx,
+            order_id,
+            "system",
+            request_id,
+            trace_id,
+            "payment_result_orchestrator",
+        )
+        .await?;
+    }
     tx.commit().await.map_err(map_db_error)?;
     Ok(Some(next_order_status.to_string()))
 }

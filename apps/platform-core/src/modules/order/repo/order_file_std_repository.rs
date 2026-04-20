@@ -4,6 +4,7 @@ use crate::modules::delivery::repo::{
 use crate::modules::order::domain::{LayeredOrderStatus, derive_layered_status};
 use crate::modules::order::dto::{FileStdTransitionRequest, FileStdTransitionResponseData};
 use crate::modules::order::repo::apply_authorization_cutoff_if_needed;
+use crate::modules::order::repo::auto_create_delivery_task_if_needed;
 use crate::modules::order::repo::ensure_order_deliverable_and_prepare_delivery;
 use crate::modules::order::repo::ensure_pre_payment_lock_checks;
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
@@ -112,6 +113,17 @@ pub async fn transition_file_std_order(
         .await
         .map_err(map_db_error)?;
     let transitioned_at: String = updated_row.get(0);
+    if normalized_action == "lock_funds" {
+        let _ = auto_create_delivery_task_if_needed(
+            &tx,
+            order_id,
+            actor_role,
+            request_id,
+            trace_id,
+            "file_std_lock_funds",
+        )
+        .await?;
+    }
 
     apply_authorization_cutoff_if_needed(
         &tx,
