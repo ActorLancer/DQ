@@ -568,3 +568,57 @@
 - 状态：计划中
 - 说明：在 `BIL-009` 退款链路基础上补齐赔付接口、DTO、权限、step-up、裁决结果绑定、审计与最小测试；赔付执行需与订单/支付/争议、账单事件、结算摘要和 mock provider/manual settlement 边界保持一致，并通过 DB smoke + 真实 API/DB 联调验证。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-183（待审批）
+- 任务：`BIL-010` 赔付接口 `POST /api/v1/compensations`
+- 状态：待审批
+- 当前任务编号：`BIL-010`
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；`BIL-009` 已完成并本地提交；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `BIL-010` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：复核争议、赔付、账单/结算聚合与对象边界。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认争议裁决后赔付链路、争议关闭与账单/结算联动。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认退款/赔付处理页字段、平台风控结算员角色与操作语义。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：落实 `POST /api/v1/compensations` 的 step-up、幂等键、人工打款高风险动作与审计要求。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：落实“赔付为高风险动作，必须绑定 step-up 与审计包”，并确认 V1 以人工打款/手工赔付对象占位承接。
+  - `packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`：同步新增赔付接口与请求/响应 schema。
+  - 其余 18 份必读冻结文档已按流程复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `POST /api/v1/compensations`，要求 `billing.compensation.execute` 权限、`x-step-up-token/x-step-up-challenge-id`、`x-idempotency-key`、裁决结果绑定与审计齐备。
+  - 新增 `CreateCompensationRequest / CompensationExecutionView` DTO，并将赔付执行结果、provider 回执、幂等重放状态与 metadata 暴露给 API。
+  - 新增 `compensation_repository.rs`：校验订单/支付/币种/赔付模式/争议裁决一致性，调用 live `mock-payment-provider` 的 `/mock/payment/manual-transfer/success`，落库 `billing.compensation_record`、`billing.billing_event`、`ops.outbox_event`，更新 `billing.settlement_record.compensation_amount`、`support.dispute_case` 与 `trade.order_main.dispute_status`。
+  - 新增审计：`billing.compensation.execute`、`billing.event.generated`，并在幂等重放时记录 `billing.compensation.execute.idempotent_replay`。
+  - 收紧退款/赔付执行权限到平台侧高风险角色：`platform_admin / platform_finance_operator / platform_risk_settlement`，不再允许 `tenant_admin` 执行高风险资金操作。
+  - 新增 `bil010_compensation_db_smoke`，覆盖赔付成功、幂等重放、结算赔付金额更新、账单聚合读回与 outbox 产出。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 MOCK_PAYMENT_ADAPTER_MODE=live MOCK_PAYMENT_BASE_URL=http://127.0.0.1:8089 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil010_compensation_db_smoke -- --nocapture`
+  4. 启动 `APP_PORT=8103` 的 `platform-core`，用 `psql` 插入一组临时订单/支付/结算/争议/裁决数据后执行真实 `curl POST /api/v1/compensations` 与同幂等键重放，再执行 `curl GET /api/v1/billing/{order_id}`。
+  5. `psql` 回查 `billing.compensation_record / billing.billing_event / billing.settlement_record / support.dispute_case / ops.outbox_event / audit.audit_event`，随后清理临时业务数据，仅保留审计。
+  6. `cargo test -p platform-core`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过。
+  - `bil010_compensation_db_smoke` 通过。
+  - 真实 API 联调通过：首次赔付 `HTTP 200`，返回 `current_status=succeeded`、`provider_transfer_id=mock-mtf-...`、`step_up_bound=true`；同幂等键重放 `HTTP 200`，`idempotent_replay=true`；`GET /api/v1/billing/{order_id}` 返回 `compensations=1`。
+  - DB 回查通过：`billing.compensation_record.status=succeeded`、`billing.settlement_record.compensation_amount=20.00000000`、`support.dispute_case.status=resolved`、`ops.outbox_event(target_topic=billing.events)=1`、`audit.audit_event` 命中 `billing.compensation.execute=1` 与 `billing.compensation.execute.idempotent_replay=1`。
+  - 临时业务数据已清理，业务表回查为 0；审计记录按 append-only 保留。
+  - `cargo test -p platform-core` 通过：`221 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md`：4.7
+  - `业务流程图-V1-完整版.md`：5.3
+  - `页面说明书-V1-完整版.md`：8.2 / 8.3
+  - `支付域接口协议正式版.md`：赔付接口、step-up、幂等键、人工打款高风险动作
+  - `支付、资金流与轻结算设计.md`：高风险赔付审计与争议/结算联动
+- 覆盖的任务清单条目：`BIL-010`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-184（计划中）
+- 任务：`BIL-011` 人工打款/人工分账占位模型
+- 状态：计划中
+- 说明：在退款/赔付链路基础上补齐人工打款/人工分账占位对象、状态机、审计、事件与最小联调；V1 先支持人工执行但对象、状态、账单摘要与 OpenAPI 必须完整。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

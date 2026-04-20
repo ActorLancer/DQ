@@ -370,6 +370,84 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/compensations:
+    post:
+      summary: Execute compensation
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-token
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-challenge-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-idempotency-key
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key. Compensation execute is a high-risk action and must also carry step-up evidence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompensationRequest"
+      responses:
+        "200":
+          description: Compensation executed or idempotency replayed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompensationExecutionResponse"
+        "400":
+          description: Invalid payload or missing step-up placeholder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order or dispute case not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Compensation conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/payments/intents/{id}:
     get:
       summary: Query payment intent
@@ -1563,6 +1641,101 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/RefundExecution"
+    CreateCompensationRequest:
+      type: object
+      required:
+        [order_id, case_id, decision_code, amount, reason_code]
+      properties:
+        order_id:
+          type: string
+        case_id:
+          type: string
+        decision_code:
+          type: string
+        penalty_code:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency_code:
+          type: string
+          nullable: true
+        reason_code:
+          type: string
+        compensation_mode:
+          type: string
+          nullable: true
+        compensation_template:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    CompensationExecution:
+      type: object
+      required:
+        [
+          compensation_id,
+          order_id,
+          case_id,
+          decision_code,
+          amount,
+          currency_code,
+          current_status,
+          provider_key,
+          step_up_bound,
+          idempotent_replay,
+          updated_at,
+          metadata,
+        ]
+      properties:
+        compensation_id:
+          type: string
+        order_id:
+          type: string
+        case_id:
+          type: string
+        decision_code:
+          type: string
+        penalty_code:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        provider_key:
+          type: string
+        provider_transfer_id:
+          type: string
+          nullable: true
+        provider_status:
+          type: string
+          nullable: true
+        step_up_bound:
+          type: boolean
+        idempotent_replay:
+          type: boolean
+        executed_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    CompensationExecutionResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/CompensationExecution"
     BillingRefund:
       type: object
       required: [refund_id, amount, currency_code, current_status, updated_at]

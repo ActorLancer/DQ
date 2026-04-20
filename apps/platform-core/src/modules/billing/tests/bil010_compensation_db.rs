@@ -22,7 +22,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bil009_refund_db_smoke() {
+    async fn bil010_compensation_db_smoke() {
         if std::env::var("TRADE_DB_SMOKE").ok().as_deref() != Some("1") {
             return;
         }
@@ -38,14 +38,14 @@ mod tests {
             .expect("clock")
             .as_millis()
             .to_string();
-        let buyer_org_id = seed_org(&client, &format!("bil009-buyer-{suffix}")).await;
-        let seller_org_id = seed_org(&client, &format!("bil009-seller-{suffix}")).await;
+        let buyer_org_id = seed_org(&client, &format!("bil010-buyer-{suffix}")).await;
+        let seller_org_id = seed_org(&client, &format!("bil010-seller-{suffix}")).await;
         let order = seed_order(&client, &buyer_org_id, &seller_org_id, &suffix).await;
 
         let app = crate::with_live_test_state(router()).await;
-        let request_id = format!("req-bil009-refund-{suffix}");
-        let idempotency_key = format!("refund:{}", order.case_id);
-        let refund = execute_refund(
+        let request_id = format!("req-bil010-compensation-{suffix}");
+        let idempotency_key = format!("compensation:{}", order.case_id);
+        let compensation = execute_compensation(
             &app,
             &order.order_id,
             &order.case_id,
@@ -55,17 +55,27 @@ mod tests {
             &idempotency_key,
         )
         .await;
-        assert_eq!(refund["data"]["current_status"].as_str(), Some("succeeded"));
         assert_eq!(
-            refund["data"]["decision_code"].as_str(),
-            Some("refund_full")
+            compensation["data"]["current_status"].as_str(),
+            Some("succeeded")
         );
-        assert_eq!(refund["data"]["amount"].as_str(), Some("20.00000000"));
-        assert_eq!(refund["data"]["step_up_bound"].as_bool(), Some(true));
-        assert_eq!(refund["data"]["idempotent_replay"].as_bool(), Some(false));
-        assert!(refund["data"]["provider_refund_id"].as_str().is_some());
+        assert_eq!(
+            compensation["data"]["decision_code"].as_str(),
+            Some("compensation_full")
+        );
+        assert_eq!(compensation["data"]["amount"].as_str(), Some("20.00000000"));
+        assert_eq!(compensation["data"]["step_up_bound"].as_bool(), Some(true));
+        assert_eq!(
+            compensation["data"]["idempotent_replay"].as_bool(),
+            Some(false)
+        );
+        assert!(
+            compensation["data"]["provider_transfer_id"]
+                .as_str()
+                .is_some()
+        );
 
-        let replay = execute_refund(
+        let replay = execute_compensation(
             &app,
             &order.order_id,
             &order.case_id,
@@ -75,45 +85,51 @@ mod tests {
             &idempotency_key,
         )
         .await;
-        assert_eq!(replay["data"]["refund_id"], refund["data"]["refund_id"]);
+        assert_eq!(
+            replay["data"]["compensation_id"],
+            compensation["data"]["compensation_id"]
+        );
         assert_eq!(replay["data"]["idempotent_replay"].as_bool(), Some(true));
 
-        let refund_count: i64 = client
+        let compensation_count: i64 = client
             .query_one(
-                "SELECT COUNT(*)::bigint FROM billing.refund_record WHERE order_id = $1::text::uuid",
+                "SELECT COUNT(*)::bigint FROM billing.compensation_record WHERE order_id = $1::text::uuid",
                 &[&order.order_id],
             )
             .await
-            .expect("count refund")
+            .expect("count compensation")
             .get(0);
-        assert_eq!(refund_count, 1);
+        assert_eq!(compensation_count, 1);
 
-        let settlement_refund_amount: String = client
+        let settlement_compensation_amount: String = client
             .query_one(
-                "SELECT refund_amount::text FROM billing.settlement_record WHERE settlement_id = $1::text::uuid",
+                "SELECT compensation_amount::text FROM billing.settlement_record WHERE settlement_id = $1::text::uuid",
                 &[&order.settlement_id],
             )
             .await
-            .expect("refund amount")
+            .expect("compensation amount")
             .get(0);
-        assert_eq!(settlement_refund_amount, "20.00000000");
+        assert_eq!(settlement_compensation_amount, "20.00000000");
 
         let detail = get_billing_order(
             &app,
             &order.order_id,
             &buyer_org_id,
-            &format!("req-bil009-read-{suffix}"),
+            &format!("req-bil010-read-{suffix}"),
         )
         .await;
-        assert_eq!(detail["data"]["refunds"].as_array().map(Vec::len), Some(1));
         assert_eq!(
-            detail["data"]["settlement_summary"]["refund_adjustment_amount"].as_str(),
+            detail["data"]["compensations"].as_array().map(Vec::len),
+            Some(1)
+        );
+        assert_eq!(
+            detail["data"]["settlement_summary"]["compensation_adjustment_amount"].as_str(),
             Some("20.00000000")
         );
 
         let audit_count: i64 = client
             .query_one(
-                "SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $1 AND action_name = 'billing.refund.execute'",
+                "SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $1 AND action_name = 'billing.compensation.execute'",
                 &[&request_id],
             )
             .await
@@ -121,11 +137,14 @@ mod tests {
             .get(0);
         assert_eq!(audit_count, 1);
 
-        let refund_id = refund["data"]["refund_id"].as_str().unwrap().to_string();
+        let compensation_id = compensation["data"]["compensation_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let outbox_count: i64 = client
             .query_one(
-                "SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_type = 'billing.refund_record' AND aggregate_id = $1::text::uuid",
-                &[&refund_id],
+                "SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_type = 'billing.compensation_record' AND aggregate_id = $1::text::uuid",
+                &[&compensation_id],
             )
             .await
             .expect("query outbox")
@@ -135,7 +154,7 @@ mod tests {
         cleanup(&client, &buyer_org_id, &seller_org_id, &order).await;
     }
 
-    async fn execute_refund(
+    async fn execute_compensation(
         app: &Router,
         order_id: &str,
         case_id: &str,
@@ -149,42 +168,42 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/v1/refunds")
+                    .uri("/api/v1/compensations")
                     .header("x-role", "platform_risk_settlement")
                     .header("x-tenant-id", tenant_id)
                     .header("x-user-id", user_id)
                     .header("x-request-id", request_id)
                     .header("x-idempotency-key", idempotency_key)
-                    .header("x-step-up-token", "bil009-stepup")
+                    .header("x-step-up-token", "bil010-stepup")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         json!({
                             "order_id": order_id,
                             "case_id": case_id,
-                            "decision_code": "refund_full",
+                            "decision_code": "compensation_full",
                             "amount": "20.00000000",
-                            "reason_code": "delivery_failed",
+                            "reason_code": "sla_breach",
                             "metadata": {
-                                "entry": "bil009"
+                                "entry": "bil010"
                             }
                         })
                         .to_string(),
                     ))
-                    .expect("refund request should build"),
+                    .expect("compensation request should build"),
             )
             .await
-            .expect("refund response");
+            .expect("compensation response");
         let status = response.status();
         let bytes = to_bytes(response.into_body(), usize::MAX)
             .await
-            .expect("refund body");
+            .expect("compensation body");
         assert_eq!(
             status,
             StatusCode::OK,
             "{}",
             String::from_utf8_lossy(&bytes)
         );
-        serde_json::from_slice(&bytes).expect("refund json")
+        serde_json::from_slice(&bytes).expect("compensation json")
     }
 
     async fn get_billing_order(
@@ -199,7 +218,7 @@ mod tests {
                 Request::builder()
                     .method("GET")
                     .uri(format!("/api/v1/billing/{order_id}"))
-                    .header("x-role", "tenant_admin")
+                    .header("x-role", "platform_risk_settlement")
                     .header("x-tenant-id", tenant_id)
                     .header("x-request-id", request_id)
                     .body(Body::empty())
@@ -241,9 +260,9 @@ mod tests {
                  RETURNING user_id::text",
                 &[
                     &org_id,
-                    &format!("bil009-user-{suffix}"),
-                    &format!("BIL009 User {suffix}"),
-                    &format!("bil009-{suffix}@example.com"),
+                    &format!("bil010-user-{suffix}"),
+                    &format!("BIL010 User {suffix}"),
+                    &format!("bil010-{suffix}@example.com"),
                 ],
             )
             .await
@@ -265,8 +284,8 @@ mod tests {
                  RETURNING asset_id::text",
                 &[
                     &seller_org_id,
-                    &format!("bil009-asset-{suffix}"),
-                    &format!("bil009 asset {suffix}"),
+                    &format!("bil010-asset-{suffix}"),
+                    &format!("bil010 asset {suffix}"),
                 ],
             )
             .await
@@ -305,9 +324,9 @@ mod tests {
                     &asset_id,
                     &asset_version_id,
                     &seller_org_id,
-                    &format!("bil009-product-{suffix}"),
-                    &format!("bil009 product {suffix}"),
-                    &format!("bil009 summary {suffix}"),
+                    &format!("bil010-product-{suffix}"),
+                    &format!("bil010 product {suffix}"),
+                    &format!("bil010 summary {suffix}"),
                 ],
             )
             .await
@@ -320,7 +339,7 @@ mod tests {
                  ) VALUES (
                    $1::text::uuid, $2, 'FILE_STD', '份', 'one_time', 'manual_accept', 'manual_refund', 'active'
                  ) RETURNING sku_id::text",
-                &[&product_id, &format!("BIL009-SKU-{suffix}")],
+                &[&product_id, &format!("BIL010-SKU-{suffix}")],
             )
             .await
             .expect("insert sku")
@@ -369,13 +388,13 @@ mod tests {
                      'billing_mode', 'one_time',
                      'pricing_mode', 'one_time',
                      'settlement_basis', 'gross_amount',
-                     'refund_mode', 'manual_refund',
-                     'refund_template', 'REFUND_FILE_V1',
+                     'compensation_mode', 'manual_transfer',
+                     'compensation_template', 'COMPENSATION_FILE_V1',
                      'price_currency_code', 'SGD'
                    ),
                    'file_download',
                    '{"delivery_mode":"file_download"}'::jsonb,
-                   'bil009_seed_refund'
+                   'bil010_seed_compensation'
                  ) RETURNING order_id::text"#,
                 &[
                     &product_id,
@@ -398,14 +417,14 @@ mod tests {
                  ) VALUES (
                    $1::text::uuid, 'order_payment', 'mock_payment', NULL, 'organization', $2::text::uuid,
                    'organization', $3::text::uuid, 'SG', 'SG', 'SG', 88.00, 'wallet', 'SGD', 'SGD',
-                   'succeeded', $4, $5, '{"supports_refund":true}'::jsonb, '{}'::jsonb
+                   'succeeded', $4, $5, '{"supports_payout":true}'::jsonb, '{}'::jsonb
                  ) RETURNING payment_intent_id::text"#,
                 &[
                     &order_id,
                     &buyer_org_id,
                     &seller_org_id,
-                    &format!("bil009-pay-req-{suffix}"),
-                    &format!("pay:bil009:{suffix}"),
+                    &format!("bil010-pay-req-{suffix}"),
+                    &format!("pay:bil010:{suffix}"),
                 ],
             )
             .await
@@ -422,7 +441,7 @@ mod tests {
                    $1::text::uuid, 'order_settlement', 'pending', 'manual',
                    88.00000000, 2.00000000, 1.00000000,
                    85.00000000, 0.00000000, 0.00000000,
-                   'bil009_seed', NULL
+                   'bil010_seed', NULL
                  ) RETURNING settlement_id::text",
                 &[&order_id],
             )
@@ -434,7 +453,7 @@ mod tests {
                 "INSERT INTO support.dispute_case (
                    order_id, complainant_type, complainant_id, reason_code, status, decision_code, penalty_code, resolved_at
                  ) VALUES (
-                   $1::text::uuid, 'organization', $2::text::uuid, 'delivery_failed', 'manual_review', 'refund_full', 'seller_warning', now()
+                   $1::text::uuid, 'organization', $2::text::uuid, 'sla_breach', 'manual_review', 'compensation_full', 'seller_warning', now()
                  ) RETURNING case_id::text",
                 &[&order_id, &buyer_org_id],
             )
@@ -446,7 +465,7 @@ mod tests {
                 "INSERT INTO support.decision_record (
                    case_id, decision_type, decision_code, liability_type, decision_text, decided_by
                  ) VALUES (
-                   $1::text::uuid, 'manual_resolution', 'refund_full', 'seller', 'refund approved', $2::text::uuid
+                   $1::text::uuid, 'manual_resolution', 'compensation_full', 'seller', 'compensation approved', $2::text::uuid
                  ) RETURNING decision_id::text",
                 &[&case_id, &buyer_user_id],
             )
@@ -487,7 +506,7 @@ mod tests {
             .await;
         let _ = client
             .execute(
-                "DELETE FROM billing.refund_record WHERE order_id = $1::text::uuid",
+                "DELETE FROM billing.compensation_record WHERE order_id = $1::text::uuid",
                 &[&order.order_id],
             )
             .await;

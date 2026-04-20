@@ -7,6 +7,7 @@ mod bil006_billing_event_db;
 mod bil007_billing_read_db;
 mod bil008_settlement_summary_db;
 mod bil009_refund_db;
+mod bil010_compensation_db;
 
 #[cfg(test)]
 mod tests {
@@ -183,12 +184,32 @@ mod tests {
                 Request::builder()
                     .uri("/api/v1/refunds")
                     .method("POST")
-                    .header("x-role", "tenant_admin")
-                    .header("x-tenant-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header("x-role", "platform_risk_settlement")
                     .header("x-idempotency-key", "refund:test")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","case_id":"1e4f4f8f-26e2-4d0f-89a6-8e57421cbf57","decision_code":"refund_full","amount":"10.00","reason_code":"delivery_failed"}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_compensation_execute_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/compensations")
+                    .method("POST")
+                    .header("x-role", "platform_risk_settlement")
+                    .header("x-idempotency-key", "compensation:test")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","case_id":"1e4f4f8f-26e2-4d0f-89a6-8e57421cbf57","decision_code":"compensation_full","amount":"10.00","reason_code":"sla_breach"}"#,
                     ))
                     .expect("request should build"),
             )

@@ -1,5 +1,6 @@
 use crate::AppState;
 use crate::modules::billing::billing_read_handlers::get_billing_order;
+use crate::modules::billing::compensation_handlers::create_compensation;
 use crate::modules::billing::mock_payment_handlers::{
     simulate_payment_fail, simulate_payment_success, simulate_payment_timeout,
 };
@@ -33,6 +34,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/payments/intents", post(create_payment_intent))
         .route("/api/v1/payments/intents/{id}", get(get_payment_intent))
         .route("/api/v1/billing/{order_id}", get(get_billing_order))
+        .route("/api/v1/compensations", post(create_compensation))
         .route("/api/v1/refunds", post(create_refund))
         .route(
             "/api/v1/payments/intents/{id}/cancel",

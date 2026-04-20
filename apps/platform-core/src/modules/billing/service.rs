@@ -14,6 +14,7 @@ pub enum BillingPermission {
     OrderLock,
     BillingEventRead,
     RefundExecute,
+    CompensationExecute,
     MockPaymentSimulate,
 }
 
@@ -56,12 +57,9 @@ pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
                 | "tenant_admin"
                 | "tenant_operator"
         ),
-        BillingPermission::RefundExecute => matches!(
+        BillingPermission::RefundExecute | BillingPermission::CompensationExecute => matches!(
             role,
-            "platform_admin"
-                | "platform_finance_operator"
-                | "platform_risk_settlement"
-                | "tenant_admin"
+            "platform_admin" | "platform_finance_operator" | "platform_risk_settlement"
         ),
         BillingPermission::PaymentIntentCreate | BillingPermission::PaymentIntentCancel => {
             matches!(
@@ -216,7 +214,18 @@ mod tests {
             "tenant_operator",
             BillingPermission::BillingEventRead
         ));
-        assert!(is_allowed("tenant_admin", BillingPermission::RefundExecute));
+        assert!(is_allowed(
+            "platform_risk_settlement",
+            BillingPermission::RefundExecute
+        ));
+        assert!(is_allowed(
+            "platform_finance_operator",
+            BillingPermission::CompensationExecute
+        ));
+        assert!(!is_allowed(
+            "tenant_admin",
+            BillingPermission::RefundExecute
+        ));
         assert!(!is_allowed(
             "tenant_operator",
             BillingPermission::RefundExecute
