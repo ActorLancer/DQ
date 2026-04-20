@@ -381,6 +381,17 @@ paths:
           required: true
           schema:
             type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+          description: Buyer tenant scope for tenant-side payment lock.
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -389,7 +400,7 @@ paths:
               $ref: "#/components/schemas/LockOrderRequest"
       responses:
         "200":
-          description: Order lock completed
+          description: Order lock completed or idempotency replayed for the same payment intent
           content:
             application/json:
               schema:
@@ -407,7 +418,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Payment intent and order mismatch
+          description: Payment intent and order mismatch, price snapshot mismatch, or illegal lock state
           content:
             application/json:
               schema:

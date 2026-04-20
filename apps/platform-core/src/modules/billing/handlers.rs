@@ -4,8 +4,7 @@ use crate::AppState;
 use crate::modules::billing::db::{map_db_error, set_webhook_processed_status, write_audit_event};
 use crate::modules::billing::domain::PayoutPreference;
 use crate::modules::billing::models::{
-    BillingPolicyView, LockOrderRequest, OrderLockView, PaymentWebhookRequest,
-    PaymentWebhookResultView,
+    BillingPolicyView, PaymentWebhookRequest, PaymentWebhookResultView,
 };
 use crate::modules::billing::service::{
     BillingPermission, is_allowed, list_corridor_policies, list_jurisdictions,
@@ -147,121 +146,6 @@ pub async fn cancel_payment_intent(
 > {
     crate::modules::billing::payment_intent_handlers::cancel_payment_intent(state, headers, id)
         .await
-}
-
-pub async fn lock_order_payment(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(order_id): Path<String>,
-    Json(payload): Json<LockOrderRequest>,
-) -> Result<Json<ApiResponse<OrderLockView>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(&headers, BillingPermission::OrderLock, "order lock")?;
-    let client = state.db.client().map_err(map_db_connect)?;
-
-    let intent_row = client
-        .query_opt(
-            "SELECT payment_intent_id::text, order_id::text, provider_key
-             FROM payment.payment_intent
-             WHERE payment_intent_id = $1::text::uuid",
-            &[&payload.payment_intent_id],
-        )
-        .await
-        .map_err(map_db_error)?;
-
-    let Some(intent_row) = intent_row else {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                code: ErrorCode::BilProviderFailed.as_str().to_string(),
-                message: format!("payment intent not found: {}", payload.payment_intent_id),
-                request_id: header(&headers, "x-request-id"),
-            }),
-        ));
-    };
-
-    let intent_order_id: String = intent_row.get(1);
-    if intent_order_id != order_id {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                code: ErrorCode::BilProviderFailed.as_str().to_string(),
-                message: format!(
-                    "payment intent {} does not belong to order {}",
-                    payload.payment_intent_id, order_id
-                ),
-                request_id: header(&headers, "x-request-id"),
-            }),
-        ));
-    }
-    let provider_key: String = intent_row.get(2);
-
-    let row = client
-        .query_opt(
-            "UPDATE trade.order_main
-             SET
-               payment_status = 'locked',
-               buyer_locked_at = COALESCE(buyer_locked_at, now()),
-               payment_channel_snapshot = payment_channel_snapshot || jsonb_build_object(
-                 'payment_intent_id', $2::text,
-                 'provider_key', $3::text,
-                 'lock_reason', COALESCE($4::text, 'payment_lock'),
-                 'locked_at', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
-               ),
-               updated_at = now()
-             WHERE order_id = $1::text::uuid
-             RETURNING
-               order_id::text,
-               status,
-               payment_status,
-               to_char(buyer_locked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
-            &[
-                &order_id,
-                &payload.payment_intent_id,
-                &provider_key,
-                &payload.lock_reason,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
-
-    let Some(row) = row else {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                code: ErrorCode::BilProviderFailed.as_str().to_string(),
-                message: format!("order not found: {order_id}"),
-                request_id: header(&headers, "x-request-id"),
-            }),
-        ));
-    };
-
-    let view = OrderLockView {
-        order_id: row.get::<_, String>(0),
-        payment_intent_id: payload.payment_intent_id.clone(),
-        order_status: row.get::<_, String>(1),
-        payment_status: row.get::<_, String>(2),
-        buyer_locked_at: row.get::<_, String>(3),
-    };
-    write_audit_event(
-        &client,
-        "trade",
-        "order",
-        &view.order_id,
-        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
-        "order.payment.lock",
-        "success",
-        header(&headers, "x-request-id").as_deref(),
-        header(&headers, "x-trace-id").as_deref(),
-    )
-    .await?;
-    info!(
-        action = "order.payment.lock",
-        order_id = %view.order_id,
-        payment_intent_id = %view.payment_intent_id,
-        payment_status = %view.payment_status,
-        "order lock operation completed"
-    );
-    Ok(ApiResponse::ok(view))
 }
 
 pub async fn handle_payment_webhook(

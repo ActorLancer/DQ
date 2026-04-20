@@ -1,5 +1,6 @@
 use crate::AppState;
-use crate::modules::billing::handlers::{handle_payment_webhook, lock_order_payment};
+use crate::modules::billing::handlers::handle_payment_webhook;
+use crate::modules::billing::order_lock_handlers::lock_order_payment;
 use crate::modules::billing::payment_intent_handlers::{
     cancel_payment_intent, create_payment_intent, get_payment_intent,
 };

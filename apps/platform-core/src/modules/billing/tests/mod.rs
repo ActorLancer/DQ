@@ -1,5 +1,6 @@
 mod bil001_payment_policy_db;
 mod bil002_payment_intent_db;
+mod bil003_order_lock_db;
 
 #[cfg(test)]
 mod tests {

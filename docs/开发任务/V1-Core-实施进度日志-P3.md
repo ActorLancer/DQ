@@ -141,3 +141,55 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-176（计划中）
+- 任务：BIL-003 订单锁资 `POST /api/v1/orders/{id}/lock`
+- 状态：计划中
+- 说明：基于冻结文档对历史 `order lock` 实现做一致性复核与补齐，收敛租户范围、订单/支付意图一致性、价格快照一致性、支付状态合法性、幂等重放与审计；保持与后续 mock provider / webhook 主链路兼容。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-176（待审批）
+- 任务：`BIL-003` 订单锁资 `POST /api/v1/orders/{id}/lock`
+- 状态：待审批
+- 当前任务编号：`BIL-003`
+- 前置依赖核对结果：`BIL-002` 已完成并本地提交；`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：定位 `BIL-003` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：复核支付编排层与“支付意图 -> 锁资 -> webhook -> 订单推进”的分层边界。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：落实幂等与一致性约束，确认锁资需校验订单归属、价格一致性和支付状态。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对 `POST /api/v1/orders/{id}/lock` 的权限 `billing.deposit.lock`、作用域 `tenant + order`、额外校验“订单归属、价格一致性、支付状态、审计”。
+  - `docs/权限设计/接口权限校验清单.md`、`packages/openapi/billing.yaml`：同步校验租户作用域与返回契约。
+  - 其余必读冻结文档已按流程复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `billing/repo/order_lock_repository.rs`，将锁资逻辑从旧 `handlers.rs` 中拆出，避免继续向单文件堆叠。
+  - `POST /api/v1/orders/{id}/lock` 现在在事务内完成：`SELECT ... FOR UPDATE` 锁定订单和支付意图，校验租户范围、订单/支付意图归属、payer/payee 一致性、金额/币种一致性以及可锁定状态。
+  - 对已绑定同一 `payment_intent_id` 的重复锁资返回幂等回放；对绑定其他意图或跨订单意图返回 `409`。
+  - 锁资成功时写入 `payment_channel_snapshot` 的 `payment_intent_id/provider_key/provider_account_id/provider_intent_no/channel_reference_no/payment_amount/currency_code/lock_reason/locked_at`，并将订单 `payment_status` 置为 `locked`。
+  - 新增 `billing/order_lock_handlers.rs`，补齐 `order.payment.lock` 与 `order.payment.lock.idempotent_replay` 审计。
+  - 新增 `bil003_order_lock_db_smoke`；`packages/openapi/billing.yaml` 已补充 `x-tenant-id/x-request-id` 与冲突说明。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil003_order_lock_db_smoke -- --nocapture`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动 `APP_PORT=8097` 的 `platform-core`，插入临时订单/支付意图数据后执行真实 `curl`：成功锁资、同意图重复锁资、跨订单意图锁资；随后 `psql` 回查 `trade.order_main` 与 `audit.audit_event`，再清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `208 passed, 0 failed, 1 ignored`。
+  - `bil003_order_lock_db_smoke` 通过。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - 首次锁资 `HTTP 200`，返回 `payment_status=locked`
+    - 同一 `payment_intent_id` 重放 `HTTP 200`
+    - 跨订单 `payment_intent_id` 锁资 `HTTP 409`，消息 `payment intent does not belong to order`
+  - DB 回查通过：`trade.order_main.payment_status=locked`，`payment_channel_snapshot.payment_intent_id/provider_key/lock_reason` 与请求一致。
+  - 审计回查通过：`order.payment.lock=1`、`order.payment.lock.idempotent_replay=1`。
+  - 临时业务数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md`：4.2、8.1、9.1
+  - `支付域接口协议正式版.md`：6.1、6.2、6.3
+  - `数据交易平台-全集成基线-V1.md`：3.4、9.1、`POST /api/v1/orders/{id}/lock` 对应权限/作用域/校验条目
+- 覆盖的任务清单条目：`BIL-003`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
