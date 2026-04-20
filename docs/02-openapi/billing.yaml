@@ -932,6 +932,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/billing/{order_id}/bridge-events/process:
+    post:
+      summary: Materialize pending billing bridge events for one order
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: order_id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-trace-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingBridgeProcessRequest"
+      responses:
+        "200":
+          description: Pending bridge events processed or ignored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingBridgeProcessResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/payments/intents/{id}/cancel:
     post:
       summary: Cancel payment intent
@@ -1379,6 +1429,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/BillingOrderDetail"
+    ApiEnvelopeBillingBridgeProcess:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/BillingBridgeProcess"
     ApiEnvelopeOrderLock:
       type: object
       required: [success, data]
@@ -3143,6 +3201,49 @@ components:
         applied_payment_status:
           type: string
           nullable: true
+    BillingBridgeProcessRequest:
+      type: object
+      properties:
+        outbox_event_id:
+          type: string
+          nullable: true
+          description: Optional single outbox event id. If omitted, all pending bridge events for the order are processed.
+    BillingBridgeProcess:
+      type: object
+      required:
+        [
+          order_id,
+          processed_count,
+          ignored_count,
+          replayed_count,
+          processed_outbox_event_ids,
+          processed_billing_event_ids,
+          ignored_outbox_event_ids,
+        ]
+      properties:
+        order_id:
+          type: string
+        processed_count:
+          type: integer
+          format: int32
+        ignored_count:
+          type: integer
+          format: int32
+        replayed_count:
+          type: integer
+          format: int32
+        processed_outbox_event_ids:
+          type: array
+          items:
+            type: string
+        processed_billing_event_ids:
+          type: array
+          items:
+            type: string
+        ignored_outbox_event_ids:
+          type: array
+          items:
+            type: string
     MockPaymentSimulationRequest:
       type: object
       properties:
@@ -3229,6 +3330,9 @@ components:
     BillingOrderDetailResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeBillingOrderDetail"
+    BillingBridgeProcessResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBillingBridgeProcess"
     OrderLockResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeOrderLock"

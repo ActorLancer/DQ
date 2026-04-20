@@ -1423,3 +1423,47 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-197（计划中）
+- 任务：`BIL-024` 实现交付/执行/验收到 BillingEvent 的桥接器：对 `FILE_STD/FILE_SUB/SHARE_RO/API_SUB/API_PPU/QRY_LITE/SBX_STD/RPT_STD` 分别把“支付锁定、周期出账、调用量上报、执行成功、验收通过、退款、赔付、人工结算”映射为标准 BillingEvent
+- 状态：计划中
+- 说明：在现有 `billing.trigger.bridge` outbox 基础上补齐 Billing 侧物化处理器，负责把 Delivery/Trade 写出的桥接事件统一转换为标准 `billing.billing_event`，并更新 `settlement` 与审计状态，避免各交付仓储各自拼装计费事件。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-197（待审批）
+- 任务：`BIL-024` 实现交付/执行/验收到 BillingEvent 的桥接器：对 `FILE_STD/FILE_SUB/SHARE_RO/API_SUB/API_PPU/QRY_LITE/SBX_STD/RPT_STD` 分别把“支付锁定、周期出账、调用量上报、执行成功、验收通过、退款、赔付、人工结算”映射为标准 BillingEvent
+- 状态：待审批
+- 实现摘要：
+  - 新增 `billing_bridge_repository` 与 `POST /api/v1/billing/{order_id}/bridge-events/process`，把 `ops.outbox_event(event_type=billing.trigger.bridge)` 统一物化为标准 `billing.billing_event`，并同步更新 `billing.settlement_record`、`ops.outbox_event.status` 与审计。
+  - 物化规则按 8 个标准 SKU 分支冻结：`FILE_STD / FILE_SUB / RPT_STD` 在 `acceptance_passed` 后入账；`QRY_LITE / SHARE_RO` 在 `delivery_committed` 后入账；`SBX_STD` 在 `delivery_committed` 后生成周期账单；`API_SUB / API_PPU` 桥接事件保留但在 Billing 侧显式忽略，继续由既有周期/用量入口负责。
+  - 物化元数据统一写入 `bridge_outbox_event_id / bridge_order_id / bridge_trigger_stage / bridge_trigger_action / bridge_delivery_branch / billing_trigger_matrix / bridge_payload_snapshot`，并用 `billing_bridge:{outbox_event_id}:{sku_type}:{trigger_stage}:{trigger_action}` 作为幂等键，避免重复桥接造成重复扣费。
+  - 新增 `bil024_billing_trigger_bridge_db_smoke`，覆盖 8 SKU 的 processed/ignored 分支；同步补齐 `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml` 的新路径、请求和响应 schema。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil024_billing_trigger_bridge_db_smoke -- --nocapture`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：复用 `APP_PORT=8122` 的 `platform-core`，插入临时 `FILE_STD` 已交付订单后执行：
+    - `POST /api/v1/orders/{id}/accept`
+    - `POST /api/v1/billing/{order_id}/bridge-events/process`
+    - `GET /api/v1/billing/{order_id}`
+    - `psql` 回查 `ops.outbox_event / billing.billing_event / billing.settlement_record / audit.audit_event`
+- 验证结果：
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`245 passed, 0 failed, 1 ignored`。
+  - `bil024_billing_trigger_bridge_db_smoke` 通过，覆盖 8 SKU 的桥接物化/忽略分支。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过，`.sqlx/` 已刷新。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/accept` 返回 `200`，订单推进到 `accepted / accepted`
+    - `POST /api/v1/billing/{order_id}/bridge-events/process` 返回 `200`，`processed_count=1 ignored_count=0 replayed_count=0`
+    - `GET /api/v1/billing/{order_id}` 返回 `200`，首条 `billing_events[0].event_type=one_time_charge`
+  - DB 回查通过：`ops.outbox_event.status=processed`、`billing.billing_event=1`、`billing.settlement_record=1`、`audit.audit_event(action_name=billing.bridge.process)=1`、`audit.audit_event(action_name=billing.order.read)=1`
+  - 临时业务数据已清理，回查 `trade.order_main=0`、`delivery.delivery_record=0`、`core.organization=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql` `billing.billing_event / billing.settlement_record / ops.outbox_event`
+  - `支付、资金流与轻结算设计.md` `7`
+- 覆盖的任务清单条目：`BIL-024`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

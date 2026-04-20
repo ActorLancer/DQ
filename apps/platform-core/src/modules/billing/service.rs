@@ -12,6 +12,7 @@ pub enum BillingPermission {
     PaymentIntentCreate,
     PaymentIntentCancel,
     PaymentIntentProcessResult,
+    BillingBridgeProcess,
     OrderLock,
     BillingEventRead,
     PayoutRead,
@@ -103,6 +104,10 @@ pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
                 | "platform_finance_operator"
                 | "platform_risk_settlement"
                 | "tenant_admin"
+        ),
+        BillingPermission::BillingBridgeProcess => matches!(
+            role,
+            "platform_admin" | "platform_finance_operator" | "platform_risk_settlement"
         ),
         BillingPermission::OrderLock => matches!(
             role,

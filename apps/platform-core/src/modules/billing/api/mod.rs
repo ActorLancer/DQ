@@ -1,4 +1,5 @@
 use crate::AppState;
+use crate::modules::billing::billing_bridge_handlers::process_billing_bridge_for_order_api;
 use crate::modules::billing::billing_read_handlers::get_billing_order;
 use crate::modules::billing::compensation_handlers::create_compensation;
 use crate::modules::billing::dispute_handlers::{
@@ -51,6 +52,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/cases/{id}/evidence", post(upload_dispute_evidence))
         .route("/api/v1/cases/{id}/resolve", post(resolve_dispute_case))
         .route("/api/v1/billing/{order_id}", get(get_billing_order))
+        .route(
+            "/api/v1/billing/{order_id}/bridge-events/process",
+            post(process_billing_bridge_for_order_api),
+        )
         .route("/api/v1/payouts/manual", post(create_manual_payout))
         .route("/api/v1/compensations", post(create_compensation))
         .route("/api/v1/refunds", post(create_refund))

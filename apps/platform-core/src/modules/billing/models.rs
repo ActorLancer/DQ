@@ -618,6 +618,22 @@ pub struct PaymentPolledResultView {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+pub struct BillingBridgeProcessRequest {
+    pub outbox_event_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingBridgeProcessView {
+    pub order_id: String,
+    pub processed_count: u32,
+    pub ignored_count: u32,
+    pub replayed_count: u32,
+    pub processed_outbox_event_ids: Vec<String>,
+    pub processed_billing_event_ids: Vec<String>,
+    pub ignored_outbox_event_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct MockPaymentSimulationRequest {
     pub delay_seconds: Option<i32>,
     pub duplicate_webhook: Option<bool>,

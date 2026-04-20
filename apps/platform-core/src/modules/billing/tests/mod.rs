@@ -18,6 +18,7 @@ mod bil017_api_sku_billing_basis_db;
 mod bil018_default_sku_billing_basis_db;
 mod bil019_payment_billing_integration_db;
 mod bil022_payment_result_processor_db;
+mod bil024_billing_trigger_bridge_db;
 
 #[cfg(test)]
 mod tests {
