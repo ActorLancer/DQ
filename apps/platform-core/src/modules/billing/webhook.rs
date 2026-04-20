@@ -69,6 +69,15 @@ pub(crate) fn map_webhook_target_status(
     None
 }
 
+pub(crate) fn map_provider_result_status(provider_status: &str) -> Option<&'static str> {
+    match provider_status.trim().to_ascii_lowercase().as_str() {
+        "succeeded" | "success" => Some("succeeded"),
+        "failed" | "fail" => Some("failed"),
+        "timeout" | "expired" => Some("expired"),
+        _ => None,
+    }
+}
+
 pub(crate) fn payment_status_rank(status: &str) -> i32 {
     match status {
         "created" => 0,

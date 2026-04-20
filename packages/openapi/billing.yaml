@@ -543,6 +543,69 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaymentIntentDetailResponse"
+  /api/v1/payments/intents/{id}/poll-result:
+    post:
+      summary: Process payment polled result
+      description: Feeds a provider polling result into the shared payment result processor. The processor is idempotent across polling and webhook sources and ignores out-of-order regressions such as success-then-fail or timeout-then-success.
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+          description: Required for tenant-scoped roles when processing a payment result for a tenant-owned payment intent.
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-trace-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentPolledResultRequest"
+      responses:
+        "200":
+          description: Polled result accepted and processed (or safely ignored)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentPolledResultResponse"
+        "400":
+          description: Invalid payload or unsupported provider_status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden or tenant scope mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Payment intent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/payments/reconciliation/import:
     post:
       summary: Import reconciliation statement
@@ -1332,6 +1395,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/PaymentWebhookResult"
+    ApiEnvelopePaymentPolledResult:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/PaymentPolledResult"
     ApiEnvelopeMockPaymentSimulation:
       type: object
       required: [success, data]
@@ -3013,6 +3084,65 @@ components:
         applied_payment_status:
           type: string
           nullable: true
+    PaymentPolledResultRequest:
+      type: object
+      required: [provider_result_id, provider_status]
+      properties:
+        provider_result_id:
+          type: string
+        provider_transaction_no:
+          type: string
+          nullable: true
+        transaction_amount:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+        provider_status:
+          type: string
+          description: Provider status normalized by the billing module. Supported values are succeeded, failed, timeout, and processing aliases that map to the shared processor.
+        occurred_at:
+          type: string
+          nullable: true
+          description: RFC3339 timestamp. If omitted, occurred_at_ms or current server time is used.
+        occurred_at_ms:
+          type: integer
+          format: int64
+          nullable: true
+        raw_payload:
+          type: object
+          additionalProperties: true
+    PaymentPolledResult:
+      type: object
+      required:
+        [
+          payment_intent_id,
+          provider_key,
+          provider_result_id,
+          processed_status,
+          duplicate,
+          out_of_order_ignored,
+        ]
+      properties:
+        payment_intent_id:
+          type: string
+        provider_key:
+          type: string
+        provider_result_id:
+          type: string
+        processed_status:
+          type: string
+        duplicate:
+          type: boolean
+        out_of_order_ignored:
+          type: boolean
+        payment_transaction_id:
+          type: string
+          nullable: true
+        applied_payment_status:
+          type: string
+          nullable: true
     MockPaymentSimulationRequest:
       type: object
       properties:
@@ -3105,6 +3235,9 @@ components:
     PaymentWebhookResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopePaymentWebhookResult"
+    PaymentPolledResultResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopePaymentPolledResult"
     MockPaymentSimulationResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeMockPaymentSimulation"

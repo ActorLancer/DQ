@@ -592,6 +592,31 @@ pub struct PaymentWebhookResultView {
     pub applied_payment_status: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PaymentPolledResultRequest {
+    pub provider_result_id: String,
+    pub provider_transaction_no: Option<String>,
+    pub transaction_amount: Option<String>,
+    pub currency_code: Option<String>,
+    pub provider_status: String,
+    pub occurred_at: Option<String>,
+    pub occurred_at_ms: Option<i64>,
+    #[serde(default, alias = "payload")]
+    pub raw_payload: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PaymentPolledResultView {
+    pub payment_intent_id: String,
+    pub provider_key: String,
+    pub provider_result_id: String,
+    pub processed_status: String,
+    pub duplicate: bool,
+    pub out_of_order_ignored: bool,
+    pub payment_transaction_id: Option<String>,
+    pub applied_payment_status: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct MockPaymentSimulationRequest {
     pub delay_seconds: Option<i32>,

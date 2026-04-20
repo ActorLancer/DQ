@@ -2,22 +2,19 @@ use crate::AppState;
 use crate::modules::billing::db::{map_db_error, set_webhook_processed_status, write_audit_event};
 use crate::modules::billing::handlers::{header, map_db_connect};
 use crate::modules::billing::models::{PaymentWebhookRequest, PaymentWebhookResultView};
-use crate::modules::billing::repo::billing_event_repository::{
-    RecordBillingEventRequest, infer_payment_success_event_type, record_billing_event,
+use crate::modules::billing::payment_result_processor::{
+    PaymentResultSourceKind, ProcessPaymentResultRequest, process_payment_result,
 };
 use crate::modules::billing::webhook::{
-    is_replay_window_valid, map_webhook_target_status, map_webhook_transaction_shape, now_utc_ms,
-    parse_webhook_timestamp_ms, payment_status_rank, verify_webhook_signature_placeholder,
+    is_replay_window_valid, map_webhook_target_status, now_utc_ms, parse_webhook_timestamp_ms,
+    verify_webhook_signature_placeholder,
 };
-use crate::modules::order::application::apply_payment_result_to_order;
-use crate::modules::order::domain::PaymentResultKind;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use db::GenericClient;
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse};
-use serde_json::json;
 
 pub async fn handle_payment_webhook(
     State(state): State<AppState>,
@@ -230,23 +227,16 @@ pub async fn handle_payment_webhook(
         }));
     };
 
-    let intent_row = client
+    let intent_exists = client
         .query_opt(
-            "SELECT
-               i.status,
-               i.order_id::text,
-               i.metadata ->> 'webhook_last_occurred_at_ms',
-               i.amount::text,
-               i.currency_code,
-               COALESCE(o.price_snapshot_json, '{}'::jsonb)
-             FROM payment.payment_intent i
-             LEFT JOIN trade.order_main o ON o.order_id = i.order_id
-             WHERE i.payment_intent_id = $1::text::uuid",
+            "SELECT payment_intent_id::text
+             FROM payment.payment_intent
+             WHERE payment_intent_id = $1::text::uuid",
             &[&payment_intent_id],
         )
         .await
         .map_err(map_db_error)?;
-    let Some(intent_row) = intent_row else {
+    if intent_exists.is_none() {
         set_webhook_processed_status(&client, &webhook_event_id, "intent_not_found").await?;
         write_audit_event(
             &client,
@@ -272,51 +262,11 @@ pub async fn handle_payment_webhook(
             payment_transaction_id: None,
             applied_payment_status: None,
         }));
-    };
-
-    let current_status: String = intent_row.get(0);
-    let order_id: String = intent_row.get(1);
-    let last_event_occurred_at_ms = intent_row
-        .get::<_, Option<String>>(2)
-        .and_then(|v| v.parse::<i64>().ok());
-    let fallback_amount: String = intent_row.get(3);
-    let fallback_currency: String = intent_row.get(4);
-    let price_snapshot_json: serde_json::Value = intent_row.get(5);
-    let incoming_occurred_at_ms = occurred_at_ms.unwrap_or_else(now_utc_ms);
-    if last_event_occurred_at_ms
-        .map(|last| incoming_occurred_at_ms < last)
-        .unwrap_or(false)
-    {
-        set_webhook_processed_status(&client, &webhook_event_id, "out_of_order_ignored").await?;
-        write_audit_event(
-            &client,
-            "payment",
-            "payment_intent",
-            &payment_intent_id,
-            "provider_callback",
-            "payment.webhook.out_of_order_ignored",
-            "ignored",
-            request_id.as_deref(),
-            trace_id.as_deref(),
-        )
-        .await?;
-        return Ok(ApiResponse::ok(PaymentWebhookResultView {
-            webhook_event_id,
-            provider_key: provider,
-            provider_event_id: payload.provider_event_id,
-            processed_status: "out_of_order_ignored".to_string(),
-            duplicate: false,
-            signature_verified: true,
-            out_of_order_ignored: true,
-            payment_intent_id: Some(payment_intent_id),
-            payment_transaction_id: None,
-            applied_payment_status: None,
-        }));
     }
 
-    let target_status =
-        map_webhook_target_status(&payload.event_type, payload.provider_status.as_deref());
-    let Some(target_status) = target_status else {
+    let Some(target_status) =
+        map_webhook_target_status(&payload.event_type, payload.provider_status.as_deref())
+    else {
         set_webhook_processed_status(&client, &webhook_event_id, "processed_noop").await?;
         write_audit_event(
             &client,
@@ -344,45 +294,27 @@ pub async fn handle_payment_webhook(
         }));
     };
 
-    if payment_status_rank(target_status) < payment_status_rank(&current_status) {
-        set_webhook_processed_status(&client, &webhook_event_id, "out_of_order_ignored").await?;
-        write_audit_event(
-            &client,
-            "payment",
-            "payment_intent",
-            &payment_intent_id,
-            "provider_callback",
-            "payment.webhook.out_of_order_ignored",
-            "ignored",
-            request_id.as_deref(),
-            trace_id.as_deref(),
-        )
-        .await?;
-        return Ok(ApiResponse::ok(PaymentWebhookResultView {
-            webhook_event_id,
-            provider_key: provider,
-            provider_event_id: payload.provider_event_id,
-            processed_status: "out_of_order_ignored".to_string(),
-            duplicate: false,
-            signature_verified: true,
-            out_of_order_ignored: true,
-            payment_intent_id: Some(payment_intent_id),
-            payment_transaction_id: None,
-            applied_payment_status: None,
-        }));
-    }
-
-    let payment_transaction_id = insert_payment_transaction(
-        &client,
-        &payment_intent_id,
-        &payload,
-        target_status,
-        &fallback_amount,
-        &fallback_currency,
-        incoming_occurred_at_ms,
+    let outcome = process_payment_result(
+        &mut client,
+        ProcessPaymentResultRequest {
+            source_kind: PaymentResultSourceKind::Webhook,
+            provider_key: provider.clone(),
+            reference_id: payload.provider_event_id.clone(),
+            payment_intent_id: payment_intent_id.clone(),
+            provider_transaction_no: payload.provider_transaction_no.clone(),
+            transaction_amount: payload.transaction_amount.clone(),
+            currency_code: payload.currency_code.clone(),
+            target_status: target_status.to_string(),
+            occurred_at: payload.occurred_at.clone(),
+            occurred_at_ms: occurred_at_ms.unwrap_or_else(now_utc_ms),
+            raw_payload: payload.raw_payload,
+        },
+        request_id.as_deref(),
+        trace_id.as_deref(),
     )
     .await?;
-    if let Some(payment_transaction_id) = payment_transaction_id.as_deref() {
+
+    if let Some(payment_transaction_id) = outcome.payment_transaction_id.as_deref() {
         client
             .execute(
                 "UPDATE payment.payment_webhook_event
@@ -393,103 +325,19 @@ pub async fn handle_payment_webhook(
             .await
             .map_err(map_db_error)?;
     }
-
-    let row = client
-        .query_one(
-            "UPDATE payment.payment_intent
-             SET
-               status = $2,
-               metadata = metadata || jsonb_build_object(
-                 'webhook_last_event_id', $3::text,
-                 'webhook_last_occurred_at_ms', $4::bigint,
-                 'webhook_last_event_type', $5::text,
-                 'webhook_last_provider_status', COALESCE($6::text, '')
-               ),
-               updated_at = now()
-             WHERE payment_intent_id = $1::text::uuid
-             RETURNING status",
-            &[
-                &payment_intent_id,
-                &target_status,
-                &payload.provider_event_id,
-                &incoming_occurred_at_ms,
-                &payload.event_type,
-                &payload.provider_status,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
-    let applied_status: String = row.get(0);
-    let order_result_kind = match target_status {
-        "succeeded" => PaymentResultKind::Succeeded,
-        "failed" => PaymentResultKind::Failed,
-        "expired" => PaymentResultKind::TimedOut,
-        _ => PaymentResultKind::Failed,
-    };
-    let _ = apply_payment_result_to_order(
-        &mut client,
-        &order_id,
-        order_result_kind,
-        request_id.as_deref(),
-        trace_id.as_deref(),
-    )
-    .await?;
-    if target_status == "succeeded" {
-        if let Some(event_type) = infer_payment_success_event_type(&price_snapshot_json) {
-            let _ = record_billing_event(
-                &client,
-                &RecordBillingEventRequest {
-                    order_id: order_id.clone(),
-                    event_type: event_type.to_string(),
-                    event_source: "payment_webhook".to_string(),
-                    amount: Some(fallback_amount.clone()),
-                    currency_code: Some(fallback_currency.clone()),
-                    units: Some("1".to_string()),
-                    occurred_at: payload.occurred_at.clone(),
-                    metadata: json!({
-                        "idempotency_key": format!("billing_event:payment_webhook:{}:{}", payment_intent_id, payload.provider_event_id),
-                        "payment_intent_id": payment_intent_id,
-                        "provider_event_id": payload.provider_event_id,
-                        "provider_transaction_no": payload.provider_transaction_no,
-                        "provider_status": payload.provider_status,
-                        "webhook_event_id": webhook_event_id,
-                        "raw_payload": payload.raw_payload
-                    }),
-                },
-                None,
-                "provider_callback",
-                "billing.event.generated",
-                request_id.as_deref(),
-                trace_id.as_deref(),
-            )
-            .await?;
-        }
-    }
-    set_webhook_processed_status(&client, &webhook_event_id, "processed").await?;
-    write_audit_event(
-        &client,
-        "payment",
-        "payment_intent",
-        &payment_intent_id,
-        "provider_callback",
-        "payment.webhook.processed",
-        "success",
-        request_id.as_deref(),
-        trace_id.as_deref(),
-    )
-    .await?;
+    set_webhook_processed_status(&client, &webhook_event_id, &outcome.processed_status).await?;
 
     Ok(ApiResponse::ok(PaymentWebhookResultView {
         webhook_event_id,
         provider_key: provider,
         provider_event_id: payload.provider_event_id,
-        processed_status: "processed".to_string(),
-        duplicate: false,
+        processed_status: outcome.processed_status,
+        duplicate: outcome.duplicate,
         signature_verified: true,
-        out_of_order_ignored: false,
+        out_of_order_ignored: outcome.out_of_order_ignored,
         payment_intent_id: Some(payment_intent_id),
-        payment_transaction_id,
-        applied_payment_status: Some(applied_status),
+        payment_transaction_id: outcome.payment_transaction_id,
+        applied_payment_status: outcome.applied_payment_status,
     }))
 }
 
@@ -508,97 +356,6 @@ async fn normalize_occured_at_text_ms(
         )
         .await
         .map_err(|_| bad_request("occurred_at must be a valid RFC3339 timestamp", request_id))?;
-    Ok(Some(row.get(0)))
-}
-
-async fn insert_payment_transaction(
-    client: &impl GenericClient,
-    payment_intent_id: &str,
-    payload: &PaymentWebhookRequest,
-    target_status: &str,
-    fallback_amount: &str,
-    fallback_currency: &str,
-    occurred_at_ms: i64,
-) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
-    let Some((transaction_type, direction)) = map_webhook_transaction_shape(&payload.event_type)
-    else {
-        return Ok(None);
-    };
-    let amount = payload
-        .transaction_amount
-        .as_deref()
-        .unwrap_or(fallback_amount);
-    let currency_code = payload
-        .currency_code
-        .as_deref()
-        .unwrap_or(fallback_currency);
-    let provider_transaction_no = payload
-        .provider_transaction_no
-        .as_deref()
-        .unwrap_or(payload.provider_event_id.as_str());
-    if let Some(existing) = client
-        .query_opt(
-            "SELECT payment_transaction_id::text
-             FROM payment.payment_transaction
-             WHERE payment_intent_id = $1::text::uuid
-               AND transaction_type = $2
-               AND provider_transaction_no = $3
-             ORDER BY occurred_at DESC, payment_transaction_id DESC
-             LIMIT 1",
-            &[
-                &payment_intent_id,
-                &transaction_type,
-                &provider_transaction_no,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?
-    {
-        return Ok(Some(existing.get(0)));
-    }
-
-    let row = client
-        .query_one(
-            "INSERT INTO payment.payment_transaction (
-               payment_intent_id,
-               transaction_type,
-               direction,
-               provider_transaction_no,
-               provider_status,
-               amount,
-               currency_code,
-               channel_fee_amount,
-               settled_amount,
-               occurred_at,
-               raw_payload
-             ) VALUES (
-               $1::text::uuid,
-               $2,
-               $3,
-               $4,
-               $5,
-               $6::text::numeric,
-               $7,
-               0,
-               CASE WHEN $5 = 'succeeded' THEN $6::text::numeric ELSE 0 END,
-               to_timestamp($8::double precision / 1000.0),
-               $9::jsonb
-             )
-             RETURNING payment_transaction_id::text",
-            &[
-                &payment_intent_id,
-                &transaction_type,
-                &direction,
-                &provider_transaction_no,
-                &target_status,
-                &amount,
-                &currency_code,
-                &occurred_at_ms,
-                &payload.raw_payload,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
     Ok(Some(row.get(0)))
 }
 

@@ -11,6 +11,8 @@ pub mod mock_payment_handlers;
 pub mod models;
 pub mod order_lock_handlers;
 pub mod payment_intent_handlers;
+pub mod payment_result_handlers;
+pub mod payment_result_processor;
 pub mod payout_handlers;
 pub mod policy_handlers;
 pub mod reconciliation_handlers;

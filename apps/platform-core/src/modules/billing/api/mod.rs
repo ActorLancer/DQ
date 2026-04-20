@@ -11,6 +11,7 @@ use crate::modules::billing::order_lock_handlers::lock_order_payment;
 use crate::modules::billing::payment_intent_handlers::{
     cancel_payment_intent, create_payment_intent, get_payment_intent,
 };
+use crate::modules::billing::payment_result_handlers::process_payment_polled_result;
 use crate::modules::billing::payout_handlers::create_manual_payout;
 use crate::modules::billing::policy_handlers::{
     create_payment_corridor, create_payment_jurisdiction, create_payout_preference,
@@ -38,6 +39,10 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/v1/payments/intents", post(create_payment_intent))
         .route("/api/v1/payments/intents/{id}", get(get_payment_intent))
+        .route(
+            "/api/v1/payments/intents/{id}/poll-result",
+            post(process_payment_polled_result),
+        )
         .route(
             "/api/v1/payments/reconciliation/import",
             post(import_reconciliation_statement),

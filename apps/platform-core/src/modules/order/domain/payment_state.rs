@@ -5,6 +5,14 @@ pub enum PaymentResultKind {
     TimedOut,
 }
 
+pub fn payment_status_for_result(result: PaymentResultKind) -> &'static str {
+    match result {
+        PaymentResultKind::Succeeded => "paid",
+        PaymentResultKind::Failed => "failed",
+        PaymentResultKind::TimedOut => "expired",
+    }
+}
+
 pub fn is_payment_mutable_order_status(status: &str) -> bool {
     matches!(status, "created" | "contract_effective")
 }
@@ -87,5 +95,21 @@ mod tests {
     fn sku_specific_fulfillment_state_ignores_payment_callback() {
         let target = derive_target_state("api_bound", PaymentResultKind::TimedOut);
         assert_eq!(target, None);
+    }
+
+    #[test]
+    fn maps_payment_result_to_layered_payment_status() {
+        assert_eq!(
+            payment_status_for_result(PaymentResultKind::Succeeded),
+            "paid"
+        );
+        assert_eq!(
+            payment_status_for_result(PaymentResultKind::Failed),
+            "failed"
+        );
+        assert_eq!(
+            payment_status_for_result(PaymentResultKind::TimedOut),
+            "expired"
+        );
     }
 }

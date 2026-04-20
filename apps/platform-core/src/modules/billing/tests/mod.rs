@@ -17,6 +17,7 @@ mod bil016_settlement_summary_outbox_db;
 mod bil017_api_sku_billing_basis_db;
 mod bil018_default_sku_billing_basis_db;
 mod bil019_payment_billing_integration_db;
+mod bil022_payment_result_processor_db;
 
 #[cfg(test)]
 mod tests {
@@ -124,6 +125,29 @@ mod tests {
             .await
             .expect("router should respond");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_process_payment_polled_result_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(
+                        "/api/v1/payments/intents/0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56/poll-result",
+                    )
+                    .method("POST")
+                    .header("x-role", "tenant_operator")
+                    .header("x-tenant-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"provider_result_id":"poll-1","provider_status":"succeeded"}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

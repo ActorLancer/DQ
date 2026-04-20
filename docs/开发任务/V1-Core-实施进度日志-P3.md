@@ -1337,3 +1337,43 @@
 - 状态：计划中
 - 说明：在既有 webhook 处理与订单状态推进基础上，复核 `partial` 任务剩余缺口，补齐乱序场景的统一支付结果处理口径、审计和集成验证，避免 Billing 与 Trade 两侧语义分叉。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-195（待审批）
+- 任务：`BIL-022` 实现支付结果处理器：消费支付 webhook 或支付轮询结果，幂等更新 PaymentIntent、Order.payment_status、订单主状态推进记录与审计事件，确保“success 后 fail”“timeout 后 success”等乱序场景不破坏最终状态
+- 状态：待审批
+- 实现摘要：
+  - 新增统一结果处理器 `payment_result_processor`，收敛 webhook 与 polling 两类入口，统一处理幂等、重复、乱序回退防护、`payment_transaction` 写入、`payment_intent.metadata` 结果来源快照、审计事件和 `billing_event/outbox` 触发。
+  - 新增 `POST /api/v1/payments/intents/{id}/poll-result`，允许租户侧或平台侧以轮询结果推进支付状态；对租户角色强制 `x-tenant-id` 范围校验。
+  - 重构 `handle_payment_webhook`，保留签名校验、replay-window、防重复入站事件等能力，但将状态推进委托给统一结果处理器，避免 webhook 与 polling 语义分叉。
+  - 修复关键一致性缺口：当订单主状态已不能接受某个支付结果，且订单/支付状态会因此分叉时，处理器会整体忽略该结果，而不是只更新 `payment_intent`，从而避免“timeout 后 success”“success 后 fail”把 `payment_intent` 与 `trade.order_main` 冲成不一致。
+  - 补齐 OpenAPI：新增 `poll-result` 路径、请求/响应 schema，并同步归档到 `docs/02-openapi/billing.yaml`。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil022_payment_result_processor_db_smoke -- --nocapture`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：启动 `APP_PORT=8122` 的 `platform-core`，插入两笔临时支付订单后执行：
+    - `POST /api/v1/payments/intents/{id}/poll-result`（success）
+    - `POST /api/v1/payments/webhooks/mock_payment`（success）
+    - `POST /api/v1/payments/intents/{id}/poll-result`（fail，验证 out_of_order_ignored）
+    - `psql` 回查 `payment.payment_intent / trade.order_main / audit.audit_event / ops.outbox_event`
+- 验证结果：
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`244 passed, 0 failed, 1 ignored`。
+  - `bil022_payment_result_processor_db_smoke` 通过，覆盖 polling success+duplicate、webhook success 后 poll fail ignored、poll timeout 后 webhook success ignored 三条主链路。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过，`.sqlx/` 已刷新。
+  - 真实 API 联调通过：
+    - polling success -> `processed / succeeded`
+    - webhook success -> `processed / succeeded`
+    - late poll fail after webhook success -> `out_of_order_ignored / true`
+  - DB 回查通过：两笔订单均保持 `buyer_locked / paid / payment_succeeded_to_buyer_locked`；`payment_intent.metadata.payment_result_last_source` 分别为 `polling` 和 `webhook`；审计命中 `payment.polling.processed`、`payment.webhook.processed`、`payment.polling.out_of_order_ignored`；对应 `billing.events` outbox 已落库。
+  - 临时业务数据已清理，回查 `trade.order_main=0`、`core.organization=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md` `4`
+  - `支付域接口协议正式版.md` `6`
+  - `数据交易平台-全集成基线-V1.md` `27`
+- 覆盖的任务清单条目：`BIL-022`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
