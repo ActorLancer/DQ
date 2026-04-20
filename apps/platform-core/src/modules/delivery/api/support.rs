@@ -13,6 +13,7 @@ pub enum DeliveryPermission {
     ReadApiUsageLog,
     ManageQuerySurface,
     ManageQueryTemplate,
+    ReviewResultDisclosure,
     EnableSandboxWorkspace,
     ManageSensitiveExecutionPolicy,
     EnableTemplateQuery,
@@ -68,6 +69,15 @@ pub fn is_allowed(role: &str, permission: DeliveryPermission) -> bool {
         DeliveryPermission::ManageQueryTemplate => matches!(
             role,
             "seller_operator" | "tenant_admin" | "platform_admin" | "platform_risk_settlement"
+        ),
+        DeliveryPermission::ReviewResultDisclosure => matches!(
+            role,
+            "platform_admin"
+                | "platform_risk_settlement"
+                | "platform_audit_security"
+                | "platform_reviewer"
+                | "compliance_reviewer"
+                | "audit_admin"
         ),
         DeliveryPermission::EnableSandboxWorkspace => matches!(
             role,

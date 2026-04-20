@@ -11,6 +11,7 @@ mod query_surface_repository;
 mod query_template_repository;
 mod report_delivery_repository;
 mod resource_cutoff_repository;
+mod result_disclosure_review_repository;
 mod revision_subscription_repository;
 mod sandbox_workspace_model_repository;
 mod sandbox_workspace_repository;
@@ -37,6 +38,7 @@ pub use report_delivery_repository::commit_report_delivery;
 pub use resource_cutoff_repository::{
     apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
 };
+pub use result_disclosure_review_repository::review_result_disclosure;
 pub use revision_subscription_repository::{
     get_revision_subscription, manage_revision_subscription,
 };

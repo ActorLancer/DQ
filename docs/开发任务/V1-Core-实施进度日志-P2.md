@@ -4556,3 +4556,68 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-165（计划中）
+- 任务：DLV-023 结果披露审查接口
+- 状态：计划中
+- 说明：实现 `POST /api/v1/query-runs/{id}/disclosure-review` 占位接口，冻结结果披露审查记录结构，落库 `delivery.result_disclosure_review`，并联动 `query_run`/`delivery_record` 的披露审查状态与审计。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+### BATCH-165（待审批）
+- 任务：`DLV-023` 结果披露审查接口
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-023` 为 `POST /api/v1/query-runs/{id}/disclosure-review` 占位接口，要求接口/DTO/权限/审计/错误码和最小测试齐备。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核 DLV 阶段敏感交付补充链路，确认本批需要把结果披露审查作为独立审查记录冻结。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：按单任务流程执行“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：复核不得跳步骤、不得省略真实 API/DB 联调。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 日志口径补充本批计划中/待审批。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定仅阅读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对敏感结果导出、披露审查、证明与审计闭环的补充基线。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 query execution / delivery / storage 边界仍在 `platform-core` 内协作完成。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认新增接口需同步 `packages/openapi/delivery.yaml`。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：确认本批无新增 topic，仅保留审计与既有 outbox 边界。
+  - `docs/开发准备/统一错误码字典正式版.md`：沿用冲突/参数/未找到的统一错误前缀。
+  - `docs/开发准备/测试用例矩阵正式版.md`：确认需包含最小 smoke + 手工 API 联调证据。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：实现保留在 `modules/delivery` 内，DTO/Repo/Handler 分层。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 PostgreSQL/Kafka/MinIO，本批对象结果依旧走存储桶引用。
+  - `docs/开发准备/配置项与密钥管理清单.md`：沿用本地栈固定连接配置。
+  - `docs/开发准备/技术选型正式版.md`：遵守当前 `SQLx + SeaORM` 基线，不引回旧驱动。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认结果披露审查属于交付/执行边界的合规审查冻结层。
+  - `docs/原始PRD/敏感数据处理与受控交付设计.md:L124`：落实敏感结果导出前披露审查、审查票据、销毁/撤权证明和证据链要求。
+  - `docs/原始PRD/数据商品查询与执行面设计.md:L185`：落实查询执行与授权、计费、审计、输出边界、导出限制的关系。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L7458`：落实敏感受控交付补充基线。
+- 实现要点：
+  - 新增 `POST /api/v1/query-runs/{id}/disclosure-review`，支持结果披露审查记录创建/更新。
+  - 新增 `DeliveryPermission::ReviewResultDisclosure`，接入平台审查/审计角色矩阵。
+  - 冻结 `review_status / masking_level / export_scope / approval_ticket_id / reviewer_id / reviewer_notes / decision_snapshot` 最小结构，稳定落库 `delivery.result_disclosure_review`。
+  - 联动 `delivery.query_execution_run.result_summary_json` 与最近一条 `template_query` 交付记录，回写披露审查状态与审查记录引用。
+  - 对高敏导出要求补齐校验：`query_run` 必须完成、订单必须已支付、结果对象存在，且在要求披露审查或 `restricted_object` 导出时必须绑定审批票据。
+  - 写入 `delivery.result_disclosure.review` 审计并同步更新 OpenAPI。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv023_result_disclosure_review_db_smoke -- --nocapture`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 使用本地服务 `APP_PORT=8116` + `curl` 对模板执行与披露审查创建/更新做真实联调，并通过 `psql`/MinIO 回查落库、审计与结果对象引用
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（串行复跑后全量通过）。
+  - `dlv023_result_disclosure_review_db_smoke`：通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：模板执行 `HTTP 200`，披露审查创建 `HTTP 200 / created`，更新 `HTTP 200 / updated / rejected`。
+  - DB/对象回查通过：`delivery.result_disclosure_review` 落库 `rejected / masked / none / replay_failed`，`query_run.result_summary_json` 与 `delivery_record.review_snapshot` 已同步审查状态；对象结果引用存在且测试结束后已清理。
+  - 审计回查通过：`delivery.result_disclosure.review` 对创建/更新请求各命中 1 次。
+  - 临时业务数据已清理；审计按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `敏感数据受控交付补充基线`：高敏结果导出前必须留下披露审查记录与审批票据引用。
+  - `查询执行面设计`：查询结果导出、掩码级别、导出范围与订单/授权/审计必须一致。
+  - `交付证据链`：结果摘要、审查决定、销毁/撤权证明需可回放。
+- 覆盖的任务清单条目：`DLV-023`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+

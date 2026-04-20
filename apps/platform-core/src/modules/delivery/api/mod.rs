@@ -13,7 +13,7 @@ pub use handlers::{
     issue_download_ticket_api, manage_query_surface_api, manage_query_template_api,
     manage_revision_subscription_api, manage_sandbox_workspace_api,
     manage_sensitive_execution_policy_api, manage_share_grant_api, manage_template_grant_api,
-    reject_order_api,
+    reject_order_api, review_result_disclosure_api,
 };
 
 pub fn router() -> Router<AppState> {
@@ -56,6 +56,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/orders/{id}/template-runs",
             post(execute_template_run_api).get(get_query_runs_api),
+        )
+        .route(
+            "/api/v1/query-runs/{id}/disclosure-review",
+            post(review_result_disclosure_api),
         )
         .route("/api/v1/orders/{id}/usage-log", get(get_api_usage_log_api))
         .route(

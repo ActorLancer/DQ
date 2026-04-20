@@ -12,7 +12,7 @@ use crate::modules::delivery::dto::{
     ManageSandboxWorkspaceResponse, ManageSensitiveExecutionPolicyRequest,
     ManageSensitiveExecutionPolicyResponse, ManageShareGrantRequest, ManageShareGrantResponse,
     ManageTemplateGrantRequest, ManageTemplateGrantResponse, RejectOrderRequest,
-    RejectOrderResponse,
+    RejectOrderResponse, ReviewResultDisclosureRequest, ReviewResultDisclosureResponse,
 };
 use crate::modules::delivery::repo::{
     accept_order_delivery, commit_api_delivery, commit_file_delivery, commit_report_delivery,
@@ -20,7 +20,7 @@ use crate::modules::delivery::repo::{
     get_revision_subscription, get_share_grants, issue_download_ticket, manage_query_surface,
     manage_query_template, manage_revision_subscription, manage_sandbox_workspace,
     manage_sensitive_execution_policy, manage_share_grant, manage_template_grant,
-    reject_order_delivery,
+    reject_order_delivery, review_result_disclosure,
 };
 use crate::modules::storage::application::fetch_object_bytes;
 use axum::Json;
@@ -345,6 +345,42 @@ pub async fn get_query_runs_api(
     .await?;
 
     Ok(ApiResponse::ok(GetQueryRunsResponse { data: query_runs }))
+}
+
+pub async fn review_result_disclosure_api(
+    State(state): State<AppState>,
+    Path(query_run_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<ReviewResultDisclosureRequest>,
+) -> Result<Json<ApiResponse<ReviewResultDisclosureResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    require_permission(
+        &headers,
+        DeliveryPermission::ReviewResultDisclosure,
+        "result disclosure review",
+    )?;
+
+    let actor_role = header(&headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    let tenant_id = header(&headers, "x-tenant-id");
+    let reviewer_user_id = header(&headers, "x-user-id");
+    let request_id = header(&headers, "x-request-id");
+    let trace_id = header(&headers, "x-trace-id");
+
+    let mut client = state.db.client().map_err(map_db_connect)?;
+    let review = review_result_disclosure(
+        &mut client,
+        &query_run_id,
+        tenant_id.as_deref(),
+        &payload,
+        &actor_role,
+        reviewer_user_id.as_deref(),
+        request_id.as_deref(),
+        trace_id.as_deref(),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ReviewResultDisclosureResponse {
+        data: review,
+    }))
 }
 
 pub async fn manage_query_template_api(

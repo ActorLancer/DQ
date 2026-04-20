@@ -6,6 +6,7 @@ mod file_delivery_commit;
 mod query_run;
 mod query_surface;
 mod query_template;
+mod result_disclosure_review;
 mod revision_subscription;
 mod sandbox_workspace;
 mod sensitive_execution_policy;
@@ -35,6 +36,10 @@ pub use query_surface::{
 };
 pub use query_template::{
     ManageQueryTemplateRequest, ManageQueryTemplateResponse, QueryTemplateResponseData,
+};
+pub use result_disclosure_review::{
+    ResultDisclosureReviewResponseData, ReviewResultDisclosureRequest,
+    ReviewResultDisclosureResponse,
 };
 pub use sandbox_workspace::{
     ManageSandboxWorkspaceRequest, ManageSandboxWorkspaceResponse, SandboxAttestationRefModel,

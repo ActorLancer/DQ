@@ -431,6 +431,38 @@ paths:
           description: Order, template grant, template, or requester not found
         '409':
           description: Grant inactive, parameters invalid, output boundary exceeded, risk guard blocked, or quota exhausted
+  /api/v1/query-runs/{id}/disclosure-review:
+    post:
+      summary: Create or update a result disclosure review placeholder under query-run scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewResultDisclosureRequest'
+      responses:
+        '200':
+          description: Result disclosure review created or updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResultDisclosureResponseEnvelope'
+        '400':
+          description: Invalid JSON shape for decision snapshot
+        '403':
+          description: Platform reviewer scope required
+        '404':
+          description: Query run not found
+        '409':
+          description: Query run status, output boundary, reviewer, or approval ticket violates the frozen placeholder contract
   /api/v1/orders/{id}/usage-log:
     get:
       summary: Read minimal-disclosure API usage logs under order scope
@@ -889,6 +921,37 @@ components:
           type: string
           format: uuid
           nullable: true
+    ReviewResultDisclosureRequest:
+      type: object
+      properties:
+        result_disclosure_review_id:
+          type: string
+          format: uuid
+          nullable: true
+        review_status:
+          type: string
+          nullable: true
+        masking_level:
+          type: string
+          nullable: true
+        export_scope:
+          type: string
+          nullable: true
+        reviewer_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        review_notes:
+          type: string
+          nullable: true
+        decision_snapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
     ManageTemplateGrantResponseEnvelope:
       type: object
       required: [success, data]
@@ -913,6 +976,14 @@ components:
           type: boolean
         data:
           $ref: '#/components/schemas/ManageSensitiveExecutionPolicyResponse'
+    ReviewResultDisclosureResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ReviewResultDisclosureResponse'
     ManageTemplateGrantResponse:
       type: object
       required: [data]
@@ -931,6 +1002,12 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/SensitiveExecutionPolicyResponseData'
+    ReviewResultDisclosureResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ResultDisclosureReviewResponseData'
     TemplateGrantResponseData:
       type: object
       required:
@@ -1702,6 +1779,82 @@ components:
           format: date-time
           nullable: true
         completed_at:
+          type: string
+          format: date-time
+          nullable: true
+    ResultDisclosureReviewResponseData:
+      type: object
+      required:
+        - result_disclosure_review_id
+        - order_id
+        - query_run_id
+        - result_object_id
+        - review_status
+        - masking_level
+        - export_scope
+        - decision_snapshot
+        - requires_disclosure_review
+        - output_boundary_json
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+        - updated_at
+      properties:
+        result_disclosure_review_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_run_id:
+          type: string
+          format: uuid
+        result_object_id:
+          type: string
+          format: uuid
+        review_status:
+          type: string
+        masking_level:
+          type: string
+        export_scope:
+          type: string
+        reviewer_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        review_notes:
+          type: string
+          nullable: true
+        decision_snapshot:
+          type: object
+          additionalProperties: true
+        requires_disclosure_review:
+          type: boolean
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        operation:
+          type: string
+          enum: [created, updated]
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        reviewed_at:
           type: string
           format: date-time
           nullable: true
