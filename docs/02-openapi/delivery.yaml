@@ -1,0 +1,3183 @@
+openapi: 3.1.0
+info:
+  title: DataB Delivery API
+  version: 1.0.0
+  description: >-
+    Delivery module baseline for V1. DLV-001 freezes storage-gateway shared
+    schemas; DLV-002 adds the file-delivery commit endpoint; DLV-003 adds
+    short-lived download-ticket issuance backed by Redis cache; DLV-004 adds
+    ticket-validated file download with delivery-receipt logging; DLV-005 adds
+    FILE_SUB revision-subscription manage/read APIs; DLV-006 adds SHARE_RO
+    share-grant manage/read APIs; DLV-007 adds API delivery enablement; DLV-008
+    adds API usage-log read APIs; DLV-009 adds QuerySurface management for
+    product-scoped query execution configuration; DLV-010 adds QueryTemplate
+    version management for a controlled query surface; DLV-011 adds
+    template-grant enablement for QRY_LITE orders with whitelisted templates,
+    output boundaries, and quota snapshots; DLV-012 adds template query
+    execution with QueryExecutionRun persistence, MinIO result artifacts, and
+    risk/output-boundary enforcement; DLV-013 adds query-run history read APIs
+    with audit references and policy-hit summaries; DLV-014 adds sandbox
+    workspace enablement for SBX_STD orders with workspace/session
+    provisioning, expiry, and export-policy snapshots; DLV-019 freezes a
+    placeholder watermark/fingerprint policy on file/report delivery objects so
+    future watermark pipelines can attach without changing the read contract;
+    DLV-020 adds standardized delivery receipt outbox events for
+    file/api/share/template/sandbox/report branches; DLV-024 adds order-scoped
+    execution attestation read and destruction-attestation recording APIs for
+    sensitive delivery evidence.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/v1/orders/{id}/deliver:
+    post:
+      summary: Commit file/report delivery or enable API access for a deliverable order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitOrderDeliveryRequest'
+      responses:
+        '200':
+          description: File/report delivery committed or API access enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitOrderDeliveryResponseEnvelope'
+        '400':
+          description: Invalid payload or delivery persistence conflict
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order state does not allow the requested delivery branch
+  /api/v1/orders/{id}/accept:
+    post:
+      summary: Accept a manually delivered FILE_STD/FILE_SUB/RPT_STD order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptOrderRequest'
+      responses:
+        '200':
+          description: Order acceptance persisted and the latest delivery record marked accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptOrderResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: SKU or current order state does not allow manual acceptance
+  /api/v1/orders/{id}/reject:
+    post:
+      summary: Reject a manually delivered FILE_STD/FILE_SUB/RPT_STD order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectOrderRequest'
+      responses:
+        '200':
+          description: Order rejection persisted and the latest delivery record marked rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RejectOrderResponseEnvelope'
+        '400':
+          description: reject payload is incomplete
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: SKU or current order state does not allow rejection
+  /api/v1/orders/{id}/download-ticket:
+    get:
+      summary: Issue a short-lived download ticket for a committed file delivery
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Download ticket issued and cached in Redis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadTicketResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Ticket expired, exhausted, or current order state does not allow issuance
+        '500':
+          description: Redis cache write failed
+  /api/v1/orders/{id}/download:
+    get:
+      summary: Download a committed file delivery through the ticket-validated gateway
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Short-lived download token returned by the download-ticket API
+      responses:
+        '200':
+          description: File payload fetched from MinIO and download receipt persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadFileResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '409':
+          description: Ticket invalid, expired, exhausted, or current order state does not allow download
+        '502':
+          description: MinIO or object-store fetch failed
+  /api/v1/orders/{id}/subscriptions:
+    post:
+      summary: Create or renew a FILE_SUB revision subscription
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageRevisionSubscriptionRequest'
+      responses:
+        '200':
+          description: Revision subscription created, updated, or renewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageRevisionSubscriptionResponseEnvelope'
+        '400':
+          description: Invalid cadence or delivery_channel
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: SKU is not FILE_SUB, order not paid, or revision range is invalid
+    get:
+      summary: Read FILE_SUB revision subscription status
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Revision subscription visible under order scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRevisionSubscriptionResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or revision subscription not found
+  /api/v1/orders/{id}/share-grants:
+    post:
+      summary: Create, update, or revoke a SHARE_RO grant
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageShareGrantRequest'
+      responses:
+        '200':
+          description: SHARE_RO grant created, updated, regranted, or revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageShareGrantResponseEnvelope'
+        '400':
+          description: Invalid payload or timestamp format
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or active grant not found
+        '409':
+          description: SKU is not SHARE_RO, share object is invalid, or current state does not allow management
+    get:
+      summary: Read SHARE_RO grant history under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: SHARE_RO grant records visible under order scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetShareGrantResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or share grant not found
+  /api/v1/orders/{id}/template-grants:
+    post:
+      summary: Create or update a QRY_LITE template-query grant with whitelisted templates
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageTemplateGrantRequest'
+      responses:
+        '200':
+          description: Template-query grant created or updated for the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageTemplateGrantResponseEnvelope'
+        '400':
+          description: Invalid JSON shape or required grant fields are missing
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or query surface not found
+        '409':
+          description: SKU is not QRY_LITE, selected templates are invalid, or output boundary/quota exceeds the frozen surface policy
+  /api/v1/orders/{id}/sandbox-workspaces:
+    post:
+      summary: Provision or refresh a sandbox workspace for an SBX_STD order
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageSandboxWorkspaceRequest'
+      responses:
+        '200':
+          description: Sandbox workspace and seat session provisioned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageSandboxWorkspaceResponseEnvelope'
+        '400':
+          description: Invalid query surface, seat user, or expire_at payload
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order or query surface not found
+        '409':
+          description: SKU is not SBX_STD, query surface/environment mismatch, or export policy exceeds the sandbox boundary
+  /api/v1/orders/{id}/sensitive-execution-policies:
+    post:
+      summary: Create or update a sensitive execution policy snapshot under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageSensitiveExecutionPolicyRequest'
+      responses:
+        '200':
+          description: Sensitive execution policy snapshot created or updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageSensitiveExecutionPolicyResponseEnvelope'
+        '400':
+          description: Invalid JSON shape for output boundary or export control
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order, query surface, template grant, or sandbox workspace not found
+        '409':
+          description: Order payment/path is illegal, or policy scope/execution mode conflicts with the frozen delivery path
+  /api/v1/orders/{id}/template-runs:
+    get:
+      summary: Read QRY_LITE query-run history under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Query-run timeline, result summaries, and audit references visible under buyer scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetQueryRunsResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order is not QRY_LITE or buyer/seller subject status blocks query-run history access
+    post:
+      summary: Execute a granted QRY_LITE template run and persist QueryExecutionRun plus result artifact
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteTemplateRunRequest'
+      responses:
+        '200':
+          description: Template query executed and QueryExecutionRun persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteTemplateRunResponseEnvelope'
+        '400':
+          description: Invalid parameter payload or JSON shape
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order, template grant, template, or requester not found
+        '409':
+          description: Grant inactive, parameters invalid, output boundary exceeded, risk guard blocked, or quota exhausted
+  /api/v1/query-runs/{id}/disclosure-review:
+    post:
+      summary: Create or update a result disclosure review placeholder under query-run scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewResultDisclosureRequest'
+      responses:
+        '200':
+          description: Result disclosure review created or updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResultDisclosureResponseEnvelope'
+        '400':
+          description: Invalid JSON shape for decision snapshot
+        '403':
+          description: Platform reviewer scope required
+        '404':
+          description: Query run not found
+        '409':
+          description: Query run status, output boundary, reviewer, or approval ticket violates the frozen placeholder contract
+  /api/v1/orders/{id}/attestations:
+    get:
+      summary: Read execution attestation records visible under an order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Execution attestation records returned for the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrderAttestationsResponseEnvelope'
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: No execution attestation exists for the current order
+  /api/v1/orders/{id}/destruction-attestations:
+    post:
+      summary: Create or update a destruction or retention attestation after revocation, expiry, dispute, or legal hold
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageDestructionAttestationRequest'
+      responses:
+        '200':
+          description: Destruction or retention attestation persisted for the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageDestructionAttestationResponseEnvelope'
+        '400':
+          description: Invalid payload structure or enum value
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order has not reached expiry or revocation stage, object not linked, or approval proof is incomplete
+  /api/v1/orders/{id}/usage-log:
+    get:
+      summary: Read minimal-disclosure API usage logs under order scope
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: API usage-log summary and entries visible to the buyer-side app owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiUsageLogResponseEnvelope'
+        '403':
+          description: Permission or buyer-app ownership scope forbidden
+        '404':
+          description: Order not found
+        '409':
+          description: Order is not an API SKU or API delivery has not been enabled
+  /api/v1/products/{id}/query-surfaces:
+    post:
+      summary: Create or update a product-scoped QuerySurface definition
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageQuerySurfaceRequest'
+      responses:
+        '200':
+          description: QuerySurface created or updated for the product asset version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageQuerySurfaceResponseEnvelope'
+        '400':
+          description: Invalid enum or JSON payload shape
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: Product not found
+        '409':
+          description: Asset version, environment, read scope, or output boundary is invalid
+  /api/v1/query-surfaces/{id}/templates:
+    post:
+      summary: Create or update a QueryTemplate version for a QuerySurface
+      tags: [delivery]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManageQueryTemplateRequest'
+      responses:
+        '200':
+          description: QueryTemplate version created or updated for the QuerySurface
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManageQueryTemplateResponseEnvelope'
+        '400':
+          description: Invalid schema, status, or version payload
+        '403':
+          description: Permission or tenant-scope forbidden
+        '404':
+          description: QuerySurface not found
+        '409':
+          description: QuerySurface scope, whitelist field, analysis rule, or export policy is invalid
+components:
+  schemas:
+    ManageQuerySurfaceRequest:
+      type: object
+      properties:
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        surface_type:
+          type: string
+          enum: [template_query_lite, sandbox_query, report_result]
+          nullable: true
+        binding_mode:
+          type: string
+          enum: [managed_surface, seller_managed]
+          nullable: true
+        execution_scope:
+          type: string
+          enum: [curated_zone, product_zone, result_zone]
+          nullable: true
+        input_contract_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        query_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        quota_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        status:
+          type: string
+          enum: [draft, active, disabled]
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageQuerySurfaceResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageQuerySurfaceResponse'
+    ManageQuerySurfaceResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QuerySurfaceResponseData'
+    QuerySurfaceResponseData:
+      type: object
+      required:
+        - query_surface_id
+        - product_id
+        - asset_version_id
+        - environment_id
+        - surface_type
+        - binding_mode
+        - execution_scope
+        - input_contract_json
+        - output_boundary_json
+        - query_policy_json
+        - quota_policy_json
+        - status
+        - operation
+        - created_at
+        - updated_at
+      properties:
+        query_surface_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        asset_version_id:
+          type: string
+          format: uuid
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+        surface_type:
+          type: string
+        binding_mode:
+          type: string
+        execution_scope:
+          type: string
+        input_contract_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        query_policy_json:
+          type: object
+          additionalProperties: true
+        quota_policy_json:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+        operation:
+          type: string
+          enum: [created, updated]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ManageQueryTemplateRequest:
+      type: object
+      properties:
+        query_template_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_name:
+          type: string
+          nullable: true
+        template_type:
+          type: string
+          nullable: true
+        template_body_ref:
+          type: string
+          nullable: true
+        version_no:
+          type: integer
+          format: int32
+          nullable: true
+        parameter_schema_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        analysis_rule_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        result_schema_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        export_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        risk_guard_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        whitelist_fields:
+          type: array
+          nullable: true
+          items:
+            type: string
+        status:
+          type: string
+          enum: [draft, active, disabled]
+          nullable: true
+    ManageQueryTemplateResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageQueryTemplateResponse'
+    ManageQueryTemplateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QueryTemplateResponseData'
+    QueryTemplateResponseData:
+      type: object
+      required:
+        - query_template_id
+        - query_surface_id
+        - template_name
+        - template_type
+        - version_no
+        - parameter_schema_json
+        - analysis_rule_json
+        - result_schema_json
+        - export_policy_json
+        - risk_guard_json
+        - whitelist_fields
+        - status
+        - operation
+        - created_at
+        - updated_at
+      properties:
+        query_template_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        template_name:
+          type: string
+        template_type:
+          type: string
+        template_body_ref:
+          type: string
+          nullable: true
+        version_no:
+          type: integer
+          format: int32
+        parameter_schema_json:
+          type: object
+          additionalProperties: true
+        analysis_rule_json:
+          type: object
+          additionalProperties: true
+        result_schema_json:
+          type: object
+          additionalProperties: true
+        export_policy_json:
+          type: object
+          additionalProperties: true
+        risk_guard_json:
+          type: object
+          additionalProperties: true
+        whitelist_fields:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        operation:
+          type: string
+          enum: [created, updated]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ManageTemplateGrantRequest:
+      type: object
+      properties:
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_type:
+          type: string
+          nullable: true
+        allowed_template_ids:
+          type: array
+          nullable: true
+          items:
+            type: string
+            format: uuid
+        execution_rule_snapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        run_quota_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageSandboxWorkspaceRequest:
+      type: object
+      properties:
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        workspace_name:
+          type: string
+          nullable: true
+        seat_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        expire_at:
+          type: string
+          format: date-time
+          nullable: true
+        export_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        clean_room_mode:
+          type: string
+          nullable: true
+        data_residency_mode:
+          type: string
+          nullable: true
+    ManageSensitiveExecutionPolicyRequest:
+      type: object
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+          nullable: true
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+        policy_scope:
+          type: string
+          nullable: true
+        execution_mode:
+          type: string
+          nullable: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        export_control_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        step_up_required:
+          type: boolean
+          nullable: true
+        attestation_required:
+          type: boolean
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+    ReviewResultDisclosureRequest:
+      type: object
+      properties:
+        result_disclosure_review_id:
+          type: string
+          format: uuid
+          nullable: true
+        review_status:
+          type: string
+          nullable: true
+        masking_level:
+          type: string
+          nullable: true
+        export_scope:
+          type: string
+          nullable: true
+        reviewer_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        review_notes:
+          type: string
+          nullable: true
+        decision_snapshot:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageDestructionAttestationRequest:
+      type: object
+      properties:
+        destruction_attestation_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        ref_type:
+          type: string
+          nullable: true
+        retention_action:
+          type: string
+          nullable: true
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        executed_by_type:
+          type: string
+          nullable: true
+        executed_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageTemplateGrantResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageTemplateGrantResponse'
+    ManageSandboxWorkspaceResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageSandboxWorkspaceResponse'
+    ManageSensitiveExecutionPolicyResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageSensitiveExecutionPolicyResponse'
+    ReviewResultDisclosureResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ReviewResultDisclosureResponse'
+    GetOrderAttestationsResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetOrderAttestationsResponse'
+    ManageDestructionAttestationResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageDestructionAttestationResponse'
+    ManageTemplateGrantResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TemplateGrantResponseData'
+    ManageSandboxWorkspaceResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SandboxWorkspaceResponseData'
+    ManageSensitiveExecutionPolicyResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/SensitiveExecutionPolicyResponseData'
+    ReviewResultDisclosureResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ResultDisclosureReviewResponseData'
+    GetOrderAttestationsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderAttestationListResponseData'
+    ManageDestructionAttestationResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DestructionAttestationResponseData'
+    TemplateGrantResponseData:
+      type: object
+      required:
+        - template_query_grant_id
+        - order_id
+        - query_surface_id
+        - asset_object_id
+        - sku_id
+        - sku_type
+        - template_type
+        - template_digest
+        - allowed_template_ids
+        - execution_rule_snapshot
+        - output_boundary_json
+        - run_quota_json
+        - grant_status
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+        - updated_at
+      properties:
+        template_query_grant_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        asset_object_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        template_type:
+          type: string
+        template_digest:
+          type: string
+        allowed_template_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        execution_rule_snapshot:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        run_quota_json:
+          type: object
+          additionalProperties: true
+        grant_status:
+          type: string
+        operation:
+          type: string
+          enum: [granted, updated]
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SandboxWorkspaceResponseData:
+      type: object
+      required:
+        - sandbox_workspace_id
+        - sandbox_session_id
+        - sensitive_execution_policy_id
+        - order_id
+        - query_surface_id
+        - environment_id
+        - environment_name
+        - environment_type
+        - sku_id
+        - sku_type
+        - workspace_name
+        - workspace_status
+        - session_status
+        - seat_user_id
+        - clean_room_mode
+        - data_residency_mode
+        - export_policy_json
+        - output_boundary_json
+        - environment_limits_json
+        - session_started_at
+        - expire_at
+        - session_query_count
+        - export_attempt_count
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - created_at
+        - updated_at
+        - workspace
+        - session
+        - seat
+        - execution_environment
+        - export_control
+      properties:
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+        sandbox_session_id:
+          type: string
+          format: uuid
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        environment_name:
+          type: string
+        environment_type:
+          type: string
+        network_zone:
+          type: string
+          nullable: true
+        region_code:
+          type: string
+          nullable: true
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        workspace_name:
+          type: string
+        workspace_status:
+          type: string
+        session_status:
+          type: string
+        seat_user_id:
+          type: string
+          format: uuid
+        clean_room_mode:
+          type: string
+        data_residency_mode:
+          type: string
+        export_policy_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        environment_limits_json:
+          type: object
+          additionalProperties: true
+        session_started_at:
+          type: string
+          format: date-time
+        expire_at:
+          type: string
+          format: date-time
+        session_query_count:
+          type: integer
+        export_attempt_count:
+          type: integer
+        operation:
+          type: string
+          enum: [created, updated]
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        workspace:
+          $ref: '#/components/schemas/SandboxWorkspaceModel'
+        session:
+          $ref: '#/components/schemas/SandboxSessionModel'
+        seat:
+          $ref: '#/components/schemas/SandboxSeatModel'
+        execution_environment:
+          $ref: '#/components/schemas/SandboxExecutionEnvironmentModel'
+        export_control:
+          $ref: '#/components/schemas/SandboxExportControlModel'
+        attestation:
+          allOf:
+            - $ref: '#/components/schemas/SandboxAttestationRefModel'
+          nullable: true
+    SandboxWorkspaceModel:
+      type: object
+      required:
+        - sandbox_workspace_id
+        - query_surface_id
+        - environment_id
+        - workspace_name
+        - workspace_status
+        - clean_room_mode
+        - data_residency_mode
+        - created_at
+        - updated_at
+      properties:
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        environment_id:
+          type: string
+          format: uuid
+        workspace_name:
+          type: string
+        workspace_status:
+          type: string
+        clean_room_mode:
+          type: string
+        data_residency_mode:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SandboxSessionModel:
+      type: object
+      required:
+        - sandbox_session_id
+        - session_status
+        - session_started_at
+        - expire_at
+        - session_query_count
+        - export_attempt_count
+      properties:
+        sandbox_session_id:
+          type: string
+          format: uuid
+        session_status:
+          type: string
+        session_started_at:
+          type: string
+          format: date-time
+        expire_at:
+          type: string
+          format: date-time
+        session_query_count:
+          type: integer
+        export_attempt_count:
+          type: integer
+    SandboxSeatModel:
+      type: object
+      required:
+        - seat_user_id
+        - login_id
+        - display_name
+        - seat_status
+        - seat_limit
+      properties:
+        seat_user_id:
+          type: string
+          format: uuid
+        login_id:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        seat_status:
+          type: string
+        seat_limit:
+          type: integer
+    SandboxExecutionEnvironmentModel:
+      type: object
+      required:
+        - environment_id
+        - environment_name
+        - environment_type
+        - environment_status
+        - isolation_level
+        - export_policy_json
+        - audit_policy_json
+        - trusted_attestation_flag
+        - supported_product_types
+        - current_capacity_json
+        - runtime_isolation
+      properties:
+        environment_id:
+          type: string
+          format: uuid
+        environment_name:
+          type: string
+        environment_type:
+          type: string
+        network_zone:
+          type: string
+          nullable: true
+        region_code:
+          type: string
+          nullable: true
+        environment_status:
+          type: string
+        isolation_level:
+          type: string
+        export_policy_json:
+          type: object
+          additionalProperties: true
+        audit_policy_json:
+          type: object
+          additionalProperties: true
+        trusted_attestation_flag:
+          type: boolean
+        supported_product_types:
+          type: array
+          items:
+            type: string
+        current_capacity_json:
+          type: object
+          additionalProperties: true
+        runtime_isolation:
+          $ref: '#/components/schemas/SandboxRuntimeIsolationModel'
+    SandboxRuntimeIsolationModel:
+      type: object
+      required:
+        - runtime_provider
+        - runtime_mode
+        - runtime_class
+        - profile_name
+        - rootfs_mode
+        - network_mode
+        - seccomp_profile
+        - status
+      properties:
+        runtime_provider:
+          type: string
+        runtime_mode:
+          type: string
+        runtime_class:
+          type: string
+        profile_name:
+          type: string
+        rootfs_mode:
+          type: string
+        network_mode:
+          type: string
+        seccomp_profile:
+          type: string
+        status:
+          type: string
+    SandboxExportControlModel:
+      type: object
+      required:
+        - sensitive_execution_policy_id
+        - policy_scope
+        - execution_mode
+        - policy_status
+        - export_control_json
+        - output_boundary_json
+        - policy_snapshot_json
+        - step_up_required
+        - attestation_required
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+        policy_scope:
+          type: string
+        execution_mode:
+          type: string
+        policy_status:
+          type: string
+        export_control_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        policy_snapshot_json:
+          type: object
+          additionalProperties: true
+        step_up_required:
+          type: boolean
+        attestation_required:
+          type: boolean
+    SensitiveExecutionPolicyResponseData:
+      type: object
+      required:
+        - sensitive_execution_policy_id
+        - order_id
+        - sku_id
+        - sku_type
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - operation
+        - created_at
+        - updated_at
+        - policy
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        operation:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        policy:
+          $ref: '#/components/schemas/SensitiveExecutionPolicyModel'
+    SensitiveExecutionPolicyModel:
+      type: object
+      required:
+        - sensitive_execution_policy_id
+        - policy_scope
+        - execution_mode
+        - policy_status
+        - output_boundary_json
+        - export_control_json
+        - policy_snapshot_json
+        - step_up_required
+        - attestation_required
+      properties:
+        sensitive_execution_policy_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+          nullable: true
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        sandbox_workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+        policy_scope:
+          type: string
+        execution_mode:
+          type: string
+        policy_status:
+          type: string
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        export_control_json:
+          type: object
+          additionalProperties: true
+        policy_snapshot_json:
+          type: object
+          additionalProperties: true
+        step_up_required:
+          type: boolean
+        attestation_required:
+          type: boolean
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+    SandboxAttestationRefModel:
+      type: object
+      required:
+        - attestation_record_id
+        - attestation_type
+        - status
+        - metadata_json
+      properties:
+        attestation_record_id:
+          type: string
+          format: uuid
+        attestation_type:
+          type: string
+        status:
+          type: string
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        verifier_ref:
+          type: string
+          nullable: true
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata_json:
+          type: object
+          additionalProperties: true
+    ExecuteTemplateRunRequest:
+      type: object
+      required: [query_template_id, request_payload_json]
+      properties:
+        template_query_grant_id:
+          type: string
+          format: uuid
+          nullable: true
+        query_template_id:
+          type: string
+          format: uuid
+        requester_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        request_payload_json:
+          type: object
+          additionalProperties: true
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        masked_level:
+          type: string
+          enum: [masked, summary, restricted]
+          nullable: true
+        export_scope:
+          type: string
+          enum: [none, summary, restricted_object]
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        execution_metadata_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ExecuteTemplateRunResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ExecuteTemplateRunResponse'
+    ExecuteTemplateRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QueryRunResponseData'
+    GetQueryRunsResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetQueryRunsResponse'
+    GetQueryRunsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/QueryRunListResponseData'
+    QueryRunListResponseData:
+      type: object
+      required: [order_id, current_state, payment_status, delivery_status, query_runs]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        query_runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryRunResponseData'
+    QueryRunAuditReferenceData:
+      type: object
+      required: [audit_id, action_name, result_code, event_time]
+      properties:
+        audit_id:
+          type: string
+          format: uuid
+        action_name:
+          type: string
+        result_code:
+          type: string
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        event_time:
+          type: string
+          format: date-time
+    QueryRunResponseData:
+      type: object
+      required:
+        - query_run_id
+        - order_id
+        - template_query_grant_id
+        - query_surface_id
+        - query_template_id
+        - query_template_name
+        - query_template_version
+        - execution_mode
+        - request_payload_json
+        - parameter_summary_json
+        - result_summary_json
+        - result_row_count
+        - billed_units
+        - export_attempt_count
+        - status
+        - masked_level
+        - export_scope
+        - policy_hits
+        - audit_refs
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+      properties:
+        query_run_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        template_query_grant_id:
+          type: string
+          format: uuid
+        query_surface_id:
+          type: string
+          format: uuid
+        query_template_id:
+          type: string
+          format: uuid
+        query_template_name:
+          type: string
+        query_template_version:
+          type: integer
+          format: int32
+        requester_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        execution_mode:
+          type: string
+        request_payload_json:
+          type: object
+          additionalProperties: true
+        parameter_summary_json:
+          type: object
+          additionalProperties: true
+        result_summary_json:
+          type: object
+          additionalProperties: true
+        result_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        result_object_uri:
+          type: string
+          nullable: true
+        bucket_name:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        result_row_count:
+          type: integer
+          format: int64
+        billed_units:
+          type: string
+        export_attempt_count:
+          type: integer
+          format: int32
+        status:
+          type: string
+        masked_level:
+          type: string
+        export_scope:
+          type: string
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        sensitive_policy_snapshot:
+          type: object
+          additionalProperties: true
+        policy_hits:
+          type: array
+          items:
+            type: string
+        audit_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryRunAuditReferenceData'
+        operation:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+    ResultDisclosureReviewResponseData:
+      type: object
+      required:
+        - result_disclosure_review_id
+        - order_id
+        - query_run_id
+        - result_object_id
+        - review_status
+        - masking_level
+        - export_scope
+        - decision_snapshot
+        - requires_disclosure_review
+        - output_boundary_json
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+        - updated_at
+      properties:
+        result_disclosure_review_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_run_id:
+          type: string
+          format: uuid
+        result_object_id:
+          type: string
+          format: uuid
+        review_status:
+          type: string
+        masking_level:
+          type: string
+        export_scope:
+          type: string
+        reviewer_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        review_notes:
+          type: string
+          nullable: true
+        decision_snapshot:
+          type: object
+          additionalProperties: true
+        requires_disclosure_review:
+          type: boolean
+        output_boundary_json:
+          type: object
+          additionalProperties: true
+        operation:
+          type: string
+          enum: [created, updated]
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+    OrderAttestationListResponseData:
+      type: object
+      required: [order_id, current_state, payment_status, delivery_status, attestations]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        attestations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderAttestationResponseData'
+    OrderAttestationResponseData:
+      type: object
+      required:
+        - attestation_record_id
+        - order_id
+        - attestation_type
+        - status
+        - metadata_json
+        - source_type
+        - created_at
+        - updated_at
+      properties:
+        attestation_record_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        query_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        sandbox_session_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_id:
+          type: string
+          format: uuid
+          nullable: true
+        environment_name:
+          type: string
+          nullable: true
+        environment_type:
+          type: string
+          nullable: true
+        attestation_type:
+          type: string
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        verifier_ref:
+          type: string
+          nullable: true
+        verified_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        metadata_json:
+          type: object
+          additionalProperties: true
+        source_type:
+          type: string
+        query_run_status:
+          type: string
+          nullable: true
+        sandbox_session_status:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DestructionAttestationResponseData:
+      type: object
+      required:
+        - destruction_attestation_id
+        - order_id
+        - ref_type
+        - retention_action
+        - executed_by_type
+        - status
+        - metadata
+        - object_link_type
+        - operation
+        - current_state
+        - payment_status
+        - delivery_status
+        - created_at
+        - updated_at
+      properties:
+        destruction_attestation_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        ref_type:
+          type: string
+        retention_action:
+          type: string
+        attestation_uri:
+          type: string
+          nullable: true
+        attestation_hash:
+          type: string
+          nullable: true
+        executed_by_type:
+          type: string
+        executed_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        approval_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        executed_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        object_bucket_name:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        object_link_type:
+          type: string
+        object_link_status:
+          type: string
+          nullable: true
+        operation:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ApiUsageLogResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ApiUsageLogResponse'
+    ApiUsageLogResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ApiUsageLogListResponseData'
+    ApiUsageLogListResponseData:
+      type: object
+      required:
+        [order_id, sku_id, sku_type, current_state, payment_status, app, summary, logs]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        app:
+          $ref: '#/components/schemas/ApiUsageLogAppData'
+        summary:
+          $ref: '#/components/schemas/ApiUsageLogSummaryData'
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiUsageLogEntryData'
+    ApiUsageLogAppData:
+      type: object
+      required:
+        [app_id, app_name, client_id, api_credential_id, credential_status, upstream_mode]
+      properties:
+        app_id:
+          type: string
+          format: uuid
+        app_name:
+          type: string
+        client_id:
+          type: string
+        api_credential_id:
+          type: string
+          format: uuid
+        credential_status:
+          type: string
+        upstream_mode:
+          type: string
+    ApiUsageLogSummaryData:
+      type: object
+      required:
+        [total_calls, successful_calls, failed_calls, total_usage_units]
+      properties:
+        total_calls:
+          type: integer
+          format: int64
+        successful_calls:
+          type: integer
+          format: int64
+        failed_calls:
+          type: integer
+          format: int64
+        total_usage_units:
+          type: string
+        last_occurred_at:
+          type: string
+          format: date-time
+          nullable: true
+    ApiUsageLogEntryData:
+      type: object
+      required:
+        [api_usage_log_id, api_credential_id, usage_units, occurred_at]
+      properties:
+        api_usage_log_id:
+          type: string
+          format: uuid
+        api_credential_id:
+          type: string
+          format: uuid
+        request_ref:
+          type: string
+          nullable: true
+          description: Minimal-disclosure masked request identifier
+        response_code:
+          type: integer
+          format: int32
+          nullable: true
+        response_class:
+          type: string
+          nullable: true
+        usage_units:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+    ManageShareGrantRequest:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: [grant, revoke]
+          nullable: true
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        recipient_ref:
+          type: string
+          nullable: true
+        subscriber_ref:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+          nullable: true
+        access_locator:
+          type: string
+          nullable: true
+        scope_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageShareGrantResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageShareGrantResponse'
+    ManageShareGrantResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ShareGrantResponseData'
+    GetShareGrantResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetShareGrantResponse'
+    GetShareGrantResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ShareGrantListResponseData'
+    ShareGrantListResponseData:
+      type: object
+      required:
+        - order_id
+        - sku_id
+        - sku_type
+        - current_state
+        - payment_status
+        - grants
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShareGrantResponseData'
+    ShareGrantResponseData:
+      type: object
+      required:
+        - data_share_grant_id
+        - order_id
+        - asset_object_id
+        - sku_id
+        - sku_type
+        - recipient_ref
+        - share_protocol
+        - grant_status
+        - read_only
+        - current_state
+        - payment_status
+        - delivery_status
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        data_share_grant_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        asset_object_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        recipient_ref:
+          type: string
+        subscriber_ref:
+          type: string
+          nullable: true
+        share_protocol:
+          type: string
+        access_locator:
+          type: string
+          nullable: true
+        grant_status:
+          type: string
+        read_only:
+          type: boolean
+        receipt_hash:
+          type: string
+          nullable: true
+        granted_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        operation:
+          type: string
+          nullable: true
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ManageRevisionSubscriptionRequest:
+      type: object
+      properties:
+        cadence:
+          type: string
+          enum: [weekly, monthly, quarterly, yearly]
+          nullable: true
+        delivery_channel:
+          type: string
+          enum: [file_ticket]
+          nullable: true
+        start_version_no:
+          type: integer
+          nullable: true
+        last_delivered_version_no:
+          type: integer
+          nullable: true
+        next_delivery_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    ManageRevisionSubscriptionResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ManageRevisionSubscriptionResponse'
+    ManageRevisionSubscriptionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/RevisionSubscriptionResponseData'
+    GetRevisionSubscriptionResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/GetRevisionSubscriptionResponse'
+    GetRevisionSubscriptionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/RevisionSubscriptionResponseData'
+    RevisionSubscriptionResponseData:
+      type: object
+      required:
+        - revision_subscription_id
+        - order_id
+        - asset_id
+        - sku_id
+        - sku_type
+        - cadence
+        - delivery_channel
+        - start_version_no
+        - current_version_no
+        - next_delivery_at
+        - subscription_status
+        - current_state
+        - payment_status
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        revision_subscription_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        sku_id:
+          type: string
+          format: uuid
+        sku_type:
+          type: string
+        cadence:
+          type: string
+        delivery_channel:
+          type: string
+        start_version_no:
+          type: integer
+        last_delivered_version_no:
+          type: integer
+          nullable: true
+        current_version_no:
+          type: integer
+        next_delivery_at:
+          type: string
+          format: date-time
+        subscription_status:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        operation:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CommitOrderDeliveryRequest:
+      type: object
+      required:
+        - branch
+        - delivery_commit_hash
+        - receipt_hash
+      properties:
+        branch:
+          type: string
+          enum: [file, report, api]
+        object_uri:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          format: int64
+          nullable: true
+        content_hash:
+          type: string
+          nullable: true
+        encryption_algo:
+          type: string
+          nullable: true
+        plaintext_visible_to_platform:
+          type: boolean
+          nullable: true
+        storage_namespace_id:
+          type: string
+          format: uuid
+          nullable: true
+        key_cipher:
+          type: string
+          nullable: true
+        key_control_mode:
+          type: string
+          nullable: true
+        unwrap_policy_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        key_version:
+          type: string
+          nullable: true
+        expire_at:
+          type: string
+          format: date-time
+          nullable: true
+        download_limit:
+          type: integer
+          nullable: true
+        delivery_commit_hash:
+          type: string
+        receipt_hash:
+          type: string
+        report_type:
+          type: string
+          nullable: true
+        asset_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        app_id:
+          type: string
+          format: uuid
+          nullable: true
+        app_name:
+          type: string
+          nullable: true
+        app_type:
+          type: string
+          nullable: true
+        client_id:
+          type: string
+          nullable: true
+        quota_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        rate_limit_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        upstream_mode:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+    AcceptOrderRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          nullable: true
+        verification_summary:
+          type: object
+          additionalProperties: true
+          nullable: true
+    RejectOrderRequest:
+      type: object
+      required: [reason_code]
+      properties:
+        reason_code:
+          type: string
+        reason_detail:
+          type: string
+          nullable: true
+        verification_summary:
+          type: object
+          additionalProperties: true
+          nullable: true
+    AcceptOrderResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/AcceptOrderResponse'
+    AcceptOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderAcceptanceResponseData'
+    RejectOrderResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/RejectOrderResponse'
+    RejectOrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/OrderAcceptanceResponseData'
+    OrderAcceptanceResponseData:
+      type: object
+      required:
+        - order_id
+        - action
+        - previous_state
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - reason_code
+        - processed_at
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+          nullable: true
+        delivery_branch:
+          type: string
+          nullable: true
+        action:
+          type: string
+          enum: [accept, reject]
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        reason_code:
+          type: string
+        reason_detail:
+          type: string
+          nullable: true
+        accepted_at:
+          type: string
+          format: date-time
+          nullable: true
+        processed_at:
+          type: string
+          format: date-time
+        operation:
+          type: string
+          nullable: true
+    CommitOrderDeliveryResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/CommitOrderDeliveryResponse'
+    CommitOrderDeliveryResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/CommitOrderDeliveryResponseData'
+    CommitOrderDeliveryResponseData:
+      type: object
+      required:
+        - order_id
+        - delivery_id
+        - branch
+        - previous_state
+        - current_state
+        - payment_status
+        - delivery_status
+        - acceptance_status
+        - settlement_status
+        - dispute_status
+        - committed_at
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        envelope_id:
+          type: string
+          format: uuid
+          nullable: true
+        ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        branch:
+          type: string
+        previous_state:
+          type: string
+        current_state:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+        acceptance_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        bucket_name:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        download_limit:
+          type: integer
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        delivery_commit_hash:
+          type: string
+          nullable: true
+        committed_at:
+          type: string
+          format: date-time
+        app_id:
+          type: string
+          format: uuid
+          nullable: true
+        app_name:
+          type: string
+          nullable: true
+        app_type:
+          type: string
+          nullable: true
+        client_id:
+          type: string
+          nullable: true
+        api_credential_id:
+          type: string
+          format: uuid
+          nullable: true
+        api_key:
+          type: string
+          nullable: true
+        api_key_hint:
+          type: string
+          nullable: true
+        quota_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        rate_limit_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        upstream_mode:
+          type: string
+          nullable: true
+        operation:
+          type: string
+          nullable: true
+        endpoint_uri:
+          type: string
+          nullable: true
+        credential_status:
+          type: string
+          nullable: true
+        report_artifact_id:
+          type: string
+          format: uuid
+          nullable: true
+        report_type:
+          type: string
+          nullable: true
+        report_version_no:
+          type: integer
+          nullable: true
+        report_status:
+          type: string
+          nullable: true
+        report_hash:
+          type: string
+          nullable: true
+    DownloadTicketResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/DownloadTicketResponse'
+    DownloadTicketResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DownloadTicketResponseData'
+    DownloadTicketResponseData:
+      type: object
+      required:
+        - order_id
+        - delivery_id
+        - ticket_id
+        - download_token
+        - ticket_status
+        - issued_at
+        - expire_at
+        - download_limit
+        - download_count
+        - remaining_downloads
+        - bucket_name
+        - object_key
+        - envelope_id
+        - delivery_commit_hash
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        download_token:
+          type: string
+        ticket_status:
+          type: string
+        issued_at:
+          type: string
+          format: date-time
+        expire_at:
+          type: string
+          format: date-time
+        download_limit:
+          type: integer
+        download_count:
+          type: integer
+        remaining_downloads:
+          type: integer
+        bucket_name:
+          type: string
+        object_key:
+          type: string
+        envelope_id:
+          type: string
+          format: uuid
+        delivery_commit_hash:
+          type: string
+    DownloadFileResponseEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/DownloadFileResponse'
+    DownloadFileResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/DownloadFileResponseData'
+    DownloadFileResponseData:
+      type: object
+      required:
+        - order_id
+        - delivery_id
+        - ticket_id
+        - receipt_id
+        - receipt_hash
+        - downloaded_at
+        - ticket_status
+        - download_limit
+        - download_count
+        - remaining_downloads
+        - bucket_name
+        - object_key
+        - content_hash
+        - delivery_commit_hash
+        - key_envelope
+        - object_base64
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          format: uuid
+        ticket_id:
+          type: string
+          format: uuid
+        receipt_id:
+          type: string
+          format: uuid
+        receipt_hash:
+          type: string
+        downloaded_at:
+          type: string
+          format: date-time
+        ticket_status:
+          type: string
+        download_limit:
+          type: integer
+        download_count:
+          type: integer
+        remaining_downloads:
+          type: integer
+        bucket_name:
+          type: string
+        object_key:
+          type: string
+        content_type:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+        delivery_commit_hash:
+          type: string
+        key_envelope:
+          $ref: '#/components/schemas/DownloadKeyEnvelopeData'
+        object_base64:
+          type: string
+    DownloadKeyEnvelopeData:
+      type: object
+      required: [envelope_id, key_cipher, unwrap_policy_json]
+      properties:
+        envelope_id:
+          type: string
+          format: uuid
+        key_cipher:
+          type: string
+        key_control_mode:
+          type: string
+          nullable: true
+        unwrap_policy_json:
+          type: object
+          additionalProperties: true
+        key_version:
+          type: string
+          nullable: true
+    StorageGatewaySnapshot:
+      type: object
+      required: [integrity, watermark_policy, access_audit]
+      properties:
+        object_locator:
+          $ref: '#/components/schemas/StorageGatewayObjectLocator'
+        integrity:
+          $ref: '#/components/schemas/StorageGatewayIntegrity'
+        watermark_policy:
+          $ref: '#/components/schemas/StorageGatewayWatermarkPolicy'
+        download_restriction:
+          $ref: '#/components/schemas/StorageGatewayDownloadRestriction'
+        access_audit:
+          $ref: '#/components/schemas/StorageGatewayAccessAudit'
+    StorageGatewayObjectLocator:
+      type: object
+      required: [object_id, object_uri, location_type, storage_zone, plaintext_visible_to_platform]
+      properties:
+        object_id:
+          type: string
+          format: uuid
+        object_uri:
+          type: string
+        bucket_name:
+          type: string
+          nullable: true
+        object_key:
+          type: string
+          nullable: true
+        location_type:
+          type: string
+        storage_zone:
+          type: string
+        provider_type:
+          type: string
+          nullable: true
+        namespace_name:
+          type: string
+          nullable: true
+        namespace_kind:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          format: int64
+          nullable: true
+        plaintext_visible_to_platform:
+          type: boolean
+    StorageGatewayIntegrity:
+      type: object
+      properties:
+        content_hash:
+          type: string
+          nullable: true
+        encryption_algo:
+          type: string
+          nullable: true
+        delivery_commit_hash:
+          type: string
+          nullable: true
+        receipt_hash:
+          type: string
+          nullable: true
+        envelope_id:
+          type: string
+          format: uuid
+          nullable: true
+    StorageGatewayWatermarkPolicy:
+      type: object
+      required: [mode, rule, fingerprint_fields, sensitive_delivery_mode, disclosure_review_status]
+      properties:
+        mode:
+          type: string
+        rule:
+          type: object
+          additionalProperties: true
+          description: Placeholder-capable watermark rule snapshot frozen at delivery commit time.
+        fingerprint_fields:
+          type: array
+          items:
+            type: string
+        watermark_hash:
+          type: string
+          nullable: true
+        sensitive_delivery_mode:
+          type: string
+        disclosure_review_status:
+          type: string
+    StorageGatewayDownloadRestriction:
+      type: object
+      required: [ticket_id, expire_at, download_limit, download_count, remaining_downloads, current_status]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+        expire_at:
+          type: string
+          format: date-time
+        download_limit:
+          type: integer
+        download_count:
+          type: integer
+        remaining_downloads:
+          type: integer
+        current_status:
+          type: string
+    StorageGatewayAccessAudit:
+      type: object
+      required: [access_count]
+      properties:
+        access_count:
+          type: integer
+          format: int64
+        last_downloaded_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_client_fingerprint:
+          type: string
+          nullable: true

@@ -4835,3 +4835,64 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-169（计划中）
+- 任务：DLV-027 Delivery OpenAPI 归档文档
+- 状态：计划中
+- 说明：生成 `docs/02-openapi/delivery.yaml`，并对齐 `packages/openapi/delivery.yaml` 与 delivery router 的路径/方法一致性，同时补充 README 索引引用。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+### BATCH-169（待审批）
+- 任务：`DLV-027` Delivery OpenAPI 归档文档
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-027` 交付目标是生成 `docs/02-openapi/delivery.yaml` 或并入 `trade.yaml` 的交付子域文档。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核 DLV 阶段要求 OpenAPI 归档文档与实现路径一致、可被 README/索引引用。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：按单任务流程执行“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：复核文档任务也必须做真实 API 验证与审计回查。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 日志口径记录本批计划中/待审批。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定仅阅读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核交付子域文档需要覆盖文件、API、共享、模板查询、沙箱、报告、敏感交付扩展点。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 Delivery/Storage/Query Execution 仍是独立子域边界。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认本批不新增接口，只做 delivery OpenAPI 归档同步。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：复核交付子域的事件与 outbox 行为需要在文档说明中保持一致。
+  - `docs/开发准备/统一错误码字典正式版.md`：确认 delivery OpenAPI 中的错误语义与现代码口径一致。
+  - `docs/开发准备/测试用例矩阵正式版.md`：对齐文档任务仍需做契约一致性校验与真实接口验证。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：归档文档落在 `docs/02-openapi/`。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调用本地栈，不引入额外环境差异。
+  - `docs/开发准备/配置项与密钥管理清单.md`：沿用本地固定连接参数。
+  - `docs/开发准备/技术选型正式版.md`：延续 `SQLx + SeaORM` 基线，不回退数据库层口径。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认 delivery OpenAPI 归档需要与 delivery router 一一对应。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L268`：落实 4.4 交付、验真与验收主流程。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5`：落实接口归档也需要至少一条真实联调验证。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L996`：确认交付子域页面覆盖范围需要由独立 OpenAPI 文档支撑。
+- 实现要点：
+  - 新增 `docs/02-openapi/delivery.yaml`，与 `packages/openapi/delivery.yaml` 同步生成第一版交付子域归档文档。
+  - 更新 `docs/02-openapi/README.md`，将 Delivery/Storage/Query Execution 归档纳入 OpenAPI 索引。
+  - 复核 `apps/platform-core/src/modules/delivery/api/mod.rs` 中所有路由，确保归档文档与实现路径/方法不漂移。
+- 验证步骤：
+  1. `cmp -s docs/02-openapi/delivery.yaml packages/openapi/delivery.yaml`
+  2. 运行自定义 delivery router/OpenAPI 路径方法一致性校验脚本
+  3. `cargo fmt --all`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. 复用本地服务 `APP_PORT=8118`，通过仓库脚本 `dlv026_s1_api_sub_demo.sh` 对 delivery 接口做真实联调，并通过 `psql` 回查审计。
+- 验证结果：
+  - `delivery_openapi_synced=yes`。
+  - router/OpenAPI 一致性校验通过：`missing_paths=[] extra_paths=[] method_mismatch={}`。
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`191 passed, 0 failed, 1 ignored`）。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：`api=api_key_issued`，`usage=api_key_issued`。
+  - 审计回查通过：命中 `trade.order.delivery_gate.prepared`、`trade.order.api_sub.transition`、`delivery.api.enable`、`delivery.api.log.read`。
+- 覆盖的冻结文档条目：
+  - `4.4 交付、验真与验收主流程`：归档文档覆盖文件/下载票据/API/共享/模板查询/沙箱/报告/敏感交付接口。
+  - `15.1 测试策略`：本批落实契约归档与真实接口联调的双重校验。
+  - `14. 页面覆盖校验`：交付相关页面已有独立 OpenAPI 归档可引用。
+- 覆盖的任务清单条目：`DLV-027`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
