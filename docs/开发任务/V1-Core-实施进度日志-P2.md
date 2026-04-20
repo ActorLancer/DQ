@@ -4684,3 +4684,78 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-167（计划中）
+- 任务：DLV-025 Delivery/Storage/Query 集成测试
+- 状态：计划中
+- 说明：为文件下载票据、API 开通、模板授权与执行、沙箱开通、报告交付、验收通过/拒收补齐集成测试，要求联动 PostgreSQL、MinIO、Redis、Kafka/Outbox 与审计证据。
+- 追溯：TODO-PROC-BIL-001 保持追溯，按 DLV 主线顺序继续。
+### BATCH-167（待审批）
+- 任务：`DLV-025` Delivery / Storage / Query 集成测试
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-025` 要求覆盖文件下载票据、API 开通、模板授权与执行、沙箱开通、报告交付、验收通过/拒收六类交付链路的集成测试。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核 DLV 阶段在交付、对象存储、查询执行、验收之间的集成测试要求。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：按单任务流程执行“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：复核不得跳步骤、不得省略真实 API/DB/Redis/MinIO 联调。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 日志口径记录本批计划中/待审批。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定仅阅读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核交付、验真、验收与 outbox 事件的整体闭环。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 delivery / storage / query / order / audit 边界保持在 `platform-core` 内联动。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认本批以现有接口做联调，不新增路径。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：确认交付链路仍以 `delivery.committed -> dtp.outbox.domain-events` 为标准 outbox 事件。
+  - `docs/开发准备/统一错误码字典正式版.md`：复核集成测试中的错误码、权限拒绝与状态冲突前缀。
+  - `docs/开发准备/测试用例矩阵正式版.md`：对齐集成测试、联动测试、真实 API 验证口径。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：测试资产继续收敛在 `modules/delivery/tests`。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调使用 PostgreSQL、Redis、MinIO、Kafka 本地栈。
+  - `docs/开发准备/配置项与密钥管理清单.md`：沿用本地固定连接配置。
+  - `docs/开发准备/技术选型正式版.md`：遵守当前 `SQLx + SeaORM` 基线。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认集成测试需覆盖交付与验收主轴而不是单点函数。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L268`：落实 4.4 交付、验真与验收主流程。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5`：落实 Phase 1 的集成测试与状态闭环要求。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L996`：复核交付页、订单详情页、验收页、开发调试页的页面覆盖口径。
+- 实现要点：
+  - 新增 `apps/platform-core/src/modules/delivery/tests/dlv025_delivery_integration_db.rs` 聚合 smoke。
+  - 在单个 DB smoke 中串联 5 组代表性场景：
+    - `FILE_STD`：文件交付 -> 下载票据 -> Redis 命中 -> 买方验收通过
+    - `API_SUB`：API 开通 -> credential 生成 -> outbox 命中
+    - `QRY_LITE`：模板授权 -> 模板执行 -> MinIO 结果对象落盘
+    - `SBX_STD`：沙箱开通 -> seat/workspace 启用
+    - `RPT_STD`：报告交付 -> 买方拒收 -> 争议打开
+  - 聚合断言覆盖订单主状态、交付子状态、审计动作、`delivery.committed` outbox、Redis 下载票据缓存与查询结果对象读取。
+  - `tests/mod.rs` 已接入本批测试文件。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv025_delivery_storage_query_integration_db_smoke -- --nocapture`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动本地服务：`APP_PORT=8118 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core`
+  8. 使用 `curl` 脚本 `/tmp/dlv025_api_integration.sh` 对文件交付、下载票据、API 开通、模板授权执行、沙箱开通、报告交付/拒收做真实联调，并通过 `psql` / Redis / outbox 回查。
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`190 passed, 0 failed, 1 ignored`）。
+  - `dlv025_delivery_storage_query_integration_db_smoke`：通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - 文件链路：`delivered -> accepted`
+    - API 链路：`api_key_issued`
+    - 模板链路：`query_executed`，返回结果对象 `bucket/key`
+    - 沙箱链路：`seat_issued`
+    - 报告链路：`report_delivered -> rejected`
+  - Redis 回查通过：下载票据缓存存在，`remaining_downloads=3`。
+  - 审计回查通过：命中 `delivery.file.commit`、`delivery.file.download`、`delivery.accept`、`delivery.api.enable`、`delivery.template_query.enable`、`delivery.template_query.use`、`delivery.sandbox.enable`、`delivery.report.commit`、`delivery.reject`。
+  - Outbox 回查通过：`file/api/template-grant/sandbox/report` 五类请求均命中 `delivery.committed -> dtp.outbox.domain-events`。
+  - MinIO 对象读取通过：聚合 DB smoke 已通过 `fetch_object_bytes(...)` 读取模板执行结果对象。
+  - 临时业务数据已清理；审计按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `4.4 交付、验真与验收主流程`：文件、API、查询、沙箱、报告、验收的主流程全部被集成测试覆盖。
+  - `15.1 测试策略`：本批落实交付子域的集成测试与状态闭环验证。
+  - `14. 页面覆盖校验`：覆盖交付页、验收页、订单详情与开发调试联查所需的关键接口路径。
+- 覆盖的任务清单条目：`DLV-025`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
