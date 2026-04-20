@@ -12,6 +12,7 @@ pub enum BillingPermission {
     PaymentIntentCreate,
     PaymentIntentCancel,
     OrderLock,
+    MockPaymentSimulate,
 }
 
 pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
@@ -55,6 +56,13 @@ pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
             )
         }
         BillingPermission::OrderLock => matches!(
+            role,
+            "platform_admin"
+                | "platform_finance_operator"
+                | "platform_risk_settlement"
+                | "tenant_admin"
+        ),
+        BillingPermission::MockPaymentSimulate => matches!(
             role,
             "platform_admin"
                 | "platform_finance_operator"

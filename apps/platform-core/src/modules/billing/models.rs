@@ -186,6 +186,29 @@ pub struct PaymentWebhookResultView {
     pub applied_payment_status: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MockPaymentSimulationRequest {
+    pub delay_seconds: Option<i32>,
+    pub duplicate_webhook: Option<bool>,
+    pub partial_refund_amount: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct MockPaymentSimulationView {
+    pub mock_payment_case_id: String,
+    pub payment_intent_id: String,
+    pub scenario_type: String,
+    pub provider_key: String,
+    pub provider_kind: String,
+    pub provider_event_id: String,
+    pub provider_status: String,
+    pub http_status_code: Option<u16>,
+    pub webhook_processed_status: String,
+    pub duplicate_webhook: bool,
+    pub duplicate_processed_status: Option<String>,
+    pub applied_payment_status: Option<String>,
+}
+
 fn default_json_object() -> Value {
     Value::Object(Default::default())
 }

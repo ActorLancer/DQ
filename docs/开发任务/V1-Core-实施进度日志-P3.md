@@ -193,3 +193,67 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-177（计划中）
+- 任务：BIL-004 Mock Payment Provider 适配器与模拟支付接口
+- 状态：计划中
+- 说明：在现有 `provider-kit` mock adapter 基础上补齐 Billing 路由入口、真实 WireMock 联调、mock case 落库与 webhook 串联，确保 `success/fail/timeout` 三类场景可直接驱动平台支付主链路。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-177（待审批）
+- 任务：`BIL-004` Mock Payment Provider 适配器与模拟支付接口
+- 状态：待审批
+- 当前任务编号：`BIL-004`
+- 前置依赖核对结果：`BIL-003` 已完成并本地提交；`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：定位 `BIL-004` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：复核支付编排层与 mock provider/live provider 分层，确认 V1 需要 success/fail/timeout 三类模拟结果驱动真实 webhook 主链路。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：对齐幂等、签名占位、provider callback、Webhook 乱序/重复处理口径。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对 mock payment provider/WireMock 本地协议、`/mock/payment/charge/success|fail|timeout` 三条模拟路径、支付回调与审计要求。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 BIL 阶段需实质性接入 PostgreSQL + Mock Payment Provider/WireMock + Kafka(outbox 边界)，Redis 保持可用。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`、`packages/openapi/billing.yaml`：同步校验新增 mock simulate 路由与请求/响应 schema。
+  - `infra/mock-payment/mappings/*.json`、`scripts/check-mock-payment.sh`：确认本地 WireMock 提供 success/fail/refund/manual-transfer/timeout 固定行为，timeout 需由客户端超时触发。
+  - 其余 18 份必读冻结文档已按流程复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `billing/mock_payment_handlers.rs`，把 mock payment simulate 路由从既有 `handlers.rs` 中独立拆出，避免继续堆叠单文件。
+  - 新增 `billing/repo/mock_payment_repository.rs`，落库 `developer.mock_payment_case`，校验 tenant scope 与 `provider_key=mock_payment`，并回写执行结果 payload。
+  - 新增三个真实路由：
+    - `POST /api/v1/mock/payments/{id}/simulate-success`
+    - `POST /api/v1/mock/payments/{id}/simulate-fail`
+    - `POST /api/v1/mock/payments/{id}/simulate-timeout`
+  - 路由会通过 `provider-kit` 的 mock payment adapter 调用 WireMock live endpoint，再把生成的 provider event 送入既有 `POST /api/v1/payments/webhooks/{provider}` 主链路处理。
+  - 支持 `duplicate_webhook` 重放验证；成功场景会落 `payment.webhook.duplicate`，并复用既有 webhook 幂等逻辑。
+  - `MockPaymentSimulationRequest` / `MockPaymentSimulationView` 已补齐请求与响应结构，`packages/openapi/billing.yaml` 已同步更新。
+  - 新增 `bil004_mock_payment_adapter_db_smoke`，覆盖 create intent -> order lock -> simulate success/fail/timeout -> webhook/update order 主链路，并验证 `developer.mock_payment_case / payment.payment_webhook_event / payment.payment_intent / trade.order_main / audit.audit_event`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `MOCK_BASE_URL=http://127.0.0.1:8089 ./scripts/check-mock-payment.sh`
+  5. `TRADE_DB_SMOKE=1 MOCK_PAYMENT_ADAPTER_MODE=live MOCK_PAYMENT_BASE_URL=http://127.0.0.1:8089 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil004_mock_payment_adapter_db_smoke -- --nocapture`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. 启动 `APP_PORT=8098` 的 `platform-core`（同时设置 `MOCK_PAYMENT_ADAPTER_MODE=live` 与 `MOCK_PAYMENT_BASE_URL=http://127.0.0.1:8089`），插入三组临时订单数据后执行真实 `curl`：create intent、lock、simulate-success/fail/timeout，再用 `psql` 回查业务表并清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `210 passed, 0 failed, 1 ignored`。
+  - `./scripts/check-mock-payment.sh` 通过，确认 WireMock `success/fail/refund/manual-transfer/timeout` 行为符合冻结脚本。
+  - `bil004_mock_payment_adapter_db_smoke` 通过，确认 success/fail/timeout 三类模拟均经过真实 Billing 路由、真实数据库、真实 webhook 主链路。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - create intent 三次均返回 `HTTP 200`
+    - `simulate-success` 返回 `HTTP 200`，摘要 `success|succeeded|200|processed|duplicate|succeeded`
+    - `simulate-fail` 返回 `HTTP 200`，摘要 `fail|failed|402|processed|None|failed`
+    - `simulate-timeout` 返回 `HTTP 200`，摘要 `timeout|timeout|None|processed|None|expired`
+  - DB 回查通过：
+    - `payment.payment_intent` 状态分别为 `succeeded / failed / expired`
+    - `trade.order_main` 状态分别为 `buyer_locked/paid`、`payment_failed_pending_resolution/failed`、`payment_timeout_pending_compensation_cancel/expired`
+    - `developer.mock_payment_case` 状态均为 `executed`，success 场景 `duplicate_webhook=true` 且 `duplicate_processed_status=duplicate`
+  - 审计回查通过：`mock.payment.simulate=3`、`payment.webhook.processed=3`、`payment.webhook.duplicate=1`、`order.payment.result.applied=3`。
+  - 临时业务数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md`：4、10.1、10.2、10.3
+  - `支付域接口协议正式版.md`：6.3、9.7、9.8
+  - `数据交易平台-全集成基线-V1.md`：27、mock payment provider 本地联调协议与支付回调主链路要求
+- 覆盖的任务清单条目：`BIL-004`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

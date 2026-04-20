@@ -1,5 +1,8 @@
 use crate::AppState;
 use crate::modules::billing::handlers::handle_payment_webhook;
+use crate::modules::billing::mock_payment_handlers::{
+    simulate_payment_fail, simulate_payment_success, simulate_payment_timeout,
+};
 use crate::modules::billing::order_lock_handlers::lock_order_payment;
 use crate::modules::billing::payment_intent_handlers::{
     cancel_payment_intent, create_payment_intent, get_payment_intent,
@@ -34,6 +37,18 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/payments/webhooks/{provider}",
             post(handle_payment_webhook),
+        )
+        .route(
+            "/api/v1/mock/payments/{id}/simulate-success",
+            post(simulate_payment_success),
+        )
+        .route(
+            "/api/v1/mock/payments/{id}/simulate-fail",
+            post(simulate_payment_fail),
+        )
+        .route(
+            "/api/v1/mock/payments/{id}/simulate-timeout",
+            post(simulate_payment_timeout),
         )
         .route("/api/v1/orders/{id}/lock", post(lock_order_payment))
 }

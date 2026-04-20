@@ -1,6 +1,7 @@
 mod bil001_payment_policy_db;
 mod bil002_payment_intent_db;
 mod bil003_order_lock_db;
+mod bil004_mock_payment_adapter_db;
 
 #[cfg(test)]
 mod tests {
@@ -162,6 +163,24 @@ mod tests {
                     .body(Body::from(
                         r#"{"payment_intent_id":"4f4b3a2e-508b-4902-ba35-97aa905b3772"}"#,
                     ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_mock_payment_simulate_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/mock/payments/30000000-0000-0000-0000-000000000101/simulate-success")
+                    .method("POST")
+                    .header("x-role", "tenant_operator")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{}"#))
                     .expect("request should build"),
             )
             .await

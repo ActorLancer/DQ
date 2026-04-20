@@ -479,6 +479,208 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/mock/payments/{id}/simulate-success:
+    post:
+      summary: Simulate mock payment success callback
+      description: Calls the mock payment provider in live mode, persists a developer mock case, and feeds the resulting webhook through the platform webhook handler.
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-trace-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MockPaymentSimulationRequest"
+      responses:
+        "200":
+          description: Success webhook simulated and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockPaymentSimulationResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Payment intent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Unsupported provider, tenant scope mismatch, or state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Mock provider call failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/mock/payments/{id}/simulate-fail:
+    post:
+      summary: Simulate mock payment fail callback
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-trace-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MockPaymentSimulationRequest"
+      responses:
+        "200":
+          description: Fail webhook simulated and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockPaymentSimulationResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Payment intent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Unsupported provider, tenant scope mismatch, or state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Mock provider call failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/mock/payments/{id}/simulate-timeout:
+    post:
+      summary: Simulate mock payment timeout callback
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-trace-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MockPaymentSimulationRequest"
+      responses:
+        "200":
+          description: Timeout webhook simulated and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockPaymentSimulationResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Payment intent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Unsupported provider, tenant scope mismatch, or state conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Mock provider call failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -579,6 +781,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/PaymentWebhookResult"
+    ApiEnvelopeMockPaymentSimulation:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/MockPaymentSimulation"
     JurisdictionProfile:
       type: object
       required:
@@ -1128,6 +1338,62 @@ components:
         applied_payment_status:
           type: string
           nullable: true
+    MockPaymentSimulationRequest:
+      type: object
+      properties:
+        delay_seconds:
+          type: integer
+          format: int32
+          nullable: true
+        duplicate_webhook:
+          type: boolean
+          nullable: true
+        partial_refund_amount:
+          type: string
+          nullable: true
+    MockPaymentSimulation:
+      type: object
+      required:
+        [
+          mock_payment_case_id,
+          payment_intent_id,
+          scenario_type,
+          provider_key,
+          provider_kind,
+          provider_event_id,
+          provider_status,
+          webhook_processed_status,
+          duplicate_webhook,
+        ]
+      properties:
+        mock_payment_case_id:
+          type: string
+        payment_intent_id:
+          type: string
+        scenario_type:
+          type: string
+        provider_key:
+          type: string
+        provider_kind:
+          type: string
+        provider_event_id:
+          type: string
+        provider_status:
+          type: string
+        http_status_code:
+          type: integer
+          format: int32
+          nullable: true
+        webhook_processed_status:
+          type: string
+        duplicate_webhook:
+          type: boolean
+        duplicate_processed_status:
+          type: string
+          nullable: true
+        applied_payment_status:
+          type: string
+          nullable: true
     JurisdictionProfileListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeJurisdictionList"
@@ -1158,3 +1424,6 @@ components:
     PaymentWebhookResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopePaymentWebhookResult"
+    MockPaymentSimulationResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeMockPaymentSimulation"
