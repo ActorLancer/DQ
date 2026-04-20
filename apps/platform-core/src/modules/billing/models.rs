@@ -166,11 +166,15 @@ pub struct OrderLockView {
 pub struct PaymentWebhookRequest {
     pub provider_event_id: String,
     pub event_type: String,
+    pub provider_transaction_no: Option<String>,
     pub payment_intent_id: Option<String>,
+    pub transaction_amount: Option<String>,
+    pub currency_code: Option<String>,
     pub provider_status: Option<String>,
+    pub occurred_at: Option<String>,
     pub occurred_at_ms: Option<i64>,
-    #[serde(default)]
-    pub payload: Value,
+    #[serde(default, alias = "payload")]
+    pub raw_payload: Value,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -183,6 +187,7 @@ pub struct PaymentWebhookResultView {
     pub signature_verified: bool,
     pub out_of_order_ignored: bool,
     pub payment_intent_id: Option<String>,
+    pub payment_transaction_id: Option<String>,
     pub applied_payment_status: Option<String>,
 }
 
@@ -206,6 +211,7 @@ pub struct MockPaymentSimulationView {
     pub webhook_processed_status: String,
     pub duplicate_webhook: bool,
     pub duplicate_processed_status: Option<String>,
+    pub payment_transaction_id: Option<String>,
     pub applied_payment_status: Option<String>,
 }
 

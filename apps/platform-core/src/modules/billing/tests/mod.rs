@@ -2,6 +2,7 @@ mod bil001_payment_policy_db;
 mod bil002_payment_intent_db;
 mod bil003_order_lock_db;
 mod bil004_mock_payment_adapter_db;
+mod bil005_payment_webhook_db;
 
 #[cfg(test)]
 mod tests {

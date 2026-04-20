@@ -257,3 +257,76 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-178（计划中）
+- 任务：BIL-005 支付 webhook 接口 `POST /api/v1/payments/webhooks/{provider}`
+- 状态：计划中
+- 说明：基于当前已落地的 webhook 路径补齐冻结协议要求：DTO 对齐 `provider_transaction_no / transaction_amount / currency_code / occurred_at / raw_payload`，accepted callback 写入 `payment.payment_transaction`，并补充签名占位、重复回调、防重放、乱序保护的专项 smoke 与真实直接回调联调。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-178（待审批）
+- 任务：`BIL-005` 支付 webhook 接口 `POST /api/v1/payments/webhooks/{provider}`
+- 状态：待审批
+- 当前任务编号：`BIL-005`
+- 前置依赖核对结果：`BIL-004` 已完成并本地提交；`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：定位 `BIL-005` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：复核支付回调必须幂等、禁止重复回调导致重复记账/放款，并确认 mock webhook 属于本地演练入口。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：对齐 `POST /api/v1/payments/webhooks/{provider}` 请求体最小字段、服务端 6 条必须动作，以及 `payment.payment_transaction / payment.payment_webhook_event` 结构。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：核对支付回调签名占位、事件唯一性、重放窗口、乱序保护、账务镜像更新与 mock webhook 调试口径。
+  - `packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`：同步校验 webhook 与 mock simulate 的请求/响应 schema 不漂移。
+  - `scripts/check-query-compile.sh`、`.sqlx/`：确认 SQLx 元数据与离线编译基线继续有效。
+  - 其余 18 份必读冻结文档已按流程复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `billing/webhook_handlers.rs`，把实际 `handle_payment_webhook(...)` 从公共 `handlers.rs` 中拆出，避免继续堆大文件。
+  - `PaymentWebhookRequest` 补齐冻结协议字段：`provider_transaction_no / transaction_amount / currency_code / occurred_at / raw_payload`，并兼容旧别名 `payload`。
+  - `PaymentWebhookResultView` 补齐 `payment_transaction_id`；`MockPaymentSimulationView` 同步回传该字段，保持 mock simulate 与 webhook 主链路可联查。
+  - accepted callback 现在会先按事件类型映射交易形态，再真实写入 `payment.payment_transaction`，随后回写 `payment.payment_webhook_event.payment_transaction_id`。
+  - 保留并收紧五类 webhook 防护：
+    - `rejected_signature`
+    - `duplicate`
+    - `rejected_replay`
+    - `processed_noop / intent_not_found`
+    - `out_of_order_ignored`
+  - `occurred_at` 文本时间戳新增 RFC3339 归一化路径；若未提供 header timestamp，可用请求体文本时间进入重放/乱序判定。
+  - `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml` 已同步更新。
+  - 新增 `bil005_payment_webhook_db_smoke`，覆盖 `processed / duplicate / rejected_signature / rejected_replay / out_of_order_ignored` 五条分支。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core bil005_payment_webhook_db_smoke -- --nocapture`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil005_payment_webhook_db_smoke -- --nocapture`
+  5. `MOCK_BASE_URL=http://127.0.0.1:8089 ./scripts/check-mock-payment.sh`
+  6. `cargo test -p platform-core`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. 启动 `APP_PORT=8099` 的 `platform-core`，插入一组临时订单/商品/支付账户数据后执行真实 `curl`：create intent、lock、webhook success、duplicate、rejected_signature、rejected_replay、out_of_order_ignored，再用 `psql` 回查业务表并清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过。
+  - `bil005_payment_webhook_db_smoke` 普通编译跑通，`TRADE_DB_SMOKE=1` 实库 smoke 通过。
+  - `./scripts/check-mock-payment.sh` 通过。
+  - `cargo test -p platform-core` 通过：`211 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - create intent 返回 `created`
+    - lock 返回 `locked`
+    - success 返回 `processed|<payment_transaction_id>|succeeded`
+    - duplicate 返回 `duplicate|<same payment_transaction_id>`
+    - invalid signature 返回 `rejected_signature`
+    - replay 返回 `rejected_replay`
+    - out-of-order 返回 `out_of_order_ignored|true`
+  - DB 回查通过：
+    - `payment.payment_intent.status=succeeded`
+    - `trade.order_main.status=buyer_locked`
+    - `trade.order_main.payment_status=paid`
+    - `payment.payment_transaction` 仅 1 条
+    - `payment.payment_webhook_event.processed_status` 命中 `duplicate / rejected_signature / rejected_replay / out_of_order_ignored`
+    - 审计命中 `payment.webhook.processed=1`、`payment.webhook.duplicate=1`、`payment.webhook.rejected_signature=1`、`payment.webhook.rejected_replay=1`、`payment.webhook.out_of_order_ignored=1`
+  - 临时业务数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md`：4、10、12
+  - `支付域接口协议正式版.md`：6、9.7、10.7
+  - `数据交易平台-全集成基线-V1.md`：27、`POST /api/v1/payments/webhooks/{provider}`、mock webhook 调试与支付回调保护条目
+- 覆盖的任务清单条目：`BIL-005`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

@@ -1,5 +1,4 @@
 use crate::AppState;
-use crate::modules::billing::handlers::handle_payment_webhook;
 use crate::modules::billing::mock_payment_handlers::{
     simulate_payment_fail, simulate_payment_success, simulate_payment_timeout,
 };
@@ -11,6 +10,7 @@ use crate::modules::billing::policy_handlers::{
     create_payment_corridor, create_payment_jurisdiction, create_payout_preference,
     get_payment_corridors, get_payment_jurisdictions, list_payout_preferences_v1,
 };
+use crate::modules::billing::webhook_handlers::handle_payment_webhook;
 use axum::Router;
 use axum::routing::{get, post};
 

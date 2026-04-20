@@ -1,8 +1,6 @@
 use crate::AppState;
 use crate::modules::billing::db::write_audit_event;
-use crate::modules::billing::handlers::{
-    handle_payment_webhook, header, map_db_connect, require_permission,
-};
+use crate::modules::billing::handlers::{header, map_db_connect, require_permission};
 use crate::modules::billing::models::{
     MockPaymentSimulationRequest, MockPaymentSimulationView, PaymentWebhookRequest,
 };
@@ -10,6 +8,7 @@ use crate::modules::billing::repo::mock_payment_repository::{
     create_mock_payment_case, load_mock_payment_intent_context, update_mock_payment_case_result,
 };
 use crate::modules::billing::service::BillingPermission;
+use crate::modules::billing::webhook_handlers::handle_payment_webhook;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -147,10 +146,14 @@ async fn simulate_payment(
     let webhook_request = PaymentWebhookRequest {
         provider_event_id: provider_event.provider_event_id.clone(),
         event_type: provider_event.event_type.clone(),
+        provider_transaction_no: Some(format!("mocktxn-{}", provider_event.provider_event_id)),
         payment_intent_id: Some(payment_intent_id.clone()),
+        transaction_amount: Some("88.00".to_string()),
+        currency_code: Some("SGD".to_string()),
         provider_status: Some(provider_event.provider_status.clone()),
+        occurred_at: None,
         occurred_at_ms: Some(crate::modules::billing::webhook::now_utc_ms()),
-        payload: json!({
+        raw_payload: json!({
             "source": "mock_payment_simulate",
             "scenario_type": scenario_type,
             "http_status_code": provider_event.http_status_code,
@@ -177,10 +180,17 @@ async fn simulate_payment(
             Json(PaymentWebhookRequest {
                 provider_event_id: provider_event.provider_event_id.clone(),
                 event_type: provider_event.event_type.clone(),
+                provider_transaction_no: Some(format!(
+                    "mocktxn-{}",
+                    provider_event.provider_event_id
+                )),
                 payment_intent_id: Some(payment_intent_id.clone()),
+                transaction_amount: Some("88.00".to_string()),
+                currency_code: Some("SGD".to_string()),
                 provider_status: Some(provider_event.provider_status.clone()),
+                occurred_at: None,
                 occurred_at_ms: Some(crate::modules::billing::webhook::now_utc_ms()),
-                payload: json!({
+                raw_payload: json!({
                     "source": "mock_payment_simulate_duplicate",
                     "scenario_type": scenario_type,
                 }),
@@ -248,6 +258,7 @@ async fn simulate_payment(
             .to_string(),
         duplicate_webhook,
         duplicate_processed_status,
+        payment_transaction_id: webhook_result.payment_transaction_id,
         applied_payment_status: webhook_result.applied_payment_status,
     };
     info!(

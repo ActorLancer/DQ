@@ -78,3 +78,13 @@ pub(crate) fn payment_status_rank(status: &str) -> i32 {
         _ => 0,
     }
 }
+
+pub(crate) fn map_webhook_transaction_shape(
+    event_type: &str,
+) -> Option<(&'static str, &'static str)> {
+    let normalized_type = event_type.trim().to_ascii_lowercase();
+    if normalized_type.starts_with("payment.") {
+        return Some(("payin", "inbound"));
+    }
+    None
+}
