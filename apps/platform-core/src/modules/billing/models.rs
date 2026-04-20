@@ -10,6 +10,94 @@ pub struct BillingPolicyView {
 
 pub type BillingEventView = BillingEvent;
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingSettlementView {
+    pub settlement_id: String,
+    pub settlement_type: String,
+    pub settlement_status: String,
+    pub settlement_mode: String,
+    pub payable_amount: String,
+    pub platform_fee_amount: String,
+    pub channel_fee_amount: String,
+    pub net_receivable_amount: String,
+    pub refund_amount: String,
+    pub compensation_amount: String,
+    pub reason_code: Option<String>,
+    pub settled_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingRefundView {
+    pub refund_id: String,
+    pub amount: String,
+    pub currency_code: String,
+    pub current_status: String,
+    pub executed_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingCompensationView {
+    pub compensation_id: String,
+    pub amount: String,
+    pub currency_code: String,
+    pub current_status: String,
+    pub executed_at: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingInvoiceView {
+    pub invoice_request_id: String,
+    pub settlement_id: Option<String>,
+    pub requester_org_id: String,
+    pub invoice_title: String,
+    pub tax_no: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub current_status: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingTaxPlaceholderView {
+    pub tax_engine_status: String,
+    pub tax_rule_code: String,
+    pub currency_code: String,
+    pub latest_invoice_title: Option<String>,
+    pub latest_tax_no: Option<String>,
+    pub tax_breakdown_ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BillingInvoicePlaceholderView {
+    pub invoice_mode: String,
+    pub invoice_required: bool,
+    pub latest_invoice_request_id: Option<String>,
+    pub latest_invoice_status: Option<String>,
+    pub latest_invoice_title: Option<String>,
+    pub pending_invoice_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct BillingOrderDetailView {
+    pub order_id: String,
+    pub order_status: String,
+    pub payment_status: String,
+    pub settlement_status: String,
+    pub dispute_status: String,
+    pub order_amount: String,
+    pub currency_code: String,
+    pub billing_events: Vec<BillingEventView>,
+    pub settlements: Vec<BillingSettlementView>,
+    pub refunds: Vec<BillingRefundView>,
+    pub compensations: Vec<BillingCompensationView>,
+    pub invoices: Vec<BillingInvoiceView>,
+    pub tax_placeholder: BillingTaxPlaceholderView,
+    pub invoice_placeholder: BillingInvoicePlaceholderView,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateJurisdictionProfileRequest {
     pub jurisdiction_code: String,

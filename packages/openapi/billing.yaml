@@ -326,6 +326,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/billing/{order_id}:
+    get:
+      summary: Query billing detail by order
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: order_id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Billing detail loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingOrderDetailResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/payments/intents/{id}/cancel:
     post:
       summary: Cancel payment intent
@@ -765,6 +809,14 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/PaymentIntentDetail"
+    ApiEnvelopeBillingOrderDetail:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/BillingOrderDetail"
     ApiEnvelopeOrderLock:
       type: object
       required: [success, data]
@@ -1260,6 +1312,250 @@ components:
           allOf:
             - $ref: "#/components/schemas/PaymentWebhookSummary"
           nullable: true
+    BillingEvent:
+      type: object
+      required:
+        [
+          billing_event_id,
+          order_id,
+          event_type,
+          event_source,
+          amount,
+          currency_code,
+          occurred_at,
+          metadata,
+        ]
+      properties:
+        billing_event_id:
+          type: string
+        order_id:
+          type: string
+        event_type:
+          type: string
+        event_source:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        units:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    BillingSettlement:
+      type: object
+      required:
+        [
+          settlement_id,
+          settlement_type,
+          settlement_status,
+          settlement_mode,
+          payable_amount,
+          platform_fee_amount,
+          channel_fee_amount,
+          net_receivable_amount,
+          refund_amount,
+          compensation_amount,
+          updated_at,
+        ]
+      properties:
+        settlement_id:
+          type: string
+        settlement_type:
+          type: string
+        settlement_status:
+          type: string
+        settlement_mode:
+          type: string
+        payable_amount:
+          type: string
+        platform_fee_amount:
+          type: string
+        channel_fee_amount:
+          type: string
+        net_receivable_amount:
+          type: string
+        refund_amount:
+          type: string
+        compensation_amount:
+          type: string
+        reason_code:
+          type: string
+          nullable: true
+        settled_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+    BillingRefund:
+      type: object
+      required: [refund_id, amount, currency_code, current_status, updated_at]
+      properties:
+        refund_id:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        executed_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+    BillingCompensation:
+      type: object
+      required:
+        [compensation_id, amount, currency_code, current_status, updated_at]
+      properties:
+        compensation_id:
+          type: string
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        executed_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+    BillingInvoice:
+      type: object
+      required:
+        [
+          invoice_request_id,
+          requester_org_id,
+          invoice_title,
+          amount,
+          currency_code,
+          current_status,
+          updated_at,
+        ]
+      properties:
+        invoice_request_id:
+          type: string
+        settlement_id:
+          type: string
+          nullable: true
+        requester_org_id:
+          type: string
+        invoice_title:
+          type: string
+        tax_no:
+          type: string
+          nullable: true
+        amount:
+          type: string
+        currency_code:
+          type: string
+        current_status:
+          type: string
+        updated_at:
+          type: string
+    BillingTaxPlaceholder:
+      type: object
+      required:
+        [tax_engine_status, tax_rule_code, currency_code, tax_breakdown_ready]
+      properties:
+        tax_engine_status:
+          type: string
+        tax_rule_code:
+          type: string
+        currency_code:
+          type: string
+        latest_invoice_title:
+          type: string
+          nullable: true
+        latest_tax_no:
+          type: string
+          nullable: true
+        tax_breakdown_ready:
+          type: boolean
+    BillingInvoicePlaceholder:
+      type: object
+      required: [invoice_mode, invoice_required, pending_invoice_count]
+      properties:
+        invoice_mode:
+          type: string
+        invoice_required:
+          type: boolean
+        latest_invoice_request_id:
+          type: string
+          nullable: true
+        latest_invoice_status:
+          type: string
+          nullable: true
+        latest_invoice_title:
+          type: string
+          nullable: true
+        pending_invoice_count:
+          type: integer
+          format: int64
+    BillingOrderDetail:
+      type: object
+      required:
+        [
+          order_id,
+          order_status,
+          payment_status,
+          settlement_status,
+          dispute_status,
+          order_amount,
+          currency_code,
+          billing_events,
+          settlements,
+          refunds,
+          compensations,
+          invoices,
+          tax_placeholder,
+          invoice_placeholder,
+        ]
+      properties:
+        order_id:
+          type: string
+        order_status:
+          type: string
+        payment_status:
+          type: string
+        settlement_status:
+          type: string
+        dispute_status:
+          type: string
+        order_amount:
+          type: string
+        currency_code:
+          type: string
+        billing_events:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingEvent"
+        settlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingSettlement"
+        refunds:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingRefund"
+        compensations:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingCompensation"
+        invoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingInvoice"
+        tax_placeholder:
+          $ref: "#/components/schemas/BillingTaxPlaceholder"
+        invoice_placeholder:
+          $ref: "#/components/schemas/BillingInvoicePlaceholder"
     LockOrderRequest:
       type: object
       required: [payment_intent_id]
@@ -1436,6 +1732,9 @@ components:
     PaymentIntentDetailResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopePaymentIntentDetail"
+    BillingOrderDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiEnvelopeBillingOrderDetail"
     OrderLockResponse:
       allOf:
         - $ref: "#/components/schemas/ApiEnvelopeOrderLock"

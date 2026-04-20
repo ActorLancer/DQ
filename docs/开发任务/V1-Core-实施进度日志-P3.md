@@ -392,3 +392,59 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-180（计划中）
+- 任务：`BIL-007` 账单查看接口 `GET /api/v1/billing/{order_id}`
+- 状态：计划中
+- 说明：在现有 `BillingEvent / Settlement / Refund / Compensation / Invoice` 读面上补齐单订单账单查询接口、DTO、权限、审计与 OpenAPI，同步输出税务/发票占位字段，并通过 DB smoke + 真实 `curl` 联调验证 `billing` 聚合读取口径。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-180（待审批）
+- 任务：`BIL-007` 账单查看接口 `GET /api/v1/billing/{order_id}`
+- 状态：待审批
+- 当前任务编号：`BIL-007`
+- 前置依赖核对结果：`TRADE-003`、`TRADE-007`、`DB-007`、`ENV-020`、`CORE-008`、`CORE-009` 已完成且审批通过；`BIL-006` 已完成并本地提交；保留 `TODO-PROC-BIL-001` 追溯。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `BIL-007` 范围、依赖、DoD 与 `technical_reference`。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：复核 `BillingEvent / Settlement / RefundRecord / CompensationRecord / InvoiceRequest` 在账单聚合中的职责分工。
+  - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql`：核对 `billing.billing_event / settlement_record / refund_record / compensation_record / invoice_request` 的冻结字段。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：确认一次性/周期/API 用量链路的账单查看应能回传结算状态与税务/发票占位。
+  - `packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`：同步补齐 `GET /api/v1/billing/{order_id}` 路径与 `BillingEvent` / 账单聚合 schema，消除原有未定义 `$ref`。
+  - `scripts/check-query-compile.sh`、`.sqlx/`：确认 SQLx 元数据与离线编译基线继续有效。
+  - 其余 18 份必读冻结文档已按流程复核，未发现与本批实现冲突的新口径。
+- 实现要点：
+  - 新增 `billing_read_repository.rs`，按订单维度聚合读取 `BillingEvent / Settlement / Refund / Compensation / Invoice`。
+  - 新增 `billing_read_handlers.rs`，落地 `GET /api/v1/billing/{order_id}`，接入 `BillingPermission::BillingEventRead`、租户范围校验和审计 `billing.order.read`。
+  - 返回视图 `BillingOrderDetailView` 新增订单主状态、支付状态、结算状态、争议状态、订单金额、账单明细数组，以及 `tax_placeholder / invoice_placeholder` 占位结构。
+  - `BillingSettlementView` 补齐 `platform_fee_amount / channel_fee_amount / net_receivable_amount` 等结算字段，避免只看到粗粒度状态。
+  - OpenAPI 补齐 `BillingEvent / BillingSettlement / BillingRefund / BillingCompensation / BillingInvoice / BillingTaxPlaceholder / BillingInvoicePlaceholder / BillingOrderDetail` 组件。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core bil007_billing_read_db_smoke -- --nocapture`
+  4. 启动 `APP_PORT=8101` 的 `platform-core`，插入一组临时账单数据后执行真实 `curl GET /api/v1/billing/{order_id}` 与越权 `403` 联调，再用 `psql` 回查 `audit.audit_event / trade.order_main` 并清理临时业务数据。
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过。
+  - `bil007_billing_read_db_smoke` 通过，覆盖正常读取、租户越权 `403`、审计落库。
+  - 真实 API 联调通过：
+    - `GET /api/v1/billing/{order_id}` 返回 `HTTP 200`
+    - 返回 `billing_events=1 / settlements=1 / refunds=1 / compensations=1 / invoices=1`
+    - 返回 `tax_placeholder.tax_engine_status=placeholder`
+    - 返回 `invoice_placeholder.invoice_mode=manual_placeholder`
+    - outsider tenant 返回 `HTTP 403`
+  - DB 回查通过：
+    - `audit.audit_event` 命中 `billing.order.read=1`
+    - `trade.order_main` 保持 `buyer_locked / paid / pending_settlement`
+  - 临时业务数据已清理，回查 `order_main=0 | billing_event=0 | settlement_record=0 | organization=0`；审计记录按 append-only 保留。
+  - `cargo test -p platform-core` 通过：`216 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md`：4.6
+  - `040_billing_support_risk.sql`：账单/结算/退款/赔付/发票 schema
+  - `支付、资金流与轻结算设计.md`：7、8、9
+- 覆盖的任务清单条目：`BIL-007`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

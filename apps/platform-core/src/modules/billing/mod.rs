@@ -1,6 +1,7 @@
 pub const MODULE: &str = "billing";
 
 pub mod api;
+pub mod billing_read_handlers;
 pub mod db;
 pub mod domain;
 pub mod handlers;
