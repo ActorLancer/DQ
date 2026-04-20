@@ -769,3 +769,69 @@
 - 状态：计划中
 - 说明：按冻结争议流程补齐案件创建、证据上传、裁决三条接口与争议/订单/结算联动；证据对象优先走 MinIO 实存，继续沿用 PostgreSQL + Kafka(outbox 边界) + MinIO 的 BIL 期基线。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-186（待审批）
+- 任务：`BIL-013` 争议案件接口 `POST /api/v1/cases`、证据上传 `POST /api/v1/cases/{id}/evidence`、裁决 `POST /api/v1/cases/{id}/resolve`
+- 当前任务编号：`BIL-013`
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `BIL-013` 只要求补齐案件创建、证据上传、裁决三条接口，不提前展开 Dispute 对 Delivery/Billing 的冻结联动。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认完成定义是接口、DTO、权限校验、审计、错误码和最小测试齐备，且至少一条集成测试或手工 API 验证通过。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务完整流程执行，写“计划中”后编码，验证后写“待审批”，再本地提交并继续下一个任务。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续遵守冻结文档优先级、连续单任务推进和测试留痕要求。
+  - `docs/开发任务/V1-Core-实施进度日志-P3.md`：承接 `BIL-012` 后续批次，沿用 P3 记录本阶段实现。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增无依据 TODO。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：落实 V1 争议提交页、权限矩阵、接口权限清单与售后中心路由口径。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：落实 8.3 争议提交页表单、证据上传和页面角色范围。
+  - `docs/权限设计/接口权限校验清单.md` / `docs/权限设计/菜单权限映射表.md`：校对 `create/evidence/resolve` 的权限、作用域与页面入口约束。
+  - `technical_reference`：
+    - `docs/领域模型/全量领域模型与对象关系说明.md:L1002`：争议与售后聚合最小对象为 `support.dispute_case / evidence_object / decision_record`。
+    - `docs/业务流程/业务流程图-V1-完整版.md:L473`：争议流程要求“创建案件 -> 上传证据 -> 平台裁决”三段式闭环。
+    - `docs/页面说明书/页面说明书-V1-完整版.md:L773`：争议提交页 V1 按买方入口收敛，证据上传和裁决分别对应租户与平台动作。
+- 实现摘要：
+  - 新增 `POST /api/v1/cases`、`POST /api/v1/cases/{id}/evidence`、`POST /api/v1/cases/{id}/resolve` 三条 Billing 路由与 DTO。
+  - 权限口径按方案 A 收敛：`buyer_operator` 允许创建争议和上传证据，`platform_risk_settlement` 允许裁决且必须 step-up。
+  - 争议创建会校验订单归属、争议资格、同订单同原因活跃案件冲突，并写入 `support.dispute_case`、`trade.order_main.dispute_status`、`audit.audit_event` 和 `ops.outbox_event(dispute.created -> dtp.outbox.domain-events)`。
+  - 证据上传走 MinIO 实存，写入 `support.evidence_object`，按 `case_id + object_type + object_hash` 做幂等重放，并把订单/案件状态推进到 `evidence_collecting`。
+  - 裁决写入 `support.decision_record`，更新 `support.dispute_case` 与 `trade.order_main.dispute_status=resolved`，并写入 `ops.outbox_event(dispute.resolved)` 与审计。
+  - 同步更新 `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml`，并把页面/菜单/基线文档中的争议提交流量收敛到“买方侧”。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil013_dispute_case_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动 `APP_PORT=8106` 的 `platform-core`，加载 `infra/docker/.env.local` 并覆盖 `KAFKA_BROKERS/KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`
+  8. 插入临时 buyer/seller/platform、asset/product/sku/order/payment_intent/settlement 数据后执行真实 API 联调：
+     - `POST /api/v1/cases`
+     - `POST /api/v1/cases/{id}/evidence`
+     - `POST /api/v1/cases/{id}/resolve`
+     再用 `psql` 回查 `support.dispute_case / support.evidence_object / support.decision_record / trade.order_main / ops.outbox_event / audit.audit_event`，随后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `231 passed, 0 failed, 1 ignored`。
+  - `bil013_dispute_case_db_smoke` 通过，确认案件创建、证据上传、幂等重放、裁决、MinIO 对象读取、Outbox 与审计均成立。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - 创建案件 `HTTP 200`，返回 `current_status=opened`
+    - 证据上传 `HTTP 200`，返回 `object_uri=s3://evidence-packages/...` 且 `idempotent_replay=false`
+    - 裁决 `HTTP 200`，返回 `current_status=resolved`、`decision_code=refund_full`、`step_up_bound=true`
+  - DB 回查通过：
+    - `support.dispute_case.status = resolved`
+    - `trade.order_main.dispute_status = resolved`
+    - `support.decision_record = 1`
+    - `ops.outbox_event` 命中 `dispute.created / dispute.resolved -> dtp.outbox.domain-events`
+    - `audit.audit_event` 命中 `dispute.case.create / dispute.evidence.upload / dispute.case.resolve`
+  - 临时业务数据已清理，业务表回查为 0；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.7`
+  - `业务流程图-V1-完整版.md` `5.3`
+  - `页面说明书-V1-完整版.md` `8.3`
+- 覆盖的任务清单条目：`BIL-013`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-187（计划中）
+- 任务：`BIL-014` 实现 Dispute 对 Order/Delivery/Billing 的联动：争议发起时可冻结结算、可中止交付、可触发审计保全
+- 状态：计划中
+- 说明：在 `BIL-013` 的 dispute case 基础上补齐对 `trade.order_main / delivery.delivery_record / billing.settlement_record` 的联动冻结与审计保全，不提前展开后续 Settlement 重算器。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

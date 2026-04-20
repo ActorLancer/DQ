@@ -10,6 +10,7 @@ mod bil009_refund_db;
 mod bil010_compensation_db;
 mod bil011_manual_payout_db;
 mod bil012_reconciliation_import_db;
+mod bil013_dispute_case_db;
 
 #[cfg(test)]
 mod tests {
@@ -205,6 +206,74 @@ mod tests {
                         format!("multipart/form-data; boundary={boundary}"),
                     )
                     .body(Body::from(body))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_create_dispute_case_for_seller_role() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/cases")
+                    .method("POST")
+                    .header("x-role", "seller_operator")
+                    .header("x-tenant-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"order_id":"0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56","reason_code":"delivery_failed"}"#,
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_upload_dispute_evidence_for_seller_role() {
+        let app = crate::with_stub_test_state(router());
+        let boundary = "BOUNDARY-BIL013-EVIDENCE";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"object_type\"\r\n\r\ndelivery_receipt\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"evidence.txt\"\r\nContent-Type: text/plain\r\n\r\nevidence\r\n--{boundary}--\r\n"
+        );
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/cases/0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56/evidence")
+                    .method("POST")
+                    .header("x-role", "seller_operator")
+                    .header("x-tenant-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("router should respond");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_resolve_dispute_case_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/cases/0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56/resolve")
+                    .method("POST")
+                    .header("x-role", "platform_risk_settlement")
+                    .header("x-user-id", "0e4f4f8f-26e2-4d0f-89a6-8e57421cbf56")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"decision_code":"refund_full","liability_type":"seller","decision_text":"resolved"}"#,
+                    ))
                     .expect("request should build"),
             )
             .await

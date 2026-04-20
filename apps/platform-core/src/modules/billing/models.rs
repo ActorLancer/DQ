@@ -134,6 +134,84 @@ pub struct ReconciliationImportView {
     pub step_up_bound: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateDisputeCaseRequest {
+    pub order_id: String,
+    pub reason_code: String,
+    pub requested_resolution: Option<String>,
+    pub claimed_amount: Option<String>,
+    pub evidence_scope: Option<String>,
+    pub blocking_effect: Option<String>,
+    #[serde(default = "default_json_object")]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct UploadDisputeEvidenceRequest {
+    pub object_type: String,
+    pub file_name: String,
+    pub content_type: Option<String>,
+    pub file_bytes: Vec<u8>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DisputeCaseView {
+    pub case_id: String,
+    pub order_id: String,
+    pub complainant_type: String,
+    pub complainant_id: String,
+    pub reason_code: String,
+    pub current_status: String,
+    pub decision_code: Option<String>,
+    pub penalty_code: Option<String>,
+    pub opened_at: String,
+    pub resolved_at: Option<String>,
+    pub updated_at: String,
+    pub evidence_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DisputeEvidenceView {
+    pub evidence_id: String,
+    pub case_id: String,
+    pub object_type: String,
+    pub object_uri: Option<String>,
+    pub object_hash: Option<String>,
+    pub metadata: Value,
+    pub created_at: String,
+    pub idempotent_replay: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ResolveDisputeCaseRequest {
+    pub decision_type: Option<String>,
+    pub decision_code: String,
+    pub liability_type: Option<String>,
+    pub penalty_code: Option<String>,
+    pub decision_text: Option<String>,
+    #[serde(default = "default_json_object")]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct DisputeResolutionView {
+    pub case_id: String,
+    pub order_id: String,
+    pub current_status: String,
+    pub decision_id: String,
+    pub decision_type: String,
+    pub decision_code: String,
+    pub liability_type: Option<String>,
+    pub penalty_code: Option<String>,
+    pub decision_text: Option<String>,
+    pub decided_by: Option<String>,
+    pub decided_at: String,
+    pub resolved_at: Option<String>,
+    pub step_up_bound: bool,
+    pub idempotent_replay: bool,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BillingInvoiceView {
     pub invoice_request_id: String,

@@ -19,6 +19,9 @@ pub enum BillingPermission {
     PayoutExecuteManual,
     RefundExecute,
     CompensationExecute,
+    DisputeCaseCreate,
+    DisputeEvidenceUpload,
+    DisputeCaseResolve,
     MockPaymentSimulate,
 }
 
@@ -80,6 +83,10 @@ pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
             role,
             "platform_admin" | "platform_finance_operator" | "platform_risk_settlement"
         ),
+        BillingPermission::DisputeCaseCreate | BillingPermission::DisputeEvidenceUpload => {
+            matches!(role, "buyer_operator")
+        }
+        BillingPermission::DisputeCaseResolve => matches!(role, "platform_risk_settlement"),
         BillingPermission::PaymentIntentCreate | BillingPermission::PaymentIntentCancel => {
             matches!(
                 role,

@@ -622,6 +622,209 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/cases:
+    post:
+      summary: Create dispute case
+      tags: [Billing]
+      parameters:
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema:
+            type: string
+          description: Buyer tenant scope. V1 only allows buyer-side dispute creation.
+        - in: header
+          name: x-user-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDisputeCaseRequest"
+      responses:
+        "200":
+          description: Dispute case created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCaseResponse"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden or buyer tenant scope mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Order is not eligible for dispute or active dispute already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/cases/{id}/evidence:
+    post:
+      summary: Upload dispute evidence
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-tenant-id
+          required: true
+          schema:
+            type: string
+          description: Buyer tenant scope. V1 only allows buyer-side evidence upload.
+        - in: header
+          name: x-user-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UploadDisputeEvidenceMultipartRequest"
+      responses:
+        "200":
+          description: Evidence uploaded or content replayed by identical hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeEvidenceResponse"
+        "400":
+          description: Invalid multipart payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden or buyer tenant scope mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Dispute case not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Evidence upload is not allowed from current case status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/cases/{id}/resolve:
+    post:
+      summary: Resolve dispute case
+      tags: [Billing]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-role
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-user-id
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: x-request-id
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-token
+          required: false
+          schema:
+            type: string
+        - in: header
+          name: x-step-up-challenge-id
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveDisputeCaseRequest"
+      responses:
+        "200":
+          description: Dispute case resolved or replayed by identical decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeResolutionResponse"
+        "400":
+          description: Invalid payload or missing step-up placeholder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Dispute case not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Dispute case already resolved with different decision or archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/billing/{order_id}:
     get:
       summary: Query billing detail by order
@@ -2208,6 +2411,208 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/ReconciliationImport"
+    CreateDisputeCaseRequest:
+      type: object
+      required: [order_id, reason_code]
+      properties:
+        order_id:
+          type: string
+        reason_code:
+          type: string
+        requested_resolution:
+          type: string
+          nullable: true
+        claimed_amount:
+          type: string
+          nullable: true
+        evidence_scope:
+          type: string
+          nullable: true
+        blocking_effect:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    DisputeCase:
+      type: object
+      required:
+        [
+          case_id,
+          order_id,
+          complainant_type,
+          complainant_id,
+          reason_code,
+          current_status,
+          opened_at,
+          updated_at,
+          evidence_count,
+        ]
+      properties:
+        case_id:
+          type: string
+        order_id:
+          type: string
+        complainant_type:
+          type: string
+        complainant_id:
+          type: string
+        reason_code:
+          type: string
+        current_status:
+          type: string
+        decision_code:
+          type: string
+          nullable: true
+        penalty_code:
+          type: string
+          nullable: true
+        opened_at:
+          type: string
+        resolved_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+        evidence_count:
+          type: integer
+          format: int64
+    DisputeCaseResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/DisputeCase"
+    UploadDisputeEvidenceMultipartRequest:
+      type: object
+      required: [object_type, file]
+      properties:
+        object_type:
+          type: string
+        metadata_json:
+          type: string
+          nullable: true
+          description: Optional JSON object encoded as string.
+        file:
+          type: string
+          format: binary
+    DisputeEvidence:
+      type: object
+      required:
+        [evidence_id, case_id, object_type, metadata, created_at, idempotent_replay]
+      properties:
+        evidence_id:
+          type: string
+        case_id:
+          type: string
+        object_type:
+          type: string
+        object_uri:
+          type: string
+          nullable: true
+        object_hash:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+        idempotent_replay:
+          type: boolean
+    DisputeEvidenceResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/DisputeEvidence"
+    ResolveDisputeCaseRequest:
+      type: object
+      required: [decision_code]
+      properties:
+        decision_type:
+          type: string
+          nullable: true
+        decision_code:
+          type: string
+        liability_type:
+          type: string
+          nullable: true
+        penalty_code:
+          type: string
+          nullable: true
+        decision_text:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    DisputeResolution:
+      type: object
+      required:
+        [
+          case_id,
+          order_id,
+          current_status,
+          decision_id,
+          decision_type,
+          decision_code,
+          decided_at,
+          step_up_bound,
+          idempotent_replay,
+        ]
+      properties:
+        case_id:
+          type: string
+        order_id:
+          type: string
+        current_status:
+          type: string
+        decision_id:
+          type: string
+        decision_type:
+          type: string
+        decision_code:
+          type: string
+        liability_type:
+          type: string
+          nullable: true
+        penalty_code:
+          type: string
+          nullable: true
+        decision_text:
+          type: string
+          nullable: true
+        decided_by:
+          type: string
+          nullable: true
+        decided_at:
+          type: string
+        resolved_at:
+          type: string
+          nullable: true
+        step_up_bound:
+          type: boolean
+        idempotent_replay:
+          type: boolean
+    DisputeResolutionResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/DisputeResolution"
     BillingRefund:
       type: object
       required: [refund_id, amount, currency_code, current_status, updated_at]

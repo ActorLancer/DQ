@@ -4,6 +4,7 @@ pub mod api;
 pub mod billing_read_handlers;
 pub mod compensation_handlers;
 pub mod db;
+pub mod dispute_handlers;
 pub mod domain;
 pub mod handlers;
 pub mod mock_payment_handlers;

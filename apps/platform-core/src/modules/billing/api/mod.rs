@@ -1,6 +1,9 @@
 use crate::AppState;
 use crate::modules::billing::billing_read_handlers::get_billing_order;
 use crate::modules::billing::compensation_handlers::create_compensation;
+use crate::modules::billing::dispute_handlers::{
+    create_dispute_case, resolve_dispute_case, upload_dispute_evidence,
+};
 use crate::modules::billing::mock_payment_handlers::{
     simulate_payment_fail, simulate_payment_success, simulate_payment_timeout,
 };
@@ -39,6 +42,9 @@ pub fn router() -> Router<AppState> {
             "/api/v1/payments/reconciliation/import",
             post(import_reconciliation_statement),
         )
+        .route("/api/v1/cases", post(create_dispute_case))
+        .route("/api/v1/cases/{id}/evidence", post(upload_dispute_evidence))
+        .route("/api/v1/cases/{id}/resolve", post(resolve_dispute_case))
         .route("/api/v1/billing/{order_id}", get(get_billing_order))
         .route("/api/v1/payouts/manual", post(create_manual_payout))
         .route("/api/v1/compensations", post(create_compensation))
