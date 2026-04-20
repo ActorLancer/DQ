@@ -317,6 +317,37 @@ mod tests {
             .expect("query audit count")
             .get(0);
         assert_eq!(audit_count, 1);
+        let billing_bridge_row = client
+            .query_one(
+                "SELECT target_topic,
+                        payload ->> 'delivery_branch',
+                        payload ->> 'trigger_stage',
+                        payload -> 'billing_trigger_matrix' ->> 'billing_trigger'
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'billing.trigger.bridge'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&success_request_id],
+            )
+            .await
+            .expect("query billing bridge row");
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(0).as_deref(),
+            Some("billing.events")
+        );
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(1).as_deref(),
+            Some("query_run")
+        );
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(2).as_deref(),
+            Some("execution_completed")
+        );
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(3).as_deref(),
+            Some("bill_once_after_task_acceptance")
+        );
 
         let _ = delete_object(&bucket_name, &object_key).await;
         cleanup_seed_graph(&client, &seed).await;

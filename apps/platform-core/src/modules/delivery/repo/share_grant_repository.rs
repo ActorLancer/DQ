@@ -1,5 +1,6 @@
 use super::outbox_repository::{
-    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+    build_delivery_receipt_outbox_payload, write_billing_trigger_bridge_event,
+    write_delivery_receipt_outbox_event,
 };
 use crate::modules::delivery::dto::{
     ManageShareGrantRequest, ShareGrantListResponseData, ShareGrantResponseData,
@@ -321,6 +322,28 @@ pub async fn manage_share_grant(
             request_id,
             trace_id,
             idempotency_key,
+        )
+        .await?;
+        let billing_bridge_idempotency_key = format!("billing-trigger:share-grant:{delivery_id}");
+        write_billing_trigger_bridge_event(
+            &tx,
+            order_id,
+            "delivery_committed",
+            "delivery_record",
+            &delivery_id,
+            DELIVERY_SHARE_MANAGE_EVENT,
+            actor_role,
+            request_id,
+            trace_id,
+            billing_bridge_idempotency_key.as_str(),
+            json!({
+                "delivery_branch": "share",
+                "delivery_id": delivery_id,
+                "share_protocol": share_protocol,
+                "operation": operation,
+                "grant_status": row.get::<_, String>(6),
+                "data_share_grant_id": row.get::<_, String>(0),
+            }),
         )
         .await?;
         tx.commit().await.map_err(map_db_error)?;

@@ -1,5 +1,6 @@
 use super::outbox_repository::{
-    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+    build_delivery_receipt_outbox_payload, write_billing_trigger_bridge_event,
+    write_delivery_receipt_outbox_event,
 };
 use crate::modules::delivery::domain::{build_watermark_placeholder_patch, merge_snapshot_patch};
 use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponseData};
@@ -498,6 +499,31 @@ pub async fn commit_report_delivery(
         request_id,
         trace_id,
         idempotency_key,
+    )
+    .await?;
+    let billing_bridge_idempotency_key =
+        format!("billing-trigger:report-delivery:{prepared_delivery_id}");
+    write_billing_trigger_bridge_event(
+        &tx,
+        order_id,
+        "delivery_committed",
+        "delivery_record",
+        &prepared_delivery_id,
+        DELIVERY_REPORT_COMMIT_EVENT,
+        actor_role,
+        request_id,
+        trace_id,
+        billing_bridge_idempotency_key.as_str(),
+        json!({
+            "delivery_branch": "report",
+            "delivery_id": prepared_delivery_id,
+            "report_artifact_id": report_artifact_id,
+            "report_type": report_type,
+            "report_version_no": version_no,
+            "object_id": object_id,
+            "receipt_hash": payload.receipt_hash,
+            "delivery_commit_hash": payload.delivery_commit_hash,
+        }),
     )
     .await?;
 

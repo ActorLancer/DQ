@@ -1,3 +1,4 @@
+use super::outbox_repository::write_billing_trigger_bridge_event;
 use crate::modules::delivery::dto::{ExecuteTemplateRunRequest, QueryRunResponseData};
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
@@ -355,6 +356,33 @@ pub async fn execute_template_run(
             "policy_hits": ["template_whitelist_passed", "parameter_schema_passed", "output_boundary_passed", "risk_guard_passed"],
             "result_object_id": object_id,
             "result_object_uri": object_uri,
+        }),
+    )
+    .await?;
+    let billing_bridge_idempotency_key = format!("billing-trigger:query-run:{query_run_id}");
+    write_billing_trigger_bridge_event(
+        &tx,
+        order_id,
+        "execution_completed",
+        "query_execution_run",
+        &query_run_id,
+        DELIVERY_TEMPLATE_QUERY_USE_EVENT,
+        actor_role,
+        request_id,
+        trace_id,
+        billing_bridge_idempotency_key.as_str(),
+        json!({
+            "delivery_branch": "query_run",
+            "query_run_id": query_run_id,
+            "query_surface_id": grant.query_surface_id,
+            "query_template_id": template.query_template_id,
+            "query_template_name": template.template_name,
+            "query_template_version": template.version_no,
+            "result_object_id": object_id,
+            "result_object_uri": object_uri,
+            "result_row_count": row_count,
+            "billed_units": billed_units,
+            "selected_format": selected_format,
         }),
     )
     .await?;

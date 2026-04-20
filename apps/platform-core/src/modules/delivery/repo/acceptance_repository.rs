@@ -1,6 +1,7 @@
 use super::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
 };
+use super::outbox_repository::write_billing_trigger_bridge_event;
 use crate::modules::delivery::dto::{
     AcceptOrderRequest, OrderAcceptanceResponseData, RejectOrderRequest,
 };
@@ -169,6 +170,28 @@ pub async fn accept_order_delivery(
             payload.note.as_deref(),
             payload.verification_summary.as_ref(),
         ),
+    )
+    .await?;
+    let billing_bridge_idempotency_key = format!("billing-trigger:acceptance-passed:{delivery_id}");
+    write_billing_trigger_bridge_event(
+        &tx,
+        order_id,
+        "acceptance_passed",
+        "delivery_record",
+        &delivery_id,
+        DELIVERY_ACCEPT_EVENT,
+        actor_role,
+        request_id,
+        trace_id,
+        billing_bridge_idempotency_key.as_str(),
+        json!({
+            "delivery_branch": delivery_branch,
+            "delivery_id": delivery_id,
+            "reason_code": ACCEPT_REASON_CODE,
+            "accepted_at": accepted_at,
+            "note": payload.note,
+            "verification_summary": payload.verification_summary,
+        }),
     )
     .await?;
 

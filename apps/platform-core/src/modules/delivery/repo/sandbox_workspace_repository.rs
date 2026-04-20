@@ -1,5 +1,6 @@
 use super::outbox_repository::{
-    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+    build_delivery_receipt_outbox_payload, write_billing_trigger_bridge_event,
+    write_delivery_receipt_outbox_event,
 };
 use crate::modules::delivery::dto::{
     ManageSandboxWorkspaceRequest, SandboxAttestationRefModel, SandboxExecutionEnvironmentModel,
@@ -540,6 +541,30 @@ pub async fn manage_sandbox_workspace(
         request_id,
         trace_id,
         idempotency_key,
+    )
+    .await?;
+    let billing_bridge_idempotency_key =
+        format!("billing-trigger:sandbox-enable:{}", prepared.delivery_id);
+    write_billing_trigger_bridge_event(
+        &tx,
+        order_id,
+        "delivery_committed",
+        "delivery_record",
+        &prepared.delivery_id,
+        DELIVERY_SANDBOX_ENABLE_EVENT,
+        actor_role,
+        request_id,
+        trace_id,
+        billing_bridge_idempotency_key.as_str(),
+        json!({
+            "delivery_branch": "sandbox",
+            "delivery_id": prepared.delivery_id,
+            "sandbox_workspace_id": sandbox_workspace_id,
+            "sandbox_session_id": sandbox_session_id,
+            "query_surface_id": query_surface_id,
+            "environment_id": environment.environment_id,
+            "operation": operation,
+        }),
     )
     .await?;
 

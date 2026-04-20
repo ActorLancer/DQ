@@ -260,6 +260,38 @@ mod tests {
             .expect("query accept audit count")
             .get(0);
         assert_eq!(accept_audit_count, 1);
+        let accept_billing_bridge_row = client
+            .query_one(
+                "SELECT target_topic,
+                        payload ->> 'trigger_stage',
+                        payload -> 'billing_trigger_matrix' ->> 'billing_trigger'
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'billing.trigger.bridge'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&accept_request_id],
+            )
+            .await
+            .expect("query accept billing bridge row");
+        assert_eq!(
+            accept_billing_bridge_row
+                .get::<_, Option<String>>(0)
+                .as_deref(),
+            Some("billing.events")
+        );
+        assert_eq!(
+            accept_billing_bridge_row
+                .get::<_, Option<String>>(1)
+                .as_deref(),
+            Some("acceptance_passed")
+        );
+        assert_eq!(
+            accept_billing_bridge_row
+                .get::<_, Option<String>>(2)
+                .as_deref(),
+            Some("bill_once_after_acceptance")
+        );
 
         let reject_audit_count: i64 = client
             .query_one(

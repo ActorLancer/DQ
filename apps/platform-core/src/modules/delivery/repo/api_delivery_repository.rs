@@ -1,5 +1,6 @@
 use super::outbox_repository::{
-    build_delivery_receipt_outbox_payload, write_delivery_receipt_outbox_event,
+    build_delivery_receipt_outbox_payload, write_billing_trigger_bridge_event,
+    write_delivery_receipt_outbox_event,
 };
 use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponseData};
 use crate::modules::delivery::repo::file_delivery_repository::{
@@ -414,6 +415,30 @@ pub async fn commit_api_delivery(
         request_id,
         trace_id,
         idempotency_key,
+    )
+    .await?;
+    let billing_bridge_idempotency_key =
+        format!("billing-trigger:api-delivery:{}", prepared.delivery_id);
+    write_billing_trigger_bridge_event(
+        &tx,
+        order_id,
+        "delivery_committed",
+        "delivery_record",
+        &prepared.delivery_id,
+        "delivery.api.enable",
+        actor_role,
+        request_id,
+        trace_id,
+        billing_bridge_idempotency_key.as_str(),
+        json!({
+            "delivery_branch": "api",
+            "delivery_id": prepared.delivery_id,
+            "app_id": app.app_id,
+            "api_credential_id": api_credential_id,
+            "endpoint_uri": endpoint.endpoint_uri,
+            "upstream_mode": upstream_mode,
+            "sku_type": sku_type,
+        }),
     )
     .await?;
 

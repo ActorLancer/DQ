@@ -298,6 +298,20 @@ mod tests {
             .expect("api outbox count")
             .get(0);
         assert_eq!(api_outbox_count, 2);
+        let billing_bridge_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE event_type = 'billing.trigger.bridge'
+                   AND request_id IN ($1, $2)
+                   AND payload ->> 'delivery_branch' = 'api'
+                   AND target_topic = 'billing.events'",
+                &[&sub_req_id, &ppu_req_id],
+            )
+            .await
+            .expect("api billing bridge count")
+            .get(0);
+        assert_eq!(billing_bridge_count, 2);
 
         cleanup_seed_graph(&client, &api_sub_seed).await;
         cleanup_seed_graph(&client, &api_ppu_seed).await;

@@ -28,14 +28,16 @@ info:
     DLV-020 adds standardized delivery receipt outbox events for
     file/api/share/template/sandbox/report branches; DLV-024 adds order-scoped
     execution attestation read and destruction-attestation recording APIs for
-    sensitive delivery evidence.
+    sensitive delivery evidence; DLV-030 adds `billing.trigger.bridge` outbox
+    events to `billing.events` for delivery commit, template execution success,
+    and acceptance-pass milestones.
 servers:
   - url: http://127.0.0.1:8080
 paths:
   /api/v1/orders/{id}/deliver:
     post:
       summary: Commit file/report delivery or enable API access for a deliverable order
-      description: Uses the prepared delivery task auto-created when the order entered pending_delivery.
+      description: Uses the prepared delivery task auto-created when the order entered pending_delivery and emits both `delivery.committed` and `billing.trigger.bridge` outbox events on success.
       tags: [delivery]
       parameters:
         - name: id
@@ -68,6 +70,7 @@ paths:
   /api/v1/orders/{id}/accept:
     post:
       summary: Accept a manually delivered FILE_STD/FILE_SUB/RPT_STD order
+      description: Persists acceptance evidence and emits a `billing.trigger.bridge` outbox event for the acceptance-passed milestone.
       tags: [delivery]
       parameters:
         - name: id
@@ -413,6 +416,7 @@ paths:
           description: Order is not QRY_LITE or buyer/seller subject status blocks query-run history access
     post:
       summary: Execute a granted QRY_LITE template run and persist QueryExecutionRun plus result artifact
+      description: Persists `query_execution_run`, writes the masked result artifact, and emits a `billing.trigger.bridge` outbox event for template execution success.
       tags: [delivery]
       parameters:
         - name: id

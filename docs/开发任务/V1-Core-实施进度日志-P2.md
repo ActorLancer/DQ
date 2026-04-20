@@ -5066,3 +5066,69 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-172（计划中）
+- 任务：DLV-030 交付完成到计费触发桥接事件
+- 状态：计划中
+- 说明：在文件交付、共享开通、API 开通、模板执行成功、沙箱开通、报告交付、验收通过等节点统一产出标准化 `billing.trigger.bridge` outbox 事件，目标主题 `billing.events`；事件载荷需携带 SKU 计费触发矩阵、订单状态快照与触发来源，且当 `billing.sku_billing_trigger_matrix` 未落库时回退到冻结矩阵快照，不允许因依赖表缺失中断交付主链路。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续沿 DLV 主线顺序推进。
+### BATCH-172（待审批）
+- 任务：`DLV-030` 交付完成到计费触发桥接事件
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-030` 要求文件交付、共享开通、API 正式开通、模板执行成功、沙箱开通、报告交付、验收通过等动作统一产出标准化 outbox 事件，供 Billing 聚合消费而不是依赖猜测状态。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核该任务属于 Delivery 与 Billing 之间的主编排桥接，不能只补单一路径或只写文档。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务流程执行“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续遵循冻结流程，不跳步、不简化。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批在 P2 日志新增计划中与待审批记录。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定只读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 outbox 事件需承载 `request_id / trace_id / idempotency_key` 与标准化计费触发语义。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 Delivery 负责交付状态事实与 outbox，Billing 负责消费桥接事件形成账单聚合。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认本批需更新 Delivery OpenAPI 描述，说明交付/验收接口会发出计费桥接事件。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：确认出站事件必须具备标准主题、事件类型与幂等键语义。
+  - `docs/开发准备/统一错误码字典正式版.md`：沿用既有 `TRD_STATE_CONFLICT`，不新增错码。
+  - `docs/开发准备/测试用例矩阵正式版.md`：确认需要 smoke、全量测试、SQLx 元数据、离线查询校验、真实 API 与 DB/outbox 回查。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：保持桥接逻辑落在 delivery/repo，不将事件装配回塞巨型文件。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调继续使用本地 PostgreSQL/Kafka/MinIO/Redis 栈。
+  - `docs/开发准备/配置项与密钥管理清单.md`：继续使用本地固定连接参数与环境变量。
+  - `docs/开发准备/技术选型正式版.md`：继续遵循 `SQLx + SeaORM` 数据库基线。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认 Billing 侧不能反向猜测 Delivery 状态，必须由 Delivery 产出桥接事实。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L400`：落实 4.5 结算、退款、赔付与关闭流程中“交付/验收节点驱动 Billing 聚合”的主线要求。
+  - `docs/原始PRD/数据商品查询与执行面设计.md:L185`：落实查询执行成功后必须与计费、审计联动，不得只保留本地运行记录。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md:L165`：落实文件/报告按单计费、API/订阅/沙箱按周期或按量计费的桥接口径。
+  - `docs/03-db/sku-billing-trigger-matrix.md`：复核 8 个标准 SKU 的支付、交付、验收、计费、结算、退款、赔付、争议冻结与恢复矩阵。
+  - `db/seeds/031_sku_trigger_matrix.sql`：对照冻结矩阵编写代码内回退快照，保持与 seed 内容一致。
+- 实现要点：
+  - 在 `delivery/repo/outbox_repository.rs` 新增 `billing.trigger.bridge` 事件装配与写入逻辑，目标主题 `billing.events`。
+  - 事件载荷统一包含订单状态快照、触发阶段、触发引用、SKU 计费矩阵、价格快照中的 `pricing_mode / billing_mode / refund_mode / scenario_snapshot`。
+  - `billing.sku_billing_trigger_matrix` 存在时优先读取数据库矩阵；表不存在或 SKU 无记录时回退到与 `db/seeds/031_sku_trigger_matrix.sql` 一致的冻结代码快照，避免交付主链路被环境差异打断。
+  - 由于当前联调库缺少 `ops.outbox_event.idempotency_key` 唯一索引，桥接事件写入改为 `WHERE NOT EXISTS` 实现幂等，不依赖运行库额外索引。
+  - 在文件交付、共享开通、API 开通、模板执行成功、沙箱开通、报告交付、验收通过路径统一接入桥接事件。
+  - 补强 `dlv002/dlv006/dlv007/dlv012/dlv014/dlv017/dlv018` 断言，验证不同 SKU/触发阶段均写出 `billing.trigger.bridge`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+  5. 同口径执行 `dlv006_share_grant_db_smoke`、`dlv007_api_delivery_db_smoke`、`dlv012_template_run_db_smoke`、`dlv014_sandbox_workspace_db_smoke`、`dlv017_report_delivery_db_smoke`、`dlv018_acceptance_db_smoke`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. 真实 API 联调：启动 `APP_PORT=8120` 服务，`curl POST /api/v1/orders/{id}/deliver` 与 `curl POST /api/v1/orders/{id}/accept`，再用 `psql` 回查 `trade.order_main / ops.outbox_event / audit.audit_event`，最后清理临时业务数据并保留审计。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过。
+  - `dlv002/dlv006/dlv007/dlv012/dlv014/dlv017/dlv018` 7 个 DLV smoke 全部通过。
+  - `cargo sqlx prepare --workspace` 通过；`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/deliver` 返回 `HTTP 200`，订单由 `seller_delivering -> delivered`，并写出 `billing.trigger.bridge(trigger_stage=delivery_committed, trigger_action=delivery.file.commit)`。
+    - `POST /api/v1/orders/{id}/accept` 返回 `HTTP 200`，订单由 `delivered -> accepted`，并写出 `billing.trigger.bridge(trigger_stage=acceptance_passed, trigger_action=delivery.accept)`。
+  - DB 回查通过：`trade.order_main = accepted / delivered / accepted / pending_settlement`；`ops.outbox_event` 目标主题均为 `billing.events`，且矩阵字段 `billing_trigger=bill_once_after_acceptance`，回退元数据标记为 `fallback=code`；审计命中 `delivery.file.commit`、`delivery.accept`、`trade.order.accept`。
+  - 临时业务测试数据已清理；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `4.5 结算、退款、赔付与关闭流程`：交付完成与验收通过均驱动 Billing 聚合，不再依赖 Billing 侧猜测状态。
+  - `8. 与授权、计费、审计的关系`：模板执行成功等执行面事件也能桥接到统一计费事件模型。
+  - `7. 平台收费规则设计`：文件/报告、API/订阅、查询、沙箱在桥接载荷中均带出对应冻结矩阵。
+- 覆盖的任务清单条目：`DLV-030`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

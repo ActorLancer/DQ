@@ -317,6 +317,37 @@ mod tests {
             outbox_row.get::<_, Option<String>>(2).as_deref(),
             Some(seed.order_id.as_str())
         );
+        let billing_bridge_row = client
+            .query_one(
+                "SELECT target_topic,
+                        payload ->> 'delivery_branch',
+                        payload ->> 'trigger_stage',
+                        payload -> 'billing_trigger_matrix' ->> 'billing_trigger'
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'billing.trigger.bridge'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&create_request_id],
+            )
+            .await
+            .expect("sandbox billing bridge row");
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(0).as_deref(),
+            Some("billing.events")
+        );
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(1).as_deref(),
+            Some("sandbox")
+        );
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(2).as_deref(),
+            Some("delivery_committed")
+        );
+        assert_eq!(
+            billing_bridge_row.get::<_, Option<String>>(3).as_deref(),
+            Some("bill_after_workspace_activation_acceptance")
+        );
 
         cleanup_seed_graph(&client, &seed).await;
     }
