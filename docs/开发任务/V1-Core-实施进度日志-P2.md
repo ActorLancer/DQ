@@ -4896,3 +4896,80 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-170（计划中）
+- 任务：DLV-028 Delivery 测试用例矩阵文档
+- 状态：计划中
+- 说明：生成 `docs/05-test-cases/delivery-cases.md`，覆盖交付超时、重复开通、票据过期、撤权后访问、验收失败五类交付异常/边界用例，并补充 README 索引引用。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，按 DLV 主线顺序继续。
+### BATCH-170（待审批）
+- 任务：`DLV-028` Delivery 测试用例矩阵文档
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-028` 交付目标是生成 `docs/05-test-cases/delivery-cases.md`，覆盖交付超时、重复开通、票据过期、撤权后访问、验收失败。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核 DLV 阶段文档任务也必须形成可回归的异常/边界矩阵，并被 README/索引引用。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：按单任务流程执行“计划中 -> 实现 -> 验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：复核文档任务仍需做真实 API 验证、DB 回查与审计痕迹确认。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：沿用 P2 日志口径记录本批计划中/待审批。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定仅阅读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核交付、验真、验收和断权是 DLV 阶段闭环的一部分。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 Delivery/Storage/Query Execution 仍是独立子域边界。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认本批不新增接口，只冻结测试矩阵与证据映射。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：复核交付事件、断权审计、拒收审计仍需在测试矩阵中体现。
+  - `docs/开发准备/统一错误码字典正式版.md`：确认 `ticket expired`、`ticket cache not found or expired`、`delivery.reject` 等失败语义需与现实现口径一致。
+  - `docs/开发准备/测试用例矩阵正式版.md`：对齐文档任务仍需给出自动化证据与手工联调模板。
+  - `docs/开发准备/仓库拆分与目录结构建议.md`：测试矩阵文档落在 `docs/05-test-cases/`。
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`：联调用本地 PostgreSQL/MinIO/Redis/Kafka 栈。
+  - `docs/开发准备/配置项与密钥管理清单.md`：沿用本地固定连接参数。
+  - `docs/开发准备/技术选型正式版.md`：延续 `SQLx + SeaORM` 基线，不回退数据库层口径。
+  - `docs/开发准备/平台总体架构设计草案.md`：确认交付测试矩阵需覆盖对象存储、消息总线、数据库投影与审计。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L268`：落实 4.4 交付、验真与验收主流程。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5`：落实集成测试需要验证对象存储、消息总线、数据库投影闭环。
+  - `docs/页面说明书/页面说明书-V1-完整版.md:L996`：确认交付页、验收页、审计联查页、开发调试页都需要异常/边界测试矩阵支撑。
+- 实现要点：
+  - 新增 `docs/05-test-cases/delivery-cases.md`，冻结五类交付异常/边界用例的口径、预期结果、自动化证据与最小 `curl` 联调模板。
+  - 更新 `docs/05-test-cases/README.md`，将 Delivery 测试矩阵纳入测试用例索引。
+  - 文档明确当前代码基线里“交付超时”通过访问窗口到期/资源自动断权表达，而非独立 cron 任务，避免文档与实现漂移。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv004_download_validation_db_smoke -- --nocapture`
+  5. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv017_report_delivery_db_smoke -- --nocapture`
+  6. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv018_acceptance_db_smoke -- --nocapture`
+  7. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv021_auto_cutoff_resources_db_smoke -- --nocapture`
+  8. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  9. `./scripts/check-query-compile.sh`
+  10. 复用本地服务 `APP_PORT=8118`，真实联调两条失败链路：
+     - `FILE_STD` 交付后再次请求 `download-ticket`，验证 `ticket expired`
+     - `RPT_STD` 交付后 `POST /api/v1/orders/{id}/reject`，验证拒收与审计落库
+  11. `psql` 回查 `delivery.delivery_ticket`、`trade.order_main`、`audit.audit_event`
+  12. 清理临时业务数据，保留审计 append-only
+- 验证结果：
+  - `cargo fmt --all`：通过。
+  - `cargo check -p platform-core`：通过。
+  - `cargo test -p platform-core`：通过（`191 passed, 0 failed, 1 ignored`）。
+  - `dlv004_download_validation_db_smoke`：通过。
+  - `dlv017_report_delivery_db_smoke`：通过。
+  - `dlv018_acceptance_db_smoke`：通过。
+  - `dlv021_auto_cutoff_resources_db_smoke`：通过。
+  - `cargo sqlx prepare --workspace`：通过。
+  - `./scripts/check-query-compile.sh`：通过。
+  - 真实 API 联调通过：
+    - `GET /api/v1/orders/{id}/download-ticket` 第二次请求返回 `HTTP 409`
+    - 错误消息：`DOWNLOAD_TICKET_FORBIDDEN: ticket expired`
+    - DB 回查：`delivery.delivery_ticket.status = expired`
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/reject` 返回 `HTTP 200`
+    - 响应状态：`rejected / rejected / blocked / open / report_quality_failed`
+    - DB 回查：`trade.order_main = rejected / rejected / blocked / open`
+    - 审计回查：`delivery.reject = 1`
+  - 临时业务数据已清理；期间发现文件交付临时数据的第一版清理顺序遗漏 `order_main -> delivery_record -> key_envelope` 依赖，已按依赖顺序手工补清，最终剩余组织数为 `0`。
+- 覆盖的冻结文档条目：
+  - `4.4 交付、验真与验收主流程`：文档覆盖文件下载、交付回放、资源断权、验收拒收四类真实交付失败/边界链路。
+  - `15.1 测试策略`：本批同时落实自动化 smoke、真实 API、DB/Redis/对象存储边界校验。
+  - `14. 页面覆盖校验`：交付页、验收页、审计联查页、开发调试页已有统一异常/边界矩阵可引用。
+- 覆盖的任务清单条目：`DLV-028`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

@@ -4,3 +4,4 @@
 
 
 - `order-state-machine.md`：Order/Contract/Authorization 主交易链路 8 个标准 SKU 状态转换测试矩阵。
+- `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
