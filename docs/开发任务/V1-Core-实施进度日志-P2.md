@@ -5132,3 +5132,56 @@
 - 未覆盖项：无。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
 - 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+
+### BATCH-173（计划中）
+- 任务：DLV-031 按 SKU 的验收触发矩阵
+- 状态：计划中
+- 说明：收敛 8 个标准 SKU 的验收触发规则为统一规则文件，供运行时与测试复用；文件/报告维持人工签收，API 系列以开通成功与首个有效调用为验收节点，QRY_LITE 以模板执行成功并结果可取为验收节点，SHARE_RO / SBX_STD 以共享或工作区开通成功为自动验收节点，并修正当前分散状态机与该矩阵不一致的路径。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续沿 DLV 主线顺序推进。
+### BATCH-173（待审批）
+- 任务：`DLV-031` 按 SKU 的验收触发矩阵
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `DLV-031` 要求将 `FILE_STD / FILE_SUB / RPT_STD / API_SUB / API_PPU / QRY_LITE / SHARE_RO / SBX_STD` 的验收触发规则统一固化为规则文件，并供测试复用。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核该任务不是只补文档，必须同时收敛运行时与测试口径，避免 SKU 验收语义分叉。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务流程执行“计划中 -> 实现 -> 完整验证 -> TODO -> 待审批 -> 本地提交”。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续遵循冻结流程，不跳步、不简化。
+  - `docs/开发任务/V1-Core-实施进度日志-P2.md`：本批新增计划中与待审批记录。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增非规范 TODO。
+  - `docs/开发任务/V1-Core-人工审批记录.md`：按约定只读，不写入。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md:L229`：复核 5.3.2A 首批标准场景到 V1 SKU 与模板映射，修正验收模板码必须细分到 `FILE_SUB / SHARE_RO / API_PPU / RPT_STD`，不能沿用错误通用模板。
+  - `docs/业务流程/业务流程图-V1-完整版.md:L268`：复核 4.4 交付、验真与验收主流程，文件/报告维持人工签收，API/QRY/SHARE/SBX 按开通与使用结果进入自动验收分支。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md:L165`：复核 7. 平台收费规则设计，验收触发会直接影响 Billing 触发矩阵，不允许状态语义漂移。
+  - 其余 18 份冻结必读文档已按本批流程复核，未发现与当前实现冲突的新口径。
+- 实现要点：
+  - 新增统一规则文件 `apps/platform-core/src/modules/delivery/domain/acceptance_matrix.rs`，冻结 8 个标准 SKU 的 `accept_template_code / flow_kind / pre_acceptance_states / accepted_states / trigger_evidence`。
+  - 修正规则文件中的验收模板码到冻结基线：`FILE_SUB -> ACCEPT_FILE_SUB_V1`、`SHARE_RO -> ACCEPT_SHARE_RO_V1`、`API_PPU -> ACCEPT_API_PPU_V1`、`RPT_STD -> ACCEPT_REPORT_V1`。
+  - `delivery` 运行时改为复用该规则：人工验收接口只允许矩阵中的手工签收 SKU；`SHARE_RO / SBX_STD` 成功开通后按矩阵自动进入 `delivered / accepted`。
+  - `trade` 侧 `order_share_ro_repository.rs` 与 `order_sbx_std_repository.rs` 同步改为复用矩阵语义，避免 Delivery 与 Trade 两套状态机分叉。
+  - 现有 smoke/状态机测试改为直接引用矩阵辅助函数校验 `acceptance_status`，覆盖 `dlv006 / dlv007 / dlv012 / dlv014 / dlv015 / dlv016 / dlv017 / dlv018 / dlv025 / trade012 / trade014`。
+  - 同步更新 `packages/openapi/delivery.yaml` 与 `docs/02-openapi/delivery.yaml`，补充 DLV-031 的验收矩阵说明；清理 delivery 模块内已存在真实文件目录的 `.gitkeep`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv006_share_grant_db_smoke`
+  5. 同口径执行 `dlv007_api_delivery_db_smoke`、`dlv012_template_run_db_smoke`、`dlv014_sandbox_workspace_db_smoke`、`dlv015_sandbox_model_db_smoke`、`dlv016_sandbox_isolation_model_db_smoke`、`dlv017_report_delivery_db_smoke`、`dlv018_acceptance_db_smoke`、`dlv025_delivery_storage_query_integration_db_smoke`、`trade012_share_ro_state_machine_db_smoke`、`trade014_sbx_std_state_machine_db_smoke`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. 真实 API 联调：启动 `APP_PORT=8121` 服务，`curl POST /api/v1/orders/{id}/accept` 验证 `FILE_STD` 手工签收，`curl POST /api/v1/orders/{id}/share-grants` 验证 `SHARE_RO` 自动验收；再用 `psql` 回查 `trade.order_main / audit.audit_event`，最后清理临时业务数据并保留审计。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过。
+  - `dlv006/dlv007/dlv012/dlv014/dlv015/dlv016/dlv017/dlv018/dlv025/trade012/trade014` 11 个 DB smoke/状态机 smoke 全部通过。
+  - `cargo sqlx prepare --workspace` 通过；`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - 真实 API 联调通过：
+    - `POST /api/v1/orders/{id}/accept` 返回 `HTTP 200`，`FILE_STD` 订单进入 `accepted / delivered / accepted`，审计命中 `delivery.accept=1`。
+    - `POST /api/v1/orders/{id}/share-grants` 返回 `HTTP 200`，`SHARE_RO` 订单进入 `share_granted / delivered / accepted`，审计命中 `delivery.share.enable=1`。
+  - DB 回查通过：`FILE_STD` 手工签收与 `SHARE_RO` 自动验收均与矩阵一致；临时业务测试数据已清理，回查 `order_main=0 / delivery_record=0 / organization=0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `5.3.2A 首批标准场景到 V1 SKU 与模板映射`：验收模板码与 SKU 映射保持一致。
+  - `4.4 交付、验真与验收主流程`：文件/报告保持人工签收，API/QRY/SHARE/SBX 走自动验收路径。
+  - `7. 平台收费规则设计`：验收触发语义与 Billing 桥接/计费矩阵保持一致。
+- 覆盖的任务清单条目：`DLV-031`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。

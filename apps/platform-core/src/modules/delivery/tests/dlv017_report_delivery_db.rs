@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::modules::delivery::api::router as delivery_router;
+    use crate::modules::delivery::domain::expected_acceptance_status_for_state;
     use crate::modules::order::api::router as order_router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -84,7 +85,13 @@ mod tests {
         let data = &json["data"]["data"];
         assert_eq!(data["current_state"].as_str(), Some("report_delivered"));
         assert_eq!(data["delivery_status"].as_str(), Some("delivered"));
-        assert_eq!(data["acceptance_status"].as_str(), Some("in_progress"));
+        assert_eq!(
+            data["acceptance_status"].as_str(),
+            Some(
+                expected_acceptance_status_for_state("RPT_STD", "report_delivered")
+                    .expect("report_delivered acceptance status")
+            )
+        );
         assert_eq!(data["bucket_name"].as_str(), Some("report-results"));
         assert_eq!(
             data["object_key"].as_str(),
@@ -203,7 +210,11 @@ mod tests {
             .expect("query order row");
         assert_eq!(order_row.get::<_, String>(0), "report_delivered");
         assert_eq!(order_row.get::<_, String>(1), "delivered");
-        assert_eq!(order_row.get::<_, String>(2), "in_progress");
+        assert_eq!(
+            order_row.get::<_, String>(2),
+            expected_acceptance_status_for_state("RPT_STD", "report_delivered")
+                .expect("report_delivered acceptance status")
+        );
         assert_eq!(order_row.get::<_, String>(3), "pending_settlement");
 
         let delivery_row = client

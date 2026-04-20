@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::modules::delivery::api::router as delivery_router;
+    use crate::modules::delivery::domain::{
+        is_manual_acceptance_state, manual_acceptance_delivery_branch,
+    };
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use db::{Client, GenericClient, NoTls, connect};
@@ -50,6 +53,10 @@ mod tests {
         .expect("seed report order");
 
         let app = crate::with_live_test_state(delivery_router()).await;
+        assert!(is_manual_acceptance_state("FILE_STD", "delivered"));
+        assert!(is_manual_acceptance_state("RPT_STD", "report_delivered"));
+        assert_eq!(manual_acceptance_delivery_branch("FILE_STD"), Some("file"));
+        assert_eq!(manual_acceptance_delivery_branch("RPT_STD"), Some("report"));
 
         let accept_request_id = format!("req-dlv018-accept-{suffix}");
         let accept_response = app

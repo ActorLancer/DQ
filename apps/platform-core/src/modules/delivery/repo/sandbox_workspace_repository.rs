@@ -2,6 +2,7 @@ use super::outbox_repository::{
     build_delivery_receipt_outbox_payload, write_billing_trigger_bridge_event,
     write_delivery_receipt_outbox_event,
 };
+use crate::modules::delivery::domain::is_accepted_state;
 use crate::modules::delivery::dto::{
     ManageSandboxWorkspaceRequest, SandboxAttestationRefModel, SandboxExecutionEnvironmentModel,
     SandboxExportControlModel, SandboxRuntimeIsolationModel, SandboxSeatModel, SandboxSessionModel,
@@ -373,8 +374,8 @@ pub async fn manage_sandbox_workspace(
     )
     .await?;
 
-    let layered_status = derive_sbx_std_layered_status(&context.payment_status);
     let target_state = "seat_issued";
+    let layered_status = derive_sbx_std_layered_status(target_state, &context.payment_status);
     let reason_code = if operation == "created" {
         "delivery_sbx_std_seat_issued"
     } else {
@@ -1520,10 +1521,18 @@ fn derive_attestation_required(query_policy_json: &Value, environment_metadata: 
         .unwrap_or(false)
 }
 
-fn derive_sbx_std_layered_status(payment_status: &str) -> LayeredOrderStatus {
+fn derive_sbx_std_layered_status(target_state: &str, payment_status: &str) -> LayeredOrderStatus {
     LayeredOrderStatus {
-        delivery_status: "in_progress".to_string(),
-        acceptance_status: "not_started".to_string(),
+        delivery_status: if is_accepted_state("SBX_STD", target_state) {
+            "delivered".to_string()
+        } else {
+            "in_progress".to_string()
+        },
+        acceptance_status: if is_accepted_state("SBX_STD", target_state) {
+            "accepted".to_string()
+        } else {
+            "not_started".to_string()
+        },
         settlement_status: if payment_status == "paid" {
             "pending_settlement".to_string()
         } else {

@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::modules::delivery::api::router as delivery_router;
+    use crate::modules::delivery::domain::expected_acceptance_status_for_state;
     use crate::modules::storage::application::{delete_object, fetch_object_bytes};
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -302,7 +303,11 @@ mod tests {
         assert_eq!(order_row.get::<_, String>(0), "query_executed");
         assert_eq!(order_row.get::<_, String>(1), "paid");
         assert_eq!(order_row.get::<_, String>(2), "delivered");
-        assert_eq!(order_row.get::<_, String>(3), "accepted");
+        assert_eq!(
+            order_row.get::<_, String>(3),
+            expected_acceptance_status_for_state("QRY_LITE", "query_executed")
+                .expect("qry_lite acceptance status")
+        );
         assert_eq!(order_row.get::<_, String>(4), "pending_settlement");
 
         let audit_count: i64 = client

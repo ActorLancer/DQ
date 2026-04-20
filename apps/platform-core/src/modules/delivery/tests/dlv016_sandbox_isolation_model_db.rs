@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::modules::delivery::api::router as delivery_router;
+    use crate::modules::delivery::domain::expected_acceptance_status_for_state;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use db::{Client, GenericClient, NoTls, connect};
@@ -113,6 +114,14 @@ mod tests {
         assert_eq!(data["workspace_status"].as_str(), Some("active"));
         assert_eq!(data["session_status"].as_str(), Some("active"));
         assert_eq!(data["current_state"].as_str(), Some("seat_issued"));
+        assert_eq!(data["delivery_status"].as_str(), Some("delivered"));
+        assert_eq!(
+            data["acceptance_status"].as_str(),
+            Some(
+                expected_acceptance_status_for_state("SBX_STD", "seat_issued")
+                    .expect("seat_issued acceptance status")
+            )
+        );
         assert_eq!(data["environment_type"].as_str(), Some("sandbox"));
         assert_eq!(
             data["execution_environment"]["environment_status"].as_str(),
@@ -434,8 +443,12 @@ mod tests {
             .expect("order row");
         assert_eq!(order_row.get::<_, String>(0), "seat_issued");
         assert_eq!(order_row.get::<_, String>(1), "paid");
-        assert_eq!(order_row.get::<_, String>(2), "in_progress");
-        assert_eq!(order_row.get::<_, String>(3), "not_started");
+        assert_eq!(order_row.get::<_, String>(2), "delivered");
+        assert_eq!(
+            order_row.get::<_, String>(3),
+            expected_acceptance_status_for_state("SBX_STD", "seat_issued")
+                .expect("seat_issued acceptance status")
+        );
         assert_eq!(order_row.get::<_, String>(4), "pending_settlement");
         assert_eq!(order_row.get::<_, String>(5), "none");
         assert_eq!(

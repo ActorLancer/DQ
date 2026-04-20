@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::super::api::router;
+    use crate::modules::delivery::domain::expected_acceptance_status_for_state;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use db::{Client, GenericClient, NoTls, connect};
@@ -67,7 +68,29 @@ mod tests {
                 )
                 .await
                 .expect("response");
-            assert_eq!(response.status(), StatusCode::OK, "{action} should succeed");
+            let status = response.status();
+            let body = to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("transition body");
+            assert_eq!(status, StatusCode::OK, "{action} should succeed");
+            let json: Value = serde_json::from_slice(&body).expect("transition json");
+            if action == "grant_read_access" {
+                assert_eq!(
+                    json["data"]["data"]["current_state"].as_str(),
+                    Some("share_granted")
+                );
+                assert_eq!(
+                    json["data"]["data"]["delivery_status"].as_str(),
+                    Some("delivered")
+                );
+                assert_eq!(
+                    json["data"]["data"]["acceptance_status"].as_str(),
+                    Some(
+                        expected_acceptance_status_for_state("SHARE_RO", "share_granted")
+                            .expect("share_granted acceptance status")
+                    )
+                );
+            }
         }
 
         let final_row = client

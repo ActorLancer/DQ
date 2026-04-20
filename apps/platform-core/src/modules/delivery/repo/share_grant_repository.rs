@@ -2,6 +2,7 @@ use super::outbox_repository::{
     build_delivery_receipt_outbox_payload, write_billing_trigger_bridge_event,
     write_delivery_receipt_outbox_event,
 };
+use crate::modules::delivery::domain::is_accepted_state;
 use crate::modules::delivery::dto::{
     ManageShareGrantRequest, ShareGrantListResponseData, ShareGrantResponseData,
 };
@@ -1176,9 +1177,9 @@ struct LayeredStatus {
 
 fn derive_share_order_layered_status(target_state: &str, payment_status: &str) -> LayeredStatus {
     match target_state {
-        "share_granted" | "share_enabled" => LayeredStatus {
-            delivery_status: "in_progress".to_string(),
-            acceptance_status: "not_started".to_string(),
+        state if is_accepted_state("SHARE_RO", state) => LayeredStatus {
+            delivery_status: "delivered".to_string(),
+            acceptance_status: "accepted".to_string(),
             settlement_status: if payment_status == "paid" {
                 "pending_settlement".to_string()
             } else {
@@ -1186,9 +1187,9 @@ fn derive_share_order_layered_status(target_state: &str, payment_status: &str) -
             },
             dispute_status: "none".to_string(),
         },
-        "shared_active" => LayeredStatus {
-            delivery_status: "delivered".to_string(),
-            acceptance_status: "accepted".to_string(),
+        "share_enabled" => LayeredStatus {
+            delivery_status: "in_progress".to_string(),
+            acceptance_status: "not_started".to_string(),
             settlement_status: if payment_status == "paid" {
                 "pending_settlement".to_string()
             } else {

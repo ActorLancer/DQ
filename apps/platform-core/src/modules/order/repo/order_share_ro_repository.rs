@@ -1,3 +1,4 @@
+use crate::modules::delivery::domain::is_accepted_state;
 use crate::modules::delivery::repo::{
     apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
 };
@@ -238,9 +239,9 @@ fn derive_share_ro_layered_status(
     target_payment_status: &str,
 ) -> LayeredOrderStatus {
     match target_state {
-        "share_enabled" | "share_granted" => LayeredOrderStatus {
-            delivery_status: "in_progress".to_string(),
-            acceptance_status: "not_started".to_string(),
+        state if is_accepted_state("SHARE_RO", state) => LayeredOrderStatus {
+            delivery_status: "delivered".to_string(),
+            acceptance_status: "accepted".to_string(),
             settlement_status: if target_payment_status == "paid" {
                 "pending_settlement".to_string()
             } else {
@@ -248,9 +249,9 @@ fn derive_share_ro_layered_status(
             },
             dispute_status: "none".to_string(),
         },
-        "shared_active" => LayeredOrderStatus {
-            delivery_status: "delivered".to_string(),
-            acceptance_status: "accepted".to_string(),
+        "share_enabled" => LayeredOrderStatus {
+            delivery_status: "in_progress".to_string(),
+            acceptance_status: "not_started".to_string(),
             settlement_status: if target_payment_status == "paid" {
                 "pending_settlement".to_string()
             } else {
@@ -295,8 +296,16 @@ mod tests {
         assert!(t1.is_some());
         let t2 = derive_share_ro_transition("grant_read_access", "share_enabled", "paid");
         assert!(t2.is_some());
+        let granted = t2.expect("grant");
+        assert_eq!(granted.target_state, "share_granted");
+        assert_eq!(granted.layered_status.delivery_status, "delivered");
+        assert_eq!(granted.layered_status.acceptance_status, "accepted");
         let t3 = derive_share_ro_transition("confirm_first_query", "share_granted", "paid");
         assert!(t3.is_some());
+        let active = t3.expect("active");
+        assert_eq!(active.target_state, "shared_active");
+        assert_eq!(active.layered_status.delivery_status, "delivered");
+        assert_eq!(active.layered_status.acceptance_status, "accepted");
         let t4 = derive_share_ro_transition("revoke_share", "shared_active", "paid");
         assert!(t4.is_some());
         assert_eq!(t4.expect("revoke").target_state, "revoked");

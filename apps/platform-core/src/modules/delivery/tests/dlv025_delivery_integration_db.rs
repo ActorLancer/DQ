@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::modules::delivery::api::router as delivery_router;
+    use crate::modules::delivery::domain::expected_acceptance_status_for_state;
     use crate::modules::storage::application::{delete_object, fetch_object_bytes};
     use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request, StatusCode};
@@ -458,13 +459,18 @@ mod tests {
 
         let sandbox_order_row = client
             .query_one(
-                "SELECT status, delivery_status FROM trade.order_main WHERE order_id = $1::text::uuid",
+                "SELECT status, delivery_status, acceptance_status FROM trade.order_main WHERE order_id = $1::text::uuid",
                 &[&sandbox_seed.order_id],
             )
             .await
             .expect("sandbox order row");
         assert_eq!(sandbox_order_row.get::<_, String>(0), "seat_issued");
-        assert_eq!(sandbox_order_row.get::<_, String>(1), "in_progress");
+        assert_eq!(sandbox_order_row.get::<_, String>(1), "delivered");
+        assert_eq!(
+            sandbox_order_row.get::<_, String>(2),
+            expected_acceptance_status_for_state("SBX_STD", "seat_issued")
+                .expect("seat_issued acceptance status")
+        );
 
         let report_order_row = client
             .query_one(

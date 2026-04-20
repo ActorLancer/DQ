@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::modules::delivery::api::router as delivery_router;
+    use crate::modules::delivery::domain::expected_acceptance_status_for_state;
     use crate::modules::order::api::router as order_router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -94,6 +95,10 @@ mod tests {
             Some("share_granted")
         );
         assert_eq!(
+            grant_json["data"]["data"]["delivery_status"].as_str(),
+            Some("delivered")
+        );
+        assert_eq!(
             grant_json["data"]["data"]["subscriber_ref"].as_str(),
             Some(format!("sub-{suffix}").as_str())
         );
@@ -132,6 +137,25 @@ mod tests {
             get_json["data"]["data"]["grants"][0]["grant_status"].as_str(),
             Some("active")
         );
+
+        let granted_order_row = client
+            .query_one(
+                "SELECT status, payment_status, delivery_status, acceptance_status, settlement_status
+                 FROM trade.order_main
+                 WHERE order_id = $1::text::uuid",
+                &[&seed.order_id],
+            )
+            .await
+            .expect("query granted order row");
+        assert_eq!(granted_order_row.get::<_, String>(0), "share_granted");
+        assert_eq!(granted_order_row.get::<_, String>(1), "paid");
+        assert_eq!(granted_order_row.get::<_, String>(2), "delivered");
+        assert_eq!(
+            granted_order_row.get::<_, String>(3),
+            expected_acceptance_status_for_state("SHARE_RO", "share_granted")
+                .expect("share grant acceptance status")
+        );
+        assert_eq!(granted_order_row.get::<_, String>(4), "pending_settlement");
 
         let revoke_request_id = format!("req-dlv006-revoke-{suffix}");
         let revoke_response = app

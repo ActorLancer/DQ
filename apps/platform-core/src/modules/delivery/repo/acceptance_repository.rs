@@ -2,6 +2,9 @@ use super::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
 };
 use super::outbox_repository::write_billing_trigger_bridge_event;
+use crate::modules::delivery::domain::{
+    is_manual_acceptance_state, manual_acceptance_delivery_branch,
+};
 use crate::modules::delivery::dto::{
     AcceptOrderRequest, OrderAcceptanceResponseData, RejectOrderRequest,
 };
@@ -470,18 +473,11 @@ fn validate_reject_request(
 }
 
 fn delivery_branch_for_sku(sku_type: &str) -> Option<&'static str> {
-    match sku_type {
-        "FILE_STD" | "FILE_SUB" => Some("file"),
-        "RPT_STD" => Some("report"),
-        _ => None,
-    }
+    manual_acceptance_delivery_branch(sku_type)
 }
 
 fn is_accept_allowed(sku_type: &str, current_state: &str) -> bool {
-    matches!(
-        (sku_type, current_state),
-        ("FILE_STD", "delivered") | ("FILE_SUB", "delivered") | ("RPT_STD", "report_delivered")
-    )
+    is_manual_acceptance_state(sku_type, current_state)
 }
 
 fn is_reject_allowed(sku_type: &str, current_state: &str) -> bool {

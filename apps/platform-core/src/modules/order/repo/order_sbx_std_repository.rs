@@ -1,3 +1,4 @@
+use crate::modules::delivery::domain::is_accepted_state;
 use crate::modules::delivery::repo::{
     apply_delivery_cutoff_if_needed, invalidate_delivery_cutoff_download_ticket_caches,
 };
@@ -239,9 +240,9 @@ fn derive_sbx_std_layered_status(
     target_payment_status: &str,
 ) -> LayeredOrderStatus {
     match target_state {
-        "workspace_enabled" | "seat_issued" => LayeredOrderStatus {
-            delivery_status: "in_progress".to_string(),
-            acceptance_status: "not_started".to_string(),
+        state if is_accepted_state("SBX_STD", state) => LayeredOrderStatus {
+            delivery_status: "delivered".to_string(),
+            acceptance_status: "accepted".to_string(),
             settlement_status: if target_payment_status == "paid" {
                 "pending_settlement".to_string()
             } else {
@@ -249,9 +250,9 @@ fn derive_sbx_std_layered_status(
             },
             dispute_status: "none".to_string(),
         },
-        "sandbox_executed" | "result_limited_exported" => LayeredOrderStatus {
-            delivery_status: "delivered".to_string(),
-            acceptance_status: "accepted".to_string(),
+        "workspace_enabled" => LayeredOrderStatus {
+            delivery_status: "in_progress".to_string(),
+            acceptance_status: "not_started".to_string(),
             settlement_status: if target_payment_status == "paid" {
                 "pending_settlement".to_string()
             } else {
@@ -290,8 +291,16 @@ mod tests {
         assert!(t1.is_some());
         let t2 = derive_sbx_std_transition("issue_account_seat", "workspace_enabled", "paid");
         assert!(t2.is_some());
+        let seat = t2.expect("seat");
+        assert_eq!(seat.target_state, "seat_issued");
+        assert_eq!(seat.layered_status.delivery_status, "delivered");
+        assert_eq!(seat.layered_status.acceptance_status, "accepted");
         let t3 = derive_sbx_std_transition("execute_sandbox_query", "seat_issued", "paid");
         assert!(t3.is_some());
+        let executed = t3.expect("executed");
+        assert_eq!(executed.target_state, "sandbox_executed");
+        assert_eq!(executed.layered_status.delivery_status, "delivered");
+        assert_eq!(executed.layered_status.acceptance_status, "accepted");
         let t4 = derive_sbx_std_transition("export_limited_result", "sandbox_executed", "paid");
         assert!(t4.is_some());
         let t5 = derive_sbx_std_transition("expire_sandbox", "result_limited_exported", "paid");

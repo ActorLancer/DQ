@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::modules::delivery::api::router as delivery_router;
+    use crate::modules::delivery::domain::expected_acceptance_status_for_state;
     use crate::modules::order::api::router as order_router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -177,7 +178,11 @@ mod tests {
             .expect("query api_sub order");
         assert_eq!(sub_order_row.get::<_, String>(0), "api_key_issued");
         assert_eq!(sub_order_row.get::<_, String>(1), "in_progress");
-        assert_eq!(sub_order_row.get::<_, String>(2), "not_started");
+        assert_eq!(
+            sub_order_row.get::<_, String>(2),
+            expected_acceptance_status_for_state("API_SUB", "api_key_issued")
+                .expect("api_sub acceptance status")
+        );
         assert_eq!(sub_order_row.get::<_, String>(3), "pending_settlement");
 
         let ppu_order_row = client
@@ -191,7 +196,11 @@ mod tests {
             .expect("query api_ppu order");
         assert_eq!(ppu_order_row.get::<_, String>(0), "quota_ready");
         assert_eq!(ppu_order_row.get::<_, String>(1), "in_progress");
-        assert_eq!(ppu_order_row.get::<_, String>(2), "not_started");
+        assert_eq!(
+            ppu_order_row.get::<_, String>(2),
+            expected_acceptance_status_for_state("API_PPU", "quota_ready")
+                .expect("api_ppu acceptance status")
+        );
         assert_eq!(ppu_order_row.get::<_, String>(3), "pending_settlement");
 
         let sub_delivery_row = client

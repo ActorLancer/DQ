@@ -30,7 +30,10 @@ info:
     execution attestation read and destruction-attestation recording APIs for
     sensitive delivery evidence; DLV-030 adds `billing.trigger.bridge` outbox
     events to `billing.events` for delivery commit, template execution success,
-    and acceptance-pass milestones.
+    and acceptance-pass milestones; DLV-031 freezes the SKU acceptance trigger
+    matrix so FILE/RPT stay manual, API waits for enablement plus first valid
+    use, QRY_LITE accepts on result availability, and SHARE_RO/SBX_STD accept
+    automatically once enablement succeeds.
 servers:
   - url: http://127.0.0.1:8080
 paths:
@@ -243,7 +246,7 @@ paths:
   /api/v1/orders/{id}/share-grants:
     post:
       summary: Create, update, or revoke a SHARE_RO grant
-      description: SHARE_RO enablement reuses the prepared share_grant task auto-created at pending_delivery.
+      description: SHARE_RO enablement reuses the prepared share_grant task auto-created at pending_delivery and, on successful grant activation, moves the order into the DLV-031 auto-accepted path.
       tags: [delivery]
       parameters:
         - name: id
@@ -329,6 +332,7 @@ paths:
   /api/v1/orders/{id}/sandbox-workspaces:
     post:
       summary: Provision or refresh a sandbox workspace for an SBX_STD order
+      description: Successful seat issuance follows the DLV-031 auto-acceptance matrix and marks the SBX_STD order delivered/accepted without a separate manual accept call.
       tags: [delivery]
       parameters:
         - name: id
@@ -416,7 +420,7 @@ paths:
           description: Order is not QRY_LITE or buyer/seller subject status blocks query-run history access
     post:
       summary: Execute a granted QRY_LITE template run and persist QueryExecutionRun plus result artifact
-      description: Persists `query_execution_run`, writes the masked result artifact, and emits a `billing.trigger.bridge` outbox event for template execution success.
+      description: Persists `query_execution_run`, writes the masked result artifact, emits a `billing.trigger.bridge` outbox event for template execution success, and follows the DLV-031 acceptance matrix where successful result availability completes acceptance automatically.
       tags: [delivery]
       parameters:
         - name: id
