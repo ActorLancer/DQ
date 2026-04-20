@@ -4,6 +4,7 @@ use axum::Json;
 use axum::http::StatusCode;
 use db::{GenericClient, Row};
 use kernel::{ErrorCode, ErrorResponse};
+use serde_json::json;
 
 #[derive(Debug, Clone)]
 struct SettlementAggregateSnapshot {
@@ -19,6 +20,17 @@ struct SettlementAggregateSnapshot {
     compensation_amount: String,
     reason_code: Option<String>,
     settled_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SettlementOutboxContext {
+    buyer_org_id: String,
+    seller_org_id: String,
+    order_status: String,
+    payment_status: String,
+    settlement_status: String,
+    dispute_status: String,
+    currency_code: String,
 }
 
 pub async fn recompute_settlement_for_order(
@@ -146,6 +158,9 @@ pub async fn recompute_settlement_for_order(
     sync_order_settlement_state(client, order_id, &settlement)
         .await
         .map_err(map_db_error)?;
+    let outbox_written =
+        write_settlement_summary_outbox(client, order_id, &settlement, request_id, trace_id)
+            .await?;
     write_audit_event(
         client,
         "billing",
@@ -158,6 +173,20 @@ pub async fn recompute_settlement_for_order(
         trace_id,
     )
     .await?;
+    if outbox_written {
+        write_audit_event(
+            client,
+            "billing",
+            "settlement",
+            &settlement.settlement_id,
+            actor_role,
+            "billing.settlement.summary.outbox",
+            "success",
+            request_id,
+            trace_id,
+        )
+        .await?;
+    }
     Ok(settlement)
 }
 
@@ -316,6 +345,176 @@ async fn sync_order_settlement_state(
         )
         .await?;
     Ok(())
+}
+
+async fn write_settlement_summary_outbox(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    settlement: &Settlement,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+) -> Result<bool, (StatusCode, Json<ErrorResponse>)> {
+    let context = load_settlement_outbox_context(client, order_id, request_id).await?;
+    let event_type = settlement_outbox_event_type(settlement);
+    let summary_state = format!(
+        "{}:{}:{}",
+        settlement.settlement_type, settlement.settlement_status, settlement.settlement_mode
+    );
+    let proof_commit_state = "pending_anchor";
+    let payload = json!({
+        "event_name": event_type,
+        "event_schema_version": "v1",
+        "authority_scope": "business",
+        "source_of_truth": "database",
+        "proof_commit_policy": "pending_fabric_anchor",
+        "proof_commit_state": proof_commit_state,
+        "order_id": order_id,
+        "settlement_id": settlement.settlement_id,
+        "settlement_type": settlement.settlement_type,
+        "settlement_status": settlement.settlement_status,
+        "settlement_mode": settlement.settlement_mode,
+        "settled_at": settlement.settled_at,
+        "reason_code": settlement.reason_code,
+        "summary": {
+            "gross_amount": settlement.payable_amount,
+            "platform_commission_amount": settlement.platform_fee_amount,
+            "channel_fee_amount": settlement.channel_fee_amount,
+            "refund_adjustment_amount": settlement.refund_amount,
+            "compensation_adjustment_amount": settlement.compensation_amount,
+            "supplier_receivable_amount": settlement.net_receivable_amount,
+            "summary_state": summary_state,
+            "proof_commit_state": proof_commit_state,
+        },
+        "order_snapshot": {
+            "buyer_org_id": context.buyer_org_id,
+            "seller_org_id": context.seller_org_id,
+            "order_status": context.order_status,
+            "payment_status": context.payment_status,
+            "settlement_status": context.settlement_status,
+            "dispute_status": context.dispute_status,
+            "currency_code": context.currency_code,
+        }
+    });
+    let idempotency_key = format!(
+        "settlement-summary:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+        settlement.settlement_id,
+        event_type,
+        settlement.payable_amount,
+        settlement.platform_fee_amount,
+        settlement.channel_fee_amount,
+        settlement.net_receivable_amount,
+        settlement.refund_amount,
+        settlement.compensation_amount,
+        settlement.reason_code.as_deref().unwrap_or(""),
+        settlement.settled_at.as_deref().unwrap_or(""),
+        context.order_status,
+        context.payment_status,
+        context.settlement_status,
+        context.dispute_status,
+    );
+    let row = client
+        .query_opt(
+            "INSERT INTO ops.outbox_event (
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               status,
+               request_id,
+               trace_id,
+               idempotency_key,
+               event_schema_version,
+               authority_scope,
+               source_of_truth,
+               proof_commit_policy,
+               target_bus,
+               target_topic,
+               partition_key,
+               ordering_key,
+               payload_hash
+             )
+             SELECT
+               'billing.settlement_record',
+               $1::text::uuid,
+               $2,
+               $3::jsonb,
+               'pending',
+               $4,
+               $5,
+               $6,
+               'v1',
+               'business',
+               'database',
+               'pending_fabric_anchor',
+               'kafka',
+               'dtp.outbox.domain-events',
+               $1,
+               $1,
+               encode(digest(($3::jsonb)::text, 'sha256'), 'hex')
+             WHERE NOT EXISTS (
+               SELECT 1
+               FROM ops.outbox_event
+               WHERE idempotency_key = $6
+             )
+             RETURNING outbox_event_id::text",
+            &[
+                &settlement.settlement_id,
+                &event_type,
+                &payload,
+                &request_id,
+                &trace_id,
+                &idempotency_key,
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    Ok(row.is_some())
+}
+
+async fn load_settlement_outbox_context(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    request_id: Option<&str>,
+) -> Result<SettlementOutboxContext, (StatusCode, Json<ErrorResponse>)> {
+    let row = client
+        .query_opt(
+            "SELECT
+               buyer_org_id::text,
+               seller_org_id::text,
+               status,
+               payment_status,
+               settlement_status,
+               dispute_status,
+               currency_code
+             FROM trade.order_main
+             WHERE order_id = $1::text::uuid",
+            &[&order_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let Some(row) = row else {
+        return Err(settlement_error(
+            StatusCode::NOT_FOUND,
+            &format!("order not found for settlement summary outbox: {order_id}"),
+            request_id,
+        ));
+    };
+    Ok(SettlementOutboxContext {
+        buyer_org_id: row.get(0),
+        seller_org_id: row.get(1),
+        order_status: row.get(2),
+        payment_status: row.get(3),
+        settlement_status: row.get(4),
+        dispute_status: row.get(5),
+        currency_code: row.get(6),
+    })
+}
+
+fn settlement_outbox_event_type(settlement: &Settlement) -> &'static str {
+    match settlement.settlement_status.as_str() {
+        "settled" | "refunded" | "closed" | "canceled" => "settlement.completed",
+        _ => "settlement.created",
+    }
 }
 
 fn parse_settlement_row(row: &Row) -> Settlement {

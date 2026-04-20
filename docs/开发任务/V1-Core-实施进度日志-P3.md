@@ -980,3 +980,84 @@
 - 状态：计划中
 - 说明：在 `BIL-015` 聚合器基础上补齐账单/结算摘要事件，不提前展开 `AUD` 阶段的 Fabric 链上闭环，只先保证 Kafka outbox 边界与审计归档载荷稳定。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-189（待审批）
+- 任务：`BIL-016` 实现账单/结算摘要 outbox 事件，为后续 Fabric 存证和审计归档做准备
+- 当前任务编号：`BIL-016`
+- 已阅读证据：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：确认 `BIL-016` 目标是落地账单/结算摘要 outbox 事件，为后续 Fabric 存证和审计归档提供稳定事件边界。
+  - `docs/开发任务/v1-core-开发任务清单.md`：确认完成定义要求业务规则、状态机、审计、事件与测试齐备，并至少完成一条集成测试或手工 API 验证。
+  - `docs/开发任务/Agent-开发与半人工审核流程.md`：继续按单任务完整流程执行，先写“计划中”，验证通过后写“待审批”，本地提交后继续推进下一个任务。
+  - `docs/开发任务/AI-Agent-执行提示词.md`：继续遵守冻结文档优先级、顺序推进、真实联调、日志与 TODO 留痕要求。
+  - `docs/开发任务/V1-Core-实施进度日志-P3.md`：承接 `BIL-015` 之后的 Billing 阶段实现记录。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：保持 `TODO-PROC-BIL-001` 追溯，不新增无依据 TODO。
+  - `technical_reference`：
+    - `docs/领域模型/全量领域模型与对象关系说明.md:L895`：落实 `Settlement` 既是财务结算对象，也是后续审计/存证的归档锚点。
+    - `docs/数据库设计/V1/upgrade/040_billing_support_risk.sql:L1`：复用 `billing.settlement_record` 与 `ops.outbox_event` 的 V1 冻结结构，不提前引入 AUD 阶段 worker。
+    - `docs/原始PRD/支付、资金流与轻结算设计.md:L165`：落实账单摘要需可追溯平台服务费、渠道手续费、退款、赔付与人工结算后的最终净额。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`：核对 `settlement.created / settlement.completed` 事件进入 `dtp.outbox.domain-events` 的 topic 口径。
+- 实现摘要：
+  - 在统一 `settlement_aggregate_repository` 内补齐账单/结算摘要 outbox 写入，不新开旁路仓储，确保聚合重算与事件写入保持同一编排口径。
+  - 为结算摘要新增稳定 payload：
+    - `event_schema_version=v1`
+    - `authority_scope=business`
+    - `source_of_truth=database`
+    - `proof_commit_policy=pending_fabric_anchor`
+    - `proof_commit_state=pending_anchor`
+    - `summary` 快照包含应结金额、平台费、渠道费、退款、赔付、供方应收与 `summary_state`
+    - `order_snapshot` 包含买卖方、订单状态、支付状态、结算状态、争议状态与币种信息
+  - 事件类型按结算状态分流：
+    - `pending` 等未完成态 -> `settlement.created`
+    - `settled/refunded/closed/canceled` -> `settlement.completed`
+  - 通过稳定 `idempotency_key` 对同一结算快照去重，避免重复重算反复写同一 outbox。
+  - 新增 `billing.settlement.summary.outbox` 审计动作，仅在本轮聚合真正写入 outbox 时记录。
+  - 新增 `bil016_settlement_summary_outbox_db_smoke`，覆盖 `created -> completed` 两类事件、重复重算不重复写、账单读取摘要同步输出 `proof_commit_state`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil016_settlement_summary_outbox_db_smoke -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. 启动 `APP_PORT=8109` 的 `platform-core`，加载 `infra/docker/.env.local` 并覆盖 `KAFKA_BROKERS/KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`
+  8. 插入临时 buyer/seller/user/asset/product/order/provider_account/payout_preference 数据后执行真实 API：
+     - `POST /api/v1/payments/intents`
+     - `POST /api/v1/orders/{id}/lock`
+     - `POST /api/v1/payments/webhooks/mock_payment`
+     - `GET /api/v1/billing/{order_id}`
+     - `POST /api/v1/payouts/manual`
+     - 再次 `GET /api/v1/billing/{order_id}`
+     再用 `psql` 回查 `ops.outbox_event / billing.settlement_record / audit.audit_event`，随后清理临时业务数据。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core` 全部通过；全量结果 `234 passed, 0 failed, 1 ignored`。
+  - `bil016_settlement_summary_outbox_db_smoke` 通过，确认 `settlement.created / settlement.completed` 双事件都能落库，重复重算不重复写同类事件。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx/` 元数据已刷新。
+  - `./scripts/check-query-compile.sh` 顺序重跑通过；此前并发运行时先读旧缓存导致失败，已确认不是业务缺陷。
+  - 真实 API 联调通过：
+    - `POST /api/v1/payments/intents` 返回 `HTTP 200`
+    - `POST /api/v1/orders/{id}/lock` 返回 `HTTP 200`
+    - `POST /api/v1/payments/webhooks/mock_payment` 返回 `processed`
+    - `POST /api/v1/payouts/manual` 返回 `HTTP 200`
+    - `GET /api/v1/billing/{order_id}` 返回 `HTTP 200`
+  - DB 回查通过：
+    - `ops.outbox_event` 命中 `settlement.created -> dtp.outbox.domain-events`
+    - `ops.outbox_event` 命中 `settlement.completed -> dtp.outbox.domain-events`
+    - 两条事件 `payload.summary.summary_state` 分别为 `order_settlement:pending:manual`、`order_settlement:settled:manual`
+    - 两条事件 `payload.proof_commit_state = pending_anchor`
+    - `billing.settlement_record = settled`，且 `settled_at IS NOT NULL`
+    - `audit.audit_event` 命中 `billing.settlement.summary.outbox = 2`
+    - `GET /api/v1/billing/{order_id}` 返回 `summary_state=order_settlement:settled:manual`、`proof_commit_state=pending_anchor`
+  - 临时业务数据已清理，业务表回查为 0；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `全量领域模型与对象关系说明.md` `4.6`
+  - `040_billing_support_risk.sql`
+  - `支付、资金流与轻结算设计.md` `7`
+  - `事件模型与Topic清单正式版.md` `billing topic` 与 `dtp.outbox.domain-events`
+- 覆盖的任务清单条目：`BIL-016`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-190（计划中）
+- 任务：`BIL-017` 为 API_SUB/API_PPU 设计最小计费口径：订阅周期账单 + 按调用量追加事件
+- 状态：计划中
+- 说明：在既有 `BillingEvent / Settlement / Outbox` 链路上补齐 API 类 SKU 的订阅周期账单与调用量追加事件口径，不提前展开更高阶计费策略引擎。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。

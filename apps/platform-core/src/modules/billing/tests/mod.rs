@@ -13,6 +13,7 @@ mod bil012_reconciliation_import_db;
 mod bil013_dispute_case_db;
 mod bil014_dispute_linkage_db;
 mod bil015_settlement_aggregate_db;
+mod bil016_settlement_summary_outbox_db;
 
 #[cfg(test)]
 mod tests {
