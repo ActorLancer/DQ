@@ -1292,3 +1292,48 @@
 - 状态：计划中
 - 说明：基于当前 Billing/Payment/Dispute/Settlement 已落地实现与 smoke，用冻结测试矩阵文档沉淀支付回调乱序、重复回调、重复扣费防护、结算冻结等最小可信校验用例，并补做文档索引与最小真实联调验证。
 - 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
+### BATCH-194（待审批）
+- 任务：`BIL-021` 生成 `docs/05-test-cases/payment-billing-cases.md`，覆盖回调乱序、重复回调、重复扣费防护、结算冻结
+- 状态：待审批
+- 实现摘要：
+  - 新增 `docs/05-test-cases/payment-billing-cases.md`，冻结 Billing/Payment/Settlement/Dispute 子域的 12 条最小可信回归基线，覆盖 success/duplicate/out-of-order/timeout、重复扣费防护、争议冻结、退款/赔付重算、结算摘要 outbox。
+  - 更新 `docs/05-test-cases/README.md`，将支付与账单回归矩阵纳入测试用例索引。
+  - 文档中的每条矩阵都回链到已有自动化证据文件，避免“文档口径”和实际测试脱节。
+- 验证：
+  - `grep -n "payment-billing-cases.md" docs/05-test-cases/README.md`
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实 API 联调：复用 `APP_PORT=8112` 的 `platform-core` 进程，插入临时支付订单与争议订单后执行：
+    - `POST /api/v1/payments/intents`
+    - `POST /api/v1/orders/{id}/lock`
+    - `POST /api/v1/payments/webhooks/mock_payment`（success / duplicate / out_of_order）
+    - `POST /api/v1/cases`
+    - `psql` 回查 `trade.order_main / audit.audit_event`
+- 验证结果：
+  - 测试索引已命中：`payment-billing-cases.md` 已被 `docs/05-test-cases/README.md` 引用。
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`241 passed, 0 failed, 1 ignored`。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过。
+  - 真实 API 联调通过：
+    - success webhook -> `processed / succeeded`
+    - duplicate webhook -> `duplicate / true`
+    - stale failed webhook -> `out_of_order_ignored / true`
+    - 争议创建后订单变为 `settlement_status=frozen`、`dispute_status=opened`
+  - DB 回查通过：`trade.order_main` 支付订单为 `buyer_locked:paid`；争议订单为 `frozen:opened`；`audit.audit_event` 命中 `payment.webhook.processed=1`、`dispute.case.create=1`。
+  - 临时业务数据已清理，回查 `core.organization / core.user_account / payment.provider_account / trade.order_main = 0`；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `支付、资金流与轻结算设计.md` `4`
+  - `支付域接口协议正式版.md` `6`
+  - `数据交易平台-全集成基线-V1.md` `27`
+- 覆盖的任务清单条目：`BIL-021`
+- 未覆盖项：无。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-PROC-BIL-001` 追溯约束保持不变。
+- 备注：`V1-Core-人工审批记录.md` 按约定由你手工维护，本批未写入。
+### BATCH-195（计划中）
+- 任务：`BIL-022` 实现支付结果处理器：消费支付 webhook 或支付轮询结果，幂等更新 PaymentIntent、Order.payment_status、订单主状态推进记录与审计事件，确保“success 后 fail”“timeout 后 success”等乱序场景不破坏最终状态
+- 状态：计划中
+- 说明：在既有 webhook 处理与订单状态推进基础上，复核 `partial` 任务剩余缺口，补齐乱序场景的统一支付结果处理口径、审计和集成验证，避免 Billing 与 Trade 两侧语义分叉。
+- 追溯：`TODO-PROC-BIL-001` 保持追溯，继续按 BIL 顺序推进。
