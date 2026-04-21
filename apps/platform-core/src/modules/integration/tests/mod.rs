@@ -1,3 +1,4 @@
 mod notif004_payment_success_db;
 mod notif005_delivery_completion_db;
+mod notif006_acceptance_resolution_db;
 mod notification_contract_db;

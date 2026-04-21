@@ -299,6 +299,82 @@ mod tests {
                 .as_deref(),
             Some("bill_once_after_acceptance")
         );
+        let accept_event_row = client
+            .query_one(
+                "SELECT aggregate_type,
+                        target_topic,
+                        payload ->> 'reason_code'
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'acceptance.passed'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&accept_request_id],
+            )
+            .await
+            .expect("query accept outbox row");
+        assert_eq!(
+            accept_event_row.get::<_, String>(0),
+            "trade.acceptance_record"
+        );
+        assert_eq!(
+            accept_event_row.get::<_, Option<String>>(1).as_deref(),
+            Some("dtp.outbox.domain-events")
+        );
+        assert_eq!(
+            accept_event_row.get::<_, Option<String>>(2).as_deref(),
+            Some("delivery_accept_passed")
+        );
+        let accept_notification_rows = client
+            .query(
+                "SELECT payload
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND target_topic = 'dtp.notification.dispatch'
+                 ORDER BY created_at ASC, outbox_event_id ASC",
+                &[&accept_request_id],
+            )
+            .await
+            .expect("query acceptance passed notifications");
+        assert_eq!(accept_notification_rows.len(), 3);
+        let accept_notification_payloads = accept_notification_rows
+            .iter()
+            .map(|row| row.get::<_, Value>(0))
+            .collect::<Vec<_>>();
+        let accept_buyer = find_notification_payload(&accept_notification_payloads, "buyer");
+        assert_eq!(
+            accept_buyer["payload"]["notification_code"].as_str(),
+            Some("acceptance.passed")
+        );
+        assert_eq!(
+            accept_buyer["payload"]["template_code"].as_str(),
+            Some("NOTIFY_ACCEPTANCE_PASSED_V1")
+        );
+        assert_eq!(
+            accept_buyer["payload"]["variables"]["action_href"].as_str(),
+            Some(format!("/trade/orders/{}", file_seed.order_id).as_str())
+        );
+        let accept_ops = find_notification_payload(&accept_notification_payloads, "ops");
+        assert_eq!(
+            accept_ops["payload"]["variables"]["show_ops_context"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            accept_ops["payload"]["variables"]["action_href"].as_str(),
+            Some(format!("/billing?order_id={}", file_seed.order_id).as_str())
+        );
+        let accept_replay_notification_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND target_topic = 'dtp.notification.dispatch'",
+                &[&format!("{accept_request_id}-replay")],
+            )
+            .await
+            .expect("query acceptance replay notification count")
+            .get(0);
+        assert_eq!(accept_replay_notification_count, 0);
 
         let reject_audit_count: i64 = client
             .query_one(
@@ -312,9 +388,80 @@ mod tests {
             .expect("query reject audit count")
             .get(0);
         assert_eq!(reject_audit_count, 1);
+        let reject_event_row = client
+            .query_one(
+                "SELECT aggregate_type,
+                        target_topic,
+                        payload ->> 'reason_code'
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'acceptance.rejected'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&reject_request_id],
+            )
+            .await
+            .expect("query reject outbox row");
+        assert_eq!(
+            reject_event_row.get::<_, String>(0),
+            "trade.acceptance_record"
+        );
+        assert_eq!(
+            reject_event_row.get::<_, Option<String>>(1).as_deref(),
+            Some("dtp.outbox.domain-events")
+        );
+        assert_eq!(
+            reject_event_row.get::<_, Option<String>>(2).as_deref(),
+            Some("report_quality_failed")
+        );
+        let reject_notification_rows = client
+            .query(
+                "SELECT payload
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND target_topic = 'dtp.notification.dispatch'
+                 ORDER BY created_at ASC, outbox_event_id ASC",
+                &[&reject_request_id],
+            )
+            .await
+            .expect("query acceptance rejected notifications");
+        assert_eq!(reject_notification_rows.len(), 3);
+        let reject_notification_payloads = reject_notification_rows
+            .iter()
+            .map(|row| row.get::<_, Value>(0))
+            .collect::<Vec<_>>();
+        let reject_buyer = find_notification_payload(&reject_notification_payloads, "buyer");
+        assert_eq!(
+            reject_buyer["payload"]["notification_code"].as_str(),
+            Some("acceptance.rejected")
+        );
+        assert_eq!(
+            reject_buyer["payload"]["template_code"].as_str(),
+            Some("NOTIFY_ACCEPTANCE_REJECTED_V1")
+        );
+        assert_eq!(
+            reject_buyer["payload"]["variables"]["action_href"].as_str(),
+            Some(format!("/support/cases/new?order_id={}", report_seed.order_id).as_str())
+        );
+        let reject_ops = find_notification_payload(&reject_notification_payloads, "ops");
+        assert_eq!(
+            reject_ops["payload"]["variables"]["show_ops_context"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            reject_ops["payload"]["variables"]["action_href"].as_str(),
+            Some(format!("/support/cases/new?order_id={}", report_seed.order_id).as_str())
+        );
 
         cleanup_seed(&client, &file_seed).await;
         cleanup_seed(&client, &report_seed).await;
+    }
+
+    fn find_notification_payload<'a>(payloads: &'a [Value], audience_scope: &str) -> &'a Value {
+        payloads
+            .iter()
+            .find(|payload| payload["payload"]["audience_scope"].as_str() == Some(audience_scope))
+            .unwrap_or_else(|| panic!("missing payload for audience {audience_scope}"))
     }
 
     async fn seed_order(

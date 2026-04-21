@@ -7,6 +7,7 @@ use crate::modules::integration::events::{
 use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use db::{Error, GenericClient};
 use serde_json::{Value, json};
+use std::str::FromStr;
 
 pub struct QueueNotificationRequest<'a> {
     pub aggregate_id: &'a str,
@@ -965,6 +966,1188 @@ async fn load_delivery_completion_notification_context(
     })
 }
 
+pub struct AcceptanceOutcomeNotificationDispatchInput<'a> {
+    pub order_id: &'a str,
+    pub acceptance_record_id: &'a str,
+    pub scene: &'a str,
+    pub occurred_at: Option<&'a str>,
+    pub reason_code: &'a str,
+    pub reason_detail: Option<&'a str>,
+    pub verification_summary: Option<&'a Value>,
+    pub request_id: Option<&'a str>,
+    pub trace_id: Option<&'a str>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct AcceptanceOutcomeNotificationDispatchResult {
+    pub inserted_count: usize,
+    pub replayed_count: usize,
+    pub idempotency_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AcceptanceOutcomeNotificationContext {
+    order_id: String,
+    product_id: String,
+    product_title: String,
+    sku_code: String,
+    sku_type: String,
+    order_amount: String,
+    currency_code: String,
+    order_status: String,
+    payment_status: String,
+    delivery_status: String,
+    acceptance_status: String,
+    settlement_status: String,
+    dispute_status: String,
+    buyer_org_id: String,
+    buyer_org_name: String,
+    seller_org_id: String,
+    seller_org_name: String,
+    delivery_type: String,
+    delivery_route: String,
+}
+
+#[derive(Debug, Clone)]
+struct AcceptanceOutcomeNotificationDispatch {
+    scene: NotificationScene,
+    audience: NotificationAudience,
+    recipient: NotificationRecipient,
+    source_event: NotificationSourceEvent,
+    variables: Value,
+    metadata: Value,
+    subject_refs: Vec<NotificationSubjectRef>,
+    links: Vec<NotificationActionLink>,
+}
+
+pub async fn queue_acceptance_outcome_notifications(
+    client: &(impl GenericClient + Sync),
+    input: AcceptanceOutcomeNotificationDispatchInput<'_>,
+) -> Result<AcceptanceOutcomeNotificationDispatchResult, Error> {
+    let scene = parse_acceptance_scene(input.scene)?;
+    let context = load_acceptance_outcome_notification_context(client, input.order_id).await?;
+    let buyer_recipient = load_org_recipient(
+        client,
+        &context.buyer_org_id,
+        &context.buyer_org_name,
+        &["buyer_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let seller_recipient = load_org_recipient(
+        client,
+        &context.seller_org_id,
+        &context.seller_org_name,
+        &["seller_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let ops_recipient = load_ops_recipient(client).await?;
+    let source_event = NotificationSourceEvent {
+        aggregate_type: "trade.acceptance_record".to_string(),
+        aggregate_id: input.acceptance_record_id.to_string(),
+        event_type: input.scene.to_string(),
+        event_id: None,
+        target_topic: Some("dtp.outbox.domain-events".to_string()),
+        occurred_at: input.occurred_at.map(str::to_string),
+    };
+
+    let dispatches = vec![
+        AcceptanceOutcomeNotificationDispatch::buyer(
+            &context,
+            &buyer_recipient,
+            &source_event,
+            scene,
+            input.reason_code,
+            input.reason_detail,
+            input.verification_summary,
+        ),
+        AcceptanceOutcomeNotificationDispatch::seller(
+            &context,
+            &seller_recipient,
+            &source_event,
+            scene,
+            input.reason_code,
+            input.reason_detail,
+            input.verification_summary,
+        ),
+        AcceptanceOutcomeNotificationDispatch::ops(
+            &context,
+            &ops_recipient,
+            &source_event,
+            scene,
+            input.reason_code,
+            input.reason_detail,
+            input.verification_summary,
+        ),
+    ];
+
+    let mut result = AcceptanceOutcomeNotificationDispatchResult::default();
+    for dispatch in dispatches {
+        let (payload, idempotency_key) = prepare_notification_request(dispatch.build_input());
+        let inserted = queue_notification_request(
+            client,
+            QueueNotificationRequest {
+                aggregate_id: input.acceptance_record_id,
+                payload: &payload,
+                idempotency_key: &idempotency_key,
+                request_id: input.request_id,
+                trace_id: input.trace_id,
+            },
+        )
+        .await?;
+        if inserted {
+            result.inserted_count += 1;
+        } else {
+            result.replayed_count += 1;
+        }
+        result.idempotency_keys.push(idempotency_key);
+    }
+
+    Ok(result)
+}
+
+impl AcceptanceOutcomeNotificationDispatch {
+    fn buyer(
+        context: &AcceptanceOutcomeNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+        scene: NotificationScene,
+        reason_code: &str,
+        reason_detail: Option<&str>,
+        verification_summary: Option<&Value>,
+    ) -> Self {
+        let (subject, headline, action_summary, action_label, action_href, links, transition_code) =
+            match scene {
+                NotificationScene::AcceptancePassed => (
+                    "验收通过，订单进入结算处理".to_string(),
+                    format!(
+                        "订单 {} 已完成验收通过，可回到订单详情查看后续结算与归档状态。",
+                        context.order_id
+                    ),
+                    "回到订单详情查看验收结论，并关注后续账单与结算变化。".to_string(),
+                    "查看订单详情".to_string(),
+                    order_detail_href(&context.order_id),
+                    vec![
+                        NotificationActionLink {
+                            link_code: "order_detail".to_string(),
+                            href: order_detail_href(&context.order_id),
+                        },
+                        NotificationActionLink {
+                            link_code: "billing_center".to_string(),
+                            href: billing_center_href(&context.order_id),
+                        },
+                    ],
+                    "acceptance_passed_buyer_visible",
+                ),
+                NotificationScene::AcceptanceRejected => (
+                    "验收未通过，请处理争议".to_string(),
+                    format!(
+                        "订单 {} 的交付结果已被拒收，可前往争议提交页补充原因与证据。",
+                        context.order_id
+                    ),
+                    "如需发起正式争议，请在争议提交页补充拒收原因和证据摘要。".to_string(),
+                    "进入争议提交页".to_string(),
+                    dispute_create_href(&context.order_id),
+                    vec![
+                        NotificationActionLink {
+                            link_code: "dispute_create".to_string(),
+                            href: dispute_create_href(&context.order_id),
+                        },
+                        NotificationActionLink {
+                            link_code: "order_detail".to_string(),
+                            href: order_detail_href(&context.order_id),
+                        },
+                    ],
+                    "acceptance_rejected_buyer_visible",
+                ),
+                other => unreachable!("unsupported acceptance scene: {}", other.as_str()),
+            };
+
+        Self {
+            scene,
+            audience: NotificationAudience::Buyer,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": subject,
+                "headline": headline,
+                "action_summary": action_summary,
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "current_state": context.order_status,
+                "current_state_label": order_state_label(&context.order_status),
+                "acceptance_status_label": acceptance_status_label(&context.acceptance_status),
+                "delivery_type": context.delivery_type,
+                "delivery_route": context.delivery_route,
+                "reason_code": reason_code,
+                "reason_detail": reason_detail,
+                "verification_summary": verification_summary,
+                "show_ops_context": false,
+                "action_label": action_label,
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-006",
+                "transition_code": transition_code,
+                "recipient_scope": "buyer_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "delivery_type": context.delivery_type,
+                "delivery_route": context.delivery_route,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "reason_code": reason_code,
+            }),
+            subject_refs: vec![
+                NotificationSubjectRef {
+                    ref_type: "order".to_string(),
+                    ref_id: context.order_id.clone(),
+                },
+                NotificationSubjectRef {
+                    ref_type: "product".to_string(),
+                    ref_id: context.product_id.clone(),
+                },
+                NotificationSubjectRef {
+                    ref_type: "acceptance_record".to_string(),
+                    ref_id: source_event.aggregate_id.clone(),
+                },
+            ],
+            links,
+        }
+    }
+
+    fn seller(
+        context: &AcceptanceOutcomeNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+        scene: NotificationScene,
+        reason_code: &str,
+        reason_detail: Option<&str>,
+        verification_summary: Option<&Value>,
+    ) -> Self {
+        let (subject, headline, action_summary, action_label, action_href, links, transition_code) =
+            match scene {
+                NotificationScene::AcceptancePassed => (
+                    "买方已验收通过".to_string(),
+                    format!(
+                        "订单 {} 已被买方确认验收通过，可回到订单详情查看后续结算状态。",
+                        context.order_id
+                    ),
+                    "回到订单详情确认验收结果，并关注后续放款与结算进度。".to_string(),
+                    "查看订单详情".to_string(),
+                    order_detail_href(&context.order_id),
+                    vec![
+                        NotificationActionLink {
+                            link_code: "order_detail".to_string(),
+                            href: order_detail_href(&context.order_id),
+                        },
+                        NotificationActionLink {
+                            link_code: "billing_center".to_string(),
+                            href: billing_center_href(&context.order_id),
+                        },
+                    ],
+                    "acceptance_passed_seller_visible",
+                ),
+                NotificationScene::AcceptanceRejected => (
+                    "买方已拒收交付结果".to_string(),
+                    format!(
+                        "订单 {} 的交付结果已被买方拒收，请在订单详情确认原因并准备后续处理。",
+                        context.order_id
+                    ),
+                    "回到订单详情查看拒收原因和验收摘要，必要时准备争议处理材料。".to_string(),
+                    "查看订单详情".to_string(),
+                    order_detail_href(&context.order_id),
+                    vec![
+                        NotificationActionLink {
+                            link_code: "order_detail".to_string(),
+                            href: order_detail_href(&context.order_id),
+                        },
+                        NotificationActionLink {
+                            link_code: "dispute_create".to_string(),
+                            href: dispute_create_href(&context.order_id),
+                        },
+                    ],
+                    "acceptance_rejected_seller_visible",
+                ),
+                other => unreachable!("unsupported acceptance scene: {}", other.as_str()),
+            };
+
+        Self {
+            scene,
+            audience: NotificationAudience::Seller,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": subject,
+                "headline": headline,
+                "action_summary": action_summary,
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "current_state": context.order_status,
+                "current_state_label": order_state_label(&context.order_status),
+                "acceptance_status_label": acceptance_status_label(&context.acceptance_status),
+                "delivery_type": context.delivery_type,
+                "delivery_route": context.delivery_route,
+                "reason_code": reason_code,
+                "reason_detail": reason_detail,
+                "verification_summary": verification_summary,
+                "show_ops_context": false,
+                "action_label": action_label,
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-006",
+                "transition_code": transition_code,
+                "recipient_scope": "seller_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "delivery_type": context.delivery_type,
+                "delivery_route": context.delivery_route,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "reason_code": reason_code,
+            }),
+            subject_refs: vec![
+                NotificationSubjectRef {
+                    ref_type: "order".to_string(),
+                    ref_id: context.order_id.clone(),
+                },
+                NotificationSubjectRef {
+                    ref_type: "product".to_string(),
+                    ref_id: context.product_id.clone(),
+                },
+                NotificationSubjectRef {
+                    ref_type: "acceptance_record".to_string(),
+                    ref_id: source_event.aggregate_id.clone(),
+                },
+            ],
+            links,
+        }
+    }
+
+    fn ops(
+        context: &AcceptanceOutcomeNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+        scene: NotificationScene,
+        reason_code: &str,
+        reason_detail: Option<&str>,
+        verification_summary: Option<&Value>,
+    ) -> Self {
+        let (subject, headline, action_summary, action_label, action_href, links, transition_code) =
+            match scene {
+                NotificationScene::AcceptancePassed => (
+                    "验收通过（运营联查）".to_string(),
+                    format!(
+                        "订单 {} 已完成验收通过，请在账单中心跟踪结算、放款与归档状态。",
+                        context.order_id
+                    ),
+                    "进入账单中心回查结算结果，并确认验收事件已推进后续账单链路。".to_string(),
+                    "查看账单中心".to_string(),
+                    billing_center_href(&context.order_id),
+                    vec![
+                        NotificationActionLink {
+                            link_code: "billing_center".to_string(),
+                            href: billing_center_href(&context.order_id),
+                        },
+                        NotificationActionLink {
+                            link_code: "order_detail".to_string(),
+                            href: order_detail_href(&context.order_id),
+                        },
+                    ],
+                    "acceptance_passed_ops_visible",
+                ),
+                NotificationScene::AcceptanceRejected => (
+                    "验收拒收（运营联查）".to_string(),
+                    format!(
+                        "订单 {} 已进入拒收处理，请前往争议提交页关注后续案件流转。",
+                        context.order_id
+                    ),
+                    "进入争议提交页联查拒收原因与证据摘要，并跟踪后续案件处理。".to_string(),
+                    "查看争议提交页".to_string(),
+                    dispute_create_href(&context.order_id),
+                    vec![
+                        NotificationActionLink {
+                            link_code: "dispute_create".to_string(),
+                            href: dispute_create_href(&context.order_id),
+                        },
+                        NotificationActionLink {
+                            link_code: "order_detail".to_string(),
+                            href: order_detail_href(&context.order_id),
+                        },
+                    ],
+                    "acceptance_rejected_ops_visible",
+                ),
+                other => unreachable!("unsupported acceptance scene: {}", other.as_str()),
+            };
+
+        Self {
+            scene,
+            audience: NotificationAudience::Ops,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": subject,
+                "headline": headline,
+                "action_summary": action_summary,
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "current_state": context.order_status,
+                "current_state_label": order_state_label(&context.order_status),
+                "acceptance_status_label": acceptance_status_label(&context.acceptance_status),
+                "delivery_type": context.delivery_type,
+                "delivery_route": context.delivery_route,
+                "reason_code": reason_code,
+                "reason_detail": reason_detail,
+                "verification_summary": verification_summary,
+                "acceptance_record_id": source_event.aggregate_id,
+                "show_ops_context": true,
+                "action_label": action_label,
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-006",
+                "transition_code": transition_code,
+                "recipient_scope": "ops_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "delivery_type": context.delivery_type,
+                "delivery_route": context.delivery_route,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "reason_code": reason_code,
+                "acceptance_record_id": source_event.aggregate_id,
+            }),
+            subject_refs: vec![
+                NotificationSubjectRef {
+                    ref_type: "order".to_string(),
+                    ref_id: context.order_id.clone(),
+                },
+                NotificationSubjectRef {
+                    ref_type: "product".to_string(),
+                    ref_id: context.product_id.clone(),
+                },
+                NotificationSubjectRef {
+                    ref_type: "acceptance_record".to_string(),
+                    ref_id: source_event.aggregate_id.clone(),
+                },
+            ],
+            links,
+        }
+    }
+
+    fn build_input(self) -> BuildNotificationRequestInput {
+        BuildNotificationRequestInput {
+            scene: self.scene,
+            audience: self.audience,
+            recipient: self.recipient,
+            source_event: self.source_event,
+            variables: self.variables,
+            metadata: self.metadata,
+            retry_policy: None,
+            subject_refs: self.subject_refs,
+            links: self.links,
+            template_code: None,
+            channel: None,
+        }
+    }
+}
+
+async fn load_acceptance_outcome_notification_context(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+) -> Result<AcceptanceOutcomeNotificationContext, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               o.order_id::text,
+               o.product_id::text,
+               p.title,
+               COALESCE(sku.sku_code, ''),
+               COALESCE(sku.sku_type, ''),
+               o.amount::text,
+               o.currency_code,
+               o.status,
+               o.payment_status,
+               o.delivery_status,
+               o.acceptance_status,
+               o.settlement_status,
+               o.dispute_status,
+               buyer.org_id::text,
+               buyer.org_name,
+               seller.org_id::text,
+               seller.org_name,
+               COALESCE(delivery.delivery_type, ''),
+               COALESCE(delivery.delivery_route, '')
+             FROM trade.order_main o
+             JOIN catalog.product p ON p.product_id = o.product_id
+             JOIN catalog.product_sku sku ON sku.sku_id = o.sku_id
+             JOIN core.organization buyer ON buyer.org_id = o.buyer_org_id
+             JOIN core.organization seller ON seller.org_id = o.seller_org_id
+             LEFT JOIN LATERAL (
+               SELECT delivery_type, delivery_route
+               FROM delivery.delivery_record
+               WHERE order_id = o.order_id
+               ORDER BY created_at DESC, delivery_id DESC
+               LIMIT 1
+             ) delivery ON TRUE
+             WHERE o.order_id = $1::text::uuid",
+            &[&order_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Err(Error::Bind(format!(
+            "missing order context for acceptance notification dispatch: {order_id}"
+        )));
+    };
+
+    Ok(AcceptanceOutcomeNotificationContext {
+        order_id: row.get(0),
+        product_id: row.get(1),
+        product_title: row.get(2),
+        sku_code: row.get(3),
+        sku_type: row.get(4),
+        order_amount: row.get(5),
+        currency_code: row.get(6),
+        order_status: row.get(7),
+        payment_status: row.get(8),
+        delivery_status: row.get(9),
+        acceptance_status: row.get(10),
+        settlement_status: row.get(11),
+        dispute_status: row.get(12),
+        buyer_org_id: row.get(13),
+        buyer_org_name: row.get(14),
+        seller_org_id: row.get(15),
+        seller_org_name: row.get(16),
+        delivery_type: normalize_delivery_field(None, &row.get::<_, String>(17)),
+        delivery_route: normalize_delivery_field(None, &row.get::<_, String>(18)),
+    })
+}
+
+pub struct BillingResolutionNotificationDispatchInput<'a> {
+    pub order_id: &'a str,
+    pub billing_event_id: &'a str,
+    pub scene: &'a str,
+    pub occurred_at: Option<&'a str>,
+    pub request_id: Option<&'a str>,
+    pub trace_id: Option<&'a str>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct BillingResolutionNotificationDispatchResult {
+    pub inserted_count: usize,
+    pub replayed_count: usize,
+    pub idempotency_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct BillingResolutionNotificationContext {
+    order_id: String,
+    product_id: String,
+    product_title: String,
+    sku_code: String,
+    sku_type: String,
+    order_amount: String,
+    order_currency_code: String,
+    order_status: String,
+    payment_status: String,
+    delivery_status: String,
+    acceptance_status: String,
+    settlement_status: String,
+    dispute_status: String,
+    buyer_org_id: String,
+    buyer_org_name: String,
+    seller_org_id: String,
+    seller_org_name: String,
+    resolution_amount: String,
+    resolution_currency_code: String,
+    case_id: String,
+    decision_code: String,
+    penalty_code: Option<String>,
+    reason_code: Option<String>,
+    liability_type: Option<String>,
+    provider_key: Option<String>,
+    provider_status: Option<String>,
+    provider_result_id: Option<String>,
+    resolution_record_id: String,
+    resolution_ref_type: String,
+}
+
+#[derive(Debug, Clone)]
+struct BillingResolutionNotificationDispatch {
+    scene: NotificationScene,
+    audience: NotificationAudience,
+    recipient: NotificationRecipient,
+    source_event: NotificationSourceEvent,
+    variables: Value,
+    metadata: Value,
+    subject_refs: Vec<NotificationSubjectRef>,
+    links: Vec<NotificationActionLink>,
+}
+
+pub async fn queue_billing_resolution_notifications(
+    client: &(impl GenericClient + Sync),
+    input: BillingResolutionNotificationDispatchInput<'_>,
+) -> Result<BillingResolutionNotificationDispatchResult, Error> {
+    let scene = parse_billing_resolution_scene(input.scene)?;
+    let context = load_billing_resolution_notification_context(
+        client,
+        input.order_id,
+        input.billing_event_id,
+        scene,
+    )
+    .await?;
+    let buyer_recipient = load_org_recipient(
+        client,
+        &context.buyer_org_id,
+        &context.buyer_org_name,
+        &["buyer_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let seller_recipient = load_org_recipient(
+        client,
+        &context.seller_org_id,
+        &context.seller_org_name,
+        &["seller_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let ops_recipient = load_ops_recipient(client).await?;
+    let source_event = NotificationSourceEvent {
+        aggregate_type: "billing.billing_event".to_string(),
+        aggregate_id: input.billing_event_id.to_string(),
+        event_type: "billing.event.recorded".to_string(),
+        event_id: None,
+        target_topic: Some("dtp.outbox.domain-events".to_string()),
+        occurred_at: input.occurred_at.map(str::to_string),
+    };
+
+    let dispatches = vec![
+        BillingResolutionNotificationDispatch::buyer(
+            &context,
+            &buyer_recipient,
+            &source_event,
+            scene,
+        ),
+        BillingResolutionNotificationDispatch::seller(
+            &context,
+            &seller_recipient,
+            &source_event,
+            scene,
+        ),
+        BillingResolutionNotificationDispatch::ops(&context, &ops_recipient, &source_event, scene),
+    ];
+
+    let mut result = BillingResolutionNotificationDispatchResult::default();
+    for dispatch in dispatches {
+        let (payload, idempotency_key) = prepare_notification_request(dispatch.build_input());
+        let inserted = queue_notification_request(
+            client,
+            QueueNotificationRequest {
+                aggregate_id: input.billing_event_id,
+                payload: &payload,
+                idempotency_key: &idempotency_key,
+                request_id: input.request_id,
+                trace_id: input.trace_id,
+            },
+        )
+        .await?;
+        if inserted {
+            result.inserted_count += 1;
+        } else {
+            result.replayed_count += 1;
+        }
+        result.idempotency_keys.push(idempotency_key);
+    }
+
+    Ok(result)
+}
+
+impl BillingResolutionNotificationDispatch {
+    fn buyer(
+        context: &BillingResolutionNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+        scene: NotificationScene,
+    ) -> Self {
+        let (subject, headline, action_summary, transition_code) = match scene {
+            NotificationScene::RefundCompleted => (
+                "退款已完成".to_string(),
+                format!(
+                    "订单 {} 已完成退款执行，可前往账单页查看退款与责任判定摘要。",
+                    context.order_id
+                ),
+                "进入退款/赔付处理页查看执行记录、责任判定和账单调整结果。".to_string(),
+                "refund_completed_buyer_visible",
+            ),
+            NotificationScene::CompensationCompleted => (
+                "赔付已完成".to_string(),
+                format!(
+                    "订单 {} 已完成赔付执行，可前往账单页查看赔付与责任判定摘要。",
+                    context.order_id
+                ),
+                "进入退款/赔付处理页查看赔付记录、责任判定和账单调整结果。".to_string(),
+                "compensation_completed_buyer_visible",
+            ),
+            other => unreachable!("unsupported billing scene: {}", other.as_str()),
+        };
+        let action_href = billing_resolution_href(&context.order_id, Some(&context.case_id));
+
+        Self {
+            scene,
+            audience: NotificationAudience::Buyer,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": subject,
+                "headline": headline,
+                "action_summary": action_summary,
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "order_currency_code": context.order_currency_code,
+                "resolution_amount": context.resolution_amount,
+                "resolution_currency_code": context.resolution_currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "current_state": context.order_status,
+                "current_state_label": order_state_label(&context.order_status),
+                "decision_code": context.decision_code,
+                "penalty_code": context.penalty_code,
+                "reason_code": context.reason_code,
+                "case_id": context.case_id,
+                "show_ops_context": false,
+                "action_label": "查看退款/赔付处理页",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-006",
+                "transition_code": transition_code,
+                "recipient_scope": "buyer_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "decision_code": context.decision_code,
+                "reason_code": context.reason_code,
+                "resolution_ref_type": context.resolution_ref_type,
+                "resolution_record_id": context.resolution_record_id,
+            }),
+            subject_refs: context.subject_refs(source_event),
+            links: billing_resolution_links(&context.order_id, Some(&context.case_id)),
+        }
+    }
+
+    fn seller(
+        context: &BillingResolutionNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+        scene: NotificationScene,
+    ) -> Self {
+        let (subject, headline, action_summary, transition_code) = match scene {
+            NotificationScene::RefundCompleted => (
+                "退款已完成，请核对账单调整".to_string(),
+                format!(
+                    "订单 {} 已完成退款执行，请前往账单页查看退款金额与责任判定结果。",
+                    context.order_id
+                ),
+                "进入退款/赔付处理页核对退款金额、责任判定和结算调整。".to_string(),
+                "refund_completed_seller_visible",
+            ),
+            NotificationScene::CompensationCompleted => (
+                "赔付已完成，请核对账单调整".to_string(),
+                format!(
+                    "订单 {} 已完成赔付执行，请前往账单页查看赔付金额与责任判定结果。",
+                    context.order_id
+                ),
+                "进入退款/赔付处理页核对赔付金额、责任判定和结算调整。".to_string(),
+                "compensation_completed_seller_visible",
+            ),
+            other => unreachable!("unsupported billing scene: {}", other.as_str()),
+        };
+        let action_href = billing_resolution_href(&context.order_id, Some(&context.case_id));
+
+        Self {
+            scene,
+            audience: NotificationAudience::Seller,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": subject,
+                "headline": headline,
+                "action_summary": action_summary,
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "order_currency_code": context.order_currency_code,
+                "resolution_amount": context.resolution_amount,
+                "resolution_currency_code": context.resolution_currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "current_state": context.order_status,
+                "current_state_label": order_state_label(&context.order_status),
+                "decision_code": context.decision_code,
+                "penalty_code": context.penalty_code,
+                "reason_code": context.reason_code,
+                "case_id": context.case_id,
+                "show_ops_context": false,
+                "action_label": "查看退款/赔付处理页",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-006",
+                "transition_code": transition_code,
+                "recipient_scope": "seller_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "decision_code": context.decision_code,
+                "reason_code": context.reason_code,
+                "resolution_ref_type": context.resolution_ref_type,
+                "resolution_record_id": context.resolution_record_id,
+            }),
+            subject_refs: context.subject_refs(source_event),
+            links: billing_resolution_links(&context.order_id, Some(&context.case_id)),
+        }
+    }
+
+    fn ops(
+        context: &BillingResolutionNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+        scene: NotificationScene,
+    ) -> Self {
+        let (subject, headline, action_summary, transition_code) = match scene {
+            NotificationScene::RefundCompleted => (
+                "退款已完成（运营联查）".to_string(),
+                format!(
+                    "订单 {} 已完成退款执行，请在账单页联查退款、责任判定与渠道结果。",
+                    context.order_id
+                ),
+                "进入退款/赔付处理页联查退款记录、责任判定和渠道执行结果。".to_string(),
+                "refund_completed_ops_visible",
+            ),
+            NotificationScene::CompensationCompleted => (
+                "赔付已完成（运营联查）".to_string(),
+                format!(
+                    "订单 {} 已完成赔付执行，请在账单页联查赔付、责任判定与渠道结果。",
+                    context.order_id
+                ),
+                "进入退款/赔付处理页联查赔付记录、责任判定和渠道执行结果。".to_string(),
+                "compensation_completed_ops_visible",
+            ),
+            other => unreachable!("unsupported billing scene: {}", other.as_str()),
+        };
+        let action_href = billing_resolution_href(&context.order_id, Some(&context.case_id));
+
+        Self {
+            scene,
+            audience: NotificationAudience::Ops,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": subject,
+                "headline": headline,
+                "action_summary": action_summary,
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "order_currency_code": context.order_currency_code,
+                "resolution_amount": context.resolution_amount,
+                "resolution_currency_code": context.resolution_currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "current_state": context.order_status,
+                "current_state_label": order_state_label(&context.order_status),
+                "case_id": context.case_id,
+                "decision_code": context.decision_code,
+                "penalty_code": context.penalty_code,
+                "reason_code": context.reason_code,
+                "liability_type": context.liability_type,
+                "provider_key": context.provider_key,
+                "provider_status": context.provider_status,
+                "provider_result_id": context.provider_result_id,
+                "resolution_ref_type": context.resolution_ref_type,
+                "resolution_record_id": context.resolution_record_id,
+                "show_ops_context": true,
+                "action_label": "查看退款/赔付处理页",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-006",
+                "transition_code": transition_code,
+                "recipient_scope": "ops_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "decision_code": context.decision_code,
+                "reason_code": context.reason_code,
+                "liability_type": context.liability_type,
+                "provider_key": context.provider_key,
+                "provider_status": context.provider_status,
+                "provider_result_id": context.provider_result_id,
+                "resolution_ref_type": context.resolution_ref_type,
+                "resolution_record_id": context.resolution_record_id,
+            }),
+            subject_refs: context.subject_refs(source_event),
+            links: billing_resolution_links(&context.order_id, Some(&context.case_id)),
+        }
+    }
+
+    fn build_input(self) -> BuildNotificationRequestInput {
+        BuildNotificationRequestInput {
+            scene: self.scene,
+            audience: self.audience,
+            recipient: self.recipient,
+            source_event: self.source_event,
+            variables: self.variables,
+            metadata: self.metadata,
+            retry_policy: None,
+            subject_refs: self.subject_refs,
+            links: self.links,
+            template_code: None,
+            channel: None,
+        }
+    }
+}
+
+impl BillingResolutionNotificationContext {
+    fn subject_refs(&self, source_event: &NotificationSourceEvent) -> Vec<NotificationSubjectRef> {
+        let mut refs = vec![
+            NotificationSubjectRef {
+                ref_type: "order".to_string(),
+                ref_id: self.order_id.clone(),
+            },
+            NotificationSubjectRef {
+                ref_type: "product".to_string(),
+                ref_id: self.product_id.clone(),
+            },
+            NotificationSubjectRef {
+                ref_type: "billing_event".to_string(),
+                ref_id: source_event.aggregate_id.clone(),
+            },
+            NotificationSubjectRef {
+                ref_type: self.resolution_ref_type.clone(),
+                ref_id: self.resolution_record_id.clone(),
+            },
+        ];
+        if !self.case_id.is_empty() {
+            refs.push(NotificationSubjectRef {
+                ref_type: "dispute_case".to_string(),
+                ref_id: self.case_id.clone(),
+            });
+        }
+        refs
+    }
+}
+
+async fn load_billing_resolution_notification_context(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    billing_event_id: &str,
+    scene: NotificationScene,
+) -> Result<BillingResolutionNotificationContext, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               o.order_id::text,
+               o.product_id::text,
+               p.title,
+               COALESCE(sku.sku_code, ''),
+               COALESCE(sku.sku_type, ''),
+               o.amount::text,
+               o.currency_code,
+               o.status,
+               o.payment_status,
+               o.delivery_status,
+               o.acceptance_status,
+               o.settlement_status,
+               o.dispute_status,
+               buyer.org_id::text,
+               buyer.org_name,
+               seller.org_id::text,
+               seller.org_name,
+               be.amount::text,
+               be.currency_code,
+               COALESCE(be.metadata, '{}'::jsonb)
+             FROM billing.billing_event be
+             JOIN trade.order_main o ON o.order_id = be.order_id
+             JOIN catalog.product p ON p.product_id = o.product_id
+             JOIN catalog.product_sku sku ON sku.sku_id = o.sku_id
+             JOIN core.organization buyer ON buyer.org_id = o.buyer_org_id
+             JOIN core.organization seller ON seller.org_id = o.seller_org_id
+             WHERE be.billing_event_id = $1::text::uuid
+               AND o.order_id = $2::text::uuid",
+            &[&billing_event_id, &order_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Err(Error::Bind(format!(
+            "missing billing event context for notification dispatch: {billing_event_id}"
+        )));
+    };
+
+    let metadata: Value = row.get(19);
+    let (resolution_ref_type, resolution_record_field, provider_result_field) = match scene {
+        NotificationScene::RefundCompleted => (
+            "refund_record".to_string(),
+            "refund_id",
+            "provider_refund_id",
+        ),
+        NotificationScene::CompensationCompleted => (
+            "compensation_record".to_string(),
+            "compensation_id",
+            "provider_transfer_id",
+        ),
+        other => {
+            return Err(Error::Bind(format!(
+                "unsupported billing resolution scene: {}",
+                other.as_str()
+            )));
+        }
+    };
+    let resolution_record_id = json_text(&metadata, resolution_record_field).ok_or_else(|| {
+        Error::Bind(format!(
+            "missing {resolution_record_field} in billing event metadata: {billing_event_id}"
+        ))
+    })?;
+
+    Ok(BillingResolutionNotificationContext {
+        order_id: row.get(0),
+        product_id: row.get(1),
+        product_title: row.get(2),
+        sku_code: row.get(3),
+        sku_type: row.get(4),
+        order_amount: row.get(5),
+        order_currency_code: row.get(6),
+        order_status: row.get(7),
+        payment_status: row.get(8),
+        delivery_status: row.get(9),
+        acceptance_status: row.get(10),
+        settlement_status: row.get(11),
+        dispute_status: row.get(12),
+        buyer_org_id: row.get(13),
+        buyer_org_name: row.get(14),
+        seller_org_id: row.get(15),
+        seller_org_name: row.get(16),
+        resolution_amount: row.get(17),
+        resolution_currency_code: row.get(18),
+        case_id: json_text(&metadata, "case_id").unwrap_or_default(),
+        decision_code: json_text(&metadata, "decision_code").unwrap_or_default(),
+        penalty_code: json_text(&metadata, "penalty_code"),
+        reason_code: json_text(&metadata, "reason_code"),
+        liability_type: json_text(&metadata, "liability_type"),
+        provider_key: json_text(&metadata, "provider_key"),
+        provider_status: json_text(&metadata, "provider_status"),
+        provider_result_id: json_text(&metadata, provider_result_field),
+        resolution_record_id,
+        resolution_ref_type,
+    })
+}
+
+fn parse_acceptance_scene(scene: &str) -> Result<NotificationScene, Error> {
+    match NotificationScene::from_str(scene).map_err(Error::Bind)? {
+        NotificationScene::AcceptancePassed => Ok(NotificationScene::AcceptancePassed),
+        NotificationScene::AcceptanceRejected => Ok(NotificationScene::AcceptanceRejected),
+        other => Err(Error::Bind(format!(
+            "unsupported acceptance notification scene: {}",
+            other.as_str()
+        ))),
+    }
+}
+
+fn parse_billing_resolution_scene(scene: &str) -> Result<NotificationScene, Error> {
+    match NotificationScene::from_str(scene).map_err(Error::Bind)? {
+        NotificationScene::RefundCompleted => Ok(NotificationScene::RefundCompleted),
+        NotificationScene::CompensationCompleted => Ok(NotificationScene::CompensationCompleted),
+        other => Err(Error::Bind(format!(
+            "unsupported billing resolution notification scene: {}",
+            other.as_str()
+        ))),
+    }
+}
+
+fn json_text(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn billing_resolution_links(order_id: &str, case_id: Option<&str>) -> Vec<NotificationActionLink> {
+    vec![
+        NotificationActionLink {
+            link_code: "billing_resolution".to_string(),
+            href: billing_resolution_href(order_id, case_id),
+        },
+        NotificationActionLink {
+            link_code: "billing_center".to_string(),
+            href: billing_center_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "order_detail".to_string(),
+            href: order_detail_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "dispute_create".to_string(),
+            href: dispute_create_href(order_id),
+        },
+    ]
+}
+
 #[derive(Debug, Clone)]
 struct DeliveryAction {
     label: String,
@@ -1084,6 +2267,27 @@ fn acceptance_status_label(acceptance_status: &str) -> &'static str {
         other if other.is_empty() => "未知",
         _ => "状态更新中",
     }
+}
+
+fn order_detail_href(order_id: &str) -> String {
+    format!("/trade/orders/{order_id}")
+}
+
+fn billing_center_href(order_id: &str) -> String {
+    format!("/billing?order_id={order_id}")
+}
+
+fn billing_resolution_href(order_id: &str, case_id: Option<&str>) -> String {
+    match case_id {
+        Some(case_id) if !case_id.trim().is_empty() => {
+            format!("/billing/refunds?order_id={order_id}&case_id={case_id}")
+        }
+        _ => format!("/billing/refunds?order_id={order_id}"),
+    }
+}
+
+fn dispute_create_href(order_id: &str) -> String {
+    format!("/support/cases/new?order_id={order_id}")
 }
 
 async fn load_org_recipient(

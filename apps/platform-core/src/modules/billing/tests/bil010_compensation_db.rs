@@ -141,6 +141,10 @@ mod tests {
             .as_str()
             .unwrap()
             .to_string();
+        let billing_event_id = compensation["data"]["metadata"]["billing_event_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let outbox_count: i64 = client
             .query_one(
                 "SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_type = 'billing.compensation_record' AND aggregate_id = $1::text::uuid",
@@ -150,8 +154,49 @@ mod tests {
             .expect("query outbox")
             .get(0);
         assert_eq!(outbox_count, 1);
+        let notification_rows = client
+            .query(
+                "SELECT payload
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND target_topic = 'dtp.notification.dispatch'
+                 ORDER BY created_at ASC, outbox_event_id ASC",
+                &[&request_id],
+            )
+            .await
+            .expect("query compensation notifications");
+        assert_eq!(notification_rows.len(), 3);
+        let notification_payloads = notification_rows
+            .iter()
+            .map(|row| row.get::<_, Value>(0))
+            .collect::<Vec<_>>();
+        let buyer = find_notification_payload(&notification_payloads, "buyer");
+        assert_eq!(
+            buyer["payload"]["notification_code"].as_str(),
+            Some("compensation.completed")
+        );
+        assert_eq!(
+            buyer["payload"]["template_code"].as_str(),
+            Some("NOTIFY_COMPENSATION_COMPLETED_V1")
+        );
+        assert_eq!(
+            buyer["payload"]["source_event"]["aggregate_id"].as_str(),
+            Some(billing_event_id.as_str())
+        );
+        let ops = find_notification_payload(&notification_payloads, "ops");
+        assert_eq!(
+            ops["payload"]["variables"]["show_ops_context"].as_bool(),
+            Some(true)
+        );
 
         cleanup(&client, &buyer_org_id, &seller_org_id, &order).await;
+    }
+
+    fn find_notification_payload<'a>(payloads: &'a [Value], audience_scope: &str) -> &'a Value {
+        payloads
+            .iter()
+            .find(|payload| payload["payload"]["audience_scope"].as_str() == Some(audience_scope))
+            .unwrap_or_else(|| panic!("missing payload for audience {audience_scope}"))
     }
 
     async fn execute_compensation(

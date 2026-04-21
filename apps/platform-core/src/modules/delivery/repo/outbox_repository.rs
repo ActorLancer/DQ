@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 
 pub(crate) const DELIVERY_RECEIPT_EVENT_TYPE: &str = "delivery.committed";
 const DELIVERY_RECEIPT_AGGREGATE_TYPE: &str = "delivery.delivery_record";
+const ACCEPTANCE_EVENT_AGGREGATE_TYPE: &str = "trade.acceptance_record";
 pub(crate) const BILLING_TRIGGER_BRIDGE_EVENT_TYPE: &str = "billing.trigger.bridge";
 const BILLING_TRIGGER_BRIDGE_AGGREGATE_TYPE: &str = "trade.order_main";
 
@@ -104,6 +105,76 @@ pub(crate) async fn write_delivery_receipt_outbox_event(
             occurred_at: payload.get("committed_at").and_then(Value::as_str),
             business_payload: payload,
             deduplicate_by_idempotency_key: false,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_acceptance_outbox_payload(
+    order_id: &str,
+    delivery_id: &str,
+    sku_type: &str,
+    delivery_branch: &str,
+    decision: &str,
+    reason_code: &str,
+    reason_detail: Option<&str>,
+    verification_summary: Option<&Value>,
+    current_state: &str,
+    payment_status: &str,
+    delivery_status: &str,
+    acceptance_status: &str,
+    settlement_status: &str,
+    dispute_status: &str,
+    acted_at: &str,
+) -> Value {
+    json!({
+        "event_schema_version": "v1",
+        "authority_scope": "business",
+        "source_of_truth": "database",
+        "proof_commit_policy": "async_evidence",
+        "order_id": order_id,
+        "delivery_id": delivery_id,
+        "sku_type": sku_type,
+        "delivery_branch": delivery_branch,
+        "decision": decision,
+        "reason_code": reason_code,
+        "reason_detail": reason_detail,
+        "verification_summary": verification_summary,
+        "current_state": current_state,
+        "payment_status": payment_status,
+        "delivery_status": delivery_status,
+        "acceptance_status": acceptance_status,
+        "settlement_status": settlement_status,
+        "dispute_status": dispute_status,
+        "acted_at": acted_at,
+    })
+}
+
+pub(crate) async fn write_acceptance_outbox_event(
+    client: &(impl GenericClient + Sync),
+    acceptance_record_id: &str,
+    event_type: &str,
+    payload: &Value,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+    idempotency_key: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: ACCEPTANCE_EVENT_AGGREGATE_TYPE,
+            aggregate_id: acceptance_record_id,
+            event_type,
+            producer_service: "platform-core.delivery",
+            request_id,
+            trace_id,
+            idempotency_key: Some(idempotency_key),
+            occurred_at: payload.get("acted_at").and_then(Value::as_str),
+            business_payload: payload,
+            deduplicate_by_idempotency_key: true,
         },
     )
     .await

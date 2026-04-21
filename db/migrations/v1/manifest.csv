@@ -28,3 +28,5 @@ version,up_sql,down_sql
 075,docs/数据库设计/V1/upgrade/075_notification_template_model.sql,docs/数据库设计/V1/downgrade/075_notification_template_model.sql
 076,docs/数据库设计/V1/upgrade/076_notification_payment_success_pending_delivery_templates.sql,docs/数据库设计/V1/downgrade/076_notification_payment_success_pending_delivery_templates.sql
 077,docs/数据库设计/V1/upgrade/077_notification_delivery_completed_pending_acceptance_templates.sql,docs/数据库设计/V1/downgrade/077_notification_delivery_completed_pending_acceptance_templates.sql
+078,docs/数据库设计/V1/upgrade/078_notification_acceptance_resolution_templates.sql,docs/数据库设计/V1/downgrade/078_notification_acceptance_resolution_templates.sql
+079,docs/数据库设计/V1/upgrade/079_acceptance_event_route_policy.sql,docs/数据库设计/V1/downgrade/079_acceptance_event_route_policy.sql

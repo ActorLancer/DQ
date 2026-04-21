@@ -2,6 +2,9 @@ use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::models::{CreateRefundRequest, RefundExecutionView};
 use crate::modules::billing::repo::billing_adjustment_repository::release_provisional_dispute_hold_in_tx;
 use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
+use crate::modules::integration::application::{
+    BillingResolutionNotificationDispatchInput, queue_billing_resolution_notifications,
+};
 use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
 use axum::http::StatusCode;
@@ -296,6 +299,19 @@ pub async fn execute_refund(
         )
         .await
         .map_err(map_db_error)?;
+    let _ = queue_billing_resolution_notifications(
+        &tx,
+        BillingResolutionNotificationDispatchInput {
+            order_id: &payload.order_id,
+            billing_event_id: &billing_event_id,
+            scene: "refund.completed",
+            occurred_at: Some(&billing_event_occurred_at),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     write_audit_event(
         &tx,

@@ -1,13 +1,19 @@
 use super::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
 };
-use super::outbox_repository::write_billing_trigger_bridge_event;
+use super::outbox_repository::{
+    build_acceptance_outbox_payload, write_acceptance_outbox_event,
+    write_billing_trigger_bridge_event,
+};
 use crate::modules::billing::repo::billing_adjustment_repository::ensure_provisional_dispute_hold_in_tx;
 use crate::modules::delivery::domain::{
     is_manual_acceptance_state, manual_acceptance_delivery_branch,
 };
 use crate::modules::delivery::dto::{
     AcceptOrderRequest, OrderAcceptanceResponseData, RejectOrderRequest,
+};
+use crate::modules::integration::application::{
+    AcceptanceOutcomeNotificationDispatchInput, queue_acceptance_outcome_notifications,
 };
 use crate::modules::order::repo::{map_db_error, write_trade_audit_event};
 use axum::Json;
@@ -198,6 +204,49 @@ pub async fn accept_order_delivery(
         }),
     )
     .await?;
+    let acceptance_outbox_idempotency_key = format!("acceptance-event:passed:{delivery_id}");
+    write_acceptance_outbox_event(
+        &tx,
+        &delivery_id,
+        "acceptance.passed",
+        &build_acceptance_outbox_payload(
+            order_id,
+            &delivery_id,
+            &ctx.sku_type,
+            delivery_branch,
+            "accepted",
+            ACCEPT_REASON_CODE,
+            payload.note.as_deref(),
+            payload.verification_summary.as_ref(),
+            "accepted",
+            &ctx.payment_status,
+            "delivered",
+            "accepted",
+            &settlement_status,
+            "none",
+            &accepted_at,
+        ),
+        request_id,
+        trace_id,
+        &acceptance_outbox_idempotency_key,
+    )
+    .await?;
+    let _ = queue_acceptance_outcome_notifications(
+        &tx,
+        AcceptanceOutcomeNotificationDispatchInput {
+            order_id,
+            acceptance_record_id: &delivery_id,
+            scene: "acceptance.passed",
+            occurred_at: Some(&accepted_at),
+            reason_code: ACCEPT_REASON_CODE,
+            reason_detail: payload.note.as_deref(),
+            verification_summary: payload.verification_summary.as_ref(),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     tx.commit().await.map_err(map_db_error)?;
 
@@ -390,6 +439,49 @@ pub async fn reject_order_delivery(
         ),
     )
     .await?;
+    let acceptance_outbox_idempotency_key = format!("acceptance-event:rejected:{delivery_id}");
+    write_acceptance_outbox_event(
+        &tx,
+        &delivery_id,
+        "acceptance.rejected",
+        &build_acceptance_outbox_payload(
+            order_id,
+            &delivery_id,
+            &ctx.sku_type,
+            delivery_branch,
+            "rejected",
+            payload.reason_code.as_str(),
+            payload.reason_detail.as_deref(),
+            payload.verification_summary.as_ref(),
+            "rejected",
+            &ctx.payment_status,
+            "delivered",
+            "rejected",
+            "blocked",
+            "open",
+            &processed_at,
+        ),
+        request_id,
+        trace_id,
+        &acceptance_outbox_idempotency_key,
+    )
+    .await?;
+    let _ = queue_acceptance_outcome_notifications(
+        &tx,
+        AcceptanceOutcomeNotificationDispatchInput {
+            order_id,
+            acceptance_record_id: &delivery_id,
+            scene: "acceptance.rejected",
+            occurred_at: Some(&processed_at),
+            reason_code: payload.reason_code.as_str(),
+            reason_detail: payload.reason_detail.as_deref(),
+            verification_summary: payload.verification_summary.as_ref(),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     tx.commit().await.map_err(map_db_error)?;
 

@@ -50,6 +50,14 @@
   - 共享开通、API 开通、查询结果可取、沙箱开通后的买方：`delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
   - 卖方、运营：统一 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
   - `ops` 正文允许附带 `delivery_ref_type / delivery_ref_id / receipt_hash / delivery_commit_hash`；`buyer/seller` 正文不得透传这些内部联查字段
+- `NOTIF-006` 起，验收 / 退款 / 赔付链路的正式模板分工固定为：
+  - 验收通过：buyer / seller / ops 统一接收 `acceptance.passed / NOTIFY_ACCEPTANCE_PASSED_V1`
+  - 拒收：buyer / seller / ops 统一接收 `acceptance.rejected / NOTIFY_ACCEPTANCE_REJECTED_V1`
+  - 退款完成：buyer / seller / ops 统一接收 `refund.completed / NOTIFY_REFUND_COMPLETED_V1`
+  - 赔付完成：buyer / seller / ops 统一接收 `compensation.completed / NOTIFY_COMPENSATION_COMPLETED_V1`
+  - 验收链路 source-event 固定为 `trade.acceptance_record / acceptance.passed|acceptance.rejected`
+  - 退款 / 赔付链路 source-event 固定为 `billing.billing_event / billing.event.recorded`
+  - 动作入口固定落到订单详情、争议提交或账单退款页；`ops` 正文允许带 `acceptance_record_id / provider_* / liability_type / resolution_ref_*` 联查字段，`buyer/seller` 正文不得透传这些内部字段
 - `POST /internal/notifications/send` 手工注入通知事件到 Kafka
 - `POST /internal/notifications/templates/preview` 预览模板渲染结果，返回解析后的语言、版本、schema 与 fallback 使用情况
 - 文件模板目录：`apps/notification-worker/templates/`

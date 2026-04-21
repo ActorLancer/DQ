@@ -436,3 +436,91 @@
 - 备注：
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
   - 查询结果可取场景保持冻结 source-event 口径：`delivery.query_execution_run / delivery.template_query.use`，未发明新的旁路事件名。
+### BATCH-205（计划中）
+- 任务：`NOTIF-006` 验收通过 / 拒收 / 退款完成 / 赔付完成通知模板与发送逻辑
+- 状态：计划中
+- 说明：当前批次围绕 `DLV-018` 与 `BIL-025` 的真实动作点落通知触发：验收通过、拒收、退款完成、赔付完成后，需要按 buyer / seller / ops 三类 audience 发送 `acceptance.passed / acceptance.rejected / refund.completed / compensation.completed` 通知，并把动作摘要与后续待办链接到订单详情、账单页或争议页。
+- 追溯：本批优先复用既有 `notification-contract + ops.notification_template + notification-worker` 模型；若验收场景现有桥接事件不足，则在不破坏 `DLV-018 / DLV-030 / NOTIF-002` 冻结口径的前提下补齐 canonical acceptance event，再在同一事务内接通知写入。
+### BATCH-205（待审批）
+- 任务：`NOTIF-006` 验收通过 / 拒收 / 退款完成 / 赔付完成通知模板与发送逻辑
+- 状态：待审批
+- 当前任务编号：`NOTIF-006`
+- 前置依赖核对结果：`NOTIF-002` 已冻结 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式协议与 scene catalog；`DLV-018` 已完成验收主链动作与验收记录主权威源；`BIL-025` 作为账单争议 / 退款 / 赔付基线已完成。本批不重定义 topic / event / route-policy，只在既有冻结口径上补齐验收与账单处理结果通知闭环。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批完成标准是四类通知模板与发送逻辑、动作链接、幂等 / 重试可验证、审计与 runbook 覆盖。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：核对验收通过 / 拒收、退款 / 赔付在主交易闭环中的动作顺序。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：核对订单详情、账单中心、争议提交页的正式链接口径。
+  - `docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：确认通知不得旁路消费 `dtp.outbox.domain-events`，正式消费入口仍是 `dtp.notification.dispatch`。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 PostgreSQL / Kafka / Redis / Keycloak / 观测栈的正式边界与本地运行方式。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认通知 route authority、topic 拓扑与异步写链口径。
+  - `apps/notification-worker/**`、`apps/platform-core/src/modules/integration/**`、`docs/02-openapi/**`、`docs/05-test-cases/**`、`scripts/**`、`infra/**`：复用既有 worker / 模板 / 审计 / 指标基线，但不把现有代码当作已完成证明。
+- 实现要点：
+  - 在 `platform-core.integration` 中新增 `queue_acceptance_outcome_notifications` 与 `queue_billing_resolution_notifications`，把 `acceptance.passed / acceptance.rejected / refund.completed / compensation.completed` 统一收口到 `notification.requested / dtp.notification.dispatch`。
+  - 验收链路 source-event 冻结为 `trade.acceptance_record / acceptance.passed|acceptance.rejected`；退款 / 赔付链路 source-event 冻结为 `billing.billing_event / billing.event.recorded`，不发明新的旁路事件名。
+  - `acceptance_repository` 与 billing 的 `refund_repository / compensation_repository` 在真实动作点写入 canonical outbox 与通知请求，按 buyer / seller / ops 三类 audience 生成不同动作入口：
+    - 验收通过 buyer / seller -> `/trade/orders/:orderId`
+    - 验收通过 ops -> `/billing?order_id=:orderId`
+    - 拒收 buyer / ops -> `/support/cases/new?order_id=:orderId`
+    - 拒收 seller -> `/trade/orders/:orderId`
+    - 退款完成 / 赔付完成 -> `/billing/refunds?order_id=:orderId&case_id=:caseId`
+  - 新增 `078_notification_acceptance_resolution_templates.sql` 与 `079_acceptance_event_route_policy.sql`，分别把四套通知模板升级到 version `2`，并把 `trade.acceptance_record / acceptance.passed|acceptance.rejected` 纳入 `ops.event_route_policy` 正式路由。
+  - 新增 `notif006_acceptance_resolution_db.rs`，并扩展 `dlv018_acceptance_db.rs`、`bil009_refund_db.rs`、`bil010_compensation_db.rs`，把模板版本、source-event、动作链接、三类 audience 入队、重复写抑制全部落到真实 DB smoke。
+  - 更新 `apps/notification-worker/README.md` 与 `docs/04-runbooks/notification-worker.md`，补齐 `NOTIF-006` 的 audience 映射、动作链接、Redis / retry / DLQ / Prometheus / Alertmanager / Grafana 联调口径。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo check -p notification-worker`
+  5. `cargo test -p notification-worker`
+  6. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif006_acceptance_outcome_notifications_db_smoke -- --nocapture`
+  7. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif006_billing_resolution_notifications_db_smoke -- --nocapture`
+  8. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv018_acceptance_db_smoke -- --nocapture`
+  9. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil009_refund_db_smoke -- --nocapture`
+  10. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil010_compensation_db_smoke -- --nocapture`
+  11. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  12. `./scripts/check-query-compile.sh`
+  13. `curl http://127.0.0.1:8097/health/live`、`/health/ready`、`/health/deps`
+  14. `POST /internal/notifications/templates/preview` 手工预览 `acceptance.passed / acceptance.rejected / refund.completed / compensation.completed`，确认四套模板都命中 version `2` 且正文带订单详情、争议提交或账单退款入口。
+  15. `POST /internal/notifications/send` 手工注入四类事件：
+      - `acceptance.passed / buyer`
+      - `acceptance.rejected / ops`，随后以同一 `event_id` 再投一次验证去重
+      - `refund.completed / seller`，使用 `simulate_failures=1 + backoff_ms=4000` 验证 Redis 重试队列
+      - `compensation.completed / ops`，使用 `simulate_failures=3` 验证 DLQ
+  16. 用 `psql`、`redis-cli`、`curl` 回查 `ops.consumer_idempotency_record`、`ops.system_log`、`ops.trace_index`、`ops.dead_letter_event`、`ops.alert_event`、`audit.audit_event`、worker `/metrics`、Prometheus API、Alertmanager API、Grafana dashboard 搜索结果。
+  17. 清理本批非 append-only 测试数据：删除 `ops.consumer_idempotency_record`、`ops.trace_index`、`ops.dead_letter_event`、`ops.alert_event` 与 Redis 短状态；`audit.audit_event`、`ops.system_log` 按 append-only 保留。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过。
+  - `notif006_acceptance_outcome_notifications_db_smoke` 与 `notif006_billing_resolution_notifications_db_smoke` 在真实 PostgreSQL 中验证：四类通知模板 active version 均为 `2`，buyer / seller / ops 三类 audience 都能写入 `dtp.notification.dispatch`，重复 queue 调用被幂等键抑制。
+  - `dlv018_acceptance_db_smoke` 真实验证 `trade.acceptance_record / acceptance.passed|acceptance.rejected` canonical outbox 与通知请求桥接；`bil009_refund_db_smoke`、`bil010_compensation_db_smoke` 真实验证账单处理结果通知入队与 ops payload 边界。
+  - worker 运行态健康检查通过：`/health/live=ok`、`/health/ready=ready`、`/health/deps` 返回 DB / Redis / Kafka / Keycloak 全部 reachable。
+  - 四套模板手工 preview 均命中 version `2`：
+    - `NOTIFY_ACCEPTANCE_PASSED_V1` 正文带订单详情入口
+    - `NOTIFY_ACCEPTANCE_REJECTED_V1` 正文带争议提交入口与 `ops` 联查字段
+    - `NOTIFY_REFUND_COMPLETED_V1`、`NOTIFY_COMPENSATION_COMPLETED_V1` 正文带账单退款入口；赔付模板的 `ops` 视图可见 `provider=* / liability_type / resolution_ref_*`
+  - 手工发送验证通过：
+    - `acceptance.passed / buyer`：`ops.consumer_idempotency_record=processed:1`，`ops.system_log` 正文包含 `/trade/orders/:orderId`，`audit.audit_event=notification.dispatch.sent`，`ops.trace_index=notification.dispatch`
+    - `acceptance.rejected / ops`：同一 `event_id` 二次投递后 `/metrics` 与 Prometheus 中 `notification_worker_events_total{result="duplicate"}` 增长；`ops.system_log` 发送记录仍只有 1 条
+    - `refund.completed / seller`：首次失败后 Redis `datab:v1:notification:retry-queue` 深度为 `1`、短状态为 `retrying`；第二次处理后队列回到 `0`、短状态为 `processed`，审计链同时保留 `notification.dispatch.retry_scheduled` 与 `notification.dispatch.sent`
+    - `compensation.completed / ops`：重试耗尽后 `ops.consumer_idempotency_record=dead_lettered:2`，`ops.dead_letter_event.target_topic=dtp.dead-letter`，`ops.alert_event.alert_type=notification_dead_letter`，审计链存在 `notification.dispatch.dead_lettered`
+  - 观测链回查通过：
+    - worker `/metrics` 暴露 `notification_worker_events_total{result="duplicate"}=2`、`notification_worker_events_total{result="processed"}=10`、`notification_worker_events_total{result="dead_lettered"}=1`、`notification_worker_retry_queue_depth=0`
+    - Prometheus 查询 `up{job="notification-worker"}=1`，`notification_worker_events_total`、`notification_worker_send_total{channel="mock-log",result="success"}`、`notification_worker_retry_queue_depth` 均可见
+    - Prometheus rules 中存在 `NotificationRetryQueueBacklog`
+    - Alertmanager `api/v2/status` 返回 `ready`，receiver 为 `local-webhook`
+    - Grafana `Platform Overview` dashboard 可检索
+  - 临时测试数据清理结果：
+    - `ops.alert_event / ops.dead_letter_event / ops.trace_index / ops.consumer_idempotency_record` 对本批事件的残留计数已回到 `0`
+    - Redis 重试队列深度回到 `0`，短状态键已删除
+    - `audit.audit_event` 与 `ops.system_log` 按 append-only 保留，本批累计保留 `audit.audit_event=6`、`ops.system_log=6` 条运行证据
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-006`
+  - `业务流程图-V1-完整版.md`：验收 / 退款 / 赔付动作顺序
+  - `页面说明书-V1-完整版.md`：订单详情、账单中心、争议提交页面入口
+  - `事件模型与Topic清单正式版.md`、`topics.v1.json`、`072/074/079` SQL：验收 / 账单链 source-event、route authority 与正式 topic
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：正式通知 topic / aggregate_type / event_type 边界
+- 覆盖的任务清单条目：`NOTIF-006`
+- 未覆盖项：无。更广义的通知联查控制面、测试清单与人工补发文档仍按顺序留给 `NOTIF-010 ~ NOTIF-014`。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+  - 本批中途发现本地 Redis CLI 需要使用显式 `-a datab_redis_pass -n 2` 才能回查短状态，但 worker 自身 Redis 配置与运行态重试闭环正常；该差异已体现在 runbook 的手工联调步骤中。
