@@ -45,6 +45,11 @@
   - 卖方：`order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
   - 运营：`order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
   - 买方/卖方正文只允许展示订单、商品、金额、状态与操作入口；`payment_intent_id / provider_reference_id / 内部联查字段` 仅允许进入运营视图
+- `NOTIF-005` 起，交付完成链路的正式模板分工固定为：
+  - 文件包、报告交付后的买方：`order.pending_acceptance / NOTIFY_PENDING_ACCEPTANCE_V1`
+  - 共享开通、API 开通、查询结果可取、沙箱开通后的买方：`delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
+  - 卖方、运营：统一 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
+  - `ops` 正文允许附带 `delivery_ref_type / delivery_ref_id / receipt_hash / delivery_commit_hash`；`buyer/seller` 正文不得透传这些内部联查字段
 - `POST /internal/notifications/send` 手工注入通知事件到 Kafka
 - `POST /internal/notifications/templates/preview` 预览模板渲染结果，返回解析后的语言、版本、schema 与 fallback 使用情况
 - 文件模板目录：`apps/notification-worker/templates/`

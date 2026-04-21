@@ -36,6 +36,11 @@
   - 卖方接收 `order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
   - 运营接收 `order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
   - `buyer/seller` payload 只保留订单、商品、金额、状态和操作入口；`ops` payload 才允许附带 `billing_event_id / payment_intent_id / provider_reference_id / provider_result_source`
+- `NOTIF-005` 已冻结交付完成后的 audience 映射：
+  - 文件包、报告交付：买方接收 `order.pending_acceptance / NOTIFY_PENDING_ACCEPTANCE_V1`
+  - 共享开通、API 开通、查询结果可取、沙箱开通：买方接收 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
+  - 卖方、运营统一接收 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
+  - `ops` payload 允许附带 `delivery_ref_type / delivery_ref_id / receipt_hash / delivery_commit_hash`；`buyer/seller` payload 不得透传这些联查字段
 - 当前冻结的 `notification_code` 仅允许：
   - `order.created`
   - `payment.succeeded`
@@ -115,8 +120,43 @@
   - `NOTIFY_PAYMENT_SUCCEEDED_V1` version `2` 作为买方支付成功正式模板
   - `NOTIFY_PENDING_DELIVERY_V1` version `2` 作为卖方 / 运营待交付正式模板
   - version `1` 已归档，仅保留回退审计用途
+- `077_notification_delivery_completed_pending_acceptance_templates.sql` 起：
+  - `NOTIFY_DELIVERY_COMPLETED_V1` version `2` 作为共享/API/查询结果/沙箱开通，以及卖方/运营交付完成正式模板
+  - `NOTIFY_PENDING_ACCEPTANCE_V1` version `2` 作为文件包/报告交付后的买方待验收正式模板
+  - version `1` 已归档，仅保留回退审计用途
 - file 模板目录 `apps/notification-worker/templates/` 仅保留为 local fallback，不再作为正式模板权威源
 - 不允许把内部风控、审计敏感字段直接透传到业务用户通知正文
+
+## NOTIF-005 交付链路联调
+
+- 六类交付结果的 producer 入口：
+  - 文件包：`delivery.delivery_record / delivery.committed`
+  - 共享开通：`delivery.delivery_record / delivery.committed`
+  - API 开通：`delivery.delivery_record / delivery.committed`
+  - 查询结果可取：`delivery.query_execution_run / delivery.template_query.use`
+  - 沙箱开通：`delivery.delivery_record / delivery.committed`
+  - 报告交付：`delivery.delivery_record / delivery.committed`
+- 运行态验证建议至少覆盖三条样例：
+  - `order.pending_acceptance / buyer / NOTIFY_PENDING_ACCEPTANCE_V1`
+  - `delivery.completed / ops / NOTIFY_DELIVERY_COMPLETED_V1`
+  - `delivery.completed` 强制失败一次后重试成功
+- 手工验证步骤：
+  1. `POST /internal/notifications/templates/preview` 先确认两套模板都命中 version `2`
+  2. `POST /internal/notifications/send` 注入待验收样例，回查：
+     - `ops.consumer_idempotency_record.result_code=processed`
+     - `ops.system_log.message_text='notification sent via mock-log'`
+     - `ops.trace_index.root_span_name=notification.dispatch`
+     - `audit.audit_event.action_name=notification.dispatch.sent`
+  3. 使用同一 `event_id` 再注入一次交付完成样例，确认 `/metrics` 中 `notification_worker_events_total{result="duplicate"}` 增长，且数据库不新增第二条处理记录
+  4. 用 `simulate_failures=1` + `retry_policy.max_attempts=2` 注入重试样例，确认：
+     - Redis `datab:v1:notification:retry-queue` 深度先变为 `1` 再回到 `0`
+     - Redis `datab:v1:notification:state:<event_id>` 先为 `retrying`，最终为 `processed`
+     - `audit.audit_event` 先写 `notification.dispatch.retry_scheduled`，随后写 `notification.dispatch.sent`
+     - `ops.trace_index` 同时存在 `notification.retrying` 与 `notification.dispatch`
+  5. `GET 'http://127.0.0.1:9090/api/v1/query?query=notification_worker_events_total'` 与 `notification_worker_retry_queue_depth`，确认 Prometheus 已抓到 worker 指标
+- 业务数据清理要求：
+  - 清理本次手工样例产生的非 append-only 辅助状态，例如 Redis 短状态、重试载荷、`ops.consumer_idempotency_record`、`ops.trace_index`
+  - `audit.audit_event` 按 append-only 保留
 
 ## 模板预览
 
@@ -156,6 +196,10 @@
   - 渠道结果
   - 重试轨迹
   - 关联事件 ID
+- 交付完成链路优先补查：
+  - `ops.notification_template` 中 `NOTIFY_DELIVERY_COMPLETED_V1 / NOTIFY_PENDING_ACCEPTANCE_V1` 的 active version 是否为 `2`
+  - 查询结果场景是否使用 `delivery.query_execution_run / delivery.template_query.use`
+  - `ops` 正文是否包含 `delivery_ref_* / *_hash`，而 `buyer/seller` 正文不包含
 
 ## 常见问题
 

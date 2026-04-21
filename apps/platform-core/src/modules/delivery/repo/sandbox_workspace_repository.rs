@@ -15,6 +15,9 @@ use crate::modules::delivery::repo::sandbox_workspace_model_repository::{
     build_export_control_json, build_sandbox_policy_snapshot, upsert_attestation_reference,
     upsert_sensitive_execution_policy,
 };
+use crate::modules::integration::application::{
+    DeliveryCompletionNotificationDispatchInput, queue_delivery_completion_notifications,
+};
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::repo::{
     ensure_order_deliverable_and_prepare_delivery, map_db_error, write_trade_audit_event,
@@ -568,6 +571,26 @@ pub async fn manage_sandbox_workspace(
         }),
     )
     .await?;
+    let _ = queue_delivery_completion_notifications(
+        &tx,
+        DeliveryCompletionNotificationDispatchInput {
+            order_id,
+            delivery_branch: "sandbox",
+            result_ref_type: "delivery_record",
+            result_ref_id: &prepared.delivery_id,
+            source_event_aggregate_type: "delivery.delivery_record",
+            source_event_event_type: "delivery.committed",
+            source_event_occurred_at: None,
+            delivery_type: Some("sandbox_workspace"),
+            delivery_route: Some("sandbox_query"),
+            receipt_hash: Some(receipt_hash.as_str()),
+            delivery_commit_hash: Some(delivery_commit_hash.as_str()),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     tx.commit().await.map_err(map_db_error)?;
 

@@ -351,3 +351,88 @@
 - 备注：
   - `ops.system_log` 与 `audit.audit_event` 均受 append-only 保护，本批按规则保留验证痕迹，不做删除。
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+### BATCH-204（计划中）
+- 任务：`NOTIF-005` 交付完成 -> 待验收通知模板与发送逻辑
+- 状态：计划中
+- 说明：当前批次围绕 `DLV-030` 已冻结的六类交付桥接点落真实通知触发：文件包、共享开通、API 开通、查询结果可取、沙箱开通、报告交付完成后，需要按交付分支与实际 `acceptance_status` 生成买方、卖方、运营通知。手工验收分支（文件/报告）优先给买方发 `order.pending_acceptance`，自动验收或启用完成分支给买方发 `delivery.completed`；卖方与运营统一收到 `delivery.completed`，且业务用户正文不得暴露内部联查字段。
+- 追溯：本批在既有 `notification-contract + ops.notification_template + delivery bridge` 口径上增量实现，不提前改写 `DLV-030/031` 的交付状态机或 `AUD-009` outbox publisher；如发现查询结果可取场景的 source-event 口径与冻结文档存在不可安全推断冲突，将按规则暂停并提问。
+### BATCH-204（待审批）
+- 任务：`NOTIF-005` 交付完成 -> 待验收通知模板与发送逻辑
+- 状态：待审批
+- 当前任务编号：`NOTIF-005`
+- 前置依赖核对结果：`NOTIF-002` 已冻结正式通知 scene catalog、payload 与幂等键；`DLV-030` 已把文件/共享/API/查询/沙箱/报告六类交付桥接点接入 canonical outbox。当前批次只在这些已冻结桥接点上补正式模板与通知触发，不回退为同步硬编码发送，也不提前实现 `AUD-009` 自动 outbox publisher。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批 DoD 是“Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖”，且必须覆盖六类交付结果。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核通知记录主权威源是 PostgreSQL，Kafka 负责异步分发，Redis 负责短状态/重试，`notification-worker` 是外围进程。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认正式链路仍是 `notification.requested -> dtp.notification.dispatch -> notification-worker`，且不得把 `dtp.outbox.domain-events` 当正式消费入口。
+  - `../业务流程/业务流程图-V1-完整版.md`、`../页面说明书/页面说明书-V1-完整版.md`、`docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：确认“交付完成 -> 待验收”业务时机、订单详情/验收页入口，以及业务用户与运营的字段披露边界。
+  - `apps/notification-worker/**`、`apps/platform-core/src/modules/integration/**`、`apps/platform-core/src/modules/delivery/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/05-test-cases/**`、`scripts/**`、`infra/**`：复核现有 `notification-worker`、模板模型、交付仓储与本地联调脚本，确认已有实现只能作为参考，不视为任务完成证明。
+- 实现要点：
+  - `apps/platform-core/src/modules/integration/application/mod.rs` 新增 `queue_delivery_completion_notifications(...)`，统一装配六类交付完成通知：
+    - 文件包 / 报告：买方 `order.pending_acceptance / NOTIFY_PENDING_ACCEPTANCE_V1`
+    - 共享开通 / API 开通 / 查询结果可取 / 沙箱开通：买方 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
+    - 卖方、运营：统一 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
+  - 新增交付通知上下文装配，统一输出 `product_title / buyer_org_name / seller_org_name / order_amount / payment_status / delivery_status / acceptance_status / delivery_branch_label / action_label / action_href`；仅 `ops` audience 附带 `delivery_ref_type / delivery_ref_id / receipt_hash / delivery_commit_hash`。
+  - 文件、共享、API、查询、沙箱、报告六类交付仓储在原有桥接 / outbox 事务内接入通知写入，保持“业务状态 -> canonical outbox -> 正式 topic 消费”顺序一致，不额外引入旁路发送。
+  - 新增迁移 `077_notification_delivery_completed_pending_acceptance_templates.sql` / downgrade，正式把 `NOTIFY_DELIVERY_COMPLETED_V1`、`NOTIFY_PENDING_ACCEPTANCE_V1` 升级为 version `2`，并把 version `1` 归档。
+  - 新增 `apps/platform-core/src/modules/integration/tests/notif005_delivery_completion_db.rs`，真实验证六类交付场景写出的 `notification_code / template_code / source_event / metadata`、幂等键稳定性以及 buyer / seller / ops 字段可见性。
+  - 增强 `dlv002_file_delivery_commit_db_smoke` 与 `dlv007_api_delivery_db_smoke`，在原有交付 DB smoke 上直接回查 `dtp.notification.dispatch` canonical outbox，确保文件/API 两类真实桥接点已接通知而非仅靠单元逻辑。
+  - 更新 `apps/notification-worker/README.md`、`docs/04-runbooks/notification-worker.md`，把 `NOTIF-005` 的 audience 映射、模板版本与重试联查步骤落到文档。
+- 验证步骤：
+  1. `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/migrate-up.sh`
+  2. `cargo fmt --all`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `cargo check -p notification-worker`
+  6. `cargo test -p notification-worker`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif005_delivery_completion_notifications_db_smoke -- --nocapture`
+  10. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+  11. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv007_api_delivery_db_smoke -- --nocapture`
+  12. `POST /internal/notifications/templates/preview` 分别预览：
+      - `order.pending_acceptance / buyer / NOTIFY_PENDING_ACCEPTANCE_V1`
+      - `delivery.completed / ops / NOTIFY_DELIVERY_COMPLETED_V1`
+  13. `POST /internal/notifications/send` 手工注入三类 Kafka 事件并回查：
+      - 待验收正常送达
+      - 交付完成正常送达 + 同一 `event_id` 二次重放去重
+      - 强制失败一次后重试成功
+  14. 用 `psql`、`redis-cli`、`curl /metrics`、Prometheus API 回查 `ops.consumer_idempotency_record`、`ops.system_log`、`ops.trace_index`、`audit.audit_event`、Redis 短状态/重试队列、`notification_worker_events_total`、`notification_worker_send_total`、`notification_worker_retry_queue_depth`
+  15. 清理本批手工验证产生的非 append-only 辅助状态：`ops.consumer_idempotency_record`、`ops.trace_index`、Redis 短状态与重试载荷；`audit.audit_event` / `ops.system_log` 按留痕保留。
+- 验证结果：
+  - `077` 已正式应用到本地数据库，`ops.notification_template` 回查显示：
+    - `NOTIFY_DELIVERY_COMPLETED_V1` active version=`2`
+    - `NOTIFY_PENDING_ACCEPTANCE_V1` active version=`2`
+    - version `1` 均已归档
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过。
+  - `notif005_delivery_completion_notifications_db_smoke` 真实验证六类交付场景均能写出 3 条通知 canonical outbox，且买方在文件/报告分支命中 `order.pending_acceptance / NOTIFY_PENDING_ACCEPTANCE_V1`，在共享/API/查询/沙箱分支命中 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`；卖方/运营统一命中 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`。
+  - `dlv002_file_delivery_commit_db_smoke` 与 `dlv007_api_delivery_db_smoke` 均通过，证明真实文件/API 交付仓储路径已经在原事务内写出通知 canonical outbox，而不是只在测试注入逻辑中成立。
+  - 模板预览验证通过：
+    - 待验收样例命中 `NOTIFY_PENDING_ACCEPTANCE_V1` version `2`，正文包含订单、商品、金额、交付分支与“查看并验收”入口
+    - 运营交付完成样例命中 `NOTIFY_DELIVERY_COMPLETED_V1` version `2`，正文包含 `delivery_ref=query_execution_run/... receipt=... commit=...` 联查字段
+  - Worker 运行态验证通过：
+    - 待验收样例：`ops.consumer_idempotency_record.result_code=processed / attempt=1`，`ops.system_log` 写入 `notification sent via mock-log`，`ops.trace_index.root_span_name=notification.dispatch`，`audit.audit_event.action_name=notification.dispatch.sent`
+    - 同一 `event_id` 的交付完成样例二次投递后，`notification_worker_events_total{result="duplicate"}` 增长，数据库未新增第二条处理记录
+    - 强制失败一次的交付完成样例先写 `notification.dispatch.retry_scheduled / failed`，Redis `notification:retry-queue` 深度由 `1` 回到 `0`，最终在 attempt=`2` 成功送达，`ops.trace_index` 同时可见 `notification.retrying` 与 `notification.dispatch`
+  - Prometheus 回查通过：
+    - `up{job="notification-worker"}=1`
+    - `notification_worker_events_total{result="processed"}=6`
+    - `notification_worker_events_total{result="duplicate"}=1`
+    - `notification_worker_events_total{result="retrying"}=1`
+    - `notification_worker_send_total{channel="mock-log",result="success"}=6`
+    - `notification_worker_send_total{channel="mock-log",result="failed"}=1`
+    - `notification_worker_retry_queue_depth=0`
+  - 清理结果：本批手工验证的 Redis 短状态/重试载荷与 `ops.consumer_idempotency_record`、`ops.trace_index` 已按规则清理；`audit.audit_event` 与 `ops.system_log` 作为运行留痕保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-005`
+  - `业务流程图-V1-完整版.md`：交付、验真与验收主流程中的“交付完成 -> 待验收”时机
+  - `页面说明书-V1-完整版.md`：验收页、订单详情页入口与不同 audience 的最小可见字段
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：正式 topic、scene catalog、渠道边界与 `notification-worker` 命名冻结
+  - `notification-worker.md`、`kafka-topics.md`、`topics.v1.json`、`072/074`：正式消费链、route authority、consumer group 与 canonical outbox 口径
+- 覆盖的任务清单条目：`NOTIF-005`
+- 未覆盖项：
+  - 不提前实现 `AUD-009` outbox publisher；本批只验证交付桥接点写入 canonical outbox 与 worker 消费两端。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+  - 查询结果可取场景保持冻结 source-event 口径：`delivery.query_execution_run / delivery.template_query.use`，未发明新的旁路事件名。

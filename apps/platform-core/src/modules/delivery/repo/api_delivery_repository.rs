@@ -6,6 +6,9 @@ use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliv
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
 };
+use crate::modules::integration::application::{
+    DeliveryCompletionNotificationDispatchInput, queue_delivery_completion_notifications,
+};
 use crate::modules::order::domain::LayeredOrderStatus;
 use crate::modules::order::repo::{
     ensure_order_deliverable_and_prepare_delivery, map_db_error, write_trade_audit_event,
@@ -441,6 +444,26 @@ pub async fn commit_api_delivery(
         }),
     )
     .await?;
+    let _ = queue_delivery_completion_notifications(
+        &tx,
+        DeliveryCompletionNotificationDispatchInput {
+            order_id,
+            delivery_branch: "api",
+            result_ref_type: "delivery_record",
+            result_ref_id: &prepared.delivery_id,
+            source_event_aggregate_type: "delivery.delivery_record",
+            source_event_event_type: "delivery.committed",
+            source_event_occurred_at: Some(&committed_at),
+            delivery_type: Some("api_access"),
+            delivery_route: Some(&upstream_mode),
+            receipt_hash: payload.receipt_hash.as_deref(),
+            delivery_commit_hash: payload.delivery_commit_hash.as_deref(),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     tx.commit().await.map_err(map_db_error)?;
 

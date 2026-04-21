@@ -7,6 +7,9 @@ use crate::modules::delivery::domain::is_accepted_state;
 use crate::modules::delivery::dto::{
     ManageShareGrantRequest, ShareGrantListResponseData, ShareGrantResponseData,
 };
+use crate::modules::integration::application::{
+    DeliveryCompletionNotificationDispatchInput, queue_delivery_completion_notifications,
+};
 use crate::modules::order::repo::{
     apply_authorization_cutoff_if_needed, ensure_order_deliverable_and_prepare_delivery,
     map_db_error, write_trade_audit_event,
@@ -326,6 +329,26 @@ pub async fn manage_share_grant(
             idempotency_key,
         )
         .await?;
+        let _ = queue_delivery_completion_notifications(
+            &tx,
+            DeliveryCompletionNotificationDispatchInput {
+                order_id,
+                delivery_branch: "share",
+                result_ref_type: "delivery_record",
+                result_ref_id: &delivery_id,
+                source_event_aggregate_type: "delivery.delivery_record",
+                source_event_event_type: "delivery.committed",
+                source_event_occurred_at: None,
+                delivery_type: Some("share_grant"),
+                delivery_route: Some(share_protocol.as_str()),
+                receipt_hash: Some(receipt_hash.as_str()),
+                delivery_commit_hash: Some(delivery_commit_hash.as_str()),
+                request_id,
+                trace_id,
+            },
+        )
+        .await
+        .map_err(map_db_error)?;
         let billing_bridge_idempotency_key = format!("billing-trigger:share-grant:{delivery_id}");
         write_billing_trigger_bridge_event(
             &tx,

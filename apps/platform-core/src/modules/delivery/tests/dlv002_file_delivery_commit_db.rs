@@ -12,6 +12,8 @@ mod tests {
     struct SeedGraph {
         buyer_org_id: String,
         seller_org_id: String,
+        platform_org_id: String,
+        platform_user_id: String,
         asset_id: String,
         asset_version_id: String,
         product_id: String,
@@ -301,6 +303,50 @@ mod tests {
             Some("file")
         );
 
+        let notification_rows = client
+            .query(
+                "SELECT payload
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND target_topic = 'dtp.notification.dispatch'
+                 ORDER BY created_at ASC, outbox_event_id ASC",
+                &[&request_id],
+            )
+            .await
+            .expect("query notification rows");
+        assert_eq!(notification_rows.len(), 3);
+        let notification_payloads = notification_rows
+            .iter()
+            .map(|row| row.get::<_, Value>(0))
+            .collect::<Vec<_>>();
+        let buyer = find_notification_payload(&notification_payloads, "buyer");
+        assert_eq!(
+            buyer["payload"]["notification_code"].as_str(),
+            Some("order.pending_acceptance")
+        );
+        assert_eq!(
+            buyer["payload"]["template_code"].as_str(),
+            Some("NOTIFY_PENDING_ACCEPTANCE_V1")
+        );
+        let seller = find_notification_payload(&notification_payloads, "seller");
+        assert_eq!(
+            seller["payload"]["notification_code"].as_str(),
+            Some("delivery.completed")
+        );
+        let ops = find_notification_payload(&notification_payloads, "ops");
+        assert_eq!(
+            ops["payload"]["notification_code"].as_str(),
+            Some("delivery.completed")
+        );
+        assert_eq!(
+            ops["payload"]["metadata"]["delivery_ref_type"].as_str(),
+            Some("delivery_record")
+        );
+        assert_eq!(
+            ops["payload"]["metadata"]["receipt_hash"].as_str(),
+            Some(format!("receipt-{suffix}").as_str())
+        );
+
         cleanup_seed_graph(&client, &seed).await;
     }
 
@@ -320,6 +366,33 @@ mod tests {
                  VALUES ($1, 'enterprise', 'active', '{}'::jsonb)
                  RETURNING org_id::text",
                 &[&format!("dlv002-seller-{suffix}")],
+            )
+            .await?
+            .get(0);
+        let platform_org_id: String = client
+            .query_one(
+                "INSERT INTO core.organization (org_name, org_type, status, metadata)
+                 VALUES ($1, 'platform', 'active', '{}'::jsonb)
+                 RETURNING org_id::text",
+                &[&format!("dlv002-platform-{suffix}")],
+            )
+            .await?
+            .get(0);
+        let platform_user_id: String = client
+            .query_one(
+                "INSERT INTO core.user_account (
+                   org_id, login_id, display_name, user_type, status, mfa_status, email, attrs
+                 ) VALUES (
+                   $1::text::uuid, $2, $3, 'human', 'active', 'enabled', $4, $5::jsonb
+                 )
+                 RETURNING user_id::text",
+                &[
+                    &platform_org_id,
+                    &format!("platform_admin.dlv002.{suffix}@example.test"),
+                    &format!("DLV002 platform admin {suffix}"),
+                    &format!("platform_admin.dlv002.{suffix}@example.test"),
+                    &json!({ "persona": "platform_admin" }),
+                ],
             )
             .await?
             .get(0);
@@ -485,6 +558,8 @@ mod tests {
         Ok(SeedGraph {
             buyer_org_id,
             seller_org_id,
+            platform_org_id,
+            platform_user_id,
             asset_id,
             asset_version_id,
             product_id,
@@ -540,10 +615,28 @@ mod tests {
             .ok();
         client
             .execute(
-                "DELETE FROM core.organization WHERE org_id = ANY($1::text[]::uuid[])",
-                &[&vec![seed.buyer_org_id.clone(), seed.seller_org_id.clone()]],
+                "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+                &[&seed.platform_user_id],
             )
             .await
             .ok();
+        client
+            .execute(
+                "DELETE FROM core.organization WHERE org_id = ANY($1::text[]::uuid[])",
+                &[&vec![
+                    seed.buyer_org_id.clone(),
+                    seed.seller_org_id.clone(),
+                    seed.platform_org_id.clone(),
+                ]],
+            )
+            .await
+            .ok();
+    }
+
+    fn find_notification_payload<'a>(payloads: &'a [Value], audience_scope: &str) -> &'a Value {
+        payloads
+            .iter()
+            .find(|payload| payload["payload"]["audience_scope"].as_str() == Some(audience_scope))
+            .unwrap_or_else(|| panic!("missing notification payload for {audience_scope}"))
     }
 }

@@ -8,6 +8,9 @@ use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, enforce_seller_scope, not_found, resolve_storage_namespace_id,
     write_delivery_audit_event,
 };
+use crate::modules::integration::application::{
+    DeliveryCompletionNotificationDispatchInput, queue_delivery_completion_notifications,
+};
 use crate::modules::order::repo::{map_db_error, write_trade_audit_event};
 use crate::modules::storage::domain::resolve_storage_object_location;
 use axum::Json;
@@ -526,6 +529,26 @@ pub async fn commit_report_delivery(
         }),
     )
     .await?;
+    let _ = queue_delivery_completion_notifications(
+        &tx,
+        DeliveryCompletionNotificationDispatchInput {
+            order_id,
+            delivery_branch: "report",
+            result_ref_type: "delivery_record",
+            result_ref_id: &prepared_delivery_id,
+            source_event_aggregate_type: "delivery.delivery_record",
+            source_event_event_type: "delivery.committed",
+            source_event_occurred_at: Some(&committed_at),
+            delivery_type: Some("report_delivery"),
+            delivery_route: delivery_route_snapshot.as_deref(),
+            receipt_hash: payload.receipt_hash.as_deref(),
+            delivery_commit_hash: payload.delivery_commit_hash.as_deref(),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     tx.commit().await.map_err(map_db_error)?;
 

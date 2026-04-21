@@ -4,6 +4,9 @@ use super::outbox_repository::{
 };
 use crate::modules::delivery::domain::{build_watermark_placeholder_patch, merge_snapshot_patch};
 use crate::modules::delivery::dto::{CommitOrderDeliveryRequest, CommitOrderDeliveryResponseData};
+use crate::modules::integration::application::{
+    DeliveryCompletionNotificationDispatchInput, queue_delivery_completion_notifications,
+};
 use crate::modules::order::domain::derive_layered_status;
 use crate::modules::order::repo::map_db_error;
 use crate::modules::storage::domain::resolve_storage_object_location;
@@ -517,6 +520,26 @@ pub async fn commit_file_delivery(
         }),
     )
     .await?;
+    let _ = queue_delivery_completion_notifications(
+        &tx,
+        DeliveryCompletionNotificationDispatchInput {
+            order_id,
+            delivery_branch: "file",
+            result_ref_type: "delivery_record",
+            result_ref_id: &prepared_delivery_id,
+            source_event_aggregate_type: "delivery.delivery_record",
+            source_event_event_type: "delivery.committed",
+            source_event_occurred_at: Some(&committed_at),
+            delivery_type: Some("file_download"),
+            delivery_route: delivery_route_snapshot.as_deref(),
+            receipt_hash: payload.receipt_hash.as_deref(),
+            delivery_commit_hash: payload.delivery_commit_hash.as_deref(),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     tx.commit().await.map_err(map_db_error)?;
 

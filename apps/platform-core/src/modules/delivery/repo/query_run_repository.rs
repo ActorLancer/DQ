@@ -3,6 +3,9 @@ use crate::modules::delivery::dto::{ExecuteTemplateRunRequest, QueryRunResponseD
 use crate::modules::delivery::repo::file_delivery_repository::{
     bad_request, conflict, not_found, write_delivery_audit_event,
 };
+use crate::modules::integration::application::{
+    DeliveryCompletionNotificationDispatchInput, queue_delivery_completion_notifications,
+};
 use crate::modules::order::repo::{map_db_error, write_trade_audit_event};
 use crate::modules::storage::application::put_object_bytes;
 use axum::Json;
@@ -386,6 +389,26 @@ pub async fn execute_template_run(
         }),
     )
     .await?;
+    let _ = queue_delivery_completion_notifications(
+        &tx,
+        DeliveryCompletionNotificationDispatchInput {
+            order_id,
+            delivery_branch: "query_run",
+            result_ref_type: "query_execution_run",
+            result_ref_id: &query_run_id,
+            source_event_aggregate_type: "delivery.query_execution_run",
+            source_event_event_type: DELIVERY_TEMPLATE_QUERY_USE_EVENT,
+            source_event_occurred_at: completed_at.as_deref(),
+            delivery_type: Some("query_result"),
+            delivery_route: Some("template_query"),
+            receipt_hash: Some(content_hash.as_str()),
+            delivery_commit_hash: Some(content_hash.as_str()),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     tx.commit().await.map_err(map_db_error)?;
 
