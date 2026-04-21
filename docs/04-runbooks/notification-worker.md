@@ -89,9 +89,43 @@
 - 默认只允许 `mock-log` 渠道输出发送结果
 - 模板需支持：
   - 模板编码
+  - 语言
+  - 变量 schema
+  - 版本号
+  - 启用状态
   - 变量渲染
-  - 版本与启停
+  - 渲染预览
+  - fallback 文案
+- PostgreSQL 权威表：`ops.notification_template`
+  - 运行时只读取 `enabled=true AND status='active'` 的最新版本
+  - 查询维度：`template_code + channel + language_code`
+  - 若指定语言无匹配，则回退到默认语言 `zh-CN`
+  - 若指定模板缺失，则回退到 `DEFAULT_NOTIFICATION_V1`
+- file 模板目录 `apps/notification-worker/templates/` 仅保留为 local fallback，不再作为正式模板权威源
 - 不允许把内部风控、审计敏感字段直接透传到业务用户通知正文
+
+## 模板预览
+
+- 内部预览入口：`POST /internal/notifications/templates/preview`
+- 预览请求建议显式提供：
+  - `template_code`
+  - `notification_code`
+  - `audience_scope`
+  - `language_code`
+  - `recipient`
+  - `variables`
+  - `source_event`
+- 预览响应至少返回：
+  - `template_code`
+  - `channel`
+  - `language_code`
+  - `requested_language_code`
+  - `version_no`
+  - `template_fallback_used`
+  - `body_fallback_used`
+  - `variable_schema`
+  - `title`
+  - `body`
 
 ## 幂等、重试、DLQ
 

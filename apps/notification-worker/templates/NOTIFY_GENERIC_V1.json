@@ -1,7 +1,22 @@
 {
   "template_code": "NOTIFY_GENERIC_V1",
+  "language_code": "zh-CN",
   "channel": "mock-log",
+  "version_no": 1,
+  "enabled": true,
+  "status": "active",
+  "variables_schema_json": {
+    "type": "object",
+    "required": ["subject"],
+    "properties": {
+      "subject": { "type": "string" },
+      "message": { "type": "string" }
+    }
+  },
   "title_template": "{{variables.subject}}",
   "body_template": "To {{recipient.display_name}} <{{recipient.address}}>: {{variables.message}} (aggregate={{event.aggregate_id}} trace={{event.trace_id}})",
-  "fallback_body_template": "To {{recipient.address}}: notification requested for {{event.aggregate_type}}/{{event.aggregate_id}}"
+  "fallback_body_template": "To {{recipient.address}}: notification requested for {{event.aggregate_type}}/{{event.aggregate_id}}",
+  "metadata": {
+    "seed_source": "file-fallback"
+  }
 }

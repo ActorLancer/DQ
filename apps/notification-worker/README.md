@@ -37,7 +37,11 @@
   - `retry_policy`
   - `subject_refs`
   - `links`
+- PostgreSQL 模板权威源：`ops.notification_template`
+  - 字段至少包含：`template_code`、`language_code`、`channel`、`version_no`、`enabled`、`status`、`variables_schema_json`、`title_template`、`body_template`、`fallback_body_template`
+  - `notification-worker` 运行时优先从 PostgreSQL 读取启用中的最新模板版本；`apps/notification-worker/templates/` 只保留本地 file fallback
 - `POST /internal/notifications/send` 手工注入通知事件到 Kafka
+- `POST /internal/notifications/templates/preview` 预览模板渲染结果，返回解析后的语言、版本、schema 与 fallback 使用情况
 - 文件模板目录：`apps/notification-worker/templates/`
 - Redis 短期状态与重试队列
 - PostgreSQL 发送/审计/死信/trace 镜像

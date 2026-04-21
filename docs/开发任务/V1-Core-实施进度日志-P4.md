@@ -146,3 +146,117 @@
 - 未覆盖项：无。后续 `NOTIF-003 ~ NOTIF-009` 继续基于本批冻结协议实现模板、渠道适配与业务触发，不再修改 scene catalog 或正式 topic 口径。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`TODO-NOTIF-CONTRACT-001` 仍按既有计划留给 `NOTIF-013/014` 承接。
 - 备注：本批未改 `docs/开发任务/V1-Core-TODO与预留清单.md`，因为没有新增 gap / reserved 项；`V1-Core-人工审批记录.md` 仍由你手工维护。
+### BATCH-202（计划中）
+- 任务：`NOTIF-003` Notification 模板模型与渲染预览
+- 状态：计划中
+- 说明：在 `NOTIF-002` 已冻结通知协议的前提下，当前批次把模板从文件占位升级为正式模型，至少覆盖模板编码、语言、变量 schema、渠道、启用状态、版本号、渲染结果预览与 fallback 文案，并让 `notification-worker` 真正从 PostgreSQL 模板权威源加载与渲染，而不是继续把 `templates/*.json` 当唯一正式来源。
+- 追溯：本批先完成模板模型、模板存储、预览与运行时加载，不提前混入 `NOTIF-004 ~ NOTIF-007` 的具体业务触发逻辑；后续场景模板只允许在本批建立的模型上增量补齐。
+### BATCH-202（待审批）
+- 任务：`NOTIF-003` Notification 模板模型与渲染预览
+- 状态：待审批
+- 当前任务编号：`NOTIF-003`
+- 前置依赖核对结果：`NOTIF-001` 已提供 `notification-worker` 运行基线与真实发送/重试/DLQ 闭环；`NOTIF-002` 已冻结 scene catalog、正式 payload、幂等键与 canonical outbox 写入口。当前批次在此基础上补模板权威源与渲染模型，不再回退到旧的文件占位口径。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批必须实现模板编码、语言、变量 schema、渠道、启用状态、版本号、渲染预览与 fallback 文案。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核通知模板的权威状态应落 PostgreSQL，Kafka 仅负责事件传播，Worker 读取模板后执行外围发送。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认模板变更不能改变正式 topic/consumer 边界，仍必须走 `notification.requested -> dtp.notification.dispatch -> notification-worker`。
+  - `apps/notification-worker/**`、`apps/platform-core/src/modules/integration/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/05-test-cases/**`、`scripts/**`、`infra/**`：核对现有实现只有文件模板与 README 占位，没有正式模板模型；本批可复用 `notification-contract` 与既有 Worker 审计/指标链路。
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`docs/原始PRD/审计、证据链与回放设计.md`、`docs/原始PRD/日志、可观测性与告警设计.md`、`docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：复核模板预览、审计字段、日志字段与通知链路边界。
+- 实现要点：
+  - 新增迁移 `075_notification_template_model.sql` / downgrade，把模板正式落到 PostgreSQL `ops.notification_template`，字段覆盖：
+    - `template_code`
+    - `language_code`
+    - `channel`
+    - `version_no`
+    - `enabled`
+    - `status`
+    - `variables_schema_json`
+    - `title_template`
+    - `body_template`
+    - `fallback_body_template`
+    - `metadata`
+  - `075` 同时 seed `DEFAULT_NOTIFICATION_V1`、`NOTIFY_GENERIC_V1` 与 13 个 scene 对应的 `NOTIFY_*_V1` 模板，统一使用 `mock-log + zh-CN + version_no=1 + active/enabled` 基线。
+  - `apps/notification-worker/src/template.rs` 重写为 DB-first 模型：
+    - 运行时优先从 `ops.notification_template` 读取 `enabled=true AND status='active'` 的最新版本
+    - 指定语言找不到时回退到默认语言 `zh-CN`
+    - 指定模板缺失时回退到 `DEFAULT_NOTIFICATION_V1`
+    - 最后才回退到 `apps/notification-worker/templates/*.json` file fallback
+  - 模板渲染补齐最小 schema 校验与严格渲染：
+    - `variables_schema_json` 在运行时真实校验
+    - 缺失 required 变量时视为模板渲染失败
+    - body 渲染失败时使用 `fallback_body_template`
+    - 渲染结果返回 `version_no`、解析语言、schema、fallback 使用情况与模板 metadata
+  - 新增 `POST /internal/notifications/templates/preview`，允许在不发 Kafka 事件的情况下预览模板渲染结果，返回：
+    - `template_code`
+    - `channel`
+    - `language_code`
+    - `requested_language_code`
+    - `version_no`
+    - `template_enabled`
+    - `template_status`
+    - `template_fallback_used`
+    - `body_fallback_used`
+    - `variable_schema`
+    - `template_metadata`
+    - `title`
+    - `body`
+  - 正式发送路径也切到同一模板模型：`notification-worker` 消费 Kafka 后先从 PostgreSQL 模板表解析模板，再执行 `mock-log` 发送；模板渲染/校验失败不再直接丢出，而是进入既有 retry / DLQ 处理路径。
+  - 更新 `apps/notification-worker/README.md`、`docs/04-runbooks/notification-worker.md` 与 file fallback JSON 样例，明确 PostgreSQL 才是模板权威源，文件模板仅用于 local fallback。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p notification-worker`
+  3. `cargo test -p notification-worker`
+  4. `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/migrate-reset.sh`
+  5. `NOTIF_TEMPLATE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p notification-worker notif003_template_model_db_smoke -- --nocapture`
+  6. `cargo check -p platform-core`
+  7. `cargo test -p platform-core`
+  8. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  9. `./scripts/check-query-compile.sh`
+  10. 启动 `notification-worker`：
+      `APP_PORT=8097 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 cargo run -p notification-worker`
+  11. `curl http://127.0.0.1:8097/health/live`、`/health/ready`、`/health/deps`
+  12. `curl -X POST /internal/notifications/templates/preview`：
+      使用 `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1`、`language_code=en-US`、只提供 `variables.subject`，验证语言回退到 `zh-CN` 且 body 触发 fallback 文案。
+  13. `curl -X POST /internal/notifications/send`：
+      注入 `payment.succeeded` 事件并显式传入 `subject/message/source_event/subject_refs/links`，验证真实发送路径使用 PostgreSQL 模板，不再回退到 `DEFAULT_NOTIFICATION_V1`。
+  14. 使用 `psql` 回查 `ops.notification_template`、`ops.consumer_idempotency_record`、`ops.system_log`、`ops.trace_index`、`audit.audit_event`，使用 `redis-cli` 回查短状态，使用 `curl /metrics` 回查指标，使用 `docker exec datab-kafka /opt/kafka/bin/kafka-console-consumer.sh` 回查 Kafka 留存消息。
+  15. 清理 Redis 短状态键；DB 的审计/日志/trace 运行痕迹按 append-only / 运行证据保留。
+- 验证结果：
+  - `075` 迁移成功进入本地基线，`migrate-reset.sh` 已真实执行到 `075_notification_template_model.sql`；`ops.notification_template` 中可查到 `NOTIFY_PAYMENT_SUCCEEDED_V1 / zh-CN / mock-log / version_no=1 / enabled / active`。
+  - `cargo fmt --all`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`NOTIF_TEMPLATE_DB_SMOKE=1 ... notif003_template_model_db_smoke`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过。
+  - `notif003_template_model_db_smoke` 真实连接 PostgreSQL，确认 active 模板数不少于 15 条，并验证：
+    - `NOTIFY_PAYMENT_SUCCEEDED_V1` 从 DB 读出
+    - 请求语言 `en-US` 回退到 `zh-CN`
+    - body 因缺少 `message` 触发 fallback 文案
+  - 手工 preview 验证通过：
+    - `POST /internal/notifications/templates/preview` 返回 `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1`
+    - `language_code=zh-CN`
+    - `requested_language_code=en-US`
+    - `version_no=1`
+    - `template_fallback_used=false`
+    - `body_fallback_used=true`
+    - `variable_schema.required=["subject"]`
+    - `body=notification=payment.succeeded recipient=buyer.preview@example.test`
+  - 手工真实发送验证通过：
+    - `POST /internal/notifications/send` 返回 `topic=dtp.notification.dispatch`
+    - Worker 日志显示 `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1`
+    - 不再使用 `DEFAULT_NOTIFICATION_V1` 作为成功场景的正式模板
+  - PostgreSQL / Redis / Kafka / metrics 回查通过：
+    - `ops.consumer_idempotency_record.result_code=processed`
+    - `ops.system_log` 中 `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1`
+    - `ops.trace_index` 中 `root_span_name=notification.dispatch` 且 metadata 记录 `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1`
+    - `audit.audit_event` 中 `action_name=notification.dispatch.sent / result_code=success`
+    - `/metrics` 返回 `notification_worker_events_total{result="processed"} 1`、`notification_worker_send_total{channel="mock-log",result="success"} 1`、`notification_worker_retry_queue_depth 0`
+    - Kafka `dtp.notification.dispatch` 留存消息中可见 `payload.template_code=NOTIFY_PAYMENT_SUCCEEDED_V1`
+    - Redis 短状态在回查后已清理
+  - 本批没有改变正式事件链与 consumer 边界：通知仍通过 `notification.requested -> dtp.notification.dispatch -> notification-worker` 发送，`dtp.outbox.domain-events` 仍只作为 `source_event.target_topic` 溯源字段。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-003`
+  - `12-API 设计、事件模型与消息总线.md`：模板/通知事件的最小消息约束
+  - `审计、证据链与回放设计.md`：模板预览与发送链路的审计字段要求
+  - `日志、可观测性与告警设计.md`：模板渲染与发送镜像日志字段
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：模板、运行时与联查不得继续停留在 provider/file placeholder
+- 覆盖的任务清单条目：`NOTIF-003`
+- 未覆盖项：无。后续 `NOTIF-004 ~ NOTIF-007` 继续在本批模板模型上填充买方/卖方/运营差异化正文与业务触发逻辑。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：`V1-Core-人工审批记录.md` 仍由你手工维护；本批保留 PostgreSQL 中的发送/审计/trace 运行痕迹作为实施证据，不做删除。

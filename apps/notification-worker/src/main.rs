@@ -157,6 +157,10 @@ async fn run_http_server(state: Arc<WorkerState>) -> AppResult<()> {
         .route("/health/ready", get(ready_handler))
         .route("/health/deps", get(deps_handler))
         .route(
+            "/internal/notifications/templates/preview",
+            post(preview_template_handler),
+        )
+        .route(
             "/internal/notifications/send",
             post(send_notification_handler),
         )
@@ -267,9 +271,24 @@ async fn process_retry_envelope(
         }
     }
 
-    let rendered = state
+    let rendered = match state
         .templates
-        .render(&retry.envelope, &retry.envelope.payload)?;
+        .render(&client, &retry.envelope, &retry.envelope.payload)
+        .await
+    {
+        Ok(rendered) => rendered,
+        Err(err) => {
+            let rendered = RenderedNotification::placeholder(&retry.envelope.payload);
+            return handle_failed_attempt(
+                state,
+                &client,
+                retry,
+                rendered,
+                format!("render notification template failed: {err}"),
+            )
+            .await;
+        }
+    };
     match send_via_mock_log(&retry, &rendered).await {
         Ok(channel_result) => {
             finalize_processing(state, &client, &retry, &rendered, channel_result).await?;
@@ -1059,6 +1078,80 @@ async fn send_notification_handler(
         &state.cfg.topic,
         &envelope,
     )))
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PreviewTemplateRequest {
+    #[serde(flatten)]
+    request: SendNotificationRequest,
+    #[serde(default)]
+    language_code: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct PreviewTemplateResponse {
+    event_id: String,
+    aggregate_id: String,
+    request_id: String,
+    trace_id: String,
+    template_code: String,
+    channel: String,
+    language_code: String,
+    requested_language_code: String,
+    version_no: i32,
+    template_enabled: bool,
+    template_status: String,
+    template_fallback_used: bool,
+    body_fallback_used: bool,
+    variable_schema: Value,
+    template_metadata: Value,
+    title: String,
+    body: String,
+}
+
+async fn preview_template_handler(
+    State(state): State<Arc<WorkerState>>,
+    Json(request): Json<PreviewTemplateRequest>,
+) -> Result<Json<ApiResponse<PreviewTemplateResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let mut envelope = request.request.into_envelope().map_err(internal_error)?;
+    if let Some(language_code) = request.language_code {
+        if !envelope.payload.metadata.is_object() {
+            envelope.payload.metadata = json!({});
+        }
+        if let Some(object) = envelope.payload.metadata.as_object_mut() {
+            object.insert("language_code".to_string(), Value::String(language_code));
+        }
+    }
+    let client = state.db.client().map_err(|err| {
+        internal_error(format!(
+            "acquire notification worker db client failed: {err}"
+        ))
+    })?;
+    let rendered = state
+        .templates
+        .render(&client, &envelope, &envelope.payload)
+        .await
+        .map_err(internal_error)?;
+
+    Ok(ApiResponse::ok(PreviewTemplateResponse {
+        event_id: envelope.event_id,
+        aggregate_id: envelope.aggregate_id,
+        request_id: envelope.request_id,
+        trace_id: envelope.trace_id,
+        template_code: rendered.template_code,
+        channel: rendered.channel,
+        language_code: rendered.language_code,
+        requested_language_code: rendered.requested_language_code,
+        version_no: rendered.version_no,
+        template_enabled: rendered.template_enabled,
+        template_status: rendered.template_status,
+        template_fallback_used: rendered.template_fallback_used,
+        body_fallback_used: rendered.body_fallback_used,
+        variable_schema: rendered.variable_schema,
+        template_metadata: rendered.template_metadata,
+        title: rendered.title,
+        body: rendered.body,
+    }))
 }
 
 async fn live_handler() -> Json<ApiResponse<&'static str>> {
