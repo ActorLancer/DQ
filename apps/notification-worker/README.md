@@ -2,6 +2,8 @@
 
 `NOTIF-001` 起始实现的正式通知进程。
 
+- 运行与排障手册：`docs/04-runbooks/notification-worker.md`
+
 - 正式消费 topic：`dtp.notification.dispatch`
 - 对应事件：`notification.requested`
 - 本地默认 consumer group：`cg-notification-worker`

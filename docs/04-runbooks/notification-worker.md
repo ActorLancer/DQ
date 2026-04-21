@@ -6,261 +6,168 @@
 - 对应事件：`notification.requested`
 - 正式消费 topic：`dtp.notification.dispatch`
 - 本地默认 consumer group：`cg-notification-worker`
+- 正式生产者：`platform-core.integration`
+- 正式链路：`notification.requested -> dtp.notification.dispatch -> notification-worker`
 - 不直接消费：`dtp.outbox.domain-events`
 - `V1` 实接渠道：`mock-log`
-- `email` / `webhook`：仅保留 provider 边界，不作为 `V1` 必须实接项
+- `email` / `webhook`：仅保留 provider / adapter 边界，不作为 `V1` 完成证据
+- topic / consumer / retention 权威源：`infra/kafka/topics.v1.json`
+- route authority 权威源：`ops.event_route_policy`
 
 ## 当前批次边界
 
-- 本批次只冻结命名、topic、consumer group、渠道边界与排障口径，不代表 `notification-worker` 已完成正式实现。
-- 当前文档结论只能回答“通知事件应该怎么走”，不能替代后续代码实现所需的 OpenAPI、发送记录模型、集成测试与 smoke 结果。
-- 进入 `NOTIF` 代码实现批次后，Agent 必须同步补齐：
-  - `packages/openapi/ops.yaml` 中与通知联查相关的控制面示例（`NOTIF-013`）
-  - `docs/02-openapi/ops.yaml` 归档（`NOTIF-013`）
-  - `docs/05-test-cases/notification-cases.md`（`NOTIF-014`）
-  - runbook 中的模板清单、人工补发步骤、失败重试阈值与联查入口
+- 当前 runbook 是 `NOTIF-011` 的正式交付物，目标是把已实现的通知链路整理成可执行手册，而不是替代运行时实现本身。
+- 当前文档必须与真实运行态一致：topic、consumer group、模板版本、联查入口、replay 入口、审计与观测链路都要能实际回查。
+- 当前文档不替代后续承接项：
+  - `NOTIF-013`：`packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml` 中的通知联查 / 人工补发 OpenAPI 归档
+  - `NOTIF-014`：`docs/05-test-cases/notification-cases.md`
 
-## 事件来源
+## 运行前核对
 
-- 主来源：`platform-core.integration`
-- 冻结链路：`notification.requested -> dtp.notification.dispatch -> notification-worker`
-- `dtp.outbox.domain-events` 仅保留为通用主领域事件流，不作为 `notification-worker` 的正式消费入口
-- topic 定义权威源：`infra/kafka/topics.v1.json`
-- topic 初始化脚本：`infra/kafka/init-topics.sh`
-
-## 事件协议
-
-- `platform-core.integration` 使用共享 `notification-contract` 生成 `notification.requested` payload，并统一写入 `notification.dispatch_request / dtp.notification.dispatch`。
-- `NOTIF-004` 已冻结支付成功后的 audience 映射：
-  - 买方接收 `payment.succeeded / NOTIFY_PAYMENT_SUCCEEDED_V1`
-  - 卖方接收 `order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
-  - 运营接收 `order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
-  - `buyer/seller` payload 只保留订单、商品、金额、状态和操作入口；`ops` payload 才允许附带 `billing_event_id / payment_intent_id / provider_reference_id / provider_result_source`
-- `NOTIF-005` 已冻结交付完成后的 audience 映射：
-  - 文件包、报告交付：买方接收 `order.pending_acceptance / NOTIFY_PENDING_ACCEPTANCE_V1`
-  - 共享开通、API 开通、查询结果可取、沙箱开通：买方接收 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
-  - 卖方、运营统一接收 `delivery.completed / NOTIFY_DELIVERY_COMPLETED_V1`
-  - `ops` payload 允许附带 `delivery_ref_type / delivery_ref_id / receipt_hash / delivery_commit_hash`；`buyer/seller` payload 不得透传这些联查字段
-- 当前冻结的 `notification_code` 仅允许：
-  - `order.created`
-  - `payment.succeeded`
-  - `payment.failed`
-  - `order.pending_delivery`
-  - `delivery.completed`
-  - `order.pending_acceptance`
-  - `acceptance.passed`
-  - `acceptance.rejected`
-  - `dispute.escalated`
-  - `refund.completed`
-  - `compensation.completed`
-  - `settlement.frozen`
-  - `settlement.resumed`
-- payload 最小字段：
-  - `notification_code`
-  - `template_code`
-  - `channel`
-  - `audience_scope`
-  - `recipient`
-  - `source_event`
-  - `variables`
-  - `metadata`
-  - `retry_policy`
-  - `subject_refs`
-  - `links`
-- 幂等键统一由 `notification_code + audience_scope + source_event.aggregate_type + source_event.aggregate_id + source_event.event_type + recipient(id/address)` 生成。
-- 后续 `NOTIF-004 ~ NOTIF-007` 只允许在这个 scene catalog 上补模板与业务触发逻辑，不允许再发明新的旁路 notification code。
-
-## 本地启动
-
-1. 启动基础设施：
+1. 启动本地基础设施：
    - `make up-local`
-2. 启动通知进程：
-   - 宿主机运行：
-     `APP_PORT=8097 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 cargo run -p notification-worker`
-   - 容器示例：
-     参考 `infra/docker/docker-compose.apps.local.example.yml` 中 `notification-worker` 段
-3. 校验 topic 已存在：
-   - `dtp.notification.dispatch`
-   - `dtp.dead-letter`
-4. 校验通知 / Fabric 相关关键拓扑未漂移：
+2. 启动 worker：
+   ```bash
+   APP_PORT=8097 \
+   DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+   REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 \
+   KAFKA_BROKERS=127.0.0.1:9094 \
+   TOPIC_NOTIFICATION_DISPATCH=dtp.notification.dispatch \
+   TOPIC_DEAD_LETTER_EVENTS=dtp.dead-letter \
+   cargo run -p notification-worker
+   ```
+3. 校验 canonical topic 与 route seed：
    - `./scripts/check-topic-topology.sh`
-   - 该脚本覆盖关键静态 topology / route seed，并回查当前数据库 `ops.event_route_policy` 中 `notification.requested -> dtp.notification.dispatch` 等运行态路由；若要验证全量 canonical topics 是否真实存在，仍需额外执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
-5. 校验 worker 健康与指标：
-   - `GET http://127.0.0.1:8097/health/live`
-   - `GET http://127.0.0.1:8097/health/ready`
-   - `GET http://127.0.0.1:8097/health/deps`
-   - `GET http://127.0.0.1:8097/metrics`
-   - `GET 'http://127.0.0.1:9090/api/v1/query?query=up{job="notification-worker"}'`
-   - `GET 'http://127.0.0.1:9090/api/v1/query?query=notification_worker_events_total'`
-   - `GET 'http://127.0.0.1:9090/api/v1/query?query=notification_worker_send_total'`
-   - Grafana 查看 `Platform Overview` 中的 `Notification Events / Notification Sends / Notification Retry Queue Depth`
-   - Alertmanager 规则中应存在 `NotificationRetryQueueBacklog`
-6. 手工注入一条 `notification.requested` 事件：
-   - `POST http://127.0.0.1:8097/internal/notifications/send`
-   - 建议显式传入 `notification_code`、`audience_scope`、`source_event`、`subject_refs`、`links`
-7. 手工 replay dead letter：
-   - `POST http://127.0.0.1:8097/internal/notifications/dead-letters/{dead_letter_event_id}/replay`
-   - 请求默认 `dry_run=true`
-   - 必须显式传入 `reason` 与 `step_up_ticket`
-   - `dry_run=false` 时会重新发布 replay envelope 到 `dtp.notification.dispatch`
-8. 手工执行通知联查：
-   - `POST http://127.0.0.1:8097/internal/notifications/audit/search`
-   - 至少显式传入 `order_id / case_id / template_code / notification_code / event_id` 之一
-   - 必须显式传入 `reason` 与 `step_up_ticket`
-   - 响应会返回 `records[].retry_timeline / audit_timeline / dead_letter / rendered_variables / channel_result`
+   - `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+   - `psql postgresql://datab:datab_local_pass@127.0.0.1:5432/datab -c "select aggregate_type, event_type, target_topic, consumer_group_hint, status from ops.event_route_policy where target_topic='dtp.notification.dispatch';"`
+4. 校验健康检查与依赖：
+   - `curl -sS http://127.0.0.1:8097/health/live`
+   - `curl -sS http://127.0.0.1:8097/health/ready`
+   - `curl -sS http://127.0.0.1:8097/health/deps`
+5. 校验观测栈入口：
+   - `curl -sS http://127.0.0.1:8097/metrics | rg 'notification_worker_'`
+   - `curl -G -sS http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=up{job="notification-worker"}'`
+   - `curl -G -sS http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=notification_worker_events_total'`
+   - `curl -sS http://127.0.0.1:9093/api/v2/status`
+   - `curl -sS http://127.0.0.1:3000/api/health`
+   - `curl -sS http://127.0.0.1:3100/ready`
+   - `curl -sS http://127.0.0.1:3200/metrics | rg 'tempo_build_info'`
 
-## V1 渠道与模板边界
+## 正式发送策略
 
-- 默认只允许 `mock-log` 渠道输出发送结果
-- 发送实现通过渠道适配器注册表分发：
-  - active：`mock-log -> mock-log-adapter`
-  - reserved：`email`、`webhook`
-- local 模式下即使手工注入 `channel=email|webhook`，也只会命中“边界已预留但未启用”的错误，不作为 `V1` 完成证据
-- 模板需支持：
-  - 模板编码
-  - 语言
-  - 变量 schema
-  - 版本号
-  - 启用状态
-  - 变量渲染
-  - 渲染预览
-  - fallback 文案
-- PostgreSQL 权威表：`ops.notification_template`
+- `platform-core.integration` 通过共享 `notification-contract` 生成 `notification.requested` envelope，并以 `aggregate_type=notification.dispatch_request`、`target_topic=dtp.notification.dispatch` 写入 canonical outbox。
+- `notification-worker` 只消费 `dtp.notification.dispatch`，不直接把 `dtp.outbox.domain-events` 作为正式消费入口。
+- 模板权威源是 `ops.notification_template`：
   - 运行时只读取 `enabled=true AND status='active'` 的最新版本
   - 查询维度：`template_code + channel + language_code`
-  - 若指定语言无匹配，则回退到默认语言 `zh-CN`
-  - 若指定模板缺失，则回退到 `DEFAULT_NOTIFICATION_V1`
-- `076_notification_payment_success_pending_delivery_templates.sql` 起：
-  - `NOTIFY_PAYMENT_SUCCEEDED_V1` version `2` 作为买方支付成功正式模板
-  - `NOTIFY_PENDING_DELIVERY_V1` version `2` 作为卖方 / 运营待交付正式模板
-  - version `1` 已归档，仅保留回退审计用途
-- `077_notification_delivery_completed_pending_acceptance_templates.sql` 起：
-  - `NOTIFY_DELIVERY_COMPLETED_V1` version `2` 作为共享/API/查询结果/沙箱开通，以及卖方/运营交付完成正式模板
-  - `NOTIFY_PENDING_ACCEPTANCE_V1` version `2` 作为文件包/报告交付后的买方待验收正式模板
-  - version `1` 已归档，仅保留回退审计用途
-- `078_notification_acceptance_resolution_templates.sql` 起：
-  - `NOTIFY_ACCEPTANCE_PASSED_V1` version `2` 作为验收通过正式模板
-  - `NOTIFY_ACCEPTANCE_REJECTED_V1` version `2` 作为拒收正式模板
-  - `NOTIFY_REFUND_COMPLETED_V1` version `2` 作为退款完成正式模板
-  - `NOTIFY_COMPENSATION_COMPLETED_V1` version `2` 作为赔付完成正式模板
-  - version `1` 已归档，仅保留回退审计用途
-- `079_acceptance_event_route_policy.sql` 起：
-  - `trade.acceptance_record / acceptance.passed`
-  - `trade.acceptance_record / acceptance.rejected`
-  已进入 `ops.event_route_policy`，用于把验收链 canonical outbox 正式桥接到通知链路
-- `080_notification_dispute_settlement_templates.sql` 起：
-  - `NOTIFY_DISPUTE_ESCALATED_V1` version `2` 作为争议升级正式模板
-  - `NOTIFY_SETTLEMENT_FROZEN_V1` version `2` 作为结算冻结正式模板
-  - `NOTIFY_SETTLEMENT_RESUMED_V1` version `2` 作为恢复结算正式模板
-  - version `1` 已归档，仅保留回退审计用途
-- `NOTIF-008` 起：
-  - `ops.system_log.structured_payload.result` 会回写 `adapter_key / runtime_mode / provider_mode / transport_status / backend_message_id`
-  - 用于证明当前真实命中的发送适配器是 `mock-log-adapter`
-- file 模板目录 `apps/notification-worker/templates/` 仅保留为 local fallback，不再作为正式模板权威源
-- 不允许把内部风控、审计敏感字段直接透传到业务用户通知正文
-
-## NOTIF-005 交付链路联调
-
-- 六类交付结果的 producer 入口：
-  - 文件包：`delivery.delivery_record / delivery.committed`
-  - 共享开通：`delivery.delivery_record / delivery.committed`
-  - API 开通：`delivery.delivery_record / delivery.committed`
-  - 查询结果可取：`delivery.query_execution_run / delivery.template_query.use`
-  - 沙箱开通：`delivery.delivery_record / delivery.committed`
-  - 报告交付：`delivery.delivery_record / delivery.committed`
-- 运行态验证建议至少覆盖三条样例：
-  - `order.pending_acceptance / buyer / NOTIFY_PENDING_ACCEPTANCE_V1`
-  - `delivery.completed / ops / NOTIFY_DELIVERY_COMPLETED_V1`
-  - `delivery.completed` 强制失败一次后重试成功
-- 手工验证步骤：
-  1. `POST /internal/notifications/templates/preview` 先确认两套模板都命中 version `2`
-  2. `POST /internal/notifications/send` 注入待验收样例，回查：
-     - `ops.consumer_idempotency_record.result_code=processed`
-     - `ops.system_log.message_text='notification sent via mock-log'`
-     - `ops.trace_index.root_span_name=notification.dispatch`
-     - `audit.audit_event.action_name=notification.dispatch.sent`
-  3. 使用同一 `event_id` 再注入一次交付完成样例，确认 `/metrics` 中 `notification_worker_events_total{result="duplicate"}` 增长，且数据库不新增第二条处理记录
-  4. 用 `simulate_failures=1` + `retry_policy.max_attempts=2` 注入重试样例，确认：
-     - Redis `datab:v1:notification:retry-queue` 深度先变为 `1` 再回到 `0`
-     - Redis `datab:v1:notification:state:<event_id>` 先为 `retrying`，最终为 `processed`
-     - `audit.audit_event` 先写 `notification.dispatch.retry_scheduled`，随后写 `notification.dispatch.sent`
-     - `ops.trace_index` 同时存在 `notification.retrying` 与 `notification.dispatch`
-  5. `GET 'http://127.0.0.1:9090/api/v1/query?query=notification_worker_events_total'` 与 `notification_worker_retry_queue_depth`，确认 Prometheus 已抓到 worker 指标
-- 业务数据清理要求：
-  - 清理本次手工样例产生的非 append-only 辅助状态，例如 Redis 短状态、重试载荷、`ops.consumer_idempotency_record`、`ops.trace_index`
-  - `audit.audit_event` 按 append-only 保留
-
-## NOTIF-006 验收 / 退款 / 赔付链路联调
-
-- producer 入口与 source-event 冻结为：
-  - 验收通过：`trade.acceptance_record / acceptance.passed`
-  - 拒收：`trade.acceptance_record / acceptance.rejected`
-  - 退款完成：`billing.billing_event / billing.event.recorded`
-  - 赔付完成：`billing.billing_event / billing.event.recorded`
-- action 链接冻结为：
-  - 验收通过 buyer / seller：`/trade/orders/:orderId`
-  - 验收通过 ops：`/billing?order_id=:orderId`
-  - 拒收 buyer / ops：`/support/cases/new?order_id=:orderId`
-  - 拒收 seller：`/trade/orders/:orderId`
-  - 退款完成 / 赔付完成 buyer / seller / ops：`/billing/refunds?order_id=:orderId&case_id=:caseId`
-- 运行态验证建议至少覆盖四条样例：
-  - `acceptance.passed / buyer / NOTIFY_ACCEPTANCE_PASSED_V1`
-  - `acceptance.rejected / ops / NOTIFY_ACCEPTANCE_REJECTED_V1`
-  - `refund.completed / seller / NOTIFY_REFUND_COMPLETED_V1` 强制失败一次后重试成功
-  - `compensation.completed / ops / NOTIFY_COMPENSATION_COMPLETED_V1` 重试耗尽后进入 `dtp.dead-letter`
-- 手工验证步骤：
-  1. `POST /internal/notifications/templates/preview`，确认四套模板都命中 version `2`，正文分别带出订单详情、争议提交或账单退款链接。
-  2. `POST /internal/notifications/send` 注入 `acceptance.passed` 样例，回查：
-     - `ops.consumer_idempotency_record.result_code=processed`
-     - `ops.system_log.structured_payload.body` 带 `/trade/orders/:orderId`
-     - `audit.audit_event.action_name=notification.dispatch.sent`
-     - `ops.trace_index.root_span_name=notification.dispatch`
-  3. 注入 `acceptance.rejected` 样例并用同一 `event_id` 再发一次，确认：
-     - `/metrics` 与 Prometheus 中 `notification_worker_events_total{result="duplicate"}` 增长
-     - `ops.system_log` 对应 `object_id=<event_id>` 仍只保留一次发送记录
-     - `ops` 正文带 `acceptance_record_id` 与争议入口，未额外产生第二次发送
-  4. 注入 `refund.completed` 样例，使用 `simulate_failures=1` 与 `retry_policy.max_attempts=2, backoff_ms=4000`，确认：
-     - Redis `datab:v1:notification:retry-queue` 深度先为 `1`，最终回到 `0`
-     - Redis `datab:v1:notification:state:<event_id>` 先为 `retrying`，最终为 `processed`
-     - `audit.audit_event` 先写 `notification.dispatch.retry_scheduled`，随后写 `notification.dispatch.sent`
-     - `ops.trace_index` 同时存在 `notification.retrying` 与 `notification.dispatch`
-  5. 注入 `compensation.completed` 样例，使用 `simulate_failures=3` 与 `retry_policy.max_attempts=2`，确认：
-     - `ops.consumer_idempotency_record.result_code=dead_lettered`
-     - `ops.dead_letter_event.target_topic=dtp.dead-letter`
-     - `ops.alert_event.alert_type=notification_dead_letter`
-     - `audit.audit_event` 写入 `notification.dispatch.dead_lettered`
-     - `dtp.dead-letter` 中可消费到对应 `dead_letter_event_id / event_id / failure_stage=notification.send`
-  6. 对上一步产生的 `dead_letter_event_id` 调用 replay 入口：
-     - 先 `POST /internal/notifications/dead-letters/{id}/replay`，请求 `{"dry_run":true,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}`
-     - 再 `POST /internal/notifications/dead-letters/{id}/replay`，请求 `{"dry_run":false,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}`
-     - 回查：
-       - 原 `ops.dead_letter_event.reprocess_status` 先变为 `reprocess_requested`
-       - replay 事件重新写入 `dtp.notification.dispatch`
-       - replay 成功后原 `ops.dead_letter_event.reprocess_status=reprocessed`
-       - `audit.audit_event` 追加 `notification.dispatch.reprocess.requested`
-  7. `GET 'http://127.0.0.1:9090/api/v1/query?query=up{job="notification-worker"}'`
-     与 `notification_worker_events_total`、`notification_worker_send_total`、`notification_worker_retry_queue_depth`，确认 Prometheus 已抓到当前 worker 指标。
-  8. `GET http://127.0.0.1:9093/api/v2/status` 与 Grafana `Platform Overview` dashboard，确认 Alertmanager / Grafana 运行态可联查；Prometheus rules 中应存在 `NotificationRetryQueueBacklog`。
-- 业务数据清理要求：
-  - 清理本次手工样例产生的 Redis 短状态、`ops.consumer_idempotency_record`、`ops.trace_index`、`ops.alert_event`、`ops.dead_letter_event`
-  - `audit.audit_event` 与 `ops.system_log` 按 append-only 保留
-
-## 模板预览
-
-- 内部预览入口：`POST /internal/notifications/templates/preview`
-- 预览请求建议显式提供：
-  - `template_code`
+  - 指定语言缺失时回退到默认语言 `zh-CN`
+  - 指定模板缺失时回退到 `DEFAULT_NOTIFICATION_V1`
+- 文件目录 `apps/notification-worker/templates/` 只保留 local fallback，不是正式模板真相源。
+- 发送适配器通过渠道注册表分发：
+  - active：`mock-log -> mock-log-adapter`
+  - reserved：`email`、`webhook`
+- 同一通知的幂等键由以下字段稳定生成：
   - `notification_code`
   - `audience_scope`
-  - `language_code`
-  - `recipient`
-  - `variables`
-  - `source_event`
-- 预览响应至少返回：
+  - `source_event.aggregate_type`
+  - `source_event.aggregate_id`
+  - `source_event.event_type`
+  - `recipient(id/address)`
+- 状态与留痕职责分工：
+  - PostgreSQL：`ops.consumer_idempotency_record`、`ops.system_log`、`ops.trace_index`、`ops.dead_letter_event`、`ops.alert_event`、`audit.audit_event`
+  - Redis：`datab:v1:notification:state:<event_id>`、`datab:v1:notification:retry-payload:<event_id>`、`datab:v1:notification:retry-queue`
+  - Kafka：正式 topic `dtp.notification.dispatch` 与隔离 topic `dtp.dead-letter`
+  - Loki / Tempo / Prometheus / Alertmanager / Grafana：运行态日志、trace、指标、告警和看板
+
+## 事件来源与模板清单
+
+| notification_code | 冻结 source_event | audience / 触发说明 | template_code | 当前模板状态 |
+| --- | --- | --- | --- | --- |
+| `order.created` | `trade.order / trade.order.created` | scene catalog 已冻结；当前仍使用通用模板语义 | `NOTIFY_ORDER_CREATED_V1` | `version 1 active` |
+| `payment.succeeded` | `billing.billing_event / billing.event.recorded` | 买方支付成功通知 | `NOTIFY_PAYMENT_SUCCEEDED_V1` | `version 2 active` |
+| `payment.failed` | `payment.payment_intent / payment.intent_failed` | scene catalog 已冻结；当前仍使用通用模板语义 | `NOTIFY_PAYMENT_FAILED_V1` | `version 1 active` |
+| `order.pending_delivery` | `trade.order_main / order.state_changed` | 卖方 / 运营在支付成功后待交付 | `NOTIFY_PENDING_DELIVERY_V1` | `version 2 active` |
+| `delivery.completed` | `delivery.delivery_record / delivery.committed`；查询结果场景为 `delivery.query_execution_run / delivery.template_query.use` | 共享 / API / 查询结果 / 沙箱开通后的买方，以及卖方 / 运营交付完成 | `NOTIFY_DELIVERY_COMPLETED_V1` | `version 2 active` |
+| `order.pending_acceptance` | `delivery.delivery_record / delivery.committed` | 文件包 / 报告交付后的买方待验收 | `NOTIFY_PENDING_ACCEPTANCE_V1` | `version 2 active` |
+| `acceptance.passed` | `trade.acceptance_record / acceptance.passed` | buyer / seller / ops 验收通过 | `NOTIFY_ACCEPTANCE_PASSED_V1` | `version 2 active` |
+| `acceptance.rejected` | `trade.acceptance_record / acceptance.rejected` | buyer / seller / ops 拒收 | `NOTIFY_ACCEPTANCE_REJECTED_V1` | `version 2 active` |
+| `dispute.escalated` | `support.dispute_case / dispute.created` | buyer / seller / ops 争议升级 | `NOTIFY_DISPUTE_ESCALATED_V1` | `version 2 active` |
+| `refund.completed` | `billing.billing_event / billing.event.recorded` | buyer / seller / ops 退款完成 | `NOTIFY_REFUND_COMPLETED_V1` | `version 2 active` |
+| `compensation.completed` | `billing.billing_event / billing.event.recorded` | buyer / seller / ops 赔付完成 | `NOTIFY_COMPENSATION_COMPLETED_V1` | `version 2 active` |
+| `settlement.frozen` | `billing.billing_event / billing.event.recorded`，且 `event_source=settlement_dispute_hold` | buyer / seller / ops 结算冻结 | `NOTIFY_SETTLEMENT_FROZEN_V1` | `version 2 active` |
+| `settlement.resumed` | `billing.billing_event / billing.event.recorded`，且 `event_source=settlement_dispute_release` | buyer / seller / ops 恢复结算；不再使用 `support.dispute_case / dispute.resolved` | `NOTIFY_SETTLEMENT_RESUMED_V1` | `version 2 active` |
+
+运行态模板回查：
+
+```sql
+select template_code, channel, language_code, version_no, enabled, status
+from ops.notification_template
+where template_code like 'NOTIFY_%'
+order by template_code, version_no;
+```
+
+披露边界补充：
+
+- `buyer / seller` 正文只允许展示订单、商品、金额、状态和动作入口。
+- `ops` payload 可带联查字段，例如 `billing_event_id`、`payment_intent_id`、`provider_reference_id`、`delivery_ref_*`、`acceptance_record_id`、`liability_type`、`freeze_ticket_id`、`legal_hold_id`。
+- 不允许把内部风控、审计敏感字段直接透传到业务用户通知正文。
+
+## 手工操作入口
+
+### 模板预览
+
+- 入口：`POST /internal/notifications/templates/preview`
+- 最小请求示例：
+
+```json
+{
+  "notification_code": "payment.succeeded",
+  "audience_scope": "buyer",
+  "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+  "recipient": {
+    "kind": "user",
+    "address": "buyer@example.test",
+    "display_name": "Buyer"
+  },
+  "variables": {
+    "subject": "支付成功通知",
+    "headline": "买方托管已完成，订单进入待交付",
+    "order_id": "11111111-1111-1111-1111-111111111111",
+    "order_no": "ORD-NOTIF-011",
+    "product_title": "Example SKU",
+    "seller_org_name": "Example Seller Org",
+    "order_amount": "128.00",
+    "currency_code": "CNY",
+    "payment_status": "buyer_locked",
+    "delivery_status": "pending_delivery",
+    "action_label": "查看订单",
+    "action_href": "/trade/orders/11111111-1111-1111-1111-111111111111",
+    "buyer_locked_at": "2026-04-22T00:00:00Z"
+  },
+  "source_event": {
+    "aggregate_type": "billing.billing_event",
+    "aggregate_id": "11111111-1111-1111-1111-111111111111",
+    "event_type": "billing.event.recorded",
+    "target_topic": "dtp.outbox.domain-events"
+  },
+  "subject_refs": [
+    {
+      "ref_type": "order",
+      "ref_id": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "links": [
+    {
+      "link_code": "order_detail",
+      "href": "/trade/orders/11111111-1111-1111-1111-111111111111"
+    }
+  ]
+}
+```
+
+- 响应至少检查：
   - `template_code`
-  - `channel`
   - `language_code`
-  - `requested_language_code`
   - `version_no`
   - `template_fallback_used`
   - `body_fallback_used`
@@ -268,108 +175,252 @@
   - `title`
   - `body`
 
-## 幂等、重试、DLQ
+### 手工注入
 
-- 同一幂等键事件必须只发送一次
-- 失败消息进入重试流程；超过阈值转入 `dtp.dead-letter`
-- 人工重放必须保留审计轨迹并可按事件 ID 回查
-- 双层 DLQ 必须同时可见：
-  - PostgreSQL：`ops.dead_letter_event`
-  - Kafka：`dtp.dead-letter`
-- replay 入口冻结为 `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
-  - 默认 `dry_run=true`
-  - 必须显式提供 `reason`
-  - 必须显式提供 `step_up_ticket`
-  - `dry_run=false` 时会生成新的 replay envelope，并在 metadata 中补 `replayed_from_dead_letter_id / replay_reason / replay_step_up_ticket`
-- 联查入口冻结为 `POST /internal/notifications/audit/search`
-  - 至少提供一个主过滤条件：`order_id / case_id / template_code / notification_code / event_id`
-  - 必须显式提供 `reason`
-  - 必须显式提供 `step_up_ticket`
-  - worker 会在查询前把发送 / 重试 / dead-letter / replay 的结构化元数据统一写入 `ops.system_log`、`ops.trace_index`、`audit.audit_event`
-- 相关 `ops.event_route_policy` 缺失或漂移时，先检查 `notification.dispatch_request / notification.requested -> dtp.notification.dispatch`
+- 入口：`POST /internal/notifications/send`
+- 建议显式传入：
+  - `notification_code`
+  - `audience_scope`
+  - `source_event`
+  - `subject_refs`
+  - `links`
+  - `retry_policy`
+- 若要验证重试，可在请求顶层注入 local-only 故障注入字段 `simulate_failures`：
 
-## 联查建议
+```json
+{
+  "notification_code": "payment.succeeded",
+  "audience_scope": "buyer",
+  "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+  "recipient": {
+    "kind": "user",
+    "address": "buyer@example.test",
+    "display_name": "Buyer"
+  },
+  "variables": {
+    "subject": "支付成功通知",
+    "headline": "买方托管已完成，订单进入待交付",
+    "order_id": "22222222-2222-2222-2222-222222222222",
+    "order_no": "ORD-NOTIF-011-RETRY",
+    "product_title": "Example SKU",
+    "seller_org_name": "Example Seller Org",
+    "order_amount": "128.00",
+    "currency_code": "CNY",
+    "payment_status": "buyer_locked",
+    "delivery_status": "pending_delivery",
+    "action_label": "查看订单",
+    "action_href": "/trade/orders/22222222-2222-2222-2222-222222222222",
+    "buyer_locked_at": "2026-04-22T00:00:00Z"
+  },
+  "simulate_failures": 3,
+  "retry_policy": {
+    "max_attempts": 2,
+    "backoff_ms": 1000
+  },
+  "source_event": {
+    "aggregate_type": "billing.billing_event",
+    "aggregate_id": "22222222-2222-2222-2222-222222222222",
+    "event_type": "billing.event.recorded",
+    "target_topic": "dtp.outbox.domain-events"
+  },
+  "subject_refs": [
+    {
+      "ref_type": "order",
+      "ref_id": "22222222-2222-2222-2222-222222222222"
+    }
+  ],
+  "links": [
+    {
+      "link_code": "order_detail",
+      "href": "/trade/orders/22222222-2222-2222-2222-222222222222"
+    }
+  ]
+}
+```
 
-- 按 `order_id` / `case_id` / `template_code` 联查：
-  - 发送记录
-  - 渲染变量快照
-  - 渠道结果
-  - 重试轨迹
-  - 关联事件 ID
-- 推荐最小请求体：
-  ```json
-  {
-    "order_id": "00000000-0000-0000-0000-000000000001",
-    "reason": "trace notification delivery for incident review",
-    "step_up_ticket": "step-up-local-1"
-  }
-  ```
-- 推荐优先回查字段：
-  - `records[].notification_code / template_code / audience_scope`
+### 通知联查
+
+- 入口：`POST /internal/notifications/audit/search`
+- 必须提供：
+  - 至少一个主过滤条件：`order_id / case_id / template_code / notification_code / event_id`
+  - `reason`
+  - `step_up_ticket`
+- 最小请求示例：
+
+```json
+{
+  "order_id": "11111111-1111-1111-1111-111111111111",
+  "reason": "trace notification delivery for incident review",
+  "step_up_ticket": "step-up-local-1"
+}
+```
+
+- 响应优先检查：
+  - `records[].notification_code`
+  - `records[].template_code`
+  - `records[].audience_scope`
   - `records[].rendered_variables`
   - `records[].channel_result`
   - `records[].retry_timeline[].status`
   - `records[].audit_timeline[].action_name`
   - `records[].dead_letter.reprocess_status`
-- 交付完成链路优先补查：
-  - `ops.notification_template` 中 `NOTIFY_DELIVERY_COMPLETED_V1 / NOTIFY_PENDING_ACCEPTANCE_V1` 的 active version 是否为 `2`
-  - 查询结果场景是否使用 `delivery.query_execution_run / delivery.template_query.use`
-  - `ops` 正文是否包含 `delivery_ref_* / *_hash`，而 `buyer/seller` 正文不包含
-- 验收 / 退款 / 赔付链路优先补查：
-  - `ops.notification_template` 中 `NOTIFY_ACCEPTANCE_PASSED_V1 / NOTIFY_ACCEPTANCE_REJECTED_V1 / NOTIFY_REFUND_COMPLETED_V1 / NOTIFY_COMPENSATION_COMPLETED_V1` 的 active version 是否为 `2`
-  - `ops.event_route_policy` 是否存在 `trade.acceptance_record / acceptance.passed|acceptance.rejected -> notification.requested -> dtp.notification.dispatch`
-  - `ops` 正文是否包含 `acceptance_record_id / provider_* / liability_type / resolution_ref_*`，而 `buyer/seller` 正文不包含这些联查字段
-- 争议 / 冻结 / 恢复链路优先补查：
-  - `ops.notification_template` 中 `NOTIFY_DISPUTE_ESCALATED_V1 / NOTIFY_SETTLEMENT_FROZEN_V1 / NOTIFY_SETTLEMENT_RESUMED_V1` 的 active version 是否为 `2`
-  - `dispute.escalated` 是否仍以 `support.dispute_case / dispute.created` 为 source-event
-  - `settlement.frozen` 与 `settlement.resumed` 是否都以 `billing.billing_event / billing.event.recorded` 为 source-event，且分别对应 `settlement_dispute_hold / settlement_dispute_release`
-  - buyer / seller payload 是否不包含 `freeze_ticket_id / legal_hold_id / governance_action_count / resolution_ref_id / liability_type`
-  - ops payload 是否包含 `freeze_ticket_id / legal_hold_id / governance_action_count / resolution_action / resolution_ref_id`
 
-## NOTIF-007 争议 / 结算冻结 / 恢复结算链路联调
+### 人工补发 / replay
 
-- producer 入口与 source-event 冻结为：
-  - 争议升级：`support.dispute_case / dispute.created`
-  - 结算冻结：`billing.billing_event / billing.event.recorded`，且 `event_source=settlement_dispute_hold`
-  - 恢复结算：`billing.billing_event / billing.event.recorded`，且 `event_source=settlement_dispute_release`
-- action 链接冻结为：
-  - 争议升级 buyer：`/support/cases/new?order_id=:orderId`
-  - 争议升级 seller：`/trade/orders/:orderId`
-  - 争议升级 ops：`/ops/risk?order_id=:orderId&case_id=:caseId`
-  - 结算冻结 buyer / seller：`/billing?order_id=:orderId`
-  - 结算冻结 ops：`/ops/risk?order_id=:orderId&case_id=:caseId`
-  - 恢复结算 buyer / seller：`/billing/refunds?order_id=:orderId&case_id=:caseId`
-  - 恢复结算 ops：`/ops/audit/trace?order_id=:orderId&case_id=:caseId`
-- 运行态验证建议至少覆盖三条样例：
-  - `dispute.escalated / buyer / NOTIFY_DISPUTE_ESCALATED_V1`
-  - `settlement.frozen / ops / NOTIFY_SETTLEMENT_FROZEN_V1`
-  - `settlement.resumed / ops / NOTIFY_SETTLEMENT_RESUMED_V1`
-- 手工验证步骤：
-  1. `POST /internal/notifications/templates/preview`，确认三套模板都命中 version `2`，并区分 buyer / seller / ops 的最小披露字段。
-  2. 通过真实开案流程触发 `support.dispute_case / dispute.created`，回查：
-     - `ops.outbox_event.target_topic='dtp.notification.dispatch'` 中出现 `dispute.escalated` 与 `settlement.frozen`
-     - `settlement.frozen` 对应 `source_event.aggregate_type='billing.billing_event'`
-     - buyer / seller payload 中不含 `freeze_ticket_id / legal_hold_id`
-     - ops payload 中包含 `freeze_ticket_id / legal_hold_id / governance_action_count`
-  3. 通过真实退款、赔付或手工放款释放冻结后，回查：
-     - `settlement.resumed` 对应 `source_event.aggregate_type='billing.billing_event'`
-     - `ops.outbox_event.payload #>> '{payload,source_event,event_type}' = 'billing.event.recorded'`
-     - 不再把 `support.dispute_case / dispute.resolved` 当恢复结算的 source-event
-  4. `POST /internal/notifications/send` 注入 `settlement.resumed` 样例并使用 `simulate_failures=1`，确认：
-     - Redis `datab:v1:notification:retry-queue` 深度先为 `1`，最终回到 `0`
-     - `audit.audit_event` 先写 `notification.dispatch.retry_scheduled`，随后写 `notification.dispatch.sent`
-     - `/metrics` 与 Prometheus 中 `notification_worker_events_total`、`notification_worker_send_total` 更新
-  5. `GET http://127.0.0.1:9093/api/v2/status` 与 Grafana `Platform Overview` dashboard，确认 Alertmanager / Grafana 运行态仍可联查。
-- 业务数据清理要求：
-  - 清理本次手工样例产生的 Redis 短状态、`ops.consumer_idempotency_record`、`ops.trace_index`、`ops.alert_event`、`ops.dead_letter_event`
-  - `audit.audit_event` 与 `ops.system_log` 按 append-only 保留
+1. 先定位目标 dead letter：
+   ```sql
+   select dead_letter_event_id, event_type, failed_reason, reprocess_status, created_at
+   from ops.dead_letter_event
+   where target_topic = 'dtp.dead-letter'
+   order by created_at desc
+   limit 20;
+   ```
+2. 先做 dry-run：
+   ```bash
+   curl -sS -X POST \
+     http://127.0.0.1:8097/internal/notifications/dead-letters/<dead_letter_event_id>/replay \
+     -H 'content-type: application/json' \
+     -d '{"dry_run":true,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}'
+   ```
+3. 回查 dry-run 留痕：
+   - `ops.system_log.message_text='notification dead letter replay dry-run prepared'`
+   - `audit.audit_event.action_name='notification.dispatch.reprocess.dry_run'`
+4. 执行正式 replay：
+   ```bash
+   curl -sS -X POST \
+     http://127.0.0.1:8097/internal/notifications/dead-letters/<dead_letter_event_id>/replay \
+     -H 'content-type: application/json' \
+     -d '{"dry_run":false,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}'
+   ```
+5. 回查 replay 结果：
+   - 原 `ops.dead_letter_event.reprocess_status`：`not_reprocessed -> reprocess_requested -> reprocessed`
+   - 新 replay event 返回新的 `event_id / request_id / trace_id`
+   - replay 成功后，`ops.consumer_idempotency_record.result_code=processed`
+   - `audit.audit_event` 追加 `notification.dispatch.reprocess.requested`
 
-## 常见问题
+## 失败排查
 
-- 现象：收不到通知
-  - 检查 `dtp.notification.dispatch` 是否有消息
-  - 检查 consumer group 是否为 `cg-notification-worker`
-  - 检查幂等键是否命中去重
-- 现象：持续重试
-  - 检查模板渲染变量是否完整
-  - 检查 provider 返回码与重试策略阈值
+### 1. 没有消息进入 worker
+
+- 先查 topology 与 route seed：
+  - `./scripts/check-topic-topology.sh`
+  - `psql ... -c "select aggregate_type, event_type, target_topic, consumer_group_hint, status from ops.event_route_policy where target_topic='dtp.notification.dispatch';"`
+- 再查 Kafka topic 与 group：
+  - `docker exec datab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic dtp.notification.dispatch`
+  - `docker exec datab-kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group cg-notification-worker`
+- 若 `platform-core` 已落 outbox 但 topic 无消息，优先回查 `ops.outbox_event` 与 publisher，而不是把问题归咎于 worker。
+
+### 2. 模板命中错误或正文变量缺失
+
+- 先跑模板预览接口，确认命中的 `template_code / version_no / language_code`。
+- 回查模板表：
+  ```sql
+  select template_code, channel, language_code, version_no, enabled, status
+  from ops.notification_template
+  where template_code in (
+    'NOTIFY_PAYMENT_SUCCEEDED_V1',
+    'NOTIFY_PENDING_DELIVERY_V1',
+    'NOTIFY_DELIVERY_COMPLETED_V1',
+    'NOTIFY_PENDING_ACCEPTANCE_V1',
+    'NOTIFY_ACCEPTANCE_PASSED_V1',
+    'NOTIFY_ACCEPTANCE_REJECTED_V1',
+    'NOTIFY_REFUND_COMPLETED_V1',
+    'NOTIFY_COMPENSATION_COMPLETED_V1',
+    'NOTIFY_DISPUTE_ESCALATED_V1',
+    'NOTIFY_SETTLEMENT_FROZEN_V1',
+    'NOTIFY_SETTLEMENT_RESUMED_V1'
+  )
+  order by template_code, version_no;
+  ```
+- buyer / seller 正文出现内部联查字段时，优先检查 scene builder 是否错误透传了 `ops` 专属变量。
+
+### 3. 重复通知或幂等异常
+
+- 回查数据库幂等记录：
+  ```sql
+  select consumer_name, event_id, result_code, metadata, processed_at
+  from ops.consumer_idempotency_record
+  where consumer_name = 'cg-notification-worker'
+    and event_id = '<event_id>'::uuid;
+  ```
+- 回查 Redis 状态：
+  - `redis-cli -a datab_redis_pass -n 2 get datab:v1:notification:state:<event_id>`
+- 同一 `event_id` 若被重复发送，预期结果是：
+  - `notification_worker_events_total{result="duplicate"}` 增长
+  - `ops.system_log` 不新增第二条 `notification sent via mock-log`
+
+### 4. 持续重试或 backlog 不下降
+
+- 回查 Redis：
+  - `redis-cli -a datab_redis_pass -n 2 llen datab:v1:notification:retry-queue`
+  - `redis-cli -a datab_redis_pass -n 2 get datab:v1:notification:state:<event_id>`
+  - `redis-cli -a datab_redis_pass -n 2 get datab:v1:notification:retry-payload:<event_id>`
+- 回查指标：
+  - `curl -sS http://127.0.0.1:8097/metrics | rg 'notification_worker_(events_total|send_total|retry_queue_depth)'`
+  - `curl -G -sS http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=notification_worker_retry_queue_depth'`
+- 若 backlog 常驻大于 `0`，同步检查：
+  - `audit.audit_event.action_name='notification.dispatch.retry_scheduled'`
+  - Alertmanager 中是否已有 `NotificationRetryQueueBacklog`
+
+### 5. 已进入 dead letter
+
+- 回查 PostgreSQL：
+  ```sql
+  select dead_letter_event_id, event_type, failed_reason, failure_stage, reprocess_status, created_at
+  from ops.dead_letter_event
+  where payload->>'event_id' = '<event_id>'
+  order by created_at desc;
+  ```
+- 回查告警：
+  ```sql
+  select fingerprint, alert_type, severity, status, metadata, fired_at
+  from ops.alert_event
+  where trace_id = '<trace_id>'
+  order by fired_at desc;
+  ```
+- 回查 Kafka DLQ：
+  - `docker exec datab-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic dtp.dead-letter --from-beginning --timeout-ms 5000`
+- 若已进入 DLQ，先定位失败原因，再按 replay 流程操作；不要直接改数据库状态冒充恢复。
+
+### 6. 审计、日志与观测联查
+
+- PostgreSQL 联查：
+  ```sql
+  select message_text, structured_payload, created_at
+  from ops.system_log
+  where object_id = '<event_id>'::uuid
+  order by created_at desc;
+  ```
+  ```sql
+  select root_span_name, status, metadata, created_at
+  from ops.trace_index
+  where object_id = '<event_id>'::uuid
+  order by created_at desc;
+  ```
+  ```sql
+  select action_name, result_code, metadata, event_time
+  from audit.audit_event
+  where trace_id = '<trace_id>'
+  order by event_time desc;
+  ```
+- Loki / Tempo / Prometheus / Grafana / Alertmanager：
+  - Loki：查 `service_name=notification-worker` 与 `request_id / trace_id / object_id`
+  - Tempo：按 `trace_id` 查 `notification.dispatch` 或 `notification.retrying`
+  - Prometheus：查 `notification_worker_events_total`、`notification_worker_send_total`、`notification_worker_retry_queue_depth`
+  - Grafana：`Platform Overview` 中的 `Notification Events / Notification Sends / Notification Retry Queue Depth`
+  - Alertmanager：确认 `NotificationRetryQueueBacklog` 与相关链路告警可见
+
+## 当前承接关系
+
+- `NOTIF-013` 会把当前 runbook 中已经冻结的联查 / replay 入口补齐到 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml`。
+- `NOTIF-014` 会把当前 runbook 中的运行态验证路径补成 `docs/05-test-cases/notification-cases.md`，覆盖：
+  - 支付成功
+  - 交付完成
+  - 验收通过 / 拒收
+  - 争议升级
+  - 结算冻结 / 恢复
+  - 重复去重
+  - 失败重试
+  - DLQ
+  - 人工补发
+- 当前阶段若需临时人工排障，应以本 runbook + `apps/notification-worker/README.md` + `docs/04-runbooks/kafka-topics.md` 为准，不得再引入新的旁路 topic、旧进程名或 README 占位口径。

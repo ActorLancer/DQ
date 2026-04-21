@@ -895,3 +895,101 @@
 - 备注：
   - 模板过滤查询会带出历史通知记录；其中少量早于 `NOTIF-010` 的 replay / 手工样例若当时未写入完整结构化元数据，响应字段会依赖 `ops.outbox_event` / `ops.dead_letter_event` 回退补源。当前正式业务通知链路已具备完整联查字段，不影响本批验收。
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+### BATCH-210（计划中）
+- 任务：`NOTIF-011` notification-worker 运行手册收口
+- 状态：计划中
+- 说明：当前 `notification-worker` 已具备正式 topic、模板、幂等、重试、DLQ、联查与 replay 运行能力，但 runbook 仍按历次 task 追加，缺少一份可直接执行的正式运维手册。本批将按执行源把 `docs/04-runbooks/notification-worker.md` 重构为“进程身份 / 事件来源矩阵 / 模板清单 / 发送策略 / 失败排查 / 人工补发 / 后续承接”结构，并同步在 `apps/notification-worker/README.md` 明确引用该手册。
+- 追溯：本批只收口 runbook 与 README 引用，不提前伪装 `NOTIF-013` OpenAPI 归档或 `NOTIF-014` 验收用例文件；两者仍按执行源保留为后续承接项。
+### BATCH-210（待审批）
+- 任务：`NOTIF-011` notification-worker 运行手册收口
+- 状态：待审批
+- 当前任务编号：`NOTIF-011`
+- 前置依赖核对结果：`NOTIF-001` 已冻结 `notification-worker` 运行基线，`NOTIF-002` 已冻结 `notification.requested` 协议与 scene catalog，`NOTIF-009` 已补齐重试 / DLQ / replay；当前批次只收口 runbook，不再重做这些运行时代码。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批交付是 `docs/04-runbooks/notification-worker.md`，验收重点是正式进程名、topic、consumer group、V1 渠道边界、失败排查、人工补发入口与后续 `NOTIF-013/014` 承接关系。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核通知仍是外围 worker，PostgreSQL 为主记录源、Kafka 为事件总线、Redis 为辅助状态、观测栈必须真实可联查。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`：确认 `dtp.notification.dispatch` / `cg-notification-worker` 的 canonical 拓扑与 route seed 校验入口。
+  - `../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`../原始PRD/审计、证据链与回放设计.md`、`../原始PRD/日志、可观测性与告警设计.md`：复核敏感读需审计、通知失败也要留痕、日志字段与观测链路必须统一。
+  - `docs/04-runbooks/notification-worker.md`、`apps/notification-worker/README.md`、`docs/05-test-cases/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：确认当前 runbook 必须承接模板清单、联查入口、人工 replay 和后续 OpenAPI / `notification-cases.md` 义务，而不是继续停留在 README 占位口径。
+- 实现要点：
+  - 重构 `docs/04-runbooks/notification-worker.md` 为正式可执行结构：`口径冻结 -> 运行前核对 -> 正式发送策略 -> 事件来源与模板清单 -> 手工操作入口 -> 失败排查 -> 当前承接关系`。
+  - 将 13 个冻结 `notification_code` 的 source-event、模板编码、当前 active 模板版本统一收口到事件来源矩阵，明确：
+    - `payment.succeeded / order.pending_delivery / delivery.completed / order.pending_acceptance`
+    - `acceptance.passed / acceptance.rejected / refund.completed / compensation.completed`
+    - `dispute.escalated / settlement.frozen / settlement.resumed`
+    以及 `order.created / payment.failed` 的当前 scene catalog 边界。
+  - 将发送策略写实到 runbook：`platform-core.integration -> canonical outbox -> dtp.notification.dispatch -> notification-worker -> mock-log-adapter`，并明确 PostgreSQL / Redis / Kafka / Loki / Tempo / Prometheus / Alertmanager / Grafana 在通知链路中的真实职责。
+  - 明确四个内部操作入口：
+    - `POST /internal/notifications/templates/preview`
+    - `POST /internal/notifications/send`
+    - `POST /internal/notifications/audit/search`
+    - `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
+  - 在真实验证中修正 runbook 样例与命令，使其与当前实现完全一致：
+    - `NotificationActionLink` 必填字段是 `link_code`，不是自由文本 `label`
+    - 故障注入字段 `simulate_failures` 是请求顶层字段
+    - Redis CLI 在本地应使用 `redis-cli -a datab_redis_pass -n 2`
+    - Prometheus 查询需用 `curl -G --data-urlencode`，不能直接拼未编码的 PromQL
+    - `NOTIFY_PAYMENT_SUCCEEDED_V1` version `2` 的样例变量必须满足真实 schema：`subject/headline/order_id/product_title/seller_org_name/order_amount/currency_code/payment_status/delivery_status/action_label/action_href`
+  - `apps/notification-worker/README.md` 顶部新增 runbook 引用，保证 README 能直接跳转到正式运维手册。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo check -p notification-worker`
+  5. `cargo test -p notification-worker`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `curl -sS http://127.0.0.1:8097/health/live`、`/health/ready`、`/health/deps`
+  9. `./scripts/check-topic-topology.sh`
+  10. `POST /internal/notifications/templates/preview`，按 runbook 正式样例验证 `NOTIFY_PAYMENT_SUCCEEDED_V1` version `2`
+  11. `POST /internal/notifications/send` 注入 `payment.succeeded` 样例，使用 `simulate_failures=3` + `retry_policy.max_attempts=2`
+  12. `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
+      - `dry_run=true`
+      - `dry_run=false`
+  13. `POST /internal/notifications/audit/search` 按 `event_id` 联查刚才的样例
+  14. `curl -G -sS http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=up{job="notification-worker"}'`
+  15. `curl -sS http://127.0.0.1:9093/api/v2/status`
+  16. `curl -sS http://127.0.0.1:3000/api/health`
+  17. `curl -sS http://127.0.0.1:3200/metrics | rg 'tempo_build_info'`
+  18. 清理本批临时业务测试数据：删除对应 `ops.consumer_idempotency_record`、`ops.trace_index`、`ops.alert_event`、`ops.dead_letter_event` 与 Redis 短状态；`audit.audit_event` 与 `ops.system_log` 按 append-only 保留。
+- 验证结果：
+  - 通用校验全部通过：`cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`。
+  - `./scripts/check-topic-topology.sh` 返回 `[ok]`，确认 dedicated notification topic / 文档 / route-policy seed / 数据库运行态路由一致。
+  - 模板预览验证通过：
+    - `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1`
+    - `version_no=2`
+    - `template_fallback_used=false`
+  - runbook 的人工补发流程已按真实样例跑通：
+    - 原始事件 `event_id=5335bc1d-c10e-496f-8123-a2c5a2cca5fc`
+    - 进入 dead letter 后的 `dead_letter_event_id=695646ea-35e6-4fd3-955e-a4336f455bb6`
+    - dry-run 返回 `status=dry_run_ready`
+    - 正式 replay 返回 `status=reprocess_requested`，新 `replay_event_id=c6b7dd09-355c-45be-a903-2433e3bb75df`
+    - `ops.dead_letter_event.reprocess_status` 回查为 `reprocessed`
+  - 联查入口与审计留痕验证通过：
+    - `POST /internal/notifications/audit/search` 按 `event_id=5335bc1d-c10e-496f-8123-a2c5a2cca5fc` 返回 `total=1`
+    - `audit.audit_event` 最新 `notification.dispatch.lookup` 写入 `result_count=1`
+    - `audit.audit_event` 最新 `notification.dispatch.reprocess.requested` 与 `ops.system_log` 最新 `notification dead letter replay requested` 都包含原始 `original_event_id`、新 `event_id`、`dead_letter_event_id`、`step_up_ticket`
+  - 观测栈验证通过：
+    - worker `/metrics` 暴露通知指标，当前 `worker_metric_lines=12`
+    - Prometheus 修正为 `curl -G --data-urlencode` 后，`up{job="notification-worker"}` 返回 `status=success` 且值为 `1`
+    - Alertmanager `cluster.status=ready`
+    - Grafana `/api/health` 返回 `database=ok`
+    - Tempo `/metrics` 中可见 `tempo_build_info`
+  - 测试数据清理结果：
+    - `ops.consumer_idempotency_record` 对本批原始 / replay 事件计数为 `0`
+    - `ops.trace_index` 对本批原始 / replay 事件计数为 `0`
+    - `ops.dead_letter_event` 对本批 `dead_letter_event_id=695646ea-35e6-4fd3-955e-a4336f455bb6` 计数为 `0`
+    - Redis `datab:v1:notification:state:*` 与 `retry-payload:*` 回查为空
+    - `audit.audit_event` 与 `ops.system_log` 依 append-only 要求保留
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-011`
+  - `事件模型与Topic清单正式版.md`、`kafka-topics.md`、`topics.v1.json`：正式 topic / consumer / route seed / canonical query 口径
+  - `审计、证据链与回放设计.md`：replay / lookup 都必须审计留痕
+  - `日志、可观测性与告警设计.md`：日志字段、Loki / Tempo / Prometheus / Alertmanager / Grafana 的通知链路联查
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：runbook 必须明确事件来源、模板清单、失败排查与人工补发
+- 覆盖的任务清单条目：`NOTIF-011`
+- 未覆盖项：无。`NOTIF-013` OpenAPI 归档与 `NOTIF-014` 测试样例文档仍按顺序待后续任务承接。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - 本批验证过程中，先后暴露出 runbook 样例与实现之间的四处细节偏差：`link_code` 字段、`simulate_failures` 位置、Redis CLI 认证方式、Prometheus 查询编码方式；均已在当前批次直接修正文档并重新验证通过。
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
