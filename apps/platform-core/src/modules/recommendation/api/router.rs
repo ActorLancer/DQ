@@ -6,7 +6,10 @@ use super::handlers;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/recommendations", get(handlers::get_recommendations))
+        .route(
+            "/api/v1/recommendations",
+            get(handlers::get_recommendations),
+        )
         .route(
             "/api/v1/recommendations/track/exposure",
             post(handlers::post_track_exposure),

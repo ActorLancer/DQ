@@ -32,14 +32,24 @@
 
 1. 启动基础设施：
    - `make up-local`
-2. 启动通知进程（当前为占位运行时，后续由 NOTIF-001~012 落实真实逻辑）：
-   - 参考 `infra/docker/docker-compose.apps.local.example.yml` 中 `notification-worker` 段
+2. 启动通知进程：
+   - 宿主机运行：
+     `APP_PORT=8097 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 cargo run -p notification-worker`
+   - 容器示例：
+     参考 `infra/docker/docker-compose.apps.local.example.yml` 中 `notification-worker` 段
 3. 校验 topic 已存在：
    - `dtp.notification.dispatch`
    - `dtp.dead-letter`
 4. 校验通知 / Fabric 相关关键拓扑未漂移：
    - `./scripts/check-topic-topology.sh`
-   - 该脚本只覆盖关键静态 topology / route seed；若要验证全量 canonical topics 是否真实存在，需额外执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+   - 该脚本覆盖关键静态 topology / route seed，并回查当前数据库 `ops.event_route_policy` 中 `notification.requested -> dtp.notification.dispatch` 等运行态路由；若要验证全量 canonical topics 是否真实存在，仍需额外执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+5. 校验 worker 健康与指标：
+   - `GET http://127.0.0.1:8097/health/live`
+   - `GET http://127.0.0.1:8097/health/ready`
+   - `GET http://127.0.0.1:8097/health/deps`
+   - `GET http://127.0.0.1:8097/metrics`
+6. 手工注入一条 `notification.requested` 事件：
+   - `POST http://127.0.0.1:8097/internal/notifications/send`
 
 ## V1 渠道与模板边界
 

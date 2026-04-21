@@ -53,6 +53,6 @@
 
 1. `infra/kafka/topics.v1.json`
 2. `docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`
-3. `./scripts/check-topic-topology.sh`（仅覆盖 Fabric / notification / audit-anchor 相关关键静态拓扑与 route seed，不替代全量 smoke）
+3. `./scripts/check-topic-topology.sh`（覆盖 Fabric / notification / audit-anchor 相关关键静态拓扑、route seed 与当前数据库 `ops.event_route_policy` 运行态，不替代全量 smoke）
 
 若 `audit.anchor_requested` 或 `fabric.proof_submit_requested` 未命中 route policy，不得继续按猜测 topic 联调。

@@ -39,7 +39,7 @@
 - `db/scripts/verify-migration-057-060.sh`：验证 `057/058/059/060` 的搜索/推荐/观测核心对象与鉴权种子数据基线。
 - `db/scripts/verify-migration-061-064.sh`：验证 `061/062/063/064` 的对象家族与交易方式、元信息契约、原样加工流水线、分层存储对象与关键字段基线。
 - `db/scripts/verify-migration-065-068.sh`：验证 `065/066/067/068` 的查询执行面、敏感受控交付、交易链监控对象与监控权限映射基线。
-- `db/scripts/verify-migration-070.sh`：验证 `070` 角色权限最终种子与关键映射基线。
+- `db/scripts/verify-migration-070.sh`：验证 `070/072/073/074` 的角色权限最终种子、canonical route-policy 与 retired trigger / function 状态基线。
 - `db/scripts/verify-migration-roundtrip.sh`：执行“全量升级 -> 全量降级 -> 全量升级”的回滚演练，校验本地重建自洽性。
 - `db/scripts/verify-seed-001.sh`：验证 `db/seeds/001_base_lookup.sql` 的基础枚举/类目/标签种子落地。
 - `db/scripts/verify-seed-010-030.sh`：验证 `010/020/030` 的演示租户用户、8 个标准 SKU 商品与模板绑定、13 条订单样例（含 5 条标准链路场景订单）基线。

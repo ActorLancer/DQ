@@ -1,0 +1,7 @@
+{
+  "template_code": "DEFAULT_NOTIFICATION_V1",
+  "channel": "mock-log",
+  "title_template": "Notification {{event.event_type}}",
+  "body_template": "recipient={{recipient.display_name}} address={{recipient.address}} message={{variables.message}}",
+  "fallback_body_template": "recipient={{recipient.address}} aggregate={{event.aggregate_id}}"
+}

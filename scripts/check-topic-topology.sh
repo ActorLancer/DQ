@@ -8,10 +8,12 @@ TOPIC_CATALOG="infra/kafka/topics.v1.json"
 EVENT_MODEL_DOC="docs/开发准备/事件模型与Topic清单正式版.md"
 KAFKA_RUNBOOK="docs/04-runbooks/kafka-topics.md"
 ROUTE_SEED="docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql"
+TOPOLOGY_DATABASE_URL="${TOPOLOGY_DATABASE_URL:-${DATABASE_URL:-postgres://datab:datab_local_pass@127.0.0.1:5432/datab}}"
 
 # Scope:
 # - static alignment for dedicated notification / fabric / audit-anchor single-entry topology
 # - critical route-policy seed coverage for frozen extension events
+# - runtime route-policy presence in ops.event_route_policy for the frozen dedicated topics
 # This script does not replace the full smoke-local topic existence check.
 
 fail() {
@@ -24,6 +26,7 @@ ok() {
 }
 
 command -v jq >/dev/null 2>&1 || fail "jq not found"
+command -v psql >/dev/null 2>&1 || fail "psql not found"
 [[ -f "${TOPIC_CATALOG}" ]] || fail "missing ${TOPIC_CATALOG}"
 [[ -f "${EVENT_MODEL_DOC}" ]] || fail "missing ${EVENT_MODEL_DOC}"
 [[ -f "${KAFKA_RUNBOOK}" ]] || fail "missing ${KAFKA_RUNBOOK}"
@@ -78,7 +81,35 @@ check_route_seed() {
     || fail "route seed missing fabric.proof_submit_requested"
 }
 
+check_db_runtime_routes() {
+  local sql
+  local actual
+  sql=$(cat <<'SQL'
+SELECT aggregate_type || '|' || event_type || '|' || target_topic
+FROM ops.event_route_policy
+WHERE status = 'active'
+  AND (aggregate_type, event_type, target_topic) IN (
+    ('notification.dispatch_request', 'notification.requested', 'dtp.notification.dispatch'),
+    ('audit.anchor_batch', 'audit.anchor_requested', 'dtp.audit.anchor'),
+    ('chain.chain_anchor', 'fabric.proof_submit_requested', 'dtp.fabric.requests')
+  )
+ORDER BY 1;
+SQL
+)
+  actual="$(psql "${TOPOLOGY_DATABASE_URL}" -v ON_ERROR_STOP=1 -X -q -tA -c "${sql}")" \
+    || fail "failed to query runtime route-policy via ${TOPOLOGY_DATABASE_URL}"
+
+  for expected in \
+    "audit.anchor_batch|audit.anchor_requested|dtp.audit.anchor" \
+    "chain.chain_anchor|fabric.proof_submit_requested|dtp.fabric.requests" \
+    "notification.dispatch_request|notification.requested|dtp.notification.dispatch"; do
+    grep -Fxq "${expected}" <<<"${actual}" \
+      || fail "runtime route-policy missing: ${expected}"
+  done
+}
+
 check_topic_json
 check_docs
 check_route_seed
-ok "dedicated notification/fabric topic topology, docs, and route-policy seeds are aligned"
+check_db_runtime_routes
+ok "dedicated notification/fabric topic topology, docs, route-policy seeds, and runtime DB routes are aligned"

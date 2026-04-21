@@ -90,24 +90,51 @@ services:
 
   notification-worker:
     profiles: ["apps"]
-    image: alpine:3.20
+    image: rust:1.85-bookworm
     container_name: datab-notification-worker
-    command: ["sh", "-c", "touch /tmp/healthy && tail -f /dev/null"]
+    working_dir: /workspace
+    volumes:
+      - ../../:/workspace
+    command:
+      [
+        "sh",
+        "-c",
+        "cargo run -p notification-worker"
+      ]
     environment:
+      APP_MODE: local
+      PROVIDER_MODE: mock
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8097
+      DATABASE_URL: postgres://${POSTGRES_USER:-datab}:${POSTGRES_PASSWORD:-datab_local_pass}@postgres:5432/${POSTGRES_DB:-datab}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-datab_redis_pass}@redis:6379/2
+      REDIS_NAMESPACE: ${REDIS_NAMESPACE:-datab:v1}
       NOTIFICATION_TOPIC: dtp.notification.dispatch
       NOTIFICATION_WORKER_CONSUMER_GROUP: ${NOTIFICATION_WORKER_CONSUMER_GROUP:-cg-notification-worker}
+      NOTIFICATION_TEMPLATE_DIR: /workspace/apps/notification-worker/templates
+      NOTIFICATION_RETRY_POLL_INTERVAL_MS: ${NOTIFICATION_RETRY_POLL_INTERVAL_MS:-500}
+      NOTIFICATION_RETRY_BACKOFF_MS: ${NOTIFICATION_RETRY_BACKOFF_MS:-250}
+      NOTIFICATION_RETRY_MAX_ATTEMPTS: ${NOTIFICATION_RETRY_MAX_ATTEMPTS:-3}
       KAFKA_BROKERS: kafka:9092
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       kafka:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     networks:
       - datab-local
+    ports:
+      - "${NOTIFICATION_WORKER_PORT:-8097}:8097"
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/healthy"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8097/health/ready >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 20s
 
   search-indexer:
     profiles: ["apps"]

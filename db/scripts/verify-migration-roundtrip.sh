@@ -25,8 +25,8 @@ echo "==> full downgrade drill"
 ./db/scripts/migrate-down.sh
 
 latest_down_count="$(query_single "WITH ranked AS (SELECT version, direction, ROW_NUMBER() OVER (PARTITION BY version ORDER BY executed_at DESC, id DESC) AS rn FROM public.schema_migration_history) SELECT COUNT(*) FROM ranked WHERE rn = 1 AND direction = 'down';")"
-if [[ "$latest_down_count" -lt 22 ]]; then
-  echo "[fail] downgrade drill latest-direction check failed: down_count=${latest_down_count} (< 22)" >&2
+if [[ "$latest_down_count" -lt 25 ]]; then
+  echo "[fail] downgrade drill latest-direction check failed: down_count=${latest_down_count} (< 25)" >&2
   exit 1
 fi
 
@@ -34,8 +34,8 @@ echo "==> full re-upgrade drill"
 ./db/scripts/migrate-up.sh
 
 latest_up_count="$(query_single "WITH ranked AS (SELECT version, direction, ROW_NUMBER() OVER (PARTITION BY version ORDER BY executed_at DESC, id DESC) AS rn FROM public.schema_migration_history) SELECT COUNT(*) FROM ranked WHERE rn = 1 AND direction = 'up';")"
-if [[ "$latest_up_count" -lt 22 ]]; then
-  echo "[fail] re-upgrade drill latest-direction check failed: up_count=${latest_up_count} (< 22)" >&2
+if [[ "$latest_up_count" -lt 25 ]]; then
+  echo "[fail] re-upgrade drill latest-direction check failed: up_count=${latest_up_count} (< 25)" >&2
   exit 1
 fi
 

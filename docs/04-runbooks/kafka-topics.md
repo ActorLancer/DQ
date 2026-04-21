@@ -79,7 +79,7 @@ infra/kafka/init-topics.sh
 - `kafka-topics-init` 会等待 `kafka` healthy，再调用 `infra/kafka/init-topics.sh` 初始化 canonical topics。
 - 本地 Kafka 已关闭 `KAFKA_AUTO_CREATE_TOPICS_ENABLE`；topic 必须来自 `topics.v1.json`，不再允许通过自动创建掩盖命名漂移。
 
-## 关键拓扑静态校验
+## 关键拓扑校验
 
 执行：
 
@@ -87,7 +87,7 @@ infra/kafka/init-topics.sh
 ./scripts/check-topic-topology.sh
 ```
 
-该脚本只校验通知 / Fabric / audit-anchor 相关的关键静态拓扑，不替代全量 canonical smoke。当前覆盖：
+该脚本校验通知 / Fabric / audit-anchor 相关的关键静态拓扑与当前数据库 `ops.event_route_policy` 运行态，不替代全量 canonical smoke。当前覆盖：
 
 - `dtp.outbox.domain-events`
 - `dtp.notification.dispatch`
@@ -97,6 +97,10 @@ infra/kafka/init-topics.sh
 - `notification-worker` / `fabric-adapter` 未被错误登记为 `dtp.outbox.domain-events` 直接 consumer
 - 事件模型文档与 runbook 中对应关键行是否仍与 canonical source 对齐
 - `ops.event_route_policy` 的 V1 seed 是否覆盖 `notification.requested`、`audit.anchor_requested`、`fabric.proof_submit_requested`
+- 当前数据库中是否已存在：
+  - `notification.dispatch_request / notification.requested -> dtp.notification.dispatch`
+  - `audit.anchor_batch / audit.anchor_requested -> dtp.audit.anchor`
+  - `chain.chain_anchor / fabric.proof_submit_requested -> dtp.fabric.requests`
 
 ## 全量 canonical smoke 校验
 

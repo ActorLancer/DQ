@@ -175,7 +175,10 @@ async fn cleanup_graph(client: &Client, ids: &SeedIds) {
         )
         .await;
     let _ = client
-        .execute("DELETE FROM recommend.behavior_event WHERE subject_org_id = $1::text::uuid", &[&ids.org_id])
+        .execute(
+            "DELETE FROM recommend.behavior_event WHERE subject_org_id = $1::text::uuid",
+            &[&ids.org_id],
+        )
         .await;
     let _ = client
         .execute(
@@ -201,7 +204,11 @@ async fn cleanup_graph(client: &Client, ids: &SeedIds) {
         .execute(
             "DELETE FROM search.index_sync_task
              WHERE entity_id = ANY($1::text[]::uuid[])",
-            &[&vec![ids.org_id.clone(), ids.product_ids[0].clone(), ids.product_ids[1].clone()]],
+            &[&vec![
+                ids.org_id.clone(),
+                ids.product_ids[0].clone(),
+                ids.product_ids[1].clone(),
+            ]],
         )
         .await;
     for product_id in &ids.product_ids {
@@ -381,17 +388,16 @@ async fn recommendation_api_full_runtime_db_smoke() {
     let body = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body");
-    assert_eq!(
-        status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&body)
-    );
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     let json_body: Value = serde_json::from_slice(&body).expect("json");
     let data = &json_body["data"];
     assert!(data["recommendation_request_id"].is_string());
     assert!(data["recommendation_result_id"].is_string());
-    assert!(data["items"].as_array().is_some_and(|items| !items.is_empty()));
+    assert!(
+        data["items"]
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+    );
 
     let recommendation_request_id = data["recommendation_request_id"]
         .as_str()

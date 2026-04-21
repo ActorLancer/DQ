@@ -101,7 +101,11 @@ async fn handle_kafka_message(
     handle_kafka_payload(db, cfg, payload).await
 }
 
-async fn handle_kafka_payload(db: &AppDb, cfg: &WorkerConfig, payload: &[u8]) -> Result<(), String> {
+async fn handle_kafka_payload(
+    db: &AppDb,
+    cfg: &WorkerConfig,
+    payload: &[u8],
+) -> Result<(), String> {
     let envelope: Value = serde_json::from_slice(payload)
         .map_err(|err| format!("decode recommendation kafka payload failed: {err}"))?;
     handle_behavior_envelope(db, cfg, &envelope).await
@@ -339,7 +343,9 @@ async fn refresh_search_projection_and_queue(
             &[&entity_scope, &entity_id, &document_version, &target_index],
         )
         .await
-        .map_err(|err| format!("queue search sync task from recommendation behavior failed: {err}"))?;
+        .map_err(|err| {
+            format!("queue search sync task from recommendation behavior failed: {err}")
+        })?;
     Ok(())
 }
 
@@ -575,10 +581,11 @@ async fn upsert_bundle_relation(
     Ok(())
 }
 
-async fn invalidate_recommendation_cache(cfg: &WorkerConfig, payload: &Value) -> Result<(), String> {
-    let tenant = payload["subject_org_id"]
-        .as_str()
-        .unwrap_or("public");
+async fn invalidate_recommendation_cache(
+    cfg: &WorkerConfig,
+    payload: &Value,
+) -> Result<(), String> {
+    let tenant = payload["subject_org_id"].as_str().unwrap_or("public");
     let actor = payload["subject_user_id"]
         .as_str()
         .or_else(|| payload["anonymous_session_key"].as_str())
@@ -628,8 +635,9 @@ mod tests {
     }
 
     fn database_url() -> String {
-        std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string())
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string()
+        })
     }
 
     fn redis_url() -> String {

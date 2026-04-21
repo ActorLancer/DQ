@@ -148,8 +148,8 @@ pub async fn serve_recommendation(
     let seen_entities = load_seen_entities(query, &placement.placement_code).await?;
     let hydrated = hydrate_candidates(&tx, &snapshot, &seen_entities, limit).await?;
     let ranked = if hydrated.is_empty() {
-        snapshot = generate_fallback_snapshot(&tx, query, &placement, &ranking_profile, limit)
-            .await?;
+        snapshot =
+            generate_fallback_snapshot(&tx, query, &placement, &ranking_profile, limit).await?;
         cache_hit = false;
         hydrate_candidates(&tx, &snapshot, &seen_entities, limit).await?
     } else {
@@ -199,10 +199,7 @@ pub async fn record_exposure(
         .map_err(|err| format!("open recommendation exposure transaction failed: {err}"))?;
     let existing = existing_behavior_events(
         &tx,
-        &[
-            "recommendation_panel_viewed",
-            "recommendation_item_exposed",
-        ],
+        &["recommendation_panel_viewed", "recommendation_item_exposed"],
         idempotency_key,
     )
     .await?;
@@ -311,8 +308,12 @@ pub async fn record_exposure(
     tx.commit()
         .await
         .map_err(|err| format!("commit recommendation exposure transaction failed: {err}"))?;
-    remember_seen_entities(query_subject_cache_ref(&reference), &request.placement_code, &request.items)
-        .await?;
+    remember_seen_entities(
+        query_subject_cache_ref(&reference),
+        &request.placement_code,
+        &request.items,
+    )
+    .await?;
     Ok(BehaviorTrackResponse {
         accepted_count: behavior_event_ids.len() as u64,
         deduplicated_count: 0,
@@ -410,7 +411,9 @@ pub async fn record_click(
     })
 }
 
-pub async fn list_placements(client: &(impl GenericClient + Sync)) -> RepoResult<Vec<PlacementView>> {
+pub async fn list_placements(
+    client: &(impl GenericClient + Sync),
+) -> RepoResult<Vec<PlacementView>> {
     let rows = client
         .query(
             "SELECT
@@ -645,15 +648,18 @@ pub async fn rebuild_runtime(
 ) -> RepoResult<RecommendationRebuildResponse> {
     let scope = request.scope.trim().to_ascii_lowercase();
     if !matches!(scope.as_str(), "all" | "cache" | "features") {
-        return Err(format!("unsupported recommendation rebuild scope: {}", request.scope));
+        return Err(format!(
+            "unsupported recommendation rebuild scope: {}",
+            request.scope
+        ));
     }
 
-    let cache_keys_deleted = if request.purge_cache.unwrap_or(true) || scope == "cache" || scope == "all"
-    {
-        invalidate_recommendation_cache(request).await?
-    } else {
-        0
-    };
+    let cache_keys_deleted =
+        if request.purge_cache.unwrap_or(true) || scope == "cache" || scope == "all" {
+            invalidate_recommendation_cache(request).await?
+        } else {
+            0
+        };
 
     let mut refreshed_subject_profiles = 0;
     let mut refreshed_cohort_rows = 0;
@@ -802,7 +808,9 @@ async fn generate_candidate_snapshot(
             "seller_related" => {
                 recall_seller_related(client, placement, context.as_ref(), fetch_limit).await?
             }
-            "seller_hot" => recall_seller_hot(client, placement, context.as_ref(), fetch_limit).await?,
+            "seller_hot" => {
+                recall_seller_hot(client, placement, context.as_ref(), fetch_limit).await?
+            }
             "seller_quality" => {
                 recall_seller_quality(client, placement, context.as_ref(), fetch_limit).await?
             }
@@ -851,7 +859,10 @@ async fn generate_fallback_snapshot(
     limit: u32,
 ) -> RepoResult<CandidateSnapshot> {
     let mut merged = HashMap::new();
-    merge_recall_candidates(&mut merged, recall_popular(placement, (limit * 4) as usize).await?);
+    merge_recall_candidates(
+        &mut merged,
+        recall_popular(placement, (limit * 4) as usize).await?,
+    );
     if let Some(context) = load_context_entity(client, query).await? {
         merge_recall_candidates(
             &mut merged,
@@ -927,7 +938,11 @@ async fn hydrate_candidates(
         if parse_hotness(&item) > 0.0 {
             explanation_codes.insert("rank:hotness".to_string());
         }
-        if seed.recall_sources.iter().any(|source| source == "new_arrival") {
+        if seed
+            .recall_sources
+            .iter()
+            .any(|source| source == "new_arrival")
+        {
             explanation_codes.insert("rank:freshness".to_string());
         }
         ranked.push(RankedCandidate {
@@ -1551,7 +1566,8 @@ async fn recall_bundle(
                 "product",
                 placement,
                 {
-                    let mut filters = placement_product_filters(placement, Some(context.entity_id.as_str()));
+                    let mut filters =
+                        placement_product_filters(placement, Some(context.entity_id.as_str()));
                     filters.push(json!({ "term": { "seller_id": seller_org_id } }));
                     filters
                 },
@@ -1586,7 +1602,8 @@ async fn recall_seller_related(
             "product",
             placement,
             {
-                let mut filters = placement_product_filters(placement, Some(context.entity_id.as_str()));
+                let mut filters =
+                    placement_product_filters(placement, Some(context.entity_id.as_str()));
                 filters.push(json!({ "term": { "seller_id": seller_org_id } }));
                 filters
             },
@@ -1615,7 +1632,8 @@ async fn recall_seller_hot(
                     "product",
                     placement,
                     {
-                        let mut filters = placement_product_filters(placement, Some(context.entity_id.as_str()));
+                        let mut filters =
+                            placement_product_filters(placement, Some(context.entity_id.as_str()));
                         filters.push(json!({ "term": { "seller_id": seller_org_id } }));
                         filters
                     },
@@ -1661,7 +1679,8 @@ async fn recall_seller_quality(
                     "product",
                     placement,
                     {
-                        let mut filters = placement_product_filters(placement, Some(context.entity_id.as_str()));
+                        let mut filters =
+                            placement_product_filters(placement, Some(context.entity_id.as_str()));
                         filters.push(json!({ "term": { "seller_id": seller_org_id } }));
                         filters
                     },
@@ -1714,7 +1733,14 @@ async fn recall_renewal(
     fetch_os_candidates(
         &product_read_alias(),
         "product",
-        recall_body_for_scope("product", placement, filters, should, product_sort("latest"), limit),
+        recall_body_for_scope(
+            "product",
+            placement,
+            filters,
+            should,
+            product_sort("latest"),
+            limit,
+        ),
         0.83,
         "renewal",
     )
@@ -1758,8 +1784,10 @@ async fn fetch_os_candidates(
     if let Some(object) = body.as_object_mut() {
         object.remove("preference");
     }
-    let request = reqwest::Client::new()
-        .post(format!("{}/{alias}/_search", endpoint.trim_end_matches('/')));
+    let request = reqwest::Client::new().post(format!(
+        "{}/{alias}/_search",
+        endpoint.trim_end_matches('/')
+    ));
     let request = if let Some(preference) = preference.as_deref() {
         request.query(&[("preference", preference)])
     } else {
@@ -1846,11 +1874,16 @@ fn recall_body_for_scope(
     })
 }
 
-fn placement_product_filters(placement: &PlacementDefinition, exclude_id: Option<&str>) -> Vec<Value> {
+fn placement_product_filters(
+    placement: &PlacementDefinition,
+    exclude_id: Option<&str>,
+) -> Vec<Value> {
     let mut filters = Vec::new();
     match placement.placement_scope.as_str() {
         "service" => filters.push(json!({ "term": { "product_type.keyword": "service" } })),
-        "product" => filters.push(json!({ "bool": { "must_not": [{ "term": { "product_type.keyword": "service" } }] } })),
+        "product" => filters.push(
+            json!({ "bool": { "must_not": [{ "term": { "product_type.keyword": "service" } }] } }),
+        ),
         _ => {}
     }
     if let Some(entity_id) = exclude_id {
@@ -1906,7 +1939,11 @@ fn compute_final_score(seed: &CandidateSeed, item: &SearchResultItem, seen: bool
     let quality = parse_score(item.quality_score.as_deref());
     let reputation = parse_score(item.reputation_score.as_deref());
     let hotness = parse_hotness(item);
-    let freshness = if seed.recall_sources.iter().any(|source| source == "new_arrival") {
+    let freshness = if seed
+        .recall_sources
+        .iter()
+        .any(|source| source == "new_arrival")
+    {
         1.0
     } else {
         0.0
@@ -1981,7 +2018,10 @@ fn parse_hotness(item: &SearchResultItem) -> f64 {
 }
 
 fn strategy_version(ranking_profile: &RankingProfile) -> String {
-    format!("{}@{}", ranking_profile.profile_key, ranking_profile.updated_at)
+    format!(
+        "{}@{}",
+        ranking_profile.profile_key, ranking_profile.updated_at
+    )
 }
 
 fn parse_recall_sources(candidate_policy_json: &Value) -> Vec<String> {
@@ -2047,7 +2087,8 @@ fn normalized_subject_scope(query: &RecommendationQuery) -> String {
 }
 
 fn subject_ref(query: &RecommendationQuery) -> String {
-    query.subject_org_id
+    query
+        .subject_org_id
         .clone()
         .or_else(|| query.subject_user_id.clone())
         .or_else(|| query.anonymous_session_key.clone())
@@ -2197,7 +2238,10 @@ async fn existing_behavior_events(
     event_types: &[&str],
     idempotency_key: &str,
 ) -> RepoResult<Vec<String>> {
-    let types = event_types.iter().map(|item| item.to_string()).collect::<Vec<_>>();
+    let types = event_types
+        .iter()
+        .map(|item| item.to_string())
+        .collect::<Vec<_>>();
     let rows = client
         .query(
             "SELECT behavior_event_id::text
@@ -2485,10 +2529,9 @@ async fn rebuild_subject_profiles(
     client: &Client,
     request: &RecommendationRebuildRequest,
 ) -> RepoResult<u64> {
-    let tx = client
-        .transaction()
-        .await
-        .map_err(|err| format!("open recommendation subject-profile rebuild transaction failed: {err}"))?;
+    let tx = client.transaction().await.map_err(|err| {
+        format!("open recommendation subject-profile rebuild transaction failed: {err}")
+    })?;
     tx.execute("DELETE FROM recommend.subject_profile_snapshot", &[])
         .await
         .map_err(|err| format!("clear recommendation subject profiles failed: {err}"))?;
@@ -2538,9 +2581,9 @@ async fn rebuild_subject_profiles(
         )
         .await
         .map_err(|err| format!("rebuild recommendation subject profiles failed: {err}"))?;
-    tx.commit()
-        .await
-        .map_err(|err| format!("commit recommendation subject-profile rebuild transaction failed: {err}"))?;
+    tx.commit().await.map_err(|err| {
+        format!("commit recommendation subject-profile rebuild transaction failed: {err}")
+    })?;
     let _ = request;
     Ok(inserted)
 }
@@ -2661,10 +2704,9 @@ async fn rebuild_similarity_edges(
     client: &Client,
     request: &RecommendationRebuildRequest,
 ) -> RepoResult<u64> {
-    let tx = client
-        .transaction()
-        .await
-        .map_err(|err| format!("open recommendation similarity rebuild transaction failed: {err}"))?;
+    let tx = client.transaction().await.map_err(|err| {
+        format!("open recommendation similarity rebuild transaction failed: {err}")
+    })?;
     tx.execute("DELETE FROM recommend.entity_similarity", &[])
         .await
         .map_err(|err| format!("clear recommendation entity similarity failed: {err}"))?;
@@ -2698,9 +2740,9 @@ async fn rebuild_similarity_edges(
         )
         .await
         .map_err(|err| format!("rebuild recommendation similarity edges failed: {err}"))?;
-    tx.commit()
-        .await
-        .map_err(|err| format!("commit recommendation similarity rebuild transaction failed: {err}"))?;
+    tx.commit().await.map_err(|err| {
+        format!("commit recommendation similarity rebuild transaction failed: {err}")
+    })?;
     let _ = request;
     Ok(inserted)
 }

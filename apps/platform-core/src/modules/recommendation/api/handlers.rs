@@ -58,7 +58,9 @@ pub(in crate::modules::recommendation) async fn post_track_exposure(
         &payload,
         header(&headers, "x-request-id").as_deref(),
         effective_trace_id.as_deref(),
-        header(&headers, "x-idempotency-key").as_deref().unwrap_or_default(),
+        header(&headers, "x-idempotency-key")
+            .as_deref()
+            .unwrap_or_default(),
         header(&headers, "x-role").as_deref().unwrap_or("unknown"),
     )
     .await
@@ -85,7 +87,9 @@ pub(in crate::modules::recommendation) async fn post_track_click(
         &payload,
         header(&headers, "x-request-id").as_deref(),
         effective_trace_id.as_deref(),
-        header(&headers, "x-idempotency-key").as_deref().unwrap_or_default(),
+        header(&headers, "x-idempotency-key")
+            .as_deref()
+            .unwrap_or_default(),
         header(&headers, "x-role").as_deref().unwrap_or("unknown"),
     )
     .await
@@ -163,10 +167,8 @@ pub(in crate::modules::recommendation) async fn patch_ranking_profile(
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<PatchRecommendationRankingProfileRequest>,
-) -> Result<
-    Json<ApiResponse<RecommendationRankingProfileView>>,
-    (StatusCode, Json<ErrorResponse>),
-> {
+) -> Result<Json<ApiResponse<RecommendationRankingProfileView>>, (StatusCode, Json<ErrorResponse>)>
+{
     require_permission(
         &headers,
         RecommendationPermission::RankingManage,
@@ -195,10 +197,7 @@ pub(in crate::modules::recommendation) async fn post_rebuild(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<RecommendationRebuildRequest>,
-) -> Result<
-    Json<ApiResponse<RecommendationRebuildResponse>>,
-    (StatusCode, Json<ErrorResponse>),
-> {
+) -> Result<Json<ApiResponse<RecommendationRebuildResponse>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         RecommendationPermission::RebuildExecute,
