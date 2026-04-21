@@ -8,6 +8,7 @@ MINIO_ENDPOINT="${MINIO_ENDPOINT:-http://127.0.0.1:9000}"
 MINIO_MC_IMAGE="${MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-08-13T08-35-41Z}"
 MOCK_BASE_URL="${MOCK_BASE_URL:-http://127.0.0.1:${MOCK_PAYMENT_PORT:-8089}}"
 GRAFANA_URL="${GRAFANA_URL:-http://127.0.0.1:${GRAFANA_PORT:-3000}}"
+TOPIC_CATALOG="${TOPIC_CATALOG:-infra/kafka/topics.v1.json}"
 
 if [[ -f "${ENV_FILE}" ]]; then
   set -a
@@ -89,20 +90,17 @@ smoke_keycloak_realm() {
 }
 
 smoke_kafka_topics() {
-  local topics=(
-    "${TOPIC_OUTBOX_EVENTS:-outbox.events}"
-    "${TOPIC_SEARCH_SYNC:-search.sync}"
-    "${TOPIC_AUDIT_ANCHOR:-audit.anchor}"
-    "${TOPIC_BILLING_EVENTS:-billing.events}"
-    "${TOPIC_RECOMMENDATION_BEHAVIOR:-recommendation.behavior}"
-    "${TOPIC_DEAD_LETTER_EVENTS:-dead-letter.events}"
-  )
+  [[ -f "${TOPIC_CATALOG}" ]] || fail "topic catalog missing: ${TOPIC_CATALOG}"
 
   local listed
   listed="$(docker exec "${KAFKA_CONTAINER}" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list)"
-  for topic in "${topics[@]}"; do
+  while IFS= read -r topic_entry; do
+    local env_key default_name topic
+    env_key="$(jq -r '.env_key' <<<"${topic_entry}")"
+    default_name="$(jq -r '.name' <<<"${topic_entry}")"
+    topic="${!env_key:-${default_name}}"
     grep -qx "${topic}" <<<"${listed}" || fail "topic missing: ${topic}"
-  done
+  done < <(jq -c '.topics[] | select(.required_in_smoke == true)' "${TOPIC_CATALOG}")
   ok "kafka topics probe passed"
 }
 

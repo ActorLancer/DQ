@@ -1,3 +1,5 @@
+//! cargo test -p http@0.1.0
+
 #[cfg(test)]
 mod tests {
     use crate::*;
@@ -65,7 +67,7 @@ mod tests {
     #[test]
     fn dev_overview_feed_is_capped() {
         for i in 0..(DEV_OVERVIEW_WINDOW + 3) {
-            record_outbox_event(format!("evt-{i}"), "outbox.events", "pending");
+            record_outbox_event(format!("evt-{i}"), "dtp.outbox.domain-events", "pending");
         }
         let overview = build_dev_overview();
         assert_eq!(overview.recent_outbox.len(), DEV_OVERVIEW_WINDOW);

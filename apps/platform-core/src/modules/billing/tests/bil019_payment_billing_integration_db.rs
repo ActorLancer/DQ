@@ -300,7 +300,7 @@ mod tests {
                    (SELECT COUNT(*)::bigint FROM billing.billing_event WHERE order_id = $1::text::uuid AND event_type = 'one_time_charge'),
                    (SELECT COUNT(*)::bigint FROM billing.billing_event WHERE order_id = $2::text::uuid),
                    (SELECT COUNT(*)::bigint FROM billing.billing_event WHERE order_id = $3::text::uuid),
-                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $1 AND target_topic = 'billing.events'),
+                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $1 AND target_topic = 'dtp.outbox.domain-events'),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $4 AND action_name = 'payment.webhook.processed'),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $5 AND action_name = 'payment.webhook.processed'),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $6 AND action_name = 'payment.webhook.processed')",

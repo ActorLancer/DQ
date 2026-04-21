@@ -7,7 +7,9 @@
 - 幂等键：`{ns}:idempotency:{scope}:{idempotency_key}`
 - 会话缓存：`{ns}:session:{user_id}:{session_id}`
 - 权限缓存：`{ns}:perm:{tenant_id}:{actor_id}`
+- 搜索候选缓存：`{ns}:search:catalog:{entity_scope}:{query_hash}`
 - 推荐缓存：`{ns}:recommend:{tenant_id}:{actor_id}:{scene}`
+- 推荐已看集合：`{ns}:recommend:seen:{subject_ref}:{placement_code}`
 - 限流计数：`{ns}:ratelimit:{api}:{actor_id}:{window}`
 - 下载票据缓存：`{ns}:download-ticket:{ticket_id}`
 
@@ -23,6 +25,8 @@
 - 幂等键：15 分钟
 - 会话缓存：与会话 TTL 对齐（建议 30 分钟）
 - 权限缓存：5 分钟
+- 搜索候选缓存：5 分钟
 - 推荐缓存：10 分钟
+- 推荐已看集合：24 小时
 - 限流计数：按窗口期（1~5 分钟）
 - 下载票据：5 分钟（一次性使用）

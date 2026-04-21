@@ -64,7 +64,27 @@
 - `idempotency_key`
 - `payload`
 
-### 2.4 事件版本原则
+正式写入 `ops.outbox_event` 的 canonical envelope 在 `V1` 还应补齐以下顶层字段：
+
+- `event_schema_version`
+- `authority_scope`
+- `source_of_truth`
+- `proof_commit_policy`
+
+补充约束：
+
+- `event_name` 不再作为正式 outbox payload 顶层字段使用
+- 统一命名采用稳定点分层级风格，优先使用 `domain.object.action`，如 `trade.order.created`、`billing.event.recorded`、`search.product.changed`
+- 已冻结事件名以各域接口协议、`ops.event_route_policy` 和正式测试断言为准，不允许模块自行再发明别名
+
+### 2.4 路由权威源原则
+
+- `ops.event_route_policy` 是 `V1` 运行时唯一正式 route authority
+- `target_bus`、`target_topic`、`partition_key`、`ordering_key` 必须由应用层 canonical outbox writer 结合 `ops.event_route_policy` 解析
+- 不允许继续依赖 `schema.table -> target_topic` 自动派生作为正式主链路
+- `common.tg_write_outbox()` 已退役，只允许作为历史迁移说明存在，不得继续作为正式事件生产入口
+
+### 2.5 事件版本原则
 
 - 所有事件类型必须带 `event_version`
 - 新增字段允许向后兼容
@@ -84,7 +104,7 @@
 - `product.submitted`
 - `sku.created`
 - `sku.updated`
-- `order.created`
+- `trade.order.created`
 - `order.state_changed`
 - `contract.confirmed`
 - `authorization.granted`
@@ -93,7 +113,7 @@
 - `delivery.completed`
 - `acceptance.passed`
 - `acceptance.rejected`
-- `billing.event_recorded`
+- `billing.event.recorded`
 - `settlement.created`
 - `settlement.completed`
 - `dispute.created`
@@ -165,24 +185,28 @@
 
 ## 5.1 主 Topic
 
-| Topic | 生产者 | 消费者 | 用途 |
-|---|---|---|---|
-| `dtp.outbox.domain-events` | `platform-core.consistency` | publisher / search-indexer / recommendation / notification / fabric-adapter | 主领域事件分发 |
-| `dtp.search.sync` | `platform-core.search` 或 outbox publisher | `search-indexer` | 搜索投影同步 |
-| `dtp.recommend.behavior` | `platform-core.recommend` | 推荐聚合器/离线任务 | 推荐行为回流 |
-| `dtp.notification.dispatch` | `platform-core.integration` | `notification-worker` | 通知分发 |
-| `dtp.fabric.requests` | `platform-core.integration` | `fabric-adapter` | Fabric 提交请求 |
-| `dtp.fabric.callbacks` | `fabric-event-listener` | `platform-core.consistency` | Fabric 提交与事件回执 |
-| `dtp.payment.callbacks` | `mock-payment-provider` 或支付适配器 | `platform-core.billing` | 支付回调事实 |
-| `dtp.audit.anchor` | `platform-core.audit` | `fabric-adapter` 或锚定处理器 | 审计锚定请求 |
-| `dtp.consistency.reconcile` | `platform-core.consistency` | 一致性修复 worker | 一致性修复请求 |
-| `dtp.dead-letter` | 各 consumer | dead-letter 处理器 / 运维联查 | 死信隔离 |
+| Topic | 生产者 | 消费者 | 本地默认消费组 | 用途 |
+|---|---|---|---|---|
+| `dtp.outbox.domain-events` | `outbox-publisher` | `notification-worker` / `fabric-adapter` | `cg-notification-worker` / `cg-fabric-adapter` | 主领域事件分发 |
+| `dtp.search.sync` | `outbox-publisher` | `search-indexer` | `cg-search-indexer` | 搜索投影同步 |
+| `dtp.recommend.behavior` | `platform-core.recommendation` | `recommendation-aggregator` | `cg-recommendation-aggregator` | 推荐行为回流 |
+| `dtp.notification.dispatch` | `platform-core.integration` | `notification-worker` | `cg-notification-worker` | 通知分发 |
+| `dtp.fabric.requests` | `platform-core.integration` | `fabric-adapter` | `cg-fabric-adapter` | Fabric 提交请求 |
+| `dtp.fabric.callbacks` | `fabric-event-listener` | `platform-core.consistency` | `cg-platform-core-consistency` | Fabric 提交与事件回执 |
+| `dtp.payment.callbacks` | `mock-payment-provider` | `platform-core.billing` | `cg-payment-callback-handler` | 支付回调事实 |
+| `dtp.audit.anchor` | `platform-core.audit` | `fabric-adapter` | `cg-fabric-adapter` | 审计锚定请求 |
+| `dtp.consistency.reconcile` | `platform-core.consistency` | `consistency-reconcile-worker` | `cg-consistency-reconcile` | 一致性修复请求 |
+| `dtp.dead-letter` | 各 consumer | `dead-letter-replayer` | `cg-dead-letter-replayer` | 死信隔离 |
 
 ## 5.2 补充说明
 
 - `dtp.outbox.domain-events` 是主分发流，不是最终消费者业务落库的唯一依据。
+- `dtp.outbox.domain-events` 的正式写入来源是应用层 canonical outbox writer，不再允许数据库触发器自动派生 topic 后直接落主链路。
+- `ops.event_route_policy` 是 `dtp.outbox.domain-events` 及其下游分发规则的唯一运行时 authority；topic / key / ordering 变更必须先更新该表，再更新实现与 runbook。
+- `infra/kafka/topics.v1.json` 是 producer / consumer / consumer group 的机器可读 canonical source；冻结文档、compose、脚本与迁移 seed 必须与其同步。
 - 搜索和推荐可以使用自己的下游 topic，但不得绕过主事件版本规范。
 - `dtp.dead-letter` 是统一死信流，具体失败原因放在 payload 内字段，不再额外为每域创建独立 DLQ 主题。
+- 若后续新增下游订阅者，必须先补齐唯一进程命名、`topics.v1.json`、runbook 与 `ops.event_route_policy`，再开始实现。
 
 ## 6. 事件 Key 规则
 
@@ -204,7 +228,7 @@ Kafka key 默认使用：
 | `contract.*` | `contract_id` |
 | `authorization.*` | `authorization_id` |
 | `delivery.*` | `delivery_id` |
-| `billing.event_recorded` | `billing_event_id` |
+| `billing.event.recorded` | `billing_event_id` |
 | `settlement.*` | `settlement_id` |
 | `dispute.*` | `dispute_id` |
 | `payment.*` | `payment_intent_id` 或 `provider_event_id` |
@@ -221,26 +245,39 @@ Kafka key 默认使用：
 - `aggregate_type`
 - `aggregate_id`
 - `event_type`
-- `event_version`
-- `target_topic`
-- `key`
-- `payload_json`
-- `publish_status`
+- `payload`
+- `status`
 - `request_id`
 - `trace_id`
 - `idempotency_key`
+- `event_schema_version`
+- `authority_scope`
+- `source_of_truth`
+- `proof_commit_policy`
+- `target_bus`
+- `target_topic`
+- `partition_key`
+- `ordering_key`
+- `payload_hash`
 - `retry_count`
 - `next_retry_at`
 - `created_at`
 
-## 7.2 publisher 规则
+## 7.2 路由与写入 authority
+
+- 所有正式 outbox 事件必须由应用层统一 writer 写入，禁止模块各自拼装私有 envelope 后直接落库
+- writer 必须先查询 `ops.event_route_policy`，再决定 `target_bus`、`target_topic`、`partition_key`、`ordering_key`
+- 若 `ops.event_route_policy` 缺失对应 `(aggregate_type, event_type)` 激活路由，写入必须失败，不允许回退到猜测 topic
+- 不允许同一对象同时依赖触发器自动写 outbox 和应用层手工写 outbox 两条正式主链路
+
+## 7.3 publisher 规则
 
 - publisher 必须批量拉取
 - 必须支持 `SKIP LOCKED`
 - 必须限制最大重试次数
 - 超限后转入 `dead_letter_event`
 
-## 7.3 消费幂等规则
+## 7.4 消费幂等规则
 
 消费者必须至少使用以下一个维度做幂等：
 
@@ -370,11 +407,11 @@ Kafka key 默认使用：
 ```json
 {
   "event_id": "evt_01J...",
-  "event_type": "order.created",
+  "event_type": "trade.order.created",
   "event_version": 1,
   "occurred_at": "2026-04-13T10:00:00Z",
   "producer_service": "platform-core.order",
-  "aggregate_type": "Order",
+  "aggregate_type": "trade.order",
   "aggregate_id": "ord_01J...",
   "request_id": "req_01J...",
   "trace_id": "tr_01J...",

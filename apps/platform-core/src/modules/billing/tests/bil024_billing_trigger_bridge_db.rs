@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::super::api::router as billing_router;
+    use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
     use axum::Router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -419,88 +420,70 @@ mod tests {
             .expect("insert order")
             .get(0);
 
+        let bridge_request_id = format!("req-bil024-bridge-{sku_type}-{suffix}");
+        let bridge_idempotency_key =
+            format!("billing-trigger:{order_id}:{trigger_stage}:{trigger_action}");
+        let bridge_payload = json!({
+            "event_schema_version": "v1",
+            "authority_scope": "business",
+            "source_of_truth": "database",
+            "proof_commit_policy": "async_evidence",
+            "order_id": order_id,
+            "sku_type": sku_type,
+            "buyer_org_id": buyer_org_id,
+            "seller_org_id": seller_org_id,
+            "current_state": order_status,
+            "payment_status": "paid",
+            "delivery_status": "delivered",
+            "acceptance_status": acceptance_status,
+            "settlement_status": "pending_settlement",
+            "dispute_status": "none",
+            "amount": "66.00000000",
+            "currency_code": "SGD",
+            "pricing_mode": pricing_mode,
+            "billing_mode": billing_mode,
+            "refund_mode": "manual_refund",
+            "trigger_stage": trigger_stage,
+            "trigger_ref_type": "delivery_record",
+            "trigger_ref_id": order_id,
+            "trigger_action": trigger_action,
+            "delivery_branch": delivery_branch,
+            "billing_trigger_matrix": {
+                "billing_trigger": match sku_type {
+                    "FILE_SUB" | "SBX_STD" | "API_SUB" => "recurring_charge",
+                    "API_PPU" => "usage_charge",
+                    _ => "one_time_charge"
+                }
+            }
+        });
+        write_canonical_outbox_event(
+            client,
+            CanonicalOutboxWrite {
+                aggregate_type: "trade.order_main",
+                aggregate_id: &order_id,
+                event_type: "billing.trigger.bridge",
+                producer_service: "platform-core.delivery",
+                request_id: Some(bridge_request_id.as_str()),
+                trace_id: None,
+                idempotency_key: Some(bridge_idempotency_key.as_str()),
+                occurred_at: None,
+                business_payload: &bridge_payload,
+                deduplicate_by_idempotency_key: true,
+            },
+        )
+        .await
+        .expect("insert bridge outbox");
         let outbox_event_id: String = client
             .query_one(
-                "INSERT INTO ops.outbox_event (
-                   aggregate_type,
-                   aggregate_id,
-                   event_type,
-                   payload,
-                   status,
-                   request_id,
-                   trace_id,
-                   idempotency_key,
-                   event_schema_version,
-                   authority_scope,
-                   source_of_truth,
-                   proof_commit_policy,
-                   target_bus,
-                   target_topic,
-                   partition_key,
-                   ordering_key,
-                   payload_hash
-                 ) VALUES (
-                   'trade.order_main',
-                   $1::text::uuid,
-                   'billing.trigger.bridge',
-                   $2::jsonb,
-                   'pending',
-                   $3,
-                   NULL,
-                   $4,
-                   'v1',
-                   'business',
-                   'database',
-                   'async_evidence',
-                   'kafka',
-                   'billing.events',
-                   $1,
-                   $1,
-                   encode(digest(($2::jsonb)::text, 'sha256'), 'hex')
-                 )
-                 RETURNING outbox_event_id::text",
-                &[
-                    &order_id,
-                    &json!({
-                        "event_name": "billing.trigger.bridge",
-                        "event_schema_version": "v1",
-                        "authority_scope": "business",
-                        "source_of_truth": "database",
-                        "proof_commit_policy": "async_evidence",
-                        "order_id": order_id,
-                        "sku_type": sku_type,
-                        "buyer_org_id": buyer_org_id,
-                        "seller_org_id": seller_org_id,
-                        "current_state": order_status,
-                        "payment_status": "paid",
-                        "delivery_status": "delivered",
-                        "acceptance_status": acceptance_status,
-                        "settlement_status": "pending_settlement",
-                        "dispute_status": "none",
-                        "amount": "66.00000000",
-                        "currency_code": "SGD",
-                        "pricing_mode": pricing_mode,
-                        "billing_mode": billing_mode,
-                        "refund_mode": "manual_refund",
-                        "trigger_stage": trigger_stage,
-                        "trigger_ref_type": "delivery_record",
-                        "trigger_ref_id": order_id,
-                        "trigger_action": trigger_action,
-                        "delivery_branch": delivery_branch,
-                        "billing_trigger_matrix": {
-                            "billing_trigger": match sku_type {
-                                "FILE_SUB" | "SBX_STD" | "API_SUB" => "recurring_charge",
-                                "API_PPU" => "usage_charge",
-                                _ => "one_time_charge"
-                            }
-                        }
-                    }),
-                    &format!("req-bil024-bridge-{sku_type}-{suffix}"),
-                    &format!("billing-trigger:{order_id}:{trigger_stage}:{trigger_action}"),
-                ],
+                "SELECT outbox_event_id::text
+                 FROM ops.outbox_event
+                 WHERE idempotency_key = $1
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
+                &[&bridge_idempotency_key],
             )
             .await
-            .expect("insert bridge outbox")
+            .expect("query bridge outbox")
             .get(0);
 
         SeedOrder {

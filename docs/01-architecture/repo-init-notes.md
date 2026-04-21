@@ -7,7 +7,7 @@
 ## 2. 已复用资产
 
 - `apps/`, `packages/`, `infra/`, `scripts/`, `docs/` 既有目录骨架
-- `部署脚本/docker-compose.local.yml` 与本地校验脚本
+- `infra/docker/docker-compose.local.yml` 与本地校验脚本
 - `docs/开发任务/` 与 `docs/开发准备/` 冻结文档集
 
 ## 3. 本批新增/校准内容

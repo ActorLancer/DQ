@@ -29,7 +29,7 @@ info:
     file/api/share/template/sandbox/report branches; DLV-024 adds order-scoped
     execution attestation read and destruction-attestation recording APIs for
     sensitive delivery evidence; DLV-030 adds `billing.trigger.bridge` outbox
-    events to `billing.events` for delivery commit, template execution success,
+    events to `dtp.outbox.domain-events` for delivery commit, template execution success,
     and acceptance-pass milestones; DLV-031 freezes the SKU acceptance trigger
     matrix so FILE/RPT stay manual, API waits for enablement plus first valid
     use, QRY_LITE accepts on result availability, and SHARE_RO/SBX_STD accept

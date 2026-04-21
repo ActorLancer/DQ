@@ -314,7 +314,7 @@ mod tests {
                  WHERE event_type = 'billing.trigger.bridge'
                    AND request_id IN ($1, $2)
                    AND payload ->> 'delivery_branch' = 'api'
-                   AND target_topic = 'billing.events'",
+                   AND target_topic = 'dtp.outbox.domain-events'",
                 &[&sub_req_id, &ppu_req_id],
             )
             .await

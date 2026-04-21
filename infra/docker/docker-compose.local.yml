@@ -72,8 +72,7 @@ services:
       start_period: 5s
 
   # ENV-046 Kafka service block
-  # Topic initialization prerequisite:
-  # run ./infra/kafka/init-topics.sh after kafka is healthy.
+  # Canonical topic initialization is handled by kafka-topics-init.
   kafka:
     <<: *service-defaults
     profiles: ["core", "demo"]
@@ -95,13 +94,31 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     healthcheck:
       test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/9092'"]
       interval: 15s
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  kafka-topics-init:
+    <<: *service-defaults
+    profiles: ["topic-init"]
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    working_dir: /workspace
+    environment:
+      KAFKA_EXEC_MODE: local
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_WAIT_FOR_READY: "true"
+      TOPIC_CATALOG: /workspace/infra/kafka/topics.v1.json
+    command: ["bash", "-lc", "./infra/kafka/init-topics.sh"]
+    volumes:
+      - ../..:/workspace:ro
 
   # ENV-047 MinIO service block
   # Bucket initialization prerequisite:
@@ -140,9 +157,11 @@ services:
       DISABLE_INSTALL_DEMO_CONFIG: "true"
       plugins.security.disabled: "true"
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}
-      INDEX_ALIAS_CATALOG_PRODUCTS: ${INDEX_ALIAS_CATALOG_PRODUCTS:-catalog_products_v1}
-      INDEX_ALIAS_SELLER_PROFILES: ${INDEX_ALIAS_SELLER_PROFILES:-seller_profiles_v1}
-      INDEX_ALIAS_SEARCH_SYNC_JOBS: ${INDEX_ALIAS_SEARCH_SYNC_JOBS:-search_sync_jobs_v1}
+      INDEX_ALIAS_PRODUCT_SEARCH_READ: ${INDEX_ALIAS_PRODUCT_SEARCH_READ:-product_search_read}
+      INDEX_ALIAS_PRODUCT_SEARCH_WRITE: ${INDEX_ALIAS_PRODUCT_SEARCH_WRITE:-product_search_write}
+      INDEX_ALIAS_SELLER_SEARCH_READ: ${INDEX_ALIAS_SELLER_SEARCH_READ:-seller_search_read}
+      INDEX_ALIAS_SELLER_SEARCH_WRITE: ${INDEX_ALIAS_SELLER_SEARCH_WRITE:-seller_search_write}
+      INDEX_NAME_SEARCH_SYNC_JOBS: ${INDEX_NAME_SEARCH_SYNC_JOBS:-search_sync_jobs_v1}
     ulimits:
       memlock:
         soft: -1

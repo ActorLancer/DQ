@@ -223,10 +223,7 @@ mod tests {
 
         let outbox_row = client
             .query_one(
-                "SELECT target_topic,
-                        payload ->> 'delivery_branch',
-                        payload ->> 'order_id',
-                        payload ->> 'receipt_hash'
+                "SELECT target_topic, payload
                  FROM ops.outbox_event
                  WHERE request_id = $1
                    AND event_type = 'delivery.committed'
@@ -240,24 +237,31 @@ mod tests {
             outbox_row.get::<_, Option<String>>(0).as_deref(),
             Some("dtp.outbox.domain-events")
         );
+        let outbox_payload: Value = outbox_row.get(1);
         assert_eq!(
-            outbox_row.get::<_, Option<String>>(1).as_deref(),
-            Some("file")
+            outbox_payload["event_type"].as_str(),
+            Some("delivery.committed")
         );
         assert_eq!(
-            outbox_row.get::<_, Option<String>>(2).as_deref(),
+            outbox_payload["producer_service"].as_str(),
+            Some("platform-core.delivery")
+        );
+        assert_eq!(outbox_payload["delivery_branch"].as_str(), Some("file"));
+        assert_eq!(
+            outbox_payload["order_id"].as_str(),
             Some(seed.order_id.as_str())
         );
         assert_eq!(
-            outbox_row.get::<_, Option<String>>(3).as_deref(),
+            outbox_payload["receipt_hash"].as_str(),
             Some(format!("receipt-{suffix}").as_str())
+        );
+        assert_eq!(
+            outbox_payload["payload"]["delivery_branch"].as_str(),
+            Some("file")
         );
         let billing_bridge_row = client
             .query_one(
-                "SELECT target_topic,
-                        payload ->> 'delivery_branch',
-                        payload ->> 'trigger_stage',
-                        payload -> 'billing_trigger_matrix' ->> 'billing_trigger'
+                "SELECT target_topic, payload
                  FROM ops.outbox_event
                  WHERE request_id = $1
                    AND event_type = 'billing.trigger.bridge'
@@ -269,19 +273,32 @@ mod tests {
             .expect("query billing bridge row");
         assert_eq!(
             billing_bridge_row.get::<_, Option<String>>(0).as_deref(),
-            Some("billing.events")
+            Some("dtp.outbox.domain-events")
+        );
+        let billing_bridge_payload: Value = billing_bridge_row.get(1);
+        assert_eq!(
+            billing_bridge_payload["event_type"].as_str(),
+            Some("billing.trigger.bridge")
         );
         assert_eq!(
-            billing_bridge_row.get::<_, Option<String>>(1).as_deref(),
+            billing_bridge_payload["producer_service"].as_str(),
+            Some("platform-core.delivery")
+        );
+        assert_eq!(
+            billing_bridge_payload["delivery_branch"].as_str(),
             Some("file")
         );
         assert_eq!(
-            billing_bridge_row.get::<_, Option<String>>(2).as_deref(),
+            billing_bridge_payload["trigger_stage"].as_str(),
             Some("delivery_committed")
         );
         assert_eq!(
-            billing_bridge_row.get::<_, Option<String>>(3).as_deref(),
+            billing_bridge_payload["billing_trigger_matrix"]["billing_trigger"].as_str(),
             Some("bill_once_after_acceptance")
+        );
+        assert_eq!(
+            billing_bridge_payload["payload"]["delivery_branch"].as_str(),
+            Some("file")
         );
 
         cleanup_seed_graph(&client, &seed).await;

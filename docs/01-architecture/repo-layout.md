@@ -31,7 +31,6 @@ repo-root/
     fabric-event-listener/
     fabric-ca-admin/
     mock-payment-provider/
-    notification-service/
   workers/
     search-indexer/
     outbox-publisher/

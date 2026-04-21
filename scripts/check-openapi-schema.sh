@@ -45,4 +45,35 @@ for path in "/health/live" "/health/ready" "/health/deps" "/internal/runtime" "/
   }
 done
 
+search_file="$OPENAPI_DIR/search.yaml"
+for path in \
+  "/api/v1/catalog/search" \
+  "/api/v1/ops/search/sync" \
+  "/api/v1/ops/search/reindex" \
+  "/api/v1/ops/search/aliases/switch" \
+  "/api/v1/ops/search/cache/invalidate" \
+  "/api/v1/ops/search/ranking-profiles" \
+  "/api/v1/ops/search/ranking-profiles/{id}"; do
+  grep -q "$path" "$search_file" || {
+    echo "[error] $search_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+recommendation_file="$OPENAPI_DIR/recommendation.yaml"
+for path in \
+  "/api/v1/recommendations" \
+  "/api/v1/recommendations/track/exposure" \
+  "/api/v1/recommendations/track/click" \
+  "/api/v1/ops/recommendation/placements" \
+  "/api/v1/ops/recommendation/placements/{placement_code}" \
+  "/api/v1/ops/recommendation/ranking-profiles" \
+  "/api/v1/ops/recommendation/ranking-profiles/{id}" \
+  "/api/v1/ops/recommendation/rebuild"; do
+  grep -q "$path" "$recommendation_file" || {
+    echo "[error] $recommendation_file missing path: $path" >&2
+    exit 1
+  }
+done
+
 echo "[ok] openapi schema skeleton check passed"

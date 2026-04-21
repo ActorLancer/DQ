@@ -372,10 +372,10 @@
 - 当前批次目标：完成 MinIO bucket 与初始化脚本收口，完成 OpenSearch 模板/索引/别名初始化脚本，确保对象存储与搜索索引可一键初始化并可验证。
 - 前置依赖核对结果：四项任务共同依赖 `BOOT-001/002/003/004`，均已完成且你已确认审批通过。
 - 预计涉及文件：`infra/minio/*`、`infra/opensearch/*`、`scripts/*`、`docs/04-runbooks/*`、`fixtures/local/*`、`开发任务/V1-Core-实施进度日志.md`
-- 已实现功能：新增 `infra/minio/init-minio.sh`，可自动创建 6 个 bucket（`raw-data`、`preview-artifacts`、`delivery-objects`、`report-results`、`evidence-packages`、`model-artifacts`），设置预览 bucket 匿名下载策略、30 天生命周期规则，并写入测试对象；新增 `infra/opensearch/index-template-catalog.json` 与 `infra/opensearch/init-opensearch.sh`，完成索引模板、3 个别名索引（`catalog_products_v1`、`seller_profiles_v1`、`search_sync_jobs_v1`）及 demo 文档初始化；新增 runbook `minio-local.md`、`opensearch-local.md`，更新 `local-startup.md` 初始化顺序；补充 `fixtures/local/minio-buckets-manifest.json` 与 `fixtures/local/opensearch-indices-manifest.json`。
+- 已实现功能：新增 `infra/minio/init-minio.sh`，可自动创建 6 个 bucket（`raw-data`、`preview-artifacts`、`delivery-objects`、`report-results`、`evidence-packages`、`model-artifacts`），设置预览 bucket 匿名下载策略、30 天生命周期规则，并写入测试对象；新增 `infra/opensearch/index-template-catalog.json` 与 `infra/opensearch/init-opensearch.sh`，完成索引模板、搜索初始化索引/别名及 demo 文档初始化。历史实现曾使用 `catalog_products_v1`、`seller_profiles_v1`、`search_sync_jobs_v1`；当前冻结口径已在 `A08` 收口为 `product_search_read`、`product_search_write`、`seller_search_read`、`seller_search_write` 与 `search_sync_jobs_v1`。新增 runbook `minio-local.md`、`opensearch-local.md`，更新 `local-startup.md` 初始化顺序；补充 `fixtures/local/minio-buckets-manifest.json` 与 `fixtures/local/opensearch-indices-manifest.json`。
 - 涉及文件：`infra/minio/init-minio.sh`、`infra/opensearch/index-template-catalog.json`、`infra/opensearch/init-opensearch.sh`、`docs/04-runbooks/minio-local.md`、`docs/04-runbooks/opensearch-local.md`、`docs/04-runbooks/local-startup.md`、`fixtures/local/minio-buckets-manifest.json`、`fixtures/local/opensearch-indices-manifest.json`、`开发任务/V1-Core-TODO与预留清单.md`、`开发任务/V1-Core-实施进度日志.md`
 - 验证步骤：1. `bash -n infra/minio/init-minio.sh infra/opensearch/init-opensearch.sh`；2. `jq -e . infra/opensearch/index-template-catalog.json` 与 manifest JSON 语法检查；3. 实跑 `./infra/minio/init-minio.sh` 并验证 bucket/对象/策略/生命周期；4. 实跑 `./infra/opensearch/init-opensearch.sh` 并验证 alias 与文档计数；5. `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`。
-- 验证结果：通过。MinIO 初始化脚本执行成功并验证 bucket/策略/生命周期/测试对象；OpenSearch 初始化脚本执行成功并验证 3 个 alias 与各自 `_count=1`；全栈 core healthcheck 通过。
+- 验证结果：通过。MinIO 初始化脚本执行成功并验证 bucket/策略/生命周期/测试对象；OpenSearch 初始化脚本执行成功并验证当前冻结口径下的 read/write alias 与 sync jobs 索引可用；全栈 core healthcheck 通过。
 - 覆盖的冻结文档条目：`开发准备/本地开发环境与中间件部署清单.md`、`开发准备/技术选型正式版.md`、`开发准备/事件模型与Topic清单正式版.md`、`原始PRD/日志、可观测性与告警设计.md`
 - 覆盖的任务清单条目：`ENV-014`, `ENV-015`, `ENV-016`, `ENV-017`
 - 未覆盖项：无
@@ -950,7 +950,7 @@
 - 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/技术选型正式版.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`
 - 已实现功能：新增 `docs/00-context/service-to-module-map.md`，冻结设计服务名到 `platform-core` 模块/外围独立进程映射，并标注同步边界、异步边界、所有权；新增 `docs/00-context/local-deployment-boundary.md`，冻结本地部署边界（`docker-compose.local.yml` 只负责中间件与基础依赖，业务应用默认本机进程运行，应用容器联调使用独立 `docker-compose.apps.local.yml`）。
 - 涉及文件：`docs/00-context/service-to-module-map.md`、`docs/00-context/local-deployment-boundary.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`
-- 验证步骤：1. `test -f docs/00-context/service-to-module-map.md`；2. `test -f docs/00-context/local-deployment-boundary.md`；3. `rg -n \"iam-service|trade-service|notification-service|docker-compose.local.yml|docker-compose.apps.local.yml\" docs/00-context/service-to-module-map.md docs/00-context/local-deployment-boundary.md`；4. `cargo build`；5. `cargo test`。
+- 验证步骤：1. `test -f docs/00-context/service-to-module-map.md`；2. `test -f docs/00-context/local-deployment-boundary.md`；3. `rg -n \"iam-service|trade-service|notification-worker|docker-compose.local.yml|docker-compose.apps.local.yml\" docs/00-context/service-to-module-map.md docs/00-context/local-deployment-boundary.md`；4. `cargo build`；5. `cargo test`。
 - 验证结果：通过。两份缺失文档已落盘且关键约束条目可检索；`cargo build` 与 `cargo test` 通过。
 - 覆盖的冻结文档条目：`全集成文档/数据交易平台-全集成基线-V1.md`、`开发准备/技术选型正式版.md`、`data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`
 - 覆盖的任务清单条目：`CTX-019`, `CTX-020`
@@ -1092,7 +1092,7 @@
 - 前置依赖核对结果：`ENV-043` 依赖 `ENV-042; CORE-032`，对应任务均已完成且审批通过。
 - 涉及冻结文档：`docs/开发任务/v1-core-开发任务清单.csv`（单一任务源）、`docs/开发任务/Agent-开发与半人工审核流程.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/服务清单与服务边界正式版.md`
 - 已实现功能：
-  - 新增 `infra/docker/docker-compose.apps.local.example.yml`，为 `platform-core`、`fabric-adapter`、`notification-service`、`outbox-publisher`、`search-indexer` 提供容器化联调占位编排（`apps` profile，依赖 core 中间件健康状态）。
+  - 新增 `infra/docker/docker-compose.apps.local.example.yml`，为 `platform-core`、`fabric-adapter`、`notification-worker`、`outbox-publisher`、`search-indexer` 提供容器化联调占位编排（`apps` profile，依赖 core 中间件健康状态）。
   - 更新 runbook `docs/04-runbooks/local-startup.md`，新增“应用层占位编排”可选校验与叠加启动步骤，保持默认 V1 流程仍以本机进程启动为主。
   - 关闭阻塞项 `TODO-ENV-043-001`，解除 `ENV-043` 阻塞链。
 - 涉及文件：`infra/docker/docker-compose.apps.local.example.yml`、`docs/04-runbooks/local-startup.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/V1-Core-实施进度日志.md`

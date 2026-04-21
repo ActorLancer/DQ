@@ -1,6 +1,7 @@
 use super::deliverability_gate::{
     PreparedDeliveryOptions, ensure_order_deliverable_and_prepare_delivery_with_options,
 };
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
 use axum::http::StatusCode;
 use db::GenericClient;
@@ -188,7 +189,6 @@ async fn write_delivery_task_outbox_event(
     responsible_scope: &str,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let payload = json!({
-        "event_name": "delivery.task.auto_created",
         "event_schema_version": "v1",
         "authority_scope": "business",
         "source_of_truth": "database",
@@ -203,48 +203,23 @@ async fn write_delivery_task_outbox_event(
         "responsible_scope": responsible_scope,
         "initial_status": "prepared"
     });
-    client
-        .query_one(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type,
-               aggregate_id,
-               event_type,
-               payload,
-               status,
-               request_id,
-               trace_id,
-               event_schema_version,
-               authority_scope,
-               source_of_truth,
-               proof_commit_policy,
-               target_bus,
-               target_topic,
-               partition_key,
-               ordering_key,
-               payload_hash
-             ) VALUES (
-               'delivery.delivery_record',
-               $1::text::uuid,
-               'delivery.task.auto_created',
-               $2::jsonb,
-               'pending',
-               $3,
-               $4,
-               COALESCE($2::jsonb ->> 'event_schema_version', 'v1'),
-               COALESCE($2::jsonb ->> 'authority_scope', 'business'),
-               COALESCE($2::jsonb ->> 'source_of_truth', 'database'),
-               COALESCE($2::jsonb ->> 'proof_commit_policy', 'async_evidence'),
-               'kafka',
-               'dtp.outbox.domain-events',
-               $5,
-               $5,
-               encode(digest(($2::jsonb)::text, 'sha256'), 'hex')
-             )
-             RETURNING outbox_event_id::text",
-            &[&delivery_id, &payload, &request_id, &trace_id, &order_id],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: "delivery.delivery_record",
+            aggregate_id: delivery_id,
+            event_type: "delivery.task.auto_created",
+            producer_service: "platform-core.order",
+            request_id,
+            trace_id,
+            idempotency_key: None,
+            occurred_at: None,
+            business_payload: &payload,
+            deduplicate_by_idempotency_key: false,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

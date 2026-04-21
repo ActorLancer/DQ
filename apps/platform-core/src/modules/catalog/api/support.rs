@@ -6,6 +6,7 @@ use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
 use crate::AppState;
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{CatalogPermission, is_allowed};
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 
 pub(in crate::modules::catalog::api) async fn validate_template_compatibility(
     client: &impl GenericClient,
@@ -227,35 +228,28 @@ pub(in crate::modules::catalog::api) async fn write_outbox_event(
     aggregate_type: &str,
     aggregate_id: &str,
     event_type: &str,
-    target_topic: &str,
     payload: &serde_json::Value,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let request_id = header(headers, "x-request-id");
     let trace_id = header(headers, "x-trace-id");
     let idempotency_key = header(headers, "x-idempotency-key");
-    client
-        .query_one(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type, aggregate_id, event_type, payload,
-               request_id, trace_id, idempotency_key, target_topic, status
-             ) VALUES (
-               $1, $2::text::uuid, $3, $4::jsonb,
-               $5, $6, $7, $8, 'pending'
-             )
-             RETURNING outbox_event_id::text",
-            &[
-                &aggregate_type,
-                &aggregate_id,
-                &event_type,
-                payload,
-                &request_id,
-                &trace_id,
-                &idempotency_key,
-                &target_topic,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            producer_service: "platform-core.catalog",
+            request_id: request_id.as_deref(),
+            trace_id: trace_id.as_deref(),
+            idempotency_key: idempotency_key.as_deref(),
+            occurred_at: None,
+            business_payload: payload,
+            deduplicate_by_idempotency_key: false,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

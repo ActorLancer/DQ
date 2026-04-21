@@ -360,7 +360,7 @@ mod tests {
             .expect("share billing bridge row");
         assert_eq!(
             billing_bridge_row.get::<_, Option<String>>(0).as_deref(),
-            Some("billing.events")
+            Some("dtp.outbox.domain-events")
         );
         assert_eq!(
             billing_bridge_row.get::<_, Option<String>>(1).as_deref(),

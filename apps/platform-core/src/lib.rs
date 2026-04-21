@@ -21,6 +21,7 @@ use provider_kit::{
 };
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use reqwest::StatusCode;
+use serde::Deserialize;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tracing::info;
@@ -78,6 +79,18 @@ pub async fn with_live_test_state(router: axum::Router<AppState>) -> axum::Route
 
 struct CoreModule {
     provider_backend: ProviderBackend,
+}
+
+#[derive(Deserialize)]
+struct KafkaTopicCatalog {
+    topics: Vec<KafkaTopicDefinition>,
+}
+
+#[derive(Deserialize)]
+struct KafkaTopicDefinition {
+    env_key: String,
+    name: String,
+    required_in_startup_check: bool,
 }
 
 #[async_trait::async_trait]
@@ -155,8 +168,7 @@ impl Module for CoreModule {
             payload_json: "{\"module\":\"platform-core\"}".to_string(),
             occurred_at_utc_ms: UtcTimestampMs::now().0,
         })?;
-        let outbox_topic =
-            std::env::var("TOPIC_OUTBOX_EVENTS").unwrap_or_else(|_| "outbox.events".to_string());
+        let outbox_topic = resolve_kafka_topic_by_env_key("TOPIC_OUTBOX_EVENTS")?;
         record_outbox_event(new_external_readable_id("evt"), outbox_topic, "queued");
         if std::env::var("FF_CHAIN_ANCHORING")
             .unwrap_or_else(|_| "false".to_string())
@@ -226,6 +238,25 @@ fn read_required_with_default(env_key: &str, default_value: &str) -> AppResult<S
     Ok(value)
 }
 
+fn load_kafka_topic_catalog() -> AppResult<KafkaTopicCatalog> {
+    serde_json::from_str(include_str!("../../../infra/kafka/topics.v1.json"))
+        .map_err(|e| AppError::Startup(format!("kafka topic catalog parse failed: {e}")))
+}
+
+fn resolve_kafka_topic_by_env_key(env_key: &str) -> AppResult<String> {
+    let topic_catalog = load_kafka_topic_catalog()?;
+    let topic = topic_catalog
+        .topics
+        .iter()
+        .find(|topic| topic.env_key == env_key)
+        .ok_or_else(|| {
+            AppError::Startup(format!(
+                "kafka topic env key missing from catalog: {env_key}"
+            ))
+        })?;
+    read_required_with_default(&topic.env_key, &topic.name)
+}
+
 async fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
     if cfg.bind_port == 0 {
         return Err(AppError::Startup(
@@ -241,17 +272,15 @@ async fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
     let _check_id = new_external_readable_id("boot");
     let _checked_at = UtcTimestampMs::now();
 
-    let required_topics = [
-        ("TOPIC_OUTBOX_EVENTS", "outbox.events"),
-        ("TOPIC_SEARCH_SYNC", "search.sync"),
-        ("TOPIC_AUDIT_ANCHOR", "audit.anchor"),
-        ("TOPIC_BILLING_EVENTS", "billing.events"),
-        ("TOPIC_RECOMMENDATION_BEHAVIOR", "recommendation.behavior"),
-        ("TOPIC_DEAD_LETTER_EVENTS", "dead-letter.events"),
-    ];
+    let topic_catalog = load_kafka_topic_catalog()?;
+    let required_topics: Vec<_> = topic_catalog
+        .topics
+        .into_iter()
+        .filter(|topic| topic.required_in_startup_check)
+        .collect();
     let mut resolved_topics = Vec::with_capacity(required_topics.len());
-    for (key, default_value) in required_topics {
-        resolved_topics.push(read_required_with_default(key, default_value)?);
+    for topic in required_topics {
+        resolved_topics.push(read_required_with_default(&topic.env_key, &topic.name)?);
     }
 
     let required_buckets = [
@@ -268,18 +297,25 @@ async fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
     }
 
     let required_aliases = [
-        ("INDEX_ALIAS_CATALOG_PRODUCTS", "catalog_products_v1"),
-        ("INDEX_ALIAS_SELLER_PROFILES", "seller_profiles_v1"),
-        ("INDEX_ALIAS_SEARCH_SYNC_JOBS", "search_sync_jobs_v1"),
+        ("INDEX_ALIAS_PRODUCT_SEARCH_READ", "product_search_read"),
+        ("INDEX_ALIAS_PRODUCT_SEARCH_WRITE", "product_search_write"),
+        ("INDEX_ALIAS_SELLER_SEARCH_READ", "seller_search_read"),
+        ("INDEX_ALIAS_SELLER_SEARCH_WRITE", "seller_search_write"),
     ];
     let mut resolved_aliases = Vec::with_capacity(required_aliases.len());
     for (key, default_value) in required_aliases {
         resolved_aliases.push(read_required_with_default(key, default_value)?);
     }
+    let required_indices = [("INDEX_NAME_SEARCH_SYNC_JOBS", "search_sync_jobs_v1")];
+    let mut resolved_indices = Vec::with_capacity(required_indices.len());
+    for (key, default_value) in required_indices {
+        resolved_indices.push(read_required_with_default(key, default_value)?);
+    }
 
     verify_kafka_topics_exist(&resolved_topics)?;
     verify_minio_buckets_exist(&resolved_buckets).await?;
     verify_opensearch_aliases_exist(&resolved_aliases).await?;
+    verify_opensearch_indices_exist(&resolved_indices).await?;
 
     info!(
         check_id = %new_external_readable_id("boot"),
@@ -357,6 +393,27 @@ async fn verify_opensearch_aliases_exist(required_aliases: &[String]) -> AppResu
     Ok(())
 }
 
+async fn verify_opensearch_indices_exist(required_indices: &[String]) -> AppResult<()> {
+    let endpoint = std::env::var("OPENSEARCH_ENDPOINT")
+        .unwrap_or_else(|_| "http://localhost:9200".to_string());
+    let client = reqwest::Client::new();
+    for index_name in required_indices {
+        let url = format!("{}/{}", endpoint.trim_end_matches('/'), index_name);
+        let resp = client.get(&url).send().await.map_err(|e| {
+            AppError::Startup(format!(
+                "opensearch index probe failed for {index_name}: {e}"
+            ))
+        })?;
+        if resp.status() != StatusCode::OK {
+            return Err(AppError::Startup(format!(
+                "required opensearch index missing: {index_name} (status={})",
+                resp.status()
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub async fn run() -> AppResult<()> {
     tracing_subscriber::fmt()
         .with_env_filter("info")
@@ -397,6 +454,8 @@ pub async fn run() -> AppResult<()> {
         .merge(modules::delivery::api::router())
         .merge(modules::iam::api::router())
         .merge(modules::order::api::router())
+        .merge(modules::recommendation::api::router())
+        .merge(modules::search::api::router())
         .with_state(state.clone());
 
     let mut launcher = AppLauncher::new("platform-core");

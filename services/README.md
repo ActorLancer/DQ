@@ -6,9 +6,9 @@
 - `fabric-event-listener/`
 - `fabric-ca-admin/`
 - `mock-payment-provider/`
-- `notification-service/`
 
 说明：
 
-- 当前仓库同名能力在 `apps/` 中已有骨架，本目录用于后续收敛与迁移落位。
+- 通知进程当前正式落位为 `apps/notification-worker`，`services/` 目录不再承载通知进程。
+- 本目录用于其余外围服务的收敛与迁移落位。
 - 本批次不做业务代码迁移，只冻结命名与位置。

@@ -329,20 +329,35 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
         for request_id in [&req_create, &req_patch] {
             let row = client
                 .query_one(
-                    "SELECT count(*)::bigint
+                    "SELECT target_topic, payload
                      FROM ops.outbox_event
                      WHERE request_id = $1
                        AND event_type = 'search.product.changed'
                        AND aggregate_type = 'product'
-                       AND aggregate_id = $2::text::uuid",
+                       AND aggregate_id = $2::text::uuid
+                     ORDER BY created_at DESC, outbox_event_id DESC
+                     LIMIT 1",
                     &[request_id, &product_id],
                 )
                 .await
                 .map_err(|err| format!("query outbox event for {request_id}: {err}"))?;
-            let count: i64 = row.get(0);
-            if count < 1 {
+            let target_topic: Option<String> = row.get(0);
+            if target_topic.as_deref() != Some("dtp.search.sync") {
                 return Err(format!(
-                    "missing outbox search.product.changed for {request_id}"
+                    "unexpected search.product.changed target topic for {request_id}: {:?}",
+                    target_topic
+                ));
+            }
+            let payload: Value = row.get(1);
+            if payload["event_type"].as_str() != Some("search.product.changed") {
+                return Err(format!("canonical event_type missing for {request_id}"));
+            }
+            if payload["aggregate_id"].as_str() != Some(product_id.as_str()) {
+                return Err(format!("aggregate_id mismatch for {request_id}"));
+            }
+            if payload["payload"]["product_id"].as_str() != Some(product_id.as_str()) {
+                return Err(format!(
+                    "nested payload product_id mismatch for {request_id}"
                 ));
             }
         }

@@ -20,7 +20,7 @@
 | `audit-service` | `platform-core::audit + consistency` | 审计事件入库、一致性登记在 `platform-core` 同步完成 | 审计锚定与外部告警异步化 | `platform-core` |
 | `search-service` | `platform-core::search`（查询放行） + `apps/search-indexer`（索引构建） | 查询请求最终放行在 `platform-core` 校验 | 索引构建/刷新由 `search-indexer` 消费事件执行 | `platform-core` + `search-indexer` |
 | `recommendation-service` | `platform-core::recommendation`（策略与放行） + 外围 worker（离线计算） | 推荐结果最终放行在 `platform-core` | 行为流与离线计算异步处理 | `platform-core` + worker |
-| `notification-service` | `services/notification-service`（独立进程） | 无主交易同步写边界 | 消费 outbox/Kafka 发送站内信、邮件、Webhook | `notification-service` |
+| `notification-worker` | `apps/notification-worker`（独立进程） | 无主交易同步写边界 | 消费 outbox/Kafka 发送站内信、邮件、Webhook | `notification-worker` |
 | `fabric-adapter-service` | `apps/fabric-adapter`（独立进程） | 无主交易同步写边界 | 消费链上提交事件，回写链回执 | `fabric-adapter` |
 | `outbox-publisher-service` | `workers/outbox-publisher`（独立进程） | 无主交易同步写边界 | 轮询 outbox 并发布 Kafka | `outbox-publisher` |
 

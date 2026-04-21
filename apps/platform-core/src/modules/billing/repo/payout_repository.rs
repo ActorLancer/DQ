@@ -4,6 +4,7 @@ use crate::modules::billing::models::{
 };
 use crate::modules::billing::repo::billing_adjustment_repository::release_provisional_dispute_hold_in_tx;
 use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient};
@@ -938,7 +939,6 @@ async fn write_payout_outbox(
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let payload = json!({
-        "event_name": "billing.event.recorded",
         "event_schema_version": "v1",
         "authority_scope": "business",
         "source_of_truth": "database",
@@ -953,60 +953,23 @@ async fn write_payout_outbox(
         "split_instruction_id": split_instruction_id,
         "metadata": metadata,
     });
-    let request_id = request_id.map(str::to_string);
-    let trace_id = trace_id.map(str::to_string);
-    client
-        .query_one(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type,
-               aggregate_id,
-               event_type,
-               payload,
-               status,
-               request_id,
-               trace_id,
-               idempotency_key,
-               event_schema_version,
-               authority_scope,
-               source_of_truth,
-               proof_commit_policy,
-               target_bus,
-               target_topic,
-               partition_key,
-               ordering_key,
-               payload_hash
-             ) VALUES (
-               'payment.payout_instruction',
-               $1::text::uuid,
-               'billing.event.recorded',
-               $2::jsonb,
-               'pending',
-               $3,
-               $4,
-               $5,
-               'v1',
-               'business',
-               'database',
-               'pending_fabric_anchor',
-               'kafka',
-               'billing.events',
-               $6,
-               $6,
-               encode(digest(($2::jsonb)::text, 'sha256'), 'hex')
-             )
-             ON CONFLICT DO NOTHING
-             RETURNING outbox_event_id::text",
-            &[
-                &payout_instruction_id,
-                &payload,
-                &request_id,
-                &trace_id,
-                &idempotency_key,
-                &order_id,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: "payment.payout_instruction",
+            aggregate_id: payout_instruction_id,
+            event_type: "billing.event.recorded",
+            producer_service: "platform-core.billing",
+            request_id,
+            trace_id,
+            idempotency_key: Some(idempotency_key),
+            occurred_at: None,
+            business_payload: &payload,
+            deduplicate_by_idempotency_key: true,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

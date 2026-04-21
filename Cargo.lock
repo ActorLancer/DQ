@@ -2431,6 +2431,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "recommendation-aggregator"
+version = "0.1.0"
+dependencies = [
+ "db",
+ "rdkafka",
+ "redis",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "redis"
 version = "0.27.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2796,6 +2809,20 @@ dependencies = [
  "quote",
  "syn",
  "thiserror",
+]
+
+[[package]]
+name = "search-indexer"
+version = "0.1.0"
+dependencies = [
+ "db",
+ "rdkafka",
+ "redis",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

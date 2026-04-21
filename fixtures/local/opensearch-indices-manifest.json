@@ -1,13 +1,14 @@
 {
   "template": "datab_catalog_v1_template",
   "aliases": [
-    "catalog_products_v1",
-    "seller_profiles_v1",
-    "search_sync_jobs_v1"
+    "product_search_read",
+    "product_search_write",
+    "seller_search_read",
+    "seller_search_write"
   ],
   "physicalIndices": [
-    "catalog_products_v1_000001",
-    "seller_profiles_v1_000001",
-    "search_sync_jobs_v1_000001"
+    "product_search_v1_bootstrap",
+    "seller_search_v1_bootstrap",
+    "search_sync_jobs_v1"
   ]
 }

@@ -2,7 +2,19 @@
 
 用于收敛测试用例执行清单、验收记录与回归基线输出。
 
+约束：
+
+- 当前批次若只做“口径收缩/事件拓扑冻结/命名统一”，不要求提前伪造尚未实现模块的测试样例文件。
+- 但这不代表测试样例已完成；进入对应模块代码实现批次后，Agent 必须同步补齐测试样例文档、集成测试与 smoke 校验，不能把“设计口径已冻结”误报为“测试基线已落盘”。
+- 对于 `notification.requested / audit.anchor_requested / fabric.proof_submit_requested` 三条事件，后续实现阶段至少要同步补齐：
+  - `docs/05-test-cases/audit-consistency-cases.md`
+  - 通知事件链路验收清单
+  - Fabric request / callback / reconcile 验收清单
+
 
 - `order-state-machine.md`：Order/Contract/Authorization 主交易链路 8 个标准 SKU 状态转换测试矩阵。
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
+- `search-rec-cases.md`：Search/Recommendation 子域的搜索同步、搜索 API、推荐召回、行为回流、重建、别名切换与缓存失效验收清单。
+- `notification-cases.md`：当前尚未落盘；进入 `NOTIF` 代码实现批次后必须补齐 `mock-log`、幂等、重试、DLQ、人工补发与审计联查验收清单。
+- `audit-consistency-cases.md`：当前尚未落盘；进入 `AUD / consistency / integration / NOTIF` 代码实现批次后必须补齐。

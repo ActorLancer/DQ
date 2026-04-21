@@ -6,7 +6,7 @@
 
 - 单仓多应用骨架（`apps/*`、`packages/*`、`infra/*`、`scripts/*`、`docs/*`）
 - `apps/platform-core` 最小服务（Rust + `/healthz`）
-- 本地部署资产（`部署脚本/docker-compose.local.yml`、迁移与环境检查脚本）
+- 本地部署资产（`infra/docker/docker-compose.local.yml`、迁移与环境检查脚本）
 - 完整的任务与冻结文档目录
 
 ## 2. 与目标基线的主要差距

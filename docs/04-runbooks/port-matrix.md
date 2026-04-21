@@ -3,7 +3,7 @@
 ## 说明
 
 - 本矩阵用于统一本地环境端口、URL、默认账号口径。
-- 所有默认值来源于 `infra/docker/.env.local` 与 `infra/docker/docker-compose.local.yml`。
+- 所有默认值来源于 `infra/docker/.env.local`、`infra/docker/docker-compose.local.yml` 与 `infra/kafka/topics.v1.json`。
 - 凭据仅用于本地演示；禁止复用于共享/生产环境。
 
 ## 服务端口与访问矩阵
@@ -41,12 +41,29 @@
 
 | Topic Key | 默认值 |
 | --- | --- |
-| `TOPIC_OUTBOX_EVENTS` | `outbox.events` |
-| `TOPIC_SEARCH_SYNC` | `search.sync` |
-| `TOPIC_AUDIT_ANCHOR` | `audit.anchor` |
-| `TOPIC_BILLING_EVENTS` | `billing.events` |
-| `TOPIC_RECOMMENDATION_BEHAVIOR` | `recommendation.behavior` |
-| `TOPIC_DEAD_LETTER_EVENTS` | `dead-letter.events` |
+| `TOPIC_OUTBOX_EVENTS` | `dtp.outbox.domain-events` |
+| `TOPIC_SEARCH_SYNC` | `dtp.search.sync` |
+| `TOPIC_RECOMMENDATION_BEHAVIOR` | `dtp.recommend.behavior` |
+| `TOPIC_NOTIFICATION_DISPATCH` | `dtp.notification.dispatch` |
+| `TOPIC_FABRIC_REQUESTS` | `dtp.fabric.requests` |
+| `TOPIC_FABRIC_CALLBACKS` | `dtp.fabric.callbacks` |
+| `TOPIC_PAYMENT_CALLBACKS` | `dtp.payment.callbacks` |
+| `TOPIC_AUDIT_ANCHOR` | `dtp.audit.anchor` |
+| `TOPIC_CONSISTENCY_RECONCILE` | `dtp.consistency.reconcile` |
+| `TOPIC_DEAD_LETTER_EVENTS` | `dtp.dead-letter` |
+
+## 初始 Consumer Group 矩阵
+
+| Consumer Group Key | 默认值 |
+| --- | --- |
+| `SEARCH_INDEXER_CONSUMER_GROUP` | `cg-search-indexer` |
+| `RECOMMENDATION_AGGREGATOR_CONSUMER_GROUP` | `cg-recommendation-aggregator` |
+| `NOTIFICATION_WORKER_CONSUMER_GROUP` | `cg-notification-worker` |
+| `FABRIC_ADAPTER_CONSUMER_GROUP` | `cg-fabric-adapter` |
+| `PLATFORM_CORE_CONSISTENCY_CONSUMER_GROUP` | `cg-platform-core-consistency` |
+| `PAYMENT_CALLBACK_HANDLER_CONSUMER_GROUP` | `cg-payment-callback-handler` |
+| `CONSISTENCY_RECONCILE_CONSUMER_GROUP` | `cg-consistency-reconcile` |
+| `DEAD_LETTER_REPLAYER_CONSUMER_GROUP` | `cg-dead-letter-replayer` |
 
 ## 参考命令
 

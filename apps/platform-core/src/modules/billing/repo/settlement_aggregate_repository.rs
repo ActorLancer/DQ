@@ -1,5 +1,6 @@
 use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::domain::Settlement;
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
 use axum::http::StatusCode;
 use db::{GenericClient, Row};
@@ -366,7 +367,6 @@ async fn write_settlement_summary_outbox(
     );
     let proof_commit_state = "pending_anchor";
     let payload = json!({
-        "event_name": event_type,
         "event_schema_version": "v1",
         "authority_scope": "business",
         "source_of_truth": "database",
@@ -416,63 +416,24 @@ async fn write_settlement_summary_outbox(
         context.settlement_status,
         context.dispute_status,
     );
-    let row = client
-        .query_opt(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type,
-               aggregate_id,
-               event_type,
-               payload,
-               status,
-               request_id,
-               trace_id,
-               idempotency_key,
-               event_schema_version,
-               authority_scope,
-               source_of_truth,
-               proof_commit_policy,
-               target_bus,
-               target_topic,
-               partition_key,
-               ordering_key,
-               payload_hash
-             )
-             SELECT
-               'billing.settlement_record',
-               $1::text::uuid,
-               $2,
-               $3::jsonb,
-               'pending',
-               $4,
-               $5,
-               $6,
-               'v1',
-               'business',
-               'database',
-               'pending_fabric_anchor',
-               'kafka',
-               'dtp.outbox.domain-events',
-               $1,
-               $1,
-               encode(digest(($3::jsonb)::text, 'sha256'), 'hex')
-             WHERE NOT EXISTS (
-               SELECT 1
-               FROM ops.outbox_event
-               WHERE idempotency_key = $6
-             )
-             RETURNING outbox_event_id::text",
-            &[
-                &settlement.settlement_id,
-                &event_type,
-                &payload,
-                &request_id,
-                &trace_id,
-                &idempotency_key,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
-    Ok(row.is_some())
+    let inserted = write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: "billing.settlement_record",
+            aggregate_id: &settlement.settlement_id,
+            event_type,
+            producer_service: "platform-core.billing",
+            request_id,
+            trace_id,
+            idempotency_key: Some(idempotency_key.as_str()),
+            occurred_at: settlement.settled_at.as_deref(),
+            business_payload: &payload,
+            deduplicate_by_idempotency_key: true,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    Ok(inserted)
 }
 
 async fn load_settlement_outbox_context(

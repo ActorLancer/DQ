@@ -3,7 +3,7 @@
 ## 0. 本版说明
 
 - 本版以 `V1Core开发清单参考` 为主任务源，合并当前仓库中已存在的 `开发任务/`、应用骨架、部署脚本和开发前文档现状，形成 **增量执行版**。
-- 本版当前共 **441** 个任务；在不删内容的前提下，继续把前置过重任务拆成更细子任务，便于单 Agent 顺序执行。
+- 本版当前共 **452** 个任务；在不删内容的前提下，继续把前置过重任务拆成更细子任务，便于单 Agent 顺序执行。
 - 本版继续只覆盖 **V1-Core**，明确不抢跑 `V2/V3`。
 - **CSV 是唯一执行源**；Markdown 仅作为阅读版。若两者存在表述差异，以 CSV 为准。
 - 当前仓库已存在部分骨架与环境文件；任务执行应优先复用现有资产，禁止无意义重建。
@@ -26,6 +26,7 @@
 - 先看 `depends_on`，再看 `wave`；`depends_on` 是执行顺序的硬约束，`wave` 只是阶段提示：`W0 -> W1 -> W2 -> W3`。
 - 看到 `serial-first` 的任务，默认先执行并用于冻结边界、仓库骨架或主链路前置条件。
 - 看到 `partial` / `limited` / `yes` 的任务，表示在依赖满足后可以穿插推进；但在单 Agent 场景下，仍以“主闭环优先”顺序执行为准。
+- `yes` 表示已按当前口径完成；`partial` 表示已有部分实现；`limited` 表示当前仅保留边界、占位或有限资产，尚未形成正式实现闭环。
 - 所有业务副作用统一通过 **审计 + outbox + provider / worker** 链路完成，禁止直接在 handler 中硬编码外部调用。
 - 任何实现若试图把 `SHARE_RO / QRY_LITE / RPT_STD` 再并回“文件/API/沙箱大类”，一律视为偏离本版清单。
 
@@ -35,7 +36,7 @@
 |---|---|---:|
 | CTX | 上下文、约束与执行规则（给 AI Agent 的统一说明） | 24 |
 | BOOT | 仓库初始化与骨架搭建（这一组建议由我先做） | 32 |
-| ENV | 环境部署与 Docker Compose（这一组优先级最高） | 57 |
+| ENV | 环境部署与 Docker Compose（这一组优先级最高） | 58 |
 | CORE | platform-core 基础骨架（这一组建议由我先做） | 51 |
 | DB | 数据库与 Migration 落地 | 35 |
 | IAM | IAM / Party / Access 领域 | 20 |
@@ -43,16 +44,19 @@
 | TRADE | Order / Contract / Authorization 主交易链路 | 33 |
 | DLV | Delivery / Storage Gateway / Query Execution | 31 |
 | BIL | Billing / Payment / Settlement / Dispute | 26 |
-| NOTIF | Notification / Messaging / Template | 12 |
-| AUD | Audit / Evidence / Consistency / Fabric / Ops | 28 |
-| SEARCHREC | Search / Recommendation / Projection | 17 |
+| NOTIF | Notification / Messaging / Template | 14 |
+| AUD | Audit / Evidence / Consistency / Fabric / Ops | 31 |
+| SEARCHREC | Search / Recommendation / Projection | 21 |
 | WEB | 前端最小页面闭环（portal-web / console-web） | 22 |
-| TEST | 测试、演示数据、验收与 CI | 27 |
+| TEST | 测试、演示数据、验收与 CI | 28 |
 
 ## 3. 本版新增/重点修订任务索引
 
 - **重任务拆解补丁**：`CTX-022` ~ `CTX-024`、`BOOT-021` ~ `BOOT-036`、`ENV-044` ~ `ENV-057`、`CORE-033` ~ `CORE-051`
 - **增量执行补丁**：`CTX-014`、`BOOT-001`、`BOOT-002`、`ENV-001`、`CORE-010` 已改成基于当前仓库现状的收敛任务。
+- **审计收口补丁**：`AUD-029` 已追加为“历史模块统一 `audit writer / evidence writer` 与旧证据表桥接”专门任务。
+- **SEARCHREC consumer 可靠性补丁**：`SEARCHREC-020` 已追加为“search-indexer / recommendation-aggregator 的幂等、双层 DLQ 与可重处理闭环”专门任务。
+- **任务清单映射补丁**：已追加 `ENV-058`、`AUD-030`、`AUD-031`、`NOTIF-013`、`NOTIF-014`、`SEARCHREC-021`、`TEST-028`，并把 `A01~A15` 的冻结要求补回执行源、TODO 与承接文档。
 - **引用修正补丁**：全部 `../技术选型正式版.md` 已统一改为 `../开发准备/技术选型正式版.md`。
 - **执行源规则**：CSV 为唯一执行源，Markdown 为阅读版。
 
@@ -186,7 +190,7 @@
   验收：完成物已创建并可被后续任务引用。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
   技术参考：../数据库设计/数据库设计总说明.md:L3（1. 设计范围） | ../数据库设计/数据库表字典正式版.md:L22（2. 存储策略总览） | ../数据库设计/表关系总图-ER文本图.md:L15（2. 顶层域关系图）
-- **CTX-019** [ARCH][P0][W0][serial-first] 在 `docs/00-context/service-to-module-map.md` 明确“技术选型文档中的服务名”到“当前阶段 platform-core 模块/外围进程”的映射，例如 `iam-service -> platform-core::iam + party + access`、`trade-service -> platform-core::order + contract + authorization + delivery`、`notification-service -> services/notification-service`，禁止不同 Agent 各自按不同拆分方式新建服务。  
+- **CTX-019** [ARCH][P0][W0][serial-first] 在 `docs/00-context/service-to-module-map.md` 明确“技术选型文档中的服务名”到“当前阶段 platform-core 模块/外围进程”的映射，例如 `iam-service -> platform-core::iam + party + access`、`trade-service -> platform-core::order + contract + authorization + delivery`、`notification-worker -> apps/notification-worker`，禁止不同 Agent 各自按不同拆分方式新建服务。  
   依赖：CTX-004; BOOT-002  
   交付：docs/00-context/service-to-module-map.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
@@ -401,14 +405,14 @@
   验收：完成物已创建并可被后续任务引用。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
   技术参考：../开发任务/README.md:L1（开发任务目录 README） | ../开发准备/仓库拆分与目录结构建议.md:L1（仓库拆分与目录结构建议） | ../全集成文档/数据交易平台-全集成基线-V1.md:L161（5. 范围定义）
-- **BOOT-029** [ARCH][P0][W0][serial-first] 校准 `apps/` 目录，确认 `platform-core`、`portal-web`、`console-web` 的落位和命名不再漂移。  
+- **BOOT-029** [ARCH][P0][W0][serial-first] 校准 `apps/` 目录，确认 `platform-core`、`portal-web`、`console-web`、`notification-worker` 的落位和命名不再漂移。  
   依赖：CTX-014  
   交付：apps/  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
   验收：完成物已创建并可被后续任务引用。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
   技术参考：../开发准备/仓库拆分与目录结构建议.md:L132（5.1 `apps/platform-core`） | ../开发准备/平台总体架构设计草案.md:L62（主应用） | ../开发准备/服务清单与服务边界正式版.md:L165（5. 主应用 `platform-core`）
-- **BOOT-030** [ARCH][P0][W0][serial-first] 校准 `services/` 目录，明确 `fabric-adapter`、`fabric-event-listener`、`fabric-ca-admin`、`mock-payment-provider`、`notification-service` 的落位。  
+- **BOOT-030** [ARCH][P0][W0][serial-first] 校准 `services/` 目录，明确 `fabric-adapter`、`fabric-event-listener`、`fabric-ca-admin`、`mock-payment-provider` 的落位。  
   依赖：CTX-014  
   交付：services/  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
@@ -525,20 +529,20 @@
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../开发准备/技术选型正式版.md:L44（3.2 职责边界）
-- **ENV-010** [ARCH][P0][W0][serial-first] 建立 Kafka topic 初始化脚本，至少包含：`outbox.events`、`search.sync`、`audit.anchor`、`billing.events`、`recommendation.behavior`、`dead-letter.events`。  
+- **ENV-010** [ARCH][P0][W0][serial-first] 建立 Kafka topic 初始化脚本，至少包含：`dtp.outbox.domain-events`、`dtp.search.sync`、`dtp.recommend.behavior`、`dtp.notification.dispatch`、`dtp.fabric.requests`、`dtp.fabric.callbacks`、`dtp.payment.callbacks`、`dtp.audit.anchor`、`dtp.consistency.reconcile`、`dtp.dead-letter`，并明确 topic 只能来自 `infra/kafka/topics.v1.json`。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../原始PRD/IAM 技术接入方案.md:L130（5. V1 推荐落地方式） | ../数据库设计/接口协议/身份与会话接口协议正式版.md:L36（4. V1 接口） | ../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座）
-- **ENV-011** [AGENT][P0][W0][limited] 为 Kafka 配置 consumer group、DLQ、retention、cleanup policy 的本地默认值，并写入 `docs/04-runbooks/kafka-topics.md`。  
+  技术参考：../原始PRD/IAM 技术接入方案.md:L130（5. V1 推荐落地方式） | ../数据库设计/接口协议/身份与会话接口协议正式版.md:L36（4. V1 接口） | ../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一）
+- **ENV-011** [AGENT][P0][W0][limited] 为 Kafka 配置 consumer group、DLQ、retention、cleanup policy 的本地默认值，并写入 `docs/04-runbooks/kafka-topics.md`；本地 topic 必须经 `topics.v1.json + init-topics.sh` 显式初始化，不再依赖 auto-create。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：docs/04-runbooks/kafka-topics.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警）
+  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
 - **ENV-012** [ARCH][P0][W0][serial-first] 为 Redis 提供基础配置：缓存 DB 划分、过期策略、命名空间前缀、密码与持久化策略。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
@@ -546,13 +550,13 @@
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警）
-- **ENV-013** [AGENT][P0][W0][limited] 在 `docs/04-runbooks/redis-keys.md` 约定 key 模式：幂等键、会话缓存、权限缓存、推荐缓存、限流计数、下载票据缓存。  
+- **ENV-013** [AGENT][P0][W0][limited] 在 `docs/04-runbooks/redis-keys.md` 约定 key 模式：幂等键、会话缓存、权限缓存、推荐缓存、搜索缓存、限流计数、下载票据缓存。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：docs/04-runbooks/redis-keys.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警）
+  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
 - **ENV-014** [ARCH][P0][W0][serial-first] 配置 MinIO：创建 `raw-data`、`preview-artifacts`、`delivery-objects`、`report-results`、`evidence-packages`、`model-artifacts` bucket。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
@@ -573,14 +577,14 @@
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警）
-- **ENV-017** [AGENT][P0][W0][limited] 补充 OpenSearch 索引初始化脚本，至少生成 `catalog_products_v1`、`seller_profiles_v1`、`search_sync_jobs_v1` 等索引/别名。  
+  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
+- **ENV-017** [AGENT][P0][W0][limited] 补充 OpenSearch 索引初始化脚本，至少生成 `product_search_read`、`product_search_write`、`seller_search_read`、`seller_search_write` 以及 `search_sync_jobs_v1` 等别名/索引，并与 `search.index_alias_binding` 的结构化口径保持一致。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../原始PRD/支付、资金流与轻结算设计.md:L126（6.1 V1 支持的支付方式） | ../数据库设计/接口协议/支付域接口协议正式版.md:L158（6. 幂等与一致性） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7194（27. 支付、资金流与轻结算）
+  技术参考：../原始PRD/支付、资金流与轻结算设计.md:L126（6.1 V1 支持的支付方式） | ../数据库设计/接口协议/支付域接口协议正式版.md:L158（6. 幂等与一致性） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7194（27. 支付、资金流与轻结算） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
 - **ENV-018** [ARCH][P0][W0][serial-first] 配置 Keycloak 容器与 realm import 机制，导入 `platform-local` realm、基础角色、测试用户、客户端、MFA 占位流程。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
@@ -756,7 +760,7 @@
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L5（14.1 环境规划） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构）
-- **ENV-043** [ARCH][P1][W2][yes] 预留 `infra/docker/docker-compose.apps.local.example.yml` 占位文件，仅用于后续需要容器化联调 `platform-core`、`fabric-adapter`、`notification-service`、`outbox-publisher`、`search-indexer` 时参考；当前 V1 第一阶段默认不用它阻塞开发。  
+- **ENV-043** [ARCH][P1][W2][yes] 预留 `infra/docker/docker-compose.apps.local.example.yml` 占位文件，仅用于后续需要容器化联调 `platform-core`、`fabric-adapter`、`notification-worker`、`outbox-publisher`、`search-indexer` 时参考；当前 V1 第一阶段默认不用它阻塞开发。  
   依赖：ENV-042; CORE-032  
   交付：infra/docker/docker-compose.apps.local.example.yml  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
@@ -862,6 +866,13 @@
   阻塞风险：本地环境未分块会导致 compose 维护困难。  
   技术参考：../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../开发准备/平台总体架构设计草案.md:L1（平台总体架构设计草案） | ../开发准备/技术选型正式版.md:L147（6. 本地与联调环境）
 
+- **ENV-058** [AGENT][P0][W1][limited] 收敛配置项与资源命名：统一 `BUCKET_* / INDEX_ALIAS_* / Redis key / compose 主入口` 口径，修正文档与脚本漂移，并补最小一致性校验。  
+  依赖：ENV-011; ENV-013; ENV-016; ENV-017; CORE-028  
+  交付：infra/**; docs/04-runbooks/**; scripts/**; apps/platform-core/src/**  
+  完成定义：配置清单、初始化脚本、运行时代码与 runbook 已统一使用同一套 env 名、bucket、index alias、Redis key 与 compose 主入口命名；最小一致性校验已建立。  
+  验收：至少一条本地 smoke 或手工校验通过，并能证明文档、脚本与运行时读取的配置名和资源名一致。  
+  阻塞风险：命名漂移会导致环境配置、资源初始化与运维动作对错对象。  
+  技术参考：../开发准备/配置项与密钥管理清单.md:L1（配置项与密钥管理清单） | ../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../开发准备/事件模型与Topic清单正式版.md:L1（事件模型与 Topic 清单） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
 ## 7. platform-core 基础骨架（这一组建议由我先做） [CORE]
 
 这一组负责在现有 `platform-core` 最小骨架基础上补齐统一运行时、共享 crate 与模块模板。
@@ -2455,416 +2466,476 @@
 
 这一组落地通知模板、消息分发与外部回调通知。
 
-- **NOTIF-001** [AGENT][P0][W1][partial] 初始化 `services/notification-service/` 骨架，约定运行模式、消费 topic、模板目录、发送适配器、重试队列与健康检查接口。  
+- **NOTIF-001** [AGENT][P0][W1][partial] 初始化 `apps/notification-worker/` 骨架，约定运行模式、消费 topic、模板目录、发送适配器、重试队列与健康检查接口。  
   依赖：BOOT-002; ENV-010; CORE-009  
-  交付：services/notification-service/  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/  
+  完成定义：正式进程名、topic、consumer group、V1 渠道边界与健康检查口径已冻结为 `notification-worker -> dtp.notification.dispatch -> cg-notification-worker`；Worker 可消费事件并发送 `mock-log` 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
-- **NOTIF-002** [AGENT][P0][W1][partial] 定义通知事件协议：订单创建、支付成功、支付失败、待交付、交付完成、待验收、验收通过、拒收、争议升级、退款完成、赔付完成、监管冻结、恢复结算；统一事件字段和幂等键。  
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
+- **NOTIF-002** [AGENT][P0][W1][partial] 定义通知事件协议：统一收口到 `notification.requested -> dtp.notification.dispatch -> notification-worker`，覆盖订单创建、支付成功、支付失败、待交付、交付完成、待验收、验收通过、拒收、争议升级、退款完成、赔付完成、监管冻结、恢复结算；统一事件字段和幂等键。  
   依赖：NOTIF-001; TRADE-033; BIL-023  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-003** [AGENT][P0][W1][partial] 实现通知模板模型：模板编码、语言、变量 schema、渠道、启用状态、版本号、渲染结果预览与 fallback 文案。  
   依赖：NOTIF-001; NOTIF-002  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-004** [AGENT][P0][W1][partial] 实现“支付成功 -> 待交付”通知模板与发送逻辑，区分买方、卖方、运营可见内容，禁止把内部风控/审计字段直接暴露给业务用户。  
   依赖：NOTIF-002; TRADE-030  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../业务流程/业务流程图-V1-完整版.md:L204（4.3 买方搜索、选购与下单流程） | ../业务流程/业务流程图-V1-完整版.md:L268（4.4 交付、验真与验收主流程） | ../页面说明书/页面说明书-V1-完整版.md:L556（6.4 订单详情页）
+  技术参考：../业务流程/业务流程图-V1-完整版.md:L204（4.3 买方搜索、选购与下单流程） | ../业务流程/业务流程图-V1-完整版.md:L268（4.4 交付、验真与验收主流程） | ../页面说明书/页面说明书-V1-完整版.md:L556（6.4 订单详情页） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-005** [AGENT][P0][W1][partial] 实现“交付完成 -> 待验收”通知模板与发送逻辑，覆盖文件包、共享开通、API 开通、查询结果可取、沙箱开通、报告交付六类交付结果。  
   依赖：NOTIF-002; DLV-030  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../业务流程/业务流程图-V1-完整版.md:L268（4.4 交付、验真与验收主流程） | ../页面说明书/页面说明书-V1-完整版.md:L714（7.9 验收页） | ../页面说明书/页面说明书-V1-完整版.md:L556（6.4 订单详情页）
+  技术参考：../业务流程/业务流程图-V1-完整版.md:L268（4.4 交付、验真与验收主流程） | ../页面说明书/页面说明书-V1-完整版.md:L714（7.9 验收页） | ../页面说明书/页面说明书-V1-完整版.md:L556（6.4 订单详情页） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-006** [AGENT][P0][W1][partial] 实现“验收通过/拒收/退款完成/赔付完成”通知模板与发送逻辑，并把动作摘要与后续待办链接到订单详情、账单页或争议页。  
   依赖：NOTIF-002; DLV-018; BIL-025  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../业务流程/业务流程图-V1-完整版.md:L400（4.5 结算、退款、赔付与关闭流程） | ../页面说明书/页面说明书-V1-完整版.md:L738（8.1 账单中心） | ../页面说明书/页面说明书-V1-完整版.md:L773（8.3 争议提交页）
+  技术参考：../业务流程/业务流程图-V1-完整版.md:L400（4.5 结算、退款、赔付与关闭流程） | ../页面说明书/页面说明书-V1-完整版.md:L738（8.1 账单中心） | ../页面说明书/页面说明书-V1-完整版.md:L773（8.3 争议提交页） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-007** [AGENT][P0][W1][partial] 实现“争议升级/监管冻结/恢复结算”通知模板与发送逻辑，要求最小披露、角色隔离与审计留痕。  
   依赖：NOTIF-002; BIL-013; BIL-014  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../业务流程/业务流程图-V1-完整版.md:L473（5.3 争议处理流程） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型）
+  技术参考：../业务流程/业务流程图-V1-完整版.md:L473（5.3 争议处理流程） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-008** [AGENT][P0][W1][partial] 实现通知发送适配器抽象，至少支持 `mock-log` 渠道；预留 email/webhook 渠道接口，但 local 模式先把结果写日志和审计表。  
   依赖：NOTIF-001; NOTIF-002; CORE-018  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知发送适配器抽象已建立；`V1` 只实接 `mock-log` 渠道，`email/webhook` 仅保留 provider 边界；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-009** [AGENT][P0][W1][partial] 实现通知幂等、重试与 DLQ：重复事件不重复发送，失败事件可重试并转入 dead letter，同时保留人工重放入口。  
   依赖：NOTIF-008; ENV-010  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；通知幂等、重试、DLQ、人工重放入口与审计联查口径已冻结；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
 - **NOTIF-010** [AGENT][P1][W3][yes] 实现通知审计联查：按订单号/案件号/通知模板查看发送记录、渲染变量、渠道结果、重试轨迹与关联事件。  
   依赖：NOTIF-009; AUD-004  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
-- **NOTIF-011** [AGENT][P1][W3][yes] 在 `docs/04-runbooks/notification-service.md` 写明通知事件来源、模板清单、发送策略、失败排查与人工补发流程。  
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
+- **NOTIF-011** [AGENT][P1][W3][yes] 在 `docs/04-runbooks/notification-worker.md` 写明通知事件来源、模板清单、发送策略、失败排查与人工补发流程。  
   依赖：NOTIF-001; NOTIF-002; NOTIF-009  
-  交付：docs/04-runbooks/notification-service.md  
+  交付：docs/04-runbooks/notification-worker.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
-- **NOTIF-012** [AGENT][P1][W3][yes] 为通知链路编写集成测试：支付成功通知、交付完成通知、拒收通知、争议升级通知、重复事件去重、失败重试与 DLQ。  
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
+- **NOTIF-012** [AGENT][P1][W3][yes] 为通知链路编写集成测试：支付成功通知、交付完成通知、拒收通知、争议升级通知、重复事件去重、失败重试与 DLQ；校验正式链路 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log` 渠道与审计痕迹。  
   依赖：NOTIF-004; NOTIF-005; NOTIF-006; NOTIF-009  
-  交付：services/notification-service/**; docs/04-runbooks/notification-service.md  
-  完成定义：通知服务可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
+  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
-
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+- **NOTIF-013** [AGENT][P1][W3][limited] 补齐通知联查与控制面 OpenAPI 归档/示例，覆盖发送记录、模板、渠道结果、重试/DLQ、人工补发入口与 `event_type / target_topic / aggregate_type` 过滤口径。  
+  依赖：NOTIF-010; AUD-003; AUD-025  
+  交付：packages/openapi/ops.yaml; docs/02-openapi/ops.yaml  
+  完成定义：通知联查与控制面 OpenAPI 归档/示例已建立；发送记录、模板、渠道结果、重试/DLQ/人工补发与事件过滤口径已与正式事件链一致，且不再使用旧命名。  
+  验收：至少一条契约校验或手工 API 验证通过，并能证明通知联查示例与 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式口径一致。  
+  阻塞风险：通知控制面契约缺失会导致后续联查、控制台与测试继续在错误接口上叠加返工。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L93（通知相关审计事件） | ../开发准备/事件模型与Topic清单正式版.md:L128（通知事件与 topic） | docs/02-openapi/README.md:L10（实现阶段 OpenAPI 约束） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+- **NOTIF-014** [AGENT][P1][W3][limited] 生成 `docs/05-test-cases/notification-cases.md`，覆盖支付成功、交付完成、验收通过、拒收、争议升级、监管冻结/恢复结算、重复去重、失败重试、DLQ 与人工补发。  
+  依赖：NOTIF-009; NOTIF-010; NOTIF-013  
+  交付：docs/05-test-cases/notification-cases.md  
+  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用，并明确登记 mock-log、幂等、重试、DLQ、人工补发与审计联查验收项。  
+  验收：至少一条 smoke 或手工验证通过，并能证明通知验收清单覆盖正式 topic、正式进程名、正式渠道边界与联查路径。  
+  阻塞风险：通知测试基线若继续缺失，会让 NOTIF 阶段只能证明“有日志输出”，不能证明正式链路闭环。  
+  技术参考：docs/05-test-cases/README.md:L7（测试样例批次边界） | docs/04-runbooks/notification-worker.md:L14（NOTIF 当前批次边界） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
 ## 15. Audit / Evidence / Consistency / Fabric / Ops [AUD]
 
 这一组落地审计、证据链、回放、一致性和 Fabric 最小摘要链路。
 
-- **AUD-001** [AGENT][P0][W1][partial] 实现 `AuditEvent` 统一模型，所有关键动作至少记录 actor、object、action、result、request_id、trace_id、tenant_id。  
+- **AUD-001** [AGENT][P0][W1][limited] 实现 `AuditEvent` 统一模型，所有关键动作至少记录 actor、object、action、result、request_id、trace_id、tenant_id，并作为统一 `audit writer` 的唯一模型基座。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；`audit-kit / DB schema / API DTO` 字段语义已对齐，不再允许业务模块再定义第二套审计事件模型。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明统一模型已可被后续 `audit writer`、联查与导出路径复用。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-002** [AGENT][P0][W1][partial] 实现 `Evidence` 与 `EvidenceManifest` 模型，支持关联对象存储 URI、hash、来源、保留策略。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A06-Audit-Kit-统一模型漂移.md | 问题修复任务/A02-统一事件-Envelope-与路由权威源.md:L1（统一事件 Envelope 与路由权威源） | 问题修复任务/A03-统一事务模板-落地真实审计与Outbox-Writer.md:L1（统一事务模板与 Writer 收口） | 问题修复任务/A14-AUD-历史模块统一Writer与证据桥接缺口.md:L1（历史模块统一 Writer 与证据桥接）
+- **AUD-002** [AGENT][P0][W1][limited] 实现 `EvidenceItem` 与 `EvidenceManifest` 统一模型，支持关联对象存储 URI、hash、来源、保留策略，并作为统一 `evidence writer` 与历史证据桥接的权威对象。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；证据权威对象已能承接 `PG + 对象存储` 双写语义，并为历史 `support.evidence_object` 等桥接提供统一落点。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 `EvidenceItem / EvidenceManifest` 已可作为导出、回放、legal hold 与历史证据桥接的统一对象。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-003** [AGENT][P0][W1][partial] 实现 `GET /api/v1/audit/orders/{id}`、`GET /api/v1/audit/traces`，提供订单与全局审计联查。  
-  依赖：CORE-007; CORE-008; DB-008; ENV-022  
-  交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
-  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-004** [AGENT][P0][W1][partial] 实现证据包导出接口 `POST /api/v1/audit/packages/export`，要求导出理由、step-up、审计留痕。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A06-Audit-Kit-统一模型漂移.md | 问题修复任务/A14-AUD-历史模块统一Writer与证据桥接缺口.md | 问题修复任务/A14-AUD-历史模块统一Writer与证据桥接缺口.md:L1（历史模块统一 Writer 与证据桥接）
+- **AUD-003** [AGENT][P0][W1][limited] 实现 `GET /api/v1/audit/orders/{id}`、`GET /api/v1/audit/traces`，提供订单与全局审计联查。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-005** [AGENT][P0][W1][partial] 实现回放任务接口 `POST /api/v1/audit/replay-jobs`、`GET /api/v1/audit/replay-jobs/{id}`，V1 默认 dry-run。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-004** [AGENT][P0][W1][limited] 实现证据包导出接口 `POST /api/v1/audit/packages/export`，要求导出理由、step-up、审计留痕。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-006** [AGENT][P0][W1][partial] 实现 legal hold 接口 `POST /api/v1/audit/legal-holds` / `release`。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A06-Audit-Kit-统一模型漂移.md
+- **AUD-005** [AGENT][P0][W1][limited] 实现回放任务接口 `POST /api/v1/audit/replay-jobs`、`GET /api/v1/audit/replay-jobs/{id}`，V1 默认 dry-run。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-007** [AGENT][P0][W1][partial] 实现 AnchorBatch 模型和查看/重试接口 `GET /api/v1/audit/anchor-batches` / `POST /retry`。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A06-Audit-Kit-统一模型漂移.md
+- **AUD-006** [AGENT][P0][W1][limited] 实现 legal hold 接口 `POST /api/v1/audit/legal-holds` / `release`。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
-- **AUD-008** [AGENT][P0][W1][partial] 实现 `outbox_event`、`dead_letter_event`、`external_receipt`、`reconcile_job` 表的仓储与查询接口。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A06-Audit-Kit-统一模型漂移.md
+- **AUD-007** [AGENT][P0][W1][limited] 实现 AnchorBatch 模型和查看/重试接口 `GET /api/v1/audit/anchor-batches` / `POST /retry`。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L42（4. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射）
-- **AUD-009** [AGENT][P0][W1][partial] 实现 outbox publisher worker，从数据库读取待发布事件并推送到 Kafka。  
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A06-Audit-Kit-统一模型漂移.md
+- **AUD-008** [AGENT][P0][W1][limited] 实现 `outbox_event`、`dead_letter_event`、`consumer_idempotency_record`、`external_receipt`、`reconcile_job` 表的仓储与查询接口。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；`ops.dead_letter_event` 与 `ops.consumer_idempotency_record` 已可支撑 SEARCHREC consumer 的失败隔离、幂等与联查。  
+  验收：至少一条集成测试或手工 API 验证通过，并能查询 SEARCHREC consumer 的 dead letter 与幂等记录。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L57（4.2 outbox 查询） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射）
-- **AUD-010** [AGENT][P0][W1][partial] 实现 dead letter 重处理接口 `POST /api/v1/ops/dead-letters/{id}/reprocess`，支持 dry-run 与 step-up。  
+  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L42（4. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A02-统一事件-Envelope-与路由权威源.md:L1（统一事件 Envelope 与路由权威源） | 问题修复任务/A03-统一事务模板-落地真实审计与Outbox-Writer.md:L1（统一事务模板与 Writer 收口） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A05-Outbox-Publisher-DLQ-统一闭环缺口.md:L1（Outbox Publisher 与 DLQ 闭环） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **AUD-009** [AGENT][P0][W1][limited] 实现 outbox publisher worker，从数据库读取待发布事件并推送到 Kafka。  
+  依赖：CORE-007; CORE-008; DB-008; ENV-022  
+  交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；publisher 只按统一 event envelope 与 `ops.event_route_policy` / canonical topic 口径发布，记录 `outbox_publish_attempt`，并与上下游模块联调通过。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明发布尝试、目标 topic、失败隔离与审计痕迹可联查，且不存在并行 topic 口径。  
+  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
+  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L57（4.2 outbox 查询） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A02-统一事件-Envelope-与路由权威源.md:L1（统一事件 Envelope 与路由权威源） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A05-Outbox-Publisher-DLQ-统一闭环缺口.md:L1（Outbox Publisher 与 DLQ 闭环）
+- **AUD-010** [AGENT][P0][W1][limited] 实现 dead letter 重处理接口 `POST /api/v1/ops/dead-letters/{id}/reprocess`，支持 dry-run 与 step-up，并能覆盖 SEARCHREC consumer 失败事件。  
+  依赖：CORE-007; CORE-008; DB-008; ENV-022  
+  交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
+  完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；`search-indexer` 与 `recommendation-aggregator` 失败事件可通过该接口做 dry-run 重处理，并与 Kafka DLQ / DB dead letter 对齐。  
+  验收：至少一条集成测试或手工 API 验证通过，并能验证 SEARCHREC dead letter 的 dry-run / step-up 重处理路径。  
+  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
+  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L80（4.4 dead letter 重处理） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A05-Outbox-Publisher-DLQ-统一闭环缺口.md:L1（Outbox Publisher 与 DLQ 闭环） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **AUD-011** [AGENT][P0][W1][limited] 实现一致性联查接口 `GET /api/v1/ops/consistency/{refType}/{refId}`，返回业务状态、证明状态、外部事实状态。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L80（4.4 dead letter 重处理） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射）
-- **AUD-011** [AGENT][P0][W1][partial] 实现一致性联查接口 `GET /api/v1/ops/consistency/{refType}/{refId}`，返回业务状态、证明状态、外部事实状态。  
+  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L44（4.1 一致性联查） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-012** [AGENT][P0][W1][limited] 实现一致性修复接口 `POST /api/v1/ops/consistency/reconcile`，V1 先支持 dry-run + 记录修复建议。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L44（4.1 一致性联查） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射）
-- **AUD-012** [AGENT][P0][W1][partial] 实现一致性修复接口 `POST /api/v1/ops/consistency/reconcile`，V1 先支持 dry-run + 记录修复建议。  
-  依赖：CORE-007; CORE-008; DB-008; ENV-022  
-  交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
-  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L90（4.5 一致性修复） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射）
-- **AUD-013** [AGENT][P0][W1][partial] 初始化 `services/fabric-adapter/`（Go），定义接收业务摘要事件、调用链码、回写链回执的基础框架。  
+  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L90（4.5 一致性修复） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-013** [AGENT][P0][W1][limited] 初始化 `services/fabric-adapter/`（Go），定义接收业务摘要事件、调用链码、回写链回执的基础框架。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：services/fabric-adapter/  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
-- **AUD-014** [AGENT][P0][W1][partial] 在 `fabric-adapter` 中先实现订单摘要、授权摘要、验收摘要、证据批次根四类消息处理占位。  
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-014** [AGENT][P0][W1][limited] 在 `fabric-adapter` 中先实现订单摘要、授权摘要、验收摘要、证据批次根四类消息处理占位。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
-- **AUD-015** [AGENT][P0][W1][partial] 初始化 `services/fabric-event-listener/`（Go），消费链码事件并回写数据库外部事实回执。  
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-015** [AGENT][P0][W1][limited] 初始化 `services/fabric-event-listener/`（Go），消费链码事件并回写数据库外部事实回执。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：services/fabric-event-listener/  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
-- **AUD-016** [AGENT][P0][W1][partial] 初始化 `services/fabric-ca-admin/`（Go），封装成员证书签发/吊销接口占位。  
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-016** [AGENT][P0][W1][limited] 初始化 `services/fabric-ca-admin/`（Go），封装成员证书签发/吊销接口占位。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：services/fabric-ca-admin/  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
-- **AUD-017** [AGENT][P0][W1][partial] 实现链写入 Provider 接口，让 local 模式可切换 `mock` 与 `fabric-test-network` 两种实现。  
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-017** [AGENT][P0][W1][limited] 实现链写入 Provider 接口，让 local 模式可切换 `mock` 与 `fabric-test-network` 两种实现。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
-- **AUD-018** [AGENT][P0][W1][partial] 实现交易链监控总览接口 `GET /api/v1/ops/trade-monitor/orders/{orderId}` 与 checkpoints 接口。  
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-018** [AGENT][P0][W1][limited] 实现交易链监控总览接口 `GET /api/v1/ops/trade-monitor/orders/{orderId}` 与 checkpoints 接口。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L171（6. V1 接口） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流）
-- **AUD-019** [AGENT][P0][W1][partial] 实现外部事实查询/确认接口 `GET /api/v1/ops/external-facts`、`POST /confirm`。  
+  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L171（6. V1 接口） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-019** [AGENT][P0][W1][limited] 实现外部事实查询/确认接口 `GET /api/v1/ops/external-facts`、`POST /confirm`。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L201（6.3 外部事实回执查询） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流）
-- **AUD-020** [AGENT][P0][W1][partial] 实现公平性事件查询/处理接口 `GET /api/v1/ops/fairness-incidents`、`POST /handle`。  
+  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L201（6.3 外部事实回执查询） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-020** [AGENT][P0][W1][limited] 实现公平性事件查询/处理接口 `GET /api/v1/ops/fairness-incidents`、`POST /handle`。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L242（6.5 公平性事件查询） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流）
-- **AUD-021** [AGENT][P0][W1][partial] 实现投影缺口查询/关闭接口 `GET /api/v1/ops/projection-gaps`、`POST /resolve`。  
+  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L242（6.5 公平性事件查询） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-021** [AGENT][P0][W1][limited] 实现投影缺口查询/关闭接口 `GET /api/v1/ops/projection-gaps`、`POST /resolve`。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L323（6.9 链投影缺口查询） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流）
-- **AUD-022** [AGENT][P0][W1][partial] 实现搜索同步状态接口 `GET /api/v1/ops/search/sync`、重建/别名切换/缓存失效/排序配置更新接口。  
+  技术参考：../原始PRD/交易链监控、公平性与信任安全设计.md:L174（5. 六层交易链监控模型） | ../数据库设计/接口协议/交易链监控与公平性接口协议正式版.md:L323（6.9 链投影缺口查询） | ../业务流程/业务流程图-V1-完整版.md:L522（6. 链上链下一致性与事件流） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-022** [AGENT][P0][W1][limited] 实现搜索同步状态接口 `GET /api/v1/ops/search/sync`、重建/别名切换/缓存失效/排序配置更新接口，并切换到统一鉴权 / 正式权限点 / 审计 / 搜索域错误码口径；搜索 alias 与缓存命名必须遵循统一权威源。  
+  依赖：CORE-007; CORE-008; DB-008; ENV-022  
+  交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
+  完成定义：接口、DTO、统一鉴权、正式权限点、必要的 `X-Step-Up-Token`、审计、搜索域错误码和最小测试已齐备；实现与 OpenAPI 不漂移，且不再使用 `x-role` 占位。  
+  验收：至少一条集成测试或手工 API 验证通过，并能验证 `Authorization + 权限点 + step-up + 审计 + SEARCH_*` 的正式口径。  
+  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../业务流程/业务流程图-V1-完整版.md:L563（6.3 搜索与索引同步流程） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../权限设计/接口权限校验清单.md:L155（搜索运维接口权限与 step-up） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口）
+- **AUD-023** [AGENT][P0][W1][limited] 实现观测总览接口 `GET /api/v1/ops/observability/overview`、日志镜像查询/导出、trace 联查、告警与事故工单接口。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../业务流程/业务流程图-V1-完整版.md:L563（6.3 搜索与索引同步流程） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
-- **AUD-023** [AGENT][P0][W1][partial] 实现观测总览接口 `GET /api/v1/ops/observability/overview`、日志镜像查询/导出、trace 联查、告警与事故工单接口。  
+  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../数据库设计/接口协议/日志与可观测性接口协议正式版.md:L23（3. 查询接口） | ../页面说明书/页面说明书-V1-完整版.md:L921（11.5 搜索运维页） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-024** [AGENT][P0][W1][limited] 实现 Developer 联查接口 `GET /api/v1/developer/trace`，按订单号、事件号、交易哈希快速定位。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../数据库设计/接口协议/日志与可观测性接口协议正式版.md:L23（3. 查询接口） | ../页面说明书/页面说明书-V1-完整版.md:L921（11.5 搜索运维页）
-- **AUD-024** [AGENT][P0][W1][partial] 实现 Developer 联查接口 `GET /api/v1/developer/trace`，按订单号、事件号、交易哈希快速定位。  
-  依赖：CORE-007; CORE-008; DB-008; ENV-022  
-  交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
-  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../领域模型/全量领域模型与对象关系说明.md:L1298（4.12 开发与调试支持聚合） | ../页面说明书/页面说明书-V1-完整版.md:L909（11.3 状态联查页） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范）
-- **AUD-025** [AGENT][P0][W1][partial] 建立审计与 ops 的最小权限矩阵：只读、导出、回放、修复、重处理、重建、锚定重试都要区分权限点。  
+  技术参考：../领域模型/全量领域模型与对象关系说明.md:L1298（4.12 开发与调试支持聚合） | ../页面说明书/页面说明书-V1-完整版.md:L909（11.3 状态联查页） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-025** [AGENT][P0][W1][limited] 建立审计与 ops 的最小权限矩阵：只读、导出、回放、修复、重处理、重建、锚定重试都要区分权限点。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-026** [AGENT][P1][W3][yes] 为审计/一致性/Fabric/Ops 编写集成测试：outbox 发布、回执回写、重试、DLQ、审计包导出、dry-run 回放。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A03-统一事务模板-落地真实审计与Outbox-Writer.md:L1（统一事务模板与 Writer 收口） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-026** [AGENT][P1][W3][limited] 为审计/一致性/Fabric/Ops 编写集成测试：outbox 发布、consumer 幂等、回执回写、重试、DB/Kafka 双层 DLQ、审计包导出、dry-run 回放。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；至少覆盖 SEARCHREC consumer 的幂等、失败隔离、重处理与 worker 侧副作用验证。  
+  验收：至少一条集成测试或手工 API 验证通过，并能覆盖 SEARCHREC consumer 的 DB/Kafka 双层 DLQ 与 reprocess 路径。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-027** [AGENT][P1][W3][yes] 生成 `docs/02-openapi/audit.yaml`、`ops.yaml` 第一版并与实现校验。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A05-Outbox-Publisher-DLQ-统一闭环缺口.md:L1（Outbox Publisher 与 DLQ 闭环） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **AUD-027** [AGENT][P1][W3][limited] 生成 `docs/02-openapi/audit.yaml`、`ops.yaml` 第一版并与实现校验。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：docs/02-openapi/audit.yaml; ops.yaml  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-- **AUD-028** [AGENT][P1][W3][yes] 生成 `docs/05-test-cases/audit-consistency-cases.md`，覆盖链下成功链上失败、链上成功链下未更新、回调乱序、重复事件、修复演练。  
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-028** [AGENT][P1][W3][limited] 生成 `docs/05-test-cases/audit-consistency-cases.md`，覆盖链下成功链上失败、链上成功链下未更新、回调乱序、重复事件、修复演练。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：docs/05-test-cases/audit-consistency-cases.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合）
-
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L33（3. 五层审计体系） | ../数据库设计/接口协议/审计、证据链与回放接口协议正式版.md:L102（5. V1 接口） | ../领域模型/全量领域模型与对象关系说明.md:L1125（4.9 审计与证据聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
+- **AUD-029** [AGENT][P0][W1][limited] 收敛已完成阶段的历史模块到统一 `audit writer / evidence writer`：将 `catalog / search / billing dispute` 等路径中的 ad-hoc 审计写入与 `support.evidence_object` 私有证据写法迁移或桥接到 `AuditEvent / EvidenceItem / EvidenceManifest` 正式权威模型，禁止继续绕过统一写入器。  
+  依赖：AUD-001; AUD-002; CORE-007; CORE-008; DB-008  
+  交付：apps/platform-core/src/modules/audit/**; apps/platform-core/src/modules/catalog/**; apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/billing/**; docs/04-runbooks/**  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；历史模块已接入统一 `audit writer / evidence writer`，不再保留新的 ad-hoc 审计 SQL 或第二套权威证据表，且关键事务遵循“主对象 + 审计 + outbox”同口径。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 `catalog / search / billing dispute` 的审计与证据对象可在统一审计权威模型中联查，不再出现“对象在 PG + MinIO，但不在 audit authority model” 的分叉。  
+  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
+  技术参考：../开发准备/服务清单与服务边界正式版.md:L493（证据对象 / 证据包） | ../原始PRD/审计、证据链与回放设计.md:L140（5. 证据模型） | ../数据库设计/V1/upgrade/055_audit_hardening.sql:L50（audit evidence tables） | 问题修复任务/A03-统一事务模板-落地真实审计与Outbox-Writer.md | 问题修复任务/A06-Audit-Kit-统一模型漂移.md | 问题修复任务/A14-AUD-历史模块统一Writer与证据桥接缺口.md | 问题修复任务/A03-统一事务模板-落地真实审计与Outbox-Writer.md:L1（统一事务模板与 Writer 收口） | 问题修复任务/A14-AUD-历史模块统一Writer与证据桥接缺口.md:L1（历史模块统一 Writer 与证据桥接）
+- **AUD-030** [AGENT][P0][W1][limited] 收敛统一事件 envelope 与路由权威源：应用层 canonical outbox writer、`ops.event_route_policy`、统一顶层字段与 target topic 选择必须成为唯一正式路径，停止触发器自动派生与业务旁路写入并存。  
+  依赖：AUD-001; AUD-008; AUD-009; DB-008  
+  交付：apps/platform-core/src/shared/**; apps/platform-core/src/modules/**; docs/04-runbooks/**; docs/05-test-cases/**  
+  完成定义：统一事件 envelope 顶层字段、canonical outbox writer 与 `ops.event_route_policy` 已成为唯一正式来源；不再允许 trigger 自动派生、业务旁路写入与手工路由并存。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明同一业务动作不会重复写出不同协议事件，且 target topic 来源唯一。  
+  阻塞风险：事件 envelope 与路由权威不唯一会导致 publisher、consumer、DLQ、回放和审计无法共享同一协议。  
+  技术参考：../开发准备/事件模型与Topic清单正式版.md:L80（正式事件 envelope 与 route policy） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L20（事件模型与路由） | ../原始PRD/双层权威模型与链上链下一致性设计.md:L266（outbox 与 publisher） | 问题修复任务/A02-统一事件-Envelope-与路由权威源.md:L1（统一事件 Envelope 与路由权威源）
+- **AUD-031** [AGENT][P0][W1][limited] 清理把 `ops.outbox_event` 当私有工作队列的旁路实现，统一收口到 `outbox publisher -> Kafka -> consumer -> dead letter / reprocess` 正式闭环，并补 publish attempt 联查。  
+  依赖：AUD-008; AUD-009; AUD-010; BIL-024  
+  交付：workers/outbox-publisher/**; apps/platform-core/src/modules/billing/**; docs/04-runbooks/**; docs/05-test-cases/**  
+  完成定义：正式 outbox publisher、`outbox_publish_attempt`、DB/Kafka 双层 DLQ 与 reprocess 闭环已建立；业务模块不再直接把 `ops.outbox_event` 当私有工作队列消费。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 `outbox_publish_attempt` 可联查、失败隔离成立，且历史旁路消费已被移除或桥接到正式链路。  
+  阻塞风险：若继续保留 `ops.outbox_event` 私有工作队列旁路，AUD / NOTIF / SEARCHREC 后续实现会在错误分发语义上持续扩散。  
+  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L307（consumer / DLQ / replay） | ../数据库设计/V1/upgrade/056_dual_authority_consistency.sql:L1（dual authority consistency schema） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L80（dead letter 重处理） | 问题修复任务/A05-Outbox-Publisher-DLQ-统一闭环缺口.md:L1（Outbox Publisher 与 DLQ 闭环）
 ## 16. Search / Recommendation / Projection [SEARCHREC]
 
 这一组落地搜索读模型、索引同步与最小推荐闭环。
 
-- **SEARCHREC-001** [AGENT][P0][W2][yes] 初始化 `workers/search-indexer/`，消费 `search.sync` 主题或 DB 作业表，把目录与卖方资料投影到 OpenSearch。  
+- **SEARCHREC-001** [AGENT][P0][W2][yes] 初始化 `workers/search-indexer/`，消费 `dtp.search.sync` 主题，把目录与卖方资料投影到 OpenSearch；`search.index_sync_task` 仅作为同步状态与重建作业记录表，不再作为默认主消费路径；同时明确 `staging / production` 使用 OpenSearch、`local / demo` 允许 PG 搜索投影 fallback。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：workers/search-indexer/  
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；`staging / production` 以 OpenSearch 为正式候选源，`local / demo` 的 PG fallback 边界与启动条件已明确，且最终仍回 PostgreSQL 做可见性校验。  
+  验收：至少一条集成测试或手工 API 验证通过，并能区分 OpenSearch 正式模式与 `local / demo` PG fallback 模式。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L140（local/demo 允许 PG 投影运行） | ../原始PRD/商品搜索、排序与索引同步设计.md:L153（PostgreSQL fallback 搜索） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A02-统一事件-Envelope-与路由权威源.md:L1（统一事件 Envelope 与路由权威源） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
 - **SEARCHREC-002** [AGENT][P0][W2][yes] 落地商品搜索投影结构，至少包含：标题、摘要、行业、标签、类目、SKU、卖方、价格区间、上架状态、审核状态、可见性。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md
 - **SEARCHREC-003** [AGENT][P0][W2][yes] 落地卖方搜索投影结构，至少包含：主体名称、行业、地区、认证标签、主打商品、评分摘要。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
-- **SEARCHREC-004** [AGENT][P0][W2][yes] 实现 `GET /api/v1/catalog/search`，先查 OpenSearch，再回 PostgreSQL 做状态与可见性校验。  
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md
+- **SEARCHREC-004** [AGENT][P0][W2][yes] 实现 `GET /api/v1/catalog/search`；`staging / production` 先查 OpenSearch，`local / demo` 允许走 PG 搜索投影 fallback，最终都必须回 PostgreSQL 做状态与可见性校验。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
-  完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；运行模式边界清晰，生产基线使用 OpenSearch，`local / demo` 允许 PG fallback，且两种模式最终都回 PostgreSQL 做可见性校验；实现与 OpenAPI 不漂移。  
+  验收：至少一条集成测试或手工 API 验证通过，并能验证生产基线与 `local / demo` fallback 的差异化运行口径。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L140（local/demo 允许 PG 投影运行） | ../原始PRD/商品搜索、排序与索引同步设计.md:L153（PostgreSQL fallback 搜索） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md
 - **SEARCHREC-005** [AGENT][P0][W2][yes] 实现搜索排序基线：相关性、更新时间、热度、信誉权重的简单组合；不得把推荐逻辑硬塞进搜索主排序。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
-- **SEARCHREC-006** [AGENT][P0][W2][yes] 实现搜索缓存与失效策略，结合 Redis 减少弱一致短时抖动。  
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md
+- **SEARCHREC-006** [AGENT][P0][W2][yes] 实现搜索缓存与失效策略，结合 Redis 减少弱一致短时抖动，并统一到 `datab:v1:search:catalog:*` 等正式 key 命名。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
-- **SEARCHREC-007** [AGENT][P0][W2][yes] 实现搜索同步作业表与异常记录表，支持重试、对账与 ops 查看。  
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
+- **SEARCHREC-007** [AGENT][P0][W2][yes] 实现搜索同步作业表与异常记录表，支持重试、对账与 ops 查看，并为后续 alias authority / alias switch 运维能力提供统一状态落点。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | 问题修复任务/A07-搜索同步链路与搜索接口闭环缺口.md | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界）
 - **SEARCHREC-008** [AGENT][P0][W2][yes] 初始化推荐模块基础模型：placement、candidate source、ranking profile、exposure/click event。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口）
+  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约）
 - **SEARCHREC-009** [AGENT][P0][W2][yes] 实现推荐结果接口 `GET /api/v1/recommendations`，返回前必须回 PostgreSQL 校验。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口）
-- **SEARCHREC-010** [AGENT][P0][W2][yes] 实现推荐曝光/点击记录接口 `POST /api/v1/recommendations/track/exposure`、`/click`，要求幂等与审计。  
+  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约）
+- **SEARCHREC-010** [AGENT][P0][W2][yes] 实现推荐曝光/点击记录接口 `POST /api/v1/recommendations/track/exposure`、`/click`，要求幂等、审计，并与 `recommend.behavior_recorded -> dtp.recommend.behavior` 正式行为流契约对齐。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口）
+  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
 - **SEARCHREC-011** [AGENT][P0][W2][yes] 实现推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口）
+  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约）
 - **SEARCHREC-012** [AGENT][P0][W2][yes] 实现推荐重建接口 `POST /api/v1/ops/recommendation/rebuild`，允许重算缓存或候选结果。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；实现与 OpenAPI 不漂移。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口）
+  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约）
 - **SEARCHREC-013** [AGENT][P0][W2][yes] 为 local 模式准备最小候选召回策略：最新上架、同类目、同卖方、热销、零结果兜底。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口）
+  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约）
 - **SEARCHREC-014** [AGENT][P0][W2][yes] 为五条标准链路商品准备固定推荐位样例，确保演示环境首页可直接进入闭环。  
   依赖：CAT-001; DB-011; DB-012; CORE-008  
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口）
-- **SEARCHREC-015** [AGENT][P1][W3][yes] 为搜索与推荐编写一致性测试：商品下架后搜索结果消失、冻结后推荐不可见、重建后 alias 生效。  
-  依赖：CAT-001; DB-011; DB-012; CORE-008  
-  交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**  
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约）
+- **SEARCHREC-015** [AGENT][P1][W3][partial] 为搜索与推荐编写一致性与 worker 可靠性测试：商品下架后搜索结果消失、冻结后推荐不可见、重建后 alias 生效，并覆盖统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理口径。  
+  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-019; SEARCHREC-020  
+  交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**; workers/recommendation-aggregator/**  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；统一鉴权、正式权限点、必要 `step-up`、审计、错误码、worker 侧副作用、失败隔离与重处理校验齐备；测试不再使用 `x-role` 占位。  
+  验收：至少一条集成测试或手工 API 验证通过，并能覆盖 `Authorization`、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计痕迹、`SEARCH_*` 错误码、consumer 幂等、DB/Kafka 双层 DLQ 与 reprocess 路径。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
-- **SEARCHREC-016** [AGENT][P1][W3][yes] 生成 `docs/02-openapi/search.yaml` / `recommendation.yaml` 第一版并与实现校验。  
-  依赖：CAT-001; DB-011; DB-012; CORE-008  
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | ../权限设计/接口权限校验清单.md:L155（SEARCHREC 权限与 step-up） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **SEARCHREC-016** [AGENT][P1][W3][partial] 生成 `docs/02-openapi/search.yaml` / `recommendation.yaml` 第一版并与实现校验；冻结 `Authorization / 权限点 / Idempotency / Step-Up / 审计 / 错误码` 口径。  
+  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-015  
   交付：docs/02-openapi/search.yaml; recommendation.yaml  
-  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：Search / Recommendation 归档占位已建立；当前实现期唯一设计参考固定为 `packages/openapi/search.yaml`、`packages/openapi/recommendation.yaml`；进入实现批次后必须把统一鉴权 / 权限点 / `X-Idempotency-Key` / 必要 `X-Step-Up-Token` / 审计 / 错误码补齐后再生成归档第一版。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 OpenAPI 不再使用 `x-role` 占位，且与正式权限和错误码口径一致。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
-- **SEARCHREC-017** [AGENT][P1][W3][yes] 生成 `docs/05-test-cases/search-rec-cases.md`，覆盖投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底。  
-  依赖：CAT-001; DB-011; DB-012; CORE-008  
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口）
+- **SEARCHREC-017** [AGENT][P1][W3][yes] 生成 `docs/05-test-cases/search-rec-cases.md`，覆盖投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底，并登记统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项。  
+  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-016; SEARCHREC-020  
   交付：docs/05-test-cases/search-rec-cases.md  
-  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用，并明确登记统一鉴权 / `step-up` / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项，禁止继续使用 `x-role` 占位语义。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明测试矩阵覆盖 `Authorization`、正式权限点、必要 `X-Step-Up-Token`、审计留痕、搜索域错误码、worker 侧副作用与 DLQ/reprocess 路径。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口）
-
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **SEARCHREC-018** [AGENT][P0][W1][limited] 将搜索/推荐 handler 与 service 切到统一鉴权门面和正式权限点，移除 `x-role` 占位语义。  
+  依赖：AUD-022; SEARCHREC-004; SEARCHREC-009; SEARCHREC-010; SEARCHREC-011; SEARCHREC-012  
+  交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; docs/04-runbooks/search-reindex.md; docs/04-runbooks/recommendation-runtime.md  
+  完成定义：搜索/推荐接口统一接入正式 `Authorization` 鉴权门面与权限点；写接口头约束与幂等要求齐备；运行时不再读取 `x-role` 占位。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 `Authorization + 正式权限点` 已替代 `x-role`。  
+  阻塞风险：若继续保留占位权限语义，后续 `step-up`、OpenAPI 与测试都会在错误契约上叠加返工。  
+  技术参考：../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L22（搜索请求头与权威边界） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐鉴权与审计） | ../权限设计/接口权限校验清单.md:L155（搜索运维权限与 step-up） | ../权限设计/接口权限校验清单.md:L420（推荐读取与配置权限） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口）
+- **SEARCHREC-019** [AGENT][P0][W1][limited] 为 SEARCHREC 运维写接口接入 `step-up`、审计留痕与搜索域 `SEARCH_*` 错误码，并统一推荐运维写接口的高风险控制。  
+  依赖：AUD-022; SEARCHREC-018  
+  交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; apps/platform-core/src/modules/audit/**; docs/04-runbooks/search-reindex.md; docs/04-runbooks/recommendation-runtime.md  
+  完成定义：搜索运维写接口已接正式 `X-Step-Up-Token`、审计与 `SEARCH_*` 错误码；推荐运维写接口的高风险控制与审计要求已按冻结口径落地；实现与冻结文档不漂移。  
+  验收：至少一条集成测试或手工 API 验证通过，并能验证 `step-up`、审计痕迹和搜索域错误码。  
+  阻塞风险：若高风险写接口继续沿用 header presence / 通用错误码，占位口径会被进一步固化到 OpenAPI 和测试。  
+  技术参考：../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L26（搜索写接口幂等） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L41（搜索运维接口族） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L86（搜索错误码） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L137（推荐运维修改需审计并建议 step-up） | ../权限设计/接口权限校验清单.md:L156（搜索重建高风险控制） | ../权限设计/接口权限校验清单.md:L424（推荐配置修改高风险控制） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L82（审计与 Step-Up） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口）
+- **SEARCHREC-020** [AGENT][P0][W1][limited] 为 `search-indexer` 与 `recommendation-aggregator` 补齐 Kafka consumer 可靠性闭环：基于 `event_id` 的 consumer 幂等、`ops.consumer_idempotency_record`、数据库 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter` 双层隔离、失败后再决定 offset 提交，以及与 `AUD-010` 的 dry-run / step-up 重处理对接。  
+  依赖：AUD-008; AUD-010; SEARCHREC-001; SEARCHREC-010  
+  交付：workers/search-indexer/**; workers/recommendation-aggregator/**; apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; docs/04-runbooks/search-reindex.md; docs/04-runbooks/recommendation-runtime.md  
+  完成定义：两个 SEARCHREC consumer 都已按统一事件 envelope 基于 `event_id` 幂等消费；失败路径能同时进入 `ops.dead_letter_event` 与 `dtp.dead-letter`；只有在成功处理或失败已安全隔离后才提交 offset；实现与统一重处理口径不漂移。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 `search-indexer` 与 `recommendation-aggregator` 的 worker 侧副作用、幂等、DB/Kafka 双层 DLQ 与 reprocess 路径成立。  
+  阻塞风险：若 consumer 失败仍直接提交 offset，搜索投影与推荐行为流会出现静默丢数，后续审计、联查与回放都无法补救。  
+  技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L307（consumer / DLQ / replay） | ../数据库设计/V1/upgrade/056_dual_authority_consistency.sql:L90（consumer_idempotency_record） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L80（dead letter 重处理） | ../开发准备/事件模型与Topic清单正式版.md:L199（统一 DLQ topic） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **SEARCHREC-021** [AGENT][P0][W1][limited] 收敛搜索 alias 权威源与阶段边界：统一 `product_search_read/write`、`seller_search_read/write` 与 `search.index_alias_binding`，同步初始化脚本、运行默认值、ops 接口与 runbook，明确 alias switch 属于 V1 最小运维能力。  
+  依赖：SEARCHREC-007; AUD-022; ENV-017  
+  交付：apps/platform-core/src/modules/search/**; workers/search-indexer/**; infra/opensearch/**; docs/04-runbooks/search-reindex.md  
+  完成定义：搜索 alias 权威源、结构化命名和阶段边界已统一；`search.index_alias_binding`、初始化脚本、运行默认值、ops 接口与 runbook 共享同一套 alias 答案，且 alias switch 被明确纳入 V1 最小运维能力。  
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 schema / 脚本 / runbook / ops 接口使用同一套 alias 名称与切换边界。  
+  阻塞风险：若 alias 权威源与阶段边界继续漂移，重建、切换、初始化脚本与运维接口会分别对着不同索引/别名工作。  
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（V1 正式搜索方案） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L41（搜索运维接口族） | docs/04-runbooks/search-reindex.md:L45（当前 V1 口径） | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界）
 ## 17. 前端最小页面闭环（portal-web / console-web） [WEB]
 
 这一组落地门户和控制台的最小页面闭环。
@@ -3056,13 +3127,13 @@
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
   技术参考：../数据库设计/数据库设计总说明.md:L176（7. 迁移执行顺序） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../数据库设计/README.md:L67（4. 迁移策略）
-- **TEST-005** [AGENT][P0][W3][yes] 建立本地环境 smoke test，验证 compose 启动、核心服务 ready、Grafana 数据源可连、Keycloak realm 导入成功。  
+- **TEST-005** [AGENT][P0][W3][yes] 建立本地环境 smoke test，验证 compose 启动、核心服务 ready、Grafana 数据源可连、Keycloak realm 导入成功，并校验 canonical topics 与关键控制面入口不再回退到旧口径。  
   依赖：ENV-040; DB-032; CORE-024  
   交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
   完成定义：测试脚本可在本地或 CI 运行；断言明确；失败可定位；结果纳入验收清单。  
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
-  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略）
+  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
 - **TEST-006** [AGENT][P0][W3][yes] 建立订单端到端测试，严格按五条标准链路命名与验收：工业设备运行指标 API 订阅、工业质量与产线日报文件包交付、供应链协同查询沙箱、零售门店经营分析 API / 报告订阅、商圈/门店选址查询服务。  
   依赖：ENV-040; DB-032; CORE-024  
   交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
@@ -3133,13 +3204,13 @@
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
   技术参考：../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L18（15.2 分阶段验收标准）
-- **TEST-016** [AGENT][P0][W3][yes] 在 CI 中加入 compose 级别 smoke 作业，至少启动核心服务并执行健康检查。  
+- **TEST-016** [AGENT][P0][W3][yes] 在 CI 中加入 compose 级别 smoke 作业，至少启动核心服务并执行健康检查，同时校验 canonical topics / consumer group / 关键 OpenAPI 归档不再漂移到旧命名或骨架接口。  
   依赖：ENV-040; DB-032; CORE-024  
   交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
   完成定义：测试脚本可在本地或 CI 运行；断言明确；失败可定位；结果纳入验收清单。  
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
-  技术参考：../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L18（15.2 分阶段验收标准）
+  技术参考：../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L18（15.2 分阶段验收标准） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
 - **TEST-017** [AGENT][P0][W3][yes] 在 CI 中加入 schema drift 检查，避免代码实体与 migration/OpenAPI 漂移。  
   依赖：ENV-040; DB-032; CORE-024  
   交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
@@ -3210,11 +3281,17 @@
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
   技术参考：../业务流程/业务流程图-V1-完整版.md:L349（4.4.3 沙箱 / 模板查询类交付） | ../页面说明书/页面说明书-V1-完整版.md:L685（7.7 查询运行与结果记录页） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略）
-- **TEST-027** [AGENT][P1][W3][yes] 建立通知链路 smoke test，验证支付成功、交付完成、验收通过、争议升级至少四类事件会触发 mock 通知并留下审计记录。  
+- **TEST-027** [AGENT][P1][W3][yes] 建立通知链路 smoke test，验证支付成功、交付完成、验收通过、争议升级至少四类事件会通过 `notification.requested -> dtp.notification.dispatch -> notification-worker` 触发 `mock-log` 通知并留下审计记录。  
   依赖：NOTIF-004; NOTIF-005; NOTIF-006; NOTIF-009  
   交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
   完成定义：测试脚本可在本地或 CI 运行；断言明确；失败可定位；结果纳入验收清单。  
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略）
-
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+- **TEST-028** [AGENT][P0][W3][limited] 建立 canonical smoke / contract checker，强制校验正式 topic、正式接口、正式 consumer group、OpenAPI 示例与验收矩阵，不再允许只测旧 topic、骨架接口或局部 outbox 行。  
+  依赖：TEST-005; TEST-016; AUD-028; SEARCHREC-017; NOTIF-014  
+  交付：scripts/**; docs/05-test-cases/**; .github/workflows/**  
+  完成定义：本地与 CI 的 smoke / contract checker 已对准正式接口、canonical topic、consumer group、OpenAPI 示例与验收矩阵；不再允许只检查旧 topic、骨架路由或局部 outbox 行。  
+  验收：测试在本地和 CI 至少一处可重复通过，并能证明错误 topic、旧命名、占位鉴权或骨架接口会被显式拦截。  
+  阻塞风险：错误正反馈会让 topic、OpenAPI、通知和 SEARCHREC 漂移在“测试通过”的掩护下继续扩散。  
+  技术参考：../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L18（分阶段验收标准） | docs/05-test-cases/README.md:L7（测试样例批次边界） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）

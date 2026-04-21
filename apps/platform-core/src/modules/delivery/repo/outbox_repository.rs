@@ -1,4 +1,5 @@
 use crate::modules::order::repo::map_db_error;
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Error as DbError, GenericClient};
@@ -7,10 +8,8 @@ use serde_json::{Map, Value, json};
 
 pub(crate) const DELIVERY_RECEIPT_EVENT_TYPE: &str = "delivery.committed";
 const DELIVERY_RECEIPT_AGGREGATE_TYPE: &str = "delivery.delivery_record";
-const DELIVERY_RECEIPT_TARGET_TOPIC: &str = "dtp.outbox.domain-events";
 pub(crate) const BILLING_TRIGGER_BRIDGE_EVENT_TYPE: &str = "billing.trigger.bridge";
 const BILLING_TRIGGER_BRIDGE_AGGREGATE_TYPE: &str = "trade.order_main";
-const BILLING_TRIGGER_BRIDGE_TARGET_TOPIC: &str = "billing.events";
 
 #[derive(Clone, Copy)]
 struct BillingTriggerMatrixSnapshot {
@@ -49,7 +48,6 @@ pub(crate) fn build_delivery_receipt_outbox_payload(
     extra: Value,
 ) -> Value {
     let mut payload = json!({
-        "event_name": DELIVERY_RECEIPT_EVENT_TYPE,
         "event_schema_version": "v1",
         "authority_scope": "business",
         "source_of_truth": "database",
@@ -93,59 +91,23 @@ pub(crate) async fn write_delivery_receipt_outbox_event(
     trace_id: Option<&str>,
     idempotency_key: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    client
-        .query_one(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type,
-               aggregate_id,
-               event_type,
-               payload,
-               status,
-               request_id,
-               trace_id,
-               idempotency_key,
-               event_schema_version,
-               authority_scope,
-               source_of_truth,
-               proof_commit_policy,
-               target_bus,
-               target_topic,
-               partition_key,
-               ordering_key,
-               payload_hash
-             ) VALUES (
-               $1,
-               $2::text::uuid,
-               $3,
-               $4::jsonb,
-               'pending',
-               $5,
-               $6,
-               $7,
-               COALESCE($4::jsonb ->> 'event_schema_version', 'v1'),
-               COALESCE($4::jsonb ->> 'authority_scope', 'business'),
-               COALESCE($4::jsonb ->> 'source_of_truth', 'database'),
-               COALESCE($4::jsonb ->> 'proof_commit_policy', 'async_evidence'),
-               'kafka',
-               $8,
-               $2,
-               $2,
-               encode(digest(($4::jsonb)::text, 'sha256'), 'hex')
-             )
-             RETURNING outbox_event_id::text",
-            &[
-                &DELIVERY_RECEIPT_AGGREGATE_TYPE,
-                &delivery_id,
-                &DELIVERY_RECEIPT_EVENT_TYPE,
-                payload,
-                &request_id,
-                &trace_id,
-                &idempotency_key,
-                &DELIVERY_RECEIPT_TARGET_TOPIC,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: DELIVERY_RECEIPT_AGGREGATE_TYPE,
+            aggregate_id: delivery_id,
+            event_type: DELIVERY_RECEIPT_EVENT_TYPE,
+            producer_service: "platform-core.delivery",
+            request_id,
+            trace_id,
+            idempotency_key,
+            occurred_at: payload.get("committed_at").and_then(Value::as_str),
+            business_payload: payload,
+            deduplicate_by_idempotency_key: false,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 
@@ -193,7 +155,6 @@ pub(crate) async fn write_billing_trigger_bridge_event(
     let sku_type = row.get::<_, String>(0);
     let billing_trigger_matrix = load_billing_trigger_matrix(client, sku_type.as_str()).await?;
     let mut payload = json!({
-        "event_name": BILLING_TRIGGER_BRIDGE_EVENT_TYPE,
         "event_schema_version": "v1",
         "authority_scope": "business",
         "source_of_truth": "database",
@@ -230,63 +191,23 @@ pub(crate) async fn write_billing_trigger_bridge_event(
         object.insert("details".to_string(), extra);
     }
 
-    client
-        .execute(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type,
-               aggregate_id,
-               event_type,
-               payload,
-               status,
-               request_id,
-               trace_id,
-               idempotency_key,
-               event_schema_version,
-               authority_scope,
-               source_of_truth,
-               proof_commit_policy,
-               target_bus,
-               target_topic,
-               partition_key,
-               ordering_key,
-               payload_hash
-             )
-             SELECT
-               $1,
-               $2::text::uuid,
-               $3,
-               $4::jsonb,
-               'pending',
-               $5,
-               $6,
-               $7,
-               COALESCE($4::jsonb ->> 'event_schema_version', 'v1'),
-               COALESCE($4::jsonb ->> 'authority_scope', 'business'),
-               COALESCE($4::jsonb ->> 'source_of_truth', 'database'),
-               COALESCE($4::jsonb ->> 'proof_commit_policy', 'async_evidence'),
-               'kafka',
-               $8,
-               $2,
-               $2,
-               encode(digest(($4::jsonb)::text, 'sha256'), 'hex')
-             WHERE NOT EXISTS (
-               SELECT 1
-               FROM ops.outbox_event
-               WHERE idempotency_key = $7
-             )",
-            &[
-                &BILLING_TRIGGER_BRIDGE_AGGREGATE_TYPE,
-                &order_id,
-                &BILLING_TRIGGER_BRIDGE_EVENT_TYPE,
-                &payload,
-                &request_id,
-                &trace_id,
-                &idempotency_key,
-                &BILLING_TRIGGER_BRIDGE_TARGET_TOPIC,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: BILLING_TRIGGER_BRIDGE_AGGREGATE_TYPE,
+            aggregate_id: order_id,
+            event_type: BILLING_TRIGGER_BRIDGE_EVENT_TYPE,
+            producer_service: "platform-core.delivery",
+            request_id,
+            trace_id,
+            idempotency_key: Some(idempotency_key),
+            occurred_at: None,
+            business_payload: &payload,
+            deduplicate_by_idempotency_key: true,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

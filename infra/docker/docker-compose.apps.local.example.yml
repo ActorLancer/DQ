@@ -74,6 +74,7 @@ services:
     environment:
       FABRIC_REQUEST_TOPIC: dtp.fabric.requests
       FABRIC_CALLBACK_TOPIC: dtp.fabric.callbacks
+      FABRIC_ADAPTER_CONSUMER_GROUP: ${FABRIC_ADAPTER_CONSUMER_GROUP:-cg-fabric-adapter}
       KAFKA_BROKERS: kafka:9092
     depends_on:
       kafka:
@@ -87,13 +88,14 @@ services:
       retries: 5
       start_period: 5s
 
-  notification-service:
+  notification-worker:
     profiles: ["apps"]
     image: alpine:3.20
-    container_name: datab-notification-service
+    container_name: datab-notification-worker
     command: ["sh", "-c", "touch /tmp/healthy && tail -f /dev/null"]
     environment:
       NOTIFICATION_TOPIC: dtp.notification.dispatch
+      NOTIFICATION_WORKER_CONSUMER_GROUP: ${NOTIFICATION_WORKER_CONSUMER_GROUP:-cg-notification-worker}
       KAFKA_BROKERS: kafka:9092
     depends_on:
       kafka:
@@ -114,15 +116,48 @@ services:
     command: ["sh", "-c", "touch /tmp/healthy && tail -f /dev/null"]
     environment:
       SEARCH_SYNC_TOPIC: dtp.search.sync
+      SEARCH_INDEXER_CONSUMER_GROUP: ${SEARCH_INDEXER_CONSUMER_GROUP:-cg-search-indexer}
       KAFKA_BROKERS: kafka:9092
       OPENSEARCH_ENDPOINT: http://opensearch:9200
-      INDEX_ALIAS_CATALOG_PRODUCTS: ${INDEX_ALIAS_CATALOG_PRODUCTS:-catalog_products_v1}
-      INDEX_ALIAS_SELLER_PROFILES: ${INDEX_ALIAS_SELLER_PROFILES:-seller_profiles_v1}
-      INDEX_ALIAS_SEARCH_SYNC_JOBS: ${INDEX_ALIAS_SEARCH_SYNC_JOBS:-search_sync_jobs_v1}
+      INDEX_ALIAS_PRODUCT_SEARCH_READ: ${INDEX_ALIAS_PRODUCT_SEARCH_READ:-product_search_read}
+      INDEX_ALIAS_PRODUCT_SEARCH_WRITE: ${INDEX_ALIAS_PRODUCT_SEARCH_WRITE:-product_search_write}
+      INDEX_ALIAS_SELLER_SEARCH_READ: ${INDEX_ALIAS_SELLER_SEARCH_READ:-seller_search_read}
+      INDEX_ALIAS_SELLER_SEARCH_WRITE: ${INDEX_ALIAS_SELLER_SEARCH_WRITE:-seller_search_write}
+      INDEX_NAME_SEARCH_SYNC_JOBS: ${INDEX_NAME_SEARCH_SYNC_JOBS:-search_sync_jobs_v1}
     depends_on:
       kafka:
         condition: service_healthy
       opensearch:
+        condition: service_healthy
+    networks:
+      - datab-local
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  recommendation-aggregator:
+    profiles: ["apps"]
+    image: alpine:3.20
+    container_name: datab-recommendation-aggregator
+    command: ["sh", "-c", "touch /tmp/healthy && tail -f /dev/null"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-datab}:${POSTGRES_PASSWORD:-datab_local_pass}@postgres:5432/${POSTGRES_DB:-datab}
+      TOPIC_RECOMMENDATION_BEHAVIOR: dtp.recommend.behavior
+      KAFKA_BROKERS: kafka:9092
+      REDIS_URL: redis://:${REDIS_PASSWORD:-datab_redis_pass}@redis:6379/1
+      REDIS_NAMESPACE: ${REDIS_NAMESPACE:-datab:v1}
+      RECOMMENDATION_AGGREGATOR_CONSUMER_GROUP: ${RECOMMENDATION_AGGREGATOR_CONSUMER_GROUP:-cg-recommendation-aggregator}
+      INDEX_ALIAS_PRODUCT_SEARCH_WRITE: ${INDEX_ALIAS_PRODUCT_SEARCH_WRITE:-product_search_write}
+      INDEX_ALIAS_SELLER_SEARCH_WRITE: ${INDEX_ALIAS_SELLER_SEARCH_WRITE:-seller_search_write}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - datab-local

@@ -1,0 +1,68 @@
+openapi: 3.1.0
+info:
+  title: Search API
+  version: v1
+paths:
+  /api/v1/catalog/search:
+    get:
+      summary: catalog search with OpenSearch candidate retrieval and PostgreSQL final check
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: entity_scope
+          in: query
+          schema:
+            type: string
+            enum: [all, product, service, seller]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [composite, latest, price_asc, price_desc, quality, reputation, hotness]
+      responses:
+        "200":
+          description: search results
+  /api/v1/ops/search/sync:
+    get:
+      summary: list search sync task status
+      responses:
+        "200":
+          description: search sync tasks
+  /api/v1/ops/search/reindex:
+    post:
+      summary: enqueue search reindex tasks
+      responses:
+        "200":
+          description: reindex queued
+  /api/v1/ops/search/aliases/switch:
+    post:
+      summary: switch active OpenSearch alias binding
+      responses:
+        "200":
+          description: alias switch result
+  /api/v1/ops/search/cache/invalidate:
+    post:
+      summary: invalidate cached search candidates in Redis
+      responses:
+        "200":
+          description: cache invalidation result
+  /api/v1/ops/search/ranking-profiles:
+    get:
+      summary: list ranking profiles
+      responses:
+        "200":
+          description: ranking profiles
+  /api/v1/ops/search/ranking-profiles/{id}:
+    patch:
+      summary: update ranking profile weights and filters
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: updated ranking profile

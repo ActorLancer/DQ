@@ -1,0 +1,3 @@
+# 当前文件不是 Search OpenAPI 的设计参考。
+# 当前实现阶段的唯一权威源：packages/openapi/search.yaml
+# 待 SEARCHREC 实现稳定并完成实现校验后，再将本文件作为归档副本生成。

@@ -149,7 +149,7 @@ mod tests {
             .query_one(
                 "SELECT
                    (SELECT COUNT(*)::bigint FROM billing.billing_event WHERE order_id = $1::text::uuid AND event_type = 'one_time_charge'),
-                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_id = $2::text::uuid AND target_topic = 'billing.events'),
+                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_id = $2::text::uuid AND target_topic = 'dtp.outbox.domain-events'),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $3 AND action_name = 'billing.event.record.share_ro_enable')
                  ",
                 &[

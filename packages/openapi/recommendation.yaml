@@ -1,0 +1,100 @@
+openapi: 3.1.0
+info:
+  title: Recommendation API
+  version: v1
+paths:
+  /api/v1/recommendations:
+    get:
+      summary: multi-source recommendation with OpenSearch recall and PostgreSQL final validation
+      parameters:
+        - name: placement_code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: subject_scope
+          in: query
+          schema:
+            type: string
+        - name: subject_org_id
+          in: query
+          schema:
+            type: string
+        - name: subject_user_id
+          in: query
+          schema:
+            type: string
+        - name: anonymous_session_key
+          in: query
+          schema:
+            type: string
+        - name: context_entity_scope
+          in: query
+          schema:
+            type: string
+            enum: [product, seller]
+        - name: context_entity_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: recommendation result
+  /api/v1/recommendations/track/exposure:
+    post:
+      summary: record recommendation panel and item exposure with idempotency
+      responses:
+        "200":
+          description: exposure accepted
+  /api/v1/recommendations/track/click:
+    post:
+      summary: record recommendation click with idempotency
+      responses:
+        "200":
+          description: click accepted
+  /api/v1/ops/recommendation/placements:
+    get:
+      summary: list recommendation placements
+      responses:
+        "200":
+          description: placement list
+  /api/v1/ops/recommendation/placements/{placement_code}:
+    patch:
+      summary: update recommendation placement definition
+      parameters:
+        - name: placement_code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: updated placement
+  /api/v1/ops/recommendation/ranking-profiles:
+    get:
+      summary: list recommendation ranking profiles
+      responses:
+        "200":
+          description: ranking profile list
+  /api/v1/ops/recommendation/ranking-profiles/{id}:
+    patch:
+      summary: update recommendation ranking profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: updated ranking profile
+  /api/v1/ops/recommendation/rebuild:
+    post:
+      summary: rebuild recommendation cache and derived features
+      responses:
+        "200":
+          description: rebuild accepted

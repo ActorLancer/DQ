@@ -33,14 +33,15 @@
 | `apps/fabric-event-listener` | partial | 仅 `README.md`。 |
 | `apps/search-indexer` | partial | 仅 `README.md`。 |
 | `apps/data-processing-worker` | partial | 仅 `README.md`。 |
-| `apps/notification-worker` | partial | 仅 `README.md`。 |
+| `apps/notification-worker` | partial | 当前通知进程正式落位目录；目前仍为占位 `README.md`。 |
 | `apps/mock-payment-provider` | partial | 仅 `README.md`。 |
 
 ## 4. 配置与部署资产
 
 | 资产 | 状态 | 说明 |
 | --- | --- | --- |
-| `部署脚本/docker-compose.local.yml` | exists | 本地核心中间件编排已存在。 |
+| `infra/docker/docker-compose.local.yml` | exists | 当前本地核心中间件主编排入口已存在。 |
+| `部署脚本/docker-compose.local.yml` | exists | 历史兼容资产仍存在，但不再作为主执行入口。 |
 | `部署脚本/docker-compose.postgres-test.yml` | exists | 数据库迁移测试编排存在。 |
 | `scripts/validate_database_migrations.sh` | exists | 迁移校验脚本存在。 |
 | `scripts/check-local-env.sh` | exists | 本地环境可用性检查脚本存在。 |

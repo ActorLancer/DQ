@@ -145,19 +145,47 @@ mod tests {
             .expect("query audit")
             .get(0);
         assert!(audit_count >= 1);
-        let outbox_count: i64 = client
+        let outbox_row = client
             .query_one(
-                "SELECT COUNT(*)::bigint
+                "SELECT target_topic, payload
                  FROM ops.outbox_event
                  WHERE request_id = $1
                    AND aggregate_type = 'trade.order'
-                   AND event_type = 'trade.order.created'",
+                   AND event_type = 'trade.order.created'
+                 ORDER BY created_at DESC, outbox_event_id DESC
+                 LIMIT 1",
                 &[&request_id],
             )
             .await
-            .expect("query outbox")
-            .get(0);
-        assert!(outbox_count >= 1);
+            .expect("query outbox");
+        assert_eq!(
+            outbox_row.get::<_, Option<String>>(0).as_deref(),
+            Some("dtp.outbox.domain-events")
+        );
+        let outbox_payload: Value = outbox_row.get(1);
+        assert_eq!(
+            outbox_payload["event_type"].as_str(),
+            Some("trade.order.created")
+        );
+        assert_eq!(
+            outbox_payload["aggregate_id"].as_str(),
+            Some(order_id.as_str())
+        );
+        assert_eq!(
+            outbox_payload["producer_service"].as_str(),
+            Some("platform-core.order")
+        );
+        assert_eq!(outbox_payload["order_id"].as_str(), Some(order_id.as_str()));
+        assert_eq!(
+            outbox_payload["payload"]["order_id"].as_str(),
+            Some(order_id.as_str())
+        );
+        assert!(
+            outbox_payload["event_id"]
+                .as_str()
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+        );
 
         cleanup_graph(&client, &seed, &order_id, &request_id).await;
     }

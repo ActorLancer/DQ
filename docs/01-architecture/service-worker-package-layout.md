@@ -24,7 +24,10 @@
 - `services/fabric-event-listener`
 - `services/fabric-ca-admin`
 - `services/mock-payment-provider`
-- `services/notification-service`
+
+说明：
+
+- `notification-worker` 当前正式落位在 `apps/notification-worker`。
 
 ### 2.3 workers（异步与离线落位）
 

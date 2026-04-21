@@ -13,6 +13,7 @@
 - `postgres`
 - `redis`
 - `kafka`
+- `kafka-topics-init`（一次性 topic 初始化）
 - `minio`
 - `opensearch`
 - `keycloak`
@@ -30,6 +31,7 @@
 ## Profile 约束
 
 - `core`：`postgres/redis/kafka/minio/opensearch/keycloak/otel-collector`
+- `kafka-topics-init` 作为 compose 内定义的一次性 init service，由 `scripts/up-local.sh` 在 `core/demo` 启动后显式调用，不属于业务常驻进程。
 - `observability`：`prometheus/alertmanager/*-exporter/grafana/loki/tempo`
 - `fabric`：`fabric-ca/fabric-orderer/fabric-peer`
 - `demo`：全量联调集合（覆盖 core + observability + fabric + mock-payment）
@@ -50,7 +52,7 @@
 
 - `platform-core`
 - `fabric-adapter`
-- `notification-service`
+- `notification-worker`
 - `outbox-publisher`
 - `search-indexer`
 
@@ -61,7 +63,7 @@
 1. `make up-local` / `make up-demo`
 2. `./scripts/wait-for-services.sh core|full`
 3. Seed 初始化：
-   - `./infra/kafka/init-topics.sh`
+   - Kafka topics 默认由 compose 内一次性 `kafka-topics-init` 自动初始化；如需手动重跑：`./infra/kafka/init-topics.sh`
    - `./infra/minio/init-minio.sh`
    - `./infra/opensearch/init-opensearch.sh`
 4. 健康检查：

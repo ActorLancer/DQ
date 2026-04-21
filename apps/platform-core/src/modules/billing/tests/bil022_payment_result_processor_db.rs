@@ -247,9 +247,9 @@ mod tests {
         let outbox_counts = client
             .query_one(
                 "SELECT
-                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $1 AND target_topic = 'billing.events'),
-                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $2 AND target_topic = 'billing.events'),
-                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $3 AND target_topic = 'billing.events')",
+                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $1 AND target_topic = 'dtp.outbox.domain-events'),
+                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $2 AND target_topic = 'dtp.outbox.domain-events'),
+                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE partition_key = $3 AND target_topic = 'dtp.outbox.domain-events')",
                 &[
                     &seed.poll_success.order_id,
                     &seed.webhook_success_then_poll_fail.order_id,

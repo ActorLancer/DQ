@@ -264,7 +264,7 @@ mod tests {
 
         let recurring_outbox: i64 = client
             .query_one(
-                "SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_id = $1::text::uuid AND target_topic = 'billing.events'",
+                "SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_id = $1::text::uuid AND target_topic = 'dtp.outbox.domain-events'",
                 &[&sub_event_id],
             )
             .await
@@ -273,7 +273,7 @@ mod tests {
         assert_eq!(recurring_outbox, 1);
         let usage_outbox: i64 = client
             .query_one(
-                "SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_id = $1::text::uuid AND target_topic = 'billing.events'",
+                "SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE aggregate_id = $1::text::uuid AND target_topic = 'dtp.outbox.domain-events'",
                 &[&ppu_event_id],
             )
             .await

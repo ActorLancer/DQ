@@ -173,7 +173,7 @@ mod tests {
                 "SELECT COUNT(*)::bigint
                  FROM ops.outbox_event
                  WHERE aggregate_id = $1::text::uuid
-                   AND target_topic = 'billing.events'",
+                   AND target_topic = 'dtp.outbox.domain-events'",
                 &[&payout_id],
             )
             .await

@@ -408,11 +408,25 @@ mod tests {
             Some("dtp.outbox.domain-events")
         );
         let payload: Value = row.get(2);
+        assert_eq!(
+            payload["event_type"].as_str(),
+            Some("delivery.task.auto_created")
+        );
+        assert_eq!(payload["aggregate_id"].as_str(), Some(delivery_id));
+        assert_eq!(
+            payload["producer_service"].as_str(),
+            Some("platform-core.order")
+        );
         assert_eq!(payload["order_id"].as_str(), Some(order_id));
         assert_eq!(payload["sku_type"].as_str(), Some(sku_type));
         assert_eq!(payload["creation_source"].as_str(), Some(creation_source));
         assert_eq!(payload["executor_type"].as_str(), Some(executor_type));
         assert_eq!(payload["initial_status"].as_str(), Some("prepared"));
+        assert_eq!(payload["payload"]["order_id"].as_str(), Some(order_id));
+        assert_eq!(
+            payload["payload"]["initial_status"].as_str(),
+            Some("prepared")
+        );
     }
 
     async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, db::Error> {

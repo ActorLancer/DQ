@@ -20,11 +20,16 @@
 
 ## 阶段 3：Seed
 
-12. 初始化 Kafka topics：`./infra/kafka/init-topics.sh`
+12. Kafka topics 会由 `make up-local` / `make up-core` / `make up-demo` 通过 compose 内一次性 `kafka-topics-init` 自动初始化；如需手动重跑：`./infra/kafka/init-topics.sh`
 13. 初始化 MinIO buckets：`./infra/minio/init-minio.sh`
 14. 初始化 OpenSearch 索引：`./infra/opensearch/init-opensearch.sh`
 15. 执行本地 seed：`make seed-local`
 16. 准备五条标准链路演示数据：`fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json`
+
+补充说明：
+
+- 当前本地启动默认仍初始化 `OpenSearch`，这是现阶段的默认联调路径，不代表 `SEARCHREC` 的 fallback 目标已经实现。
+- 进入 `SEARCHREC-001 / SEARCHREC-004` 的后续实现批次后，正式目标应收敛为：`staging / production` 强制 `OpenSearch`，`local / demo` 允许只用 `PostgreSQL` 搜索投影运行，且最终仍由 `PostgreSQL` 做可见性校验。
 
 ## 阶段 4：应用
 
@@ -56,6 +61,7 @@
 
 31. 导出当前本地配置快照：`./scripts/export-local-config.sh`
 32. 运行本地 smoke 套件（建议在 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+    - 该 smoke 会按 `infra/kafka/topics.v1.json` 检查 canonical topics 是否真实存在，防止 auto-create 掩盖 topic 漂移。
 
 ## 迁移兼容说明（ENV-001 / ENV-057）
 

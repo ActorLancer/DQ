@@ -6,6 +6,7 @@ use crate::modules::billing::models::{
 use crate::modules::billing::repo::dispute_linkage_repository::apply_dispute_open_linkage;
 use crate::modules::delivery::repo::invalidate_delivery_cutoff_download_ticket_caches;
 use crate::modules::storage::application::{delete_object, put_object_bytes};
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient, Row};
@@ -892,52 +893,27 @@ async fn write_dispute_outbox(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    let request_id = request_id.map(str::to_string);
-    let trace_id = trace_id.map(str::to_string);
-    client
-        .query_one(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type,
-               aggregate_id,
-               event_type,
-               payload,
-               status,
-               request_id,
-               trace_id,
-               idempotency_key,
-               event_schema_version,
-               authority_scope,
-               source_of_truth,
-               proof_commit_policy,
-               target_bus,
-               target_topic,
-               partition_key,
-               ordering_key,
-               payload_hash
-             ) VALUES (
-               'support.dispute_case',
-               $1::text::uuid,
-               $2,
-               $3::jsonb,
-               'pending',
-               $4,
-               $5,
-               NULL,
-               COALESCE($3::jsonb ->> 'event_schema_version', 'v1'),
-               COALESCE($3::jsonb ->> 'authority_scope', 'business'),
-               COALESCE($3::jsonb ->> 'source_of_truth', 'database'),
-               COALESCE($3::jsonb ->> 'proof_commit_policy', 'pending_fabric_anchor'),
-               'kafka',
-               'dtp.outbox.domain-events',
-               $1,
-               $1,
-               encode(digest(($3::jsonb)::text, 'sha256'), 'hex')
-             )
-             RETURNING outbox_event_id::text",
-            &[&case_id, &event_type, payload, &request_id, &trace_id],
-        )
-        .await
-        .map_err(map_db_error)?;
+    let occurred_at = match event_type {
+        "dispute.resolved" => payload.get("resolved_at").and_then(Value::as_str),
+        _ => None,
+    };
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: "support.dispute_case",
+            aggregate_id: case_id,
+            event_type,
+            producer_service: "platform-core.billing",
+            request_id,
+            trace_id,
+            idempotency_key: None,
+            occurred_at,
+            business_payload: payload,
+            deduplicate_by_idempotency_key: false,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

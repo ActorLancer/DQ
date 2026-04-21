@@ -384,96 +384,14 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION common.tg_write_outbox()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  v_ref_id uuid;
-  v_payload jsonb;
-  v_request_id text;
-  v_trace_id text;
-  v_idempotency_key text;
-  v_target_topic text;
-  v_partition_key text;
-  v_payload_hash text;
-BEGIN
-  v_payload := to_jsonb(NEW);
-  v_ref_id := COALESCE(
-    CASE WHEN COALESCE(v_payload ->> 'order_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'order_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'product_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'product_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'case_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'case_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'audit_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'audit_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'billing_event_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'billing_event_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'delivery_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'delivery_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'payment_intent_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'payment_intent_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'refund_intent_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'refund_intent_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'payout_instruction_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'payout_instruction_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'reconciliation_statement_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'reconciliation_statement_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'crypto_transfer_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'crypto_transfer_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'behavior_event_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'behavior_event_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'recommendation_request_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'recommendation_request_id')::uuid END,
-    CASE WHEN COALESCE(v_payload ->> 'recommendation_result_id', '') ~* '^[0-9a-f-]{36}$' THEN (v_payload ->> 'recommendation_result_id')::uuid END
-  );
-  v_request_id := v_payload ->> 'request_id';
-  v_trace_id := COALESCE(v_payload ->> 'trace_id', v_payload ->> 'event_trace_id');
-  v_idempotency_key := v_payload ->> 'idempotency_key';
-  v_target_topic := replace(TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME, '.', '_');
-  v_partition_key := COALESCE(v_ref_id::text, v_request_id, gen_random_uuid()::text);
-  v_payload_hash := encode(digest(v_payload::text, 'sha256'), 'hex');
-
-  INSERT INTO ops.outbox_event (
-    outbox_event_id,
-    aggregate_type,
-    aggregate_id,
-    event_type,
-    payload,
-    status,
-    created_at,
-    event_schema_version,
-    request_id,
-    trace_id,
-    idempotency_key,
-    authority_scope,
-    source_of_truth,
-    proof_commit_policy,
-    target_bus,
-    target_topic,
-    partition_key,
-    ordering_key,
-    payload_hash
-  )
-  VALUES (
-    gen_random_uuid(),
-    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
-    v_ref_id,
-    TG_OP,
-    v_payload,
-    'pending',
-    now(),
-    'v1',
-    v_request_id,
-    v_trace_id,
-    v_idempotency_key,
-    'business',
-    'database',
-    COALESCE(v_payload ->> 'proof_commit_policy', 'async_evidence'),
-    'kafka',
-    v_target_topic,
-    v_partition_key,
-    v_partition_key,
-    v_payload_hash
-  );
-  RETURN NEW;
-END;
-$$;
-
 CREATE TRIGGER trg_recommend_behavior_event_profile AFTER INSERT ON recommend.behavior_event
 FOR EACH ROW EXECUTE FUNCTION recommend.tg_refresh_subject_profile();
 CREATE TRIGGER trg_recommend_behavior_event_cohort AFTER INSERT ON recommend.behavior_event
 FOR EACH ROW EXECUTE FUNCTION recommend.tg_update_cohort_popularity();
-CREATE TRIGGER trg_recommend_behavior_event_outbox AFTER INSERT ON recommend.behavior_event
-FOR EACH ROW EXECUTE FUNCTION common.tg_write_outbox();
+
+-- 推荐行为流的 Kafka topic / key / ordering 已并入 canonical outbox authority：
+-- 由应用层 writer + ops.event_route_policy 统一生成 `recommend.behavior_recorded`
+-- 并投递到 `dtp.recommend.behavior`。
 
 INSERT INTO recommend.placement_definition (
   placement_code,

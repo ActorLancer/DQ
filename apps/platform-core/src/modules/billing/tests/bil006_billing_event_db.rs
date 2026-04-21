@@ -327,7 +327,7 @@ mod tests {
             .query_one(
                 "SELECT
                    (SELECT COUNT(*)::bigint FROM billing.billing_event WHERE order_id = ANY($1::uuid[])),
-                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE event_type = 'billing.event.recorded' AND target_topic = 'billing.events' AND partition_key = ANY($2::text[])),
+                   (SELECT COUNT(*)::bigint FROM ops.outbox_event WHERE event_type = 'billing.event.recorded' AND target_topic = 'dtp.outbox.domain-events' AND partition_key = ANY($2::text[])),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $3 AND action_name = 'billing.event.generated'),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE action_name = 'billing.event.record.idempotent_replay' AND request_id = $4)",
                 &[

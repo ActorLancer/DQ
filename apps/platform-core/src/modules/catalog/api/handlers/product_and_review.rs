@@ -42,7 +42,6 @@ pub(in crate::modules::catalog) async fn create_product_draft(
         "product",
         &view.product_id,
         "search.product.changed",
-        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": view.product_id,
             "seller_org_id": view.seller_org_id,
@@ -132,7 +131,6 @@ pub(in crate::modules::catalog) async fn patch_product_draft(
         "product",
         &view.product_id,
         "search.product.changed",
-        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": view.product_id,
             "seller_org_id": view.seller_org_id,
@@ -322,9 +320,22 @@ pub(in crate::modules::catalog) async fn submit_product(
         "product",
         &product_id,
         "catalog.product.submitted",
-        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": product_id,
+            "status": "pending_review"
+        }),
+    )
+    .await?;
+    write_outbox_event(
+        &tx,
+        &headers,
+        "product",
+        &product_id,
+        "search.product.changed",
+        &serde_json::json!({
+            "product_id": product_id,
+            "seller_org_id": product.seller_org_id,
+            "change_type": "submit",
             "status": "pending_review"
         }),
     )
@@ -520,9 +531,23 @@ pub(in crate::modules::catalog) async fn review_product(
         "product",
         &product_id,
         "catalog.product.status.changed",
-        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": product_id,
+            "status": updated.status,
+            "review_action": payload.action_name
+        }),
+    )
+    .await?;
+    write_outbox_event(
+        &tx,
+        &headers,
+        "product",
+        &product_id,
+        "search.product.changed",
+        &serde_json::json!({
+            "product_id": product_id,
+            "seller_org_id": current.seller_org_id,
+            "change_type": "review",
             "status": updated.status,
             "review_action": payload.action_name
         }),
@@ -752,9 +777,23 @@ pub(in crate::modules::catalog) async fn suspend_product(
         "product",
         &product_id,
         "catalog.product.status.changed",
-        "dtp.outbox.domain-events",
         &serde_json::json!({
             "product_id": product_id,
+            "status": updated.status,
+            "suspend_mode": payload.suspend_mode
+        }),
+    )
+    .await?;
+    write_outbox_event(
+        &tx,
+        &headers,
+        "product",
+        &product_id,
+        "search.product.changed",
+        &serde_json::json!({
+            "product_id": product_id,
+            "seller_org_id": existing.seller_org_id,
+            "change_type": "suspend",
             "status": updated.status,
             "suspend_mode": payload.suspend_mode
         }),

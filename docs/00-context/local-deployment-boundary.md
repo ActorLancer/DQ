@@ -27,6 +27,6 @@
 
 ## 约束
 
-- 禁止把 `platform-core`、`search-indexer`、`notification-service`、`fabric-adapter` 全部直接塞进 `docker-compose.local.yml`。
+- 禁止把 `platform-core`、`search-indexer`、`notification-worker`、`fabric-adapter` 全部直接塞进 `docker-compose.local.yml`。
 - 新增本地联调需求时，优先扩展 `docker-compose.apps.local.yml`，而不是污染基础设施 compose。
 - 所有边界变更必须同步更新 runbook 与实施日志。

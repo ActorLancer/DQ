@@ -4,6 +4,7 @@ use crate::modules::order::domain::{
 };
 use crate::modules::order::dto::{CreateOrderRequest, CreateOrderResponseData};
 use crate::modules::order::repo::pre_request_repository::{map_db_error, write_trade_audit_event};
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, Error, GenericClient, Row};
@@ -431,7 +432,6 @@ async fn write_order_create_outbox_event(
     context: &ProductSkuContext,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let payload = json!({
-        "event_name": "trade.order.created",
         "order_id": created.order_id,
         "buyer_org_id": created.buyer_org_id,
         "seller_org_id": created.seller_org_id,
@@ -446,39 +446,22 @@ async fn write_order_create_outbox_event(
         "scenario_snapshot": created.price_snapshot.scenario_snapshot.clone(),
         "created_at": created.created_at
     });
-    client
-        .query_one(
-            "INSERT INTO ops.outbox_event (
-               aggregate_type,
-               aggregate_id,
-               event_type,
-               payload,
-               request_id,
-               trace_id,
-               idempotency_key,
-               target_topic,
-               status
-             ) VALUES (
-               'trade.order',
-               $1::text::uuid,
-               'trade.order.created',
-               $2::jsonb,
-               $3,
-               $4,
-               $5,
-               'trade.order.created',
-               'pending'
-             )
-             RETURNING outbox_event_id::text",
-            &[
-                &created.order_id,
-                &payload,
-                &request_id,
-                &trace_id,
-                &idempotency_key,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_canonical_outbox_event(
+        client,
+        CanonicalOutboxWrite {
+            aggregate_type: "trade.order",
+            aggregate_id: &created.order_id,
+            event_type: "trade.order.created",
+            producer_service: "platform-core.order",
+            request_id,
+            trace_id,
+            idempotency_key,
+            occurred_at: Some(created.created_at.as_str()),
+            business_payload: &payload,
+            deduplicate_by_idempotency_key: false,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }

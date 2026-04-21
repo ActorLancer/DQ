@@ -2,7 +2,7 @@
 
 ## 1. 盘点对象
 
-- `部署脚本/docker-compose.local.yml`
+- `infra/docker/docker-compose.local.yml`
 - 数据库与环境校验脚本
 - Mock Provider
 - Fabric 测试链相关资产
@@ -12,7 +12,8 @@
 
 | 资产 | 状态 | 说明 |
 | --- | --- | --- |
-| `部署脚本/docker-compose.local.yml` | exists | 已编排 `postgres/redis/kafka/minio/opensearch/keycloak`，并含 observability 与 mocks profile。 |
+| `infra/docker/docker-compose.local.yml` | exists | 当前本地核心中间件主编排入口；已编排 `postgres/redis/kafka/minio/opensearch/keycloak`，并含 observability 与 mocks profile。 |
+| `部署脚本/docker-compose.local.yml` | exists | 历史兼容资产，不再作为主执行入口。 |
 | `部署脚本/docker-compose.postgres-test.yml` | exists | 可用于数据库迁移测试。 |
 | `scripts/check-local-env.sh` | exists | 可检查 compose、env、docker daemon 可用性。 |
 | `scripts/verify-local-stack.sh` | exists | 可按 core/obs/mocks/full 执行运行态探活。 |
