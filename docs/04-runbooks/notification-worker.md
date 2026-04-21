@@ -103,6 +103,11 @@
    - 请求默认 `dry_run=true`
    - 必须显式传入 `reason` 与 `step_up_ticket`
    - `dry_run=false` 时会重新发布 replay envelope 到 `dtp.notification.dispatch`
+8. 手工执行通知联查：
+   - `POST http://127.0.0.1:8097/internal/notifications/audit/search`
+   - 至少显式传入 `order_id / case_id / template_code / notification_code / event_id` 之一
+   - 必须显式传入 `reason` 与 `step_up_ticket`
+   - 响应会返回 `records[].retry_timeline / audit_timeline / dead_letter / rendered_variables / channel_result`
 
 ## V1 渠道与模板边界
 
@@ -276,6 +281,11 @@
   - 必须显式提供 `reason`
   - 必须显式提供 `step_up_ticket`
   - `dry_run=false` 时会生成新的 replay envelope，并在 metadata 中补 `replayed_from_dead_letter_id / replay_reason / replay_step_up_ticket`
+- 联查入口冻结为 `POST /internal/notifications/audit/search`
+  - 至少提供一个主过滤条件：`order_id / case_id / template_code / notification_code / event_id`
+  - 必须显式提供 `reason`
+  - 必须显式提供 `step_up_ticket`
+  - worker 会在查询前把发送 / 重试 / dead-letter / replay 的结构化元数据统一写入 `ops.system_log`、`ops.trace_index`、`audit.audit_event`
 - 相关 `ops.event_route_policy` 缺失或漂移时，先检查 `notification.dispatch_request / notification.requested -> dtp.notification.dispatch`
 
 ## 联查建议
@@ -286,6 +296,21 @@
   - 渠道结果
   - 重试轨迹
   - 关联事件 ID
+- 推荐最小请求体：
+  ```json
+  {
+    "order_id": "00000000-0000-0000-0000-000000000001",
+    "reason": "trace notification delivery for incident review",
+    "step_up_ticket": "step-up-local-1"
+  }
+  ```
+- 推荐优先回查字段：
+  - `records[].notification_code / template_code / audience_scope`
+  - `records[].rendered_variables`
+  - `records[].channel_result`
+  - `records[].retry_timeline[].status`
+  - `records[].audit_timeline[].action_name`
+  - `records[].dead_letter.reprocess_status`
 - 交付完成链路优先补查：
   - `ops.notification_template` 中 `NOTIFY_DELIVERY_COMPLETED_V1 / NOTIFY_PENDING_ACCEPTANCE_V1` 的 active version 是否为 `2`
   - 查询结果场景是否使用 `delivery.query_execution_run / delivery.template_query.use`

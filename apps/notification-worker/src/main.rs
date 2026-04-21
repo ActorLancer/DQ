@@ -179,6 +179,10 @@ async fn run_http_server(state: Arc<WorkerState>) -> AppResult<()> {
             "/internal/notifications/dead-letters/{dead_letter_event_id}/replay",
             post(replay_dead_letter_handler),
         )
+        .route(
+            "/internal/notifications/audit/search",
+            post(notification_audit_search_handler),
+        )
         .route("/metrics", get(metrics_handler))
         .with_state(state);
     serve(addr, app, tokio::signal::ctrl_c()).await
@@ -381,26 +385,32 @@ async fn finalize_processing(
         &retry.envelope,
         "info",
         "notification sent via mock-log",
-        json!({
-            "template_code": rendered.template_code,
-            "channel": rendered.channel,
-            "title": rendered.title,
-            "body": rendered.body,
-            "attempt": retry.attempt,
-            "result": channel_result.as_json(),
-        }),
+        merge_lookup_metadata(
+            &retry.envelope,
+            json!({
+                "template_code": rendered.template_code,
+                "channel": rendered.channel,
+                "title": rendered.title,
+                "body": rendered.body,
+                "attempt": retry.attempt,
+                "result": channel_result.as_json(),
+            }),
+        ),
     )
     .await?;
     write_trace_index(
         client,
         &retry.envelope,
         "notification.dispatch",
-        json!({
-            "template_code": rendered.template_code,
-            "channel": rendered.channel,
-            "attempt": retry.attempt,
-            "status": "processed",
-        }),
+        merge_lookup_metadata(
+            &retry.envelope,
+            json!({
+                "template_code": rendered.template_code,
+                "channel": rendered.channel,
+                "attempt": retry.attempt,
+                "status": "processed",
+            }),
+        ),
     )
     .await?;
     write_audit_event(
@@ -408,11 +418,14 @@ async fn finalize_processing(
         &retry.envelope,
         "notification.dispatch.sent",
         "success",
-        json!({
-            "template_code": rendered.template_code,
-            "channel": rendered.channel,
-            "attempt": retry.attempt,
-        }),
+        merge_lookup_metadata(
+            &retry.envelope,
+            json!({
+                "template_code": rendered.template_code,
+                "channel": rendered.channel,
+                "attempt": retry.attempt,
+            }),
+        ),
     )
     .await?;
     clear_retry_job(state, &retry.envelope.event_id).await?;
@@ -461,25 +474,31 @@ async fn handle_failed_attempt(
             &retry.envelope,
             "warn",
             "notification send failed and was queued for retry",
-            json!({
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "attempt": retry.attempt,
-                "next_attempt": retry.attempt + 1,
-                "error": error_message,
-            }),
+            merge_lookup_metadata(
+                &retry.envelope,
+                json!({
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "attempt": retry.attempt,
+                    "next_attempt": retry.attempt + 1,
+                    "error": error_message,
+                }),
+            ),
         )
         .await?;
         write_trace_index(
             client,
             &retry.envelope,
             "notification.retrying",
-            json!({
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "attempt": retry.attempt,
-                "status": "retrying",
-            }),
+            merge_lookup_metadata(
+                &retry.envelope,
+                json!({
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "attempt": retry.attempt,
+                    "status": "retrying",
+                }),
+            ),
         )
         .await?;
         write_audit_event(
@@ -487,12 +506,15 @@ async fn handle_failed_attempt(
             &retry.envelope,
             "notification.dispatch.retry_scheduled",
             "failed",
-            json!({
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "attempt": retry.attempt,
-                "error": error_message,
-            }),
+            merge_lookup_metadata(
+                &retry.envelope,
+                json!({
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "attempt": retry.attempt,
+                    "error": error_message,
+                }),
+            ),
         )
         .await?;
         set_short_state(
@@ -557,27 +579,33 @@ async fn handle_failed_attempt(
             &retry.envelope,
             "error",
             "notification send exhausted retries and moved to dead letter",
-            json!({
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "attempt": retry.attempt,
-                "error": error_message,
-                "dead_letter_event_id": dead_letter_event_id,
-                "dead_letter_topic": state.cfg.dead_letter_topic.as_str(),
-            }),
+            merge_lookup_metadata(
+                &retry.envelope,
+                json!({
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "attempt": retry.attempt,
+                    "error": error_message,
+                    "dead_letter_event_id": dead_letter_event_id,
+                    "dead_letter_topic": state.cfg.dead_letter_topic.as_str(),
+                }),
+            ),
         )
         .await?;
         write_trace_index(
             client,
             &retry.envelope,
             "notification.dead_lettered",
-            json!({
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "attempt": retry.attempt,
-                "status": "dead_lettered",
-                "dead_letter_event_id": dead_letter_event_id,
-            }),
+            merge_lookup_metadata(
+                &retry.envelope,
+                json!({
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "attempt": retry.attempt,
+                    "status": "dead_lettered",
+                    "dead_letter_event_id": dead_letter_event_id,
+                }),
+            ),
         )
         .await?;
         write_audit_event(
@@ -585,14 +613,17 @@ async fn handle_failed_attempt(
             &retry.envelope,
             "notification.dispatch.dead_lettered",
             "failed",
-            json!({
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "attempt": retry.attempt,
-                "error": error_message,
-                "dead_letter_event_id": dead_letter_event_id,
-                "dead_letter_topic": state.cfg.dead_letter_topic.as_str(),
-            }),
+            merge_lookup_metadata(
+                &retry.envelope,
+                json!({
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "attempt": retry.attempt,
+                    "error": error_message,
+                    "dead_letter_event_id": dead_letter_event_id,
+                    "dead_letter_topic": state.cfg.dead_letter_topic.as_str(),
+                }),
+            ),
         )
         .await?;
         clear_retry_job(state, &retry.envelope.event_id).await?;
@@ -1177,6 +1208,410 @@ async fn write_audit_event(
     Ok(())
 }
 
+async fn write_notification_lookup_audit_event(
+    client: &(impl GenericClient + Sync),
+    request: &NotificationAuditLookupRequest,
+    request_id: &str,
+    trace_id: &str,
+    result_count: usize,
+) -> Result<(), String> {
+    client
+        .execute(
+            "INSERT INTO audit.audit_event (
+               domain_name,
+               ref_type,
+               actor_type,
+               action_name,
+               result_code,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               'notification',
+               'notification_lookup',
+               'service',
+               'notification.dispatch.lookup',
+               'success',
+               $1,
+               $2,
+               $3::jsonb
+             )",
+            &[
+                &request_id,
+                &trace_id,
+                &json!({
+                    "order_id": request.order_id,
+                    "case_id": request.case_id,
+                    "template_code": request.template_code,
+                    "notification_code": request.notification_code,
+                    "event_id": request.event_id,
+                    "limit": lookup_limit(request.limit),
+                    "reason": request.reason,
+                    "step_up_ticket": request.step_up_ticket,
+                    "result_count": result_count,
+                })
+                .to_string(),
+            ],
+        )
+        .await
+        .map_err(|err| format!("insert notification lookup audit event failed: {err}"))?;
+    Ok(())
+}
+
+async fn load_notification_audit_event_ids(
+    client: &(impl GenericClient + Sync),
+    request: &NotificationAuditLookupRequest,
+    limit: i64,
+) -> Result<Vec<String>, String> {
+    let rows = client
+        .query(
+            "SELECT object_id::text
+               FROM ops.system_log
+              WHERE service_name = $1
+                AND object_type = 'notification_dispatch'
+                AND ($2::text IS NULL OR object_id = $2::text::uuid)
+                AND (
+                      $3::text IS NULL
+                      OR structured_payload->>'template_code' = $3
+                      OR EXISTS (
+                           SELECT 1
+                             FROM ops.outbox_event outbox_event
+                            WHERE outbox_event.payload->>'event_id' = ops.system_log.object_id::text
+                              AND outbox_event.payload->'payload'->>'template_code' = $3
+                      )
+                    )
+                AND (
+                      $4::text IS NULL
+                      OR structured_payload->>'notification_code' = $4
+                      OR EXISTS (
+                           SELECT 1
+                             FROM ops.outbox_event outbox_event
+                            WHERE outbox_event.payload->>'event_id' = ops.system_log.object_id::text
+                              AND outbox_event.payload->'payload'->>'notification_code' = $4
+                      )
+                    )
+                AND (
+                      $5::text IS NULL
+                      OR EXISTS (
+                           SELECT 1
+                             FROM jsonb_array_elements(coalesce(structured_payload->'subject_refs', '[]'::jsonb)) subject_ref
+                            WHERE subject_ref->>'ref_type' = 'order'
+                              AND subject_ref->>'ref_id' = $5
+                      )
+                      OR EXISTS (
+                           SELECT 1
+                             FROM ops.outbox_event outbox_event,
+                                  jsonb_array_elements(coalesce(outbox_event.payload->'payload'->'subject_refs', '[]'::jsonb)) subject_ref
+                            WHERE outbox_event.payload->>'event_id' = ops.system_log.object_id::text
+                              AND subject_ref->>'ref_type' = 'order'
+                              AND subject_ref->>'ref_id' = $5
+                      )
+                    )
+                AND (
+                      $6::text IS NULL
+                      OR EXISTS (
+                           SELECT 1
+                             FROM jsonb_array_elements(coalesce(structured_payload->'subject_refs', '[]'::jsonb)) subject_ref
+                            WHERE subject_ref->>'ref_type' = 'dispute_case'
+                              AND subject_ref->>'ref_id' = $6
+                      )
+                      OR EXISTS (
+                           SELECT 1
+                             FROM ops.outbox_event outbox_event,
+                                  jsonb_array_elements(coalesce(outbox_event.payload->'payload'->'subject_refs', '[]'::jsonb)) subject_ref
+                            WHERE outbox_event.payload->>'event_id' = ops.system_log.object_id::text
+                              AND subject_ref->>'ref_type' = 'dispute_case'
+                              AND subject_ref->>'ref_id' = $6
+                      )
+                    )
+              GROUP BY object_id
+              ORDER BY MAX(created_at) DESC
+              LIMIT $7",
+            &[
+                &SERVICE_NAME,
+                &request.event_id,
+                &request.template_code,
+                &request.notification_code,
+                &request.order_id,
+                &request.case_id,
+                &limit,
+            ],
+        )
+        .await
+        .map_err(|err| format!("load notification audit event ids failed: {err}"))?;
+    Ok(rows
+        .into_iter()
+        .map(|row| row.get::<_, String>(0))
+        .collect())
+}
+
+async fn load_notification_audit_record(
+    client: &(impl GenericClient + Sync),
+    event_id: &str,
+) -> Result<NotificationAuditLookupRecord, String> {
+    let log_rows = client
+        .query(
+            "SELECT request_id,
+                    trace_id,
+                    message_text,
+                    created_at::text,
+                    structured_payload
+               FROM ops.system_log
+              WHERE service_name = $1
+                AND object_type = 'notification_dispatch'
+                AND object_id = $2::text::uuid
+              ORDER BY created_at ASC, system_log_id ASC",
+            &[&SERVICE_NAME, &event_id],
+        )
+        .await
+        .map_err(|err| format!("load notification system logs failed: {err}"))?;
+    if log_rows.is_empty() {
+        return Err(format!(
+            "notification audit record not found for event {event_id}"
+        ));
+    }
+
+    let mut base_payload = log_rows
+        .iter()
+        .map(|row| row.get::<_, Value>(4))
+        .find(|payload| payload["notification_code"].is_string())
+        .unwrap_or_else(|| json!({}));
+    if !base_payload["notification_code"].is_string() {
+        if let Some(payload) = load_notification_lookup_payload(client, event_id).await? {
+            base_payload = payload;
+        }
+    }
+    let request_id = log_rows
+        .last()
+        .map(|row| row.get::<_, String>(0))
+        .unwrap_or_default();
+    let trace_id = log_rows
+        .last()
+        .map(|row| row.get::<_, String>(1))
+        .unwrap_or_default();
+
+    let timeline = log_rows
+        .iter()
+        .map(|row| {
+            let message_text: String = row.get(2);
+            let payload: Value = row.get(4);
+            NotificationDispatchTimelineEntry {
+                status: timeline_status(&message_text),
+                message_text,
+                created_at: row.get(3),
+                attempt: payload["attempt"].as_i64(),
+                error: payload["error"].as_str().map(ToOwned::to_owned),
+                payload,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let latest_payload = timeline
+        .last()
+        .map(|entry| entry.payload.clone())
+        .unwrap_or_else(|| json!({}));
+    let sent_payload = timeline
+        .iter()
+        .rev()
+        .find(|entry| entry.message_text == "notification sent via mock-log")
+        .map(|entry| entry.payload.clone());
+
+    let consumer_row = client
+        .query_opt(
+            "SELECT result_code, metadata
+               FROM ops.consumer_idempotency_record
+              WHERE consumer_name = $1
+                AND event_id = $2::text::uuid",
+            &[&SERVICE_NAME, &event_id],
+        )
+        .await
+        .map_err(|err| format!("load consumer idempotency record failed: {err}"))?;
+    let (current_status, current_attempt) = consumer_row
+        .map(|row| {
+            let metadata: Value = row.get(1);
+            (
+                row.get::<_, String>(0),
+                metadata["attempt"]
+                    .as_i64()
+                    .or_else(|| latest_payload["attempt"].as_i64()),
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                timeline
+                    .last()
+                    .map(|entry| entry.status.clone())
+                    .unwrap_or_else(|| "unknown".to_string()),
+                latest_payload["attempt"].as_i64(),
+            )
+        });
+
+    let dead_letter = client
+        .query_opt(
+            "SELECT dead_letter_event_id::text,
+                    target_topic,
+                    reprocess_status,
+                    failed_reason,
+                    created_at::text,
+                    COALESCE(last_failed_at::text, first_failed_at::text)
+               FROM ops.dead_letter_event
+              WHERE payload->>'event_id' = $1
+              ORDER BY created_at DESC
+              LIMIT 1",
+            &[&event_id],
+        )
+        .await
+        .map_err(|err| format!("load dead letter record failed: {err}"))?
+        .map(|row| NotificationDeadLetterRecord {
+            dead_letter_event_id: row.get(0),
+            target_topic: row.get(1),
+            reprocess_status: row.get(2),
+            failed_reason: row.get(3),
+            created_at: row.get(4),
+            last_failed_at: row.get(5),
+        });
+
+    let audit_timeline = client
+        .query(
+            "SELECT action_name,
+                    result_code,
+                    event_time::text,
+                    metadata
+               FROM audit.audit_event
+              WHERE domain_name = 'notification'
+                AND trace_id = $1
+              ORDER BY event_time ASC, audit_id ASC",
+            &[&trace_id],
+        )
+        .await
+        .map_err(|err| format!("load notification audit timeline failed: {err}"))?
+        .into_iter()
+        .map(|row| NotificationAuditTimelineEntry {
+            action_name: row.get(0),
+            result_code: row.get(1),
+            event_time: row.get(2),
+            metadata: row.get(3),
+        })
+        .collect::<Vec<_>>();
+
+    let channel_result = sent_payload
+        .as_ref()
+        .and_then(|payload| payload.get("result").cloned());
+
+    Ok(NotificationAuditLookupRecord {
+        event_id: event_id.to_string(),
+        aggregate_id: base_payload["aggregate_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        request_id,
+        trace_id,
+        notification_code: base_payload["notification_code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        template_code: base_payload["template_code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        channel: base_payload["channel"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        audience_scope: base_payload["audience_scope"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        recipient: base_payload
+            .get("recipient")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+        source_event: base_payload
+            .get("source_event")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+        subject_refs: base_payload
+            .get("subject_refs")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        links: base_payload
+            .get("links")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        rendered_variables: base_payload
+            .get("variables")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+        current_status,
+        current_attempt,
+        title: sent_payload
+            .as_ref()
+            .and_then(|payload| payload["title"].as_str())
+            .map(ToOwned::to_owned),
+        body: sent_payload
+            .as_ref()
+            .and_then(|payload| payload["body"].as_str())
+            .map(ToOwned::to_owned),
+        channel_result,
+        retry_timeline: timeline,
+        audit_timeline,
+        dead_letter,
+    })
+}
+
+fn timeline_status(message_text: &str) -> String {
+    match message_text {
+        "notification sent via mock-log" => "processed",
+        "notification send failed and was queued for retry" => "retry_scheduled",
+        "notification send exhausted retries and moved to dead letter" => "dead_lettered",
+        "notification dead letter replay requested" => "reprocess_requested",
+        "notification dead letter replay dry-run prepared" => "reprocess_previewed",
+        _ => "info",
+    }
+    .to_string()
+}
+
+async fn load_notification_lookup_payload(
+    client: &(impl GenericClient + Sync),
+    event_id: &str,
+) -> Result<Option<Value>, String> {
+    if let Some(row) = client
+        .query_opt(
+            "SELECT payload
+               FROM ops.outbox_event
+              WHERE payload->>'event_id' = $1
+              ORDER BY created_at DESC
+              LIMIT 1",
+            &[&event_id],
+        )
+        .await
+        .map_err(|err| format!("load outbox notification envelope failed: {err}"))?
+    {
+        let envelope: Value = row.get(0);
+        if let Ok(envelope) = serde_json::from_value::<NotificationEnvelope>(envelope) {
+            return Ok(Some(notification_lookup_metadata(&envelope)));
+        }
+    }
+    if let Some(row) = client
+        .query_opt(
+            "SELECT payload
+               FROM ops.dead_letter_event
+              WHERE payload->>'event_id' = $1
+              ORDER BY created_at DESC
+              LIMIT 1",
+            &[&event_id],
+        )
+        .await
+        .map_err(|err| format!("load dead letter notification envelope failed: {err}"))?
+    {
+        let envelope: Value = row.get(0);
+        if let Ok(envelope) = serde_json::from_value::<NotificationEnvelope>(envelope) {
+            return Ok(Some(notification_lookup_metadata(&envelope)));
+        }
+    }
+    Ok(None)
+}
+
 async fn send_notification_handler(
     State(state): State<Arc<WorkerState>>,
     Json(request): Json<SendNotificationRequest>,
@@ -1253,6 +1688,100 @@ struct ReplayDeadLetterResponse {
     channel: String,
     title: String,
     body: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct NotificationAuditLookupRequest {
+    #[serde(default)]
+    order_id: Option<String>,
+    #[serde(default)]
+    case_id: Option<String>,
+    #[serde(default)]
+    template_code: Option<String>,
+    #[serde(default)]
+    notification_code: Option<String>,
+    #[serde(default)]
+    event_id: Option<String>,
+    #[serde(default)]
+    limit: Option<i64>,
+    reason: String,
+    step_up_ticket: String,
+    #[serde(default)]
+    request_id: Option<String>,
+    #[serde(default)]
+    trace_id: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct NotificationAuditLookupResponse {
+    request_id: String,
+    trace_id: String,
+    filters: NotificationAuditLookupFilters,
+    total: usize,
+    records: Vec<NotificationAuditLookupRecord>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct NotificationAuditLookupFilters {
+    order_id: Option<String>,
+    case_id: Option<String>,
+    template_code: Option<String>,
+    notification_code: Option<String>,
+    event_id: Option<String>,
+    limit: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct NotificationAuditLookupRecord {
+    event_id: String,
+    aggregate_id: String,
+    request_id: String,
+    trace_id: String,
+    notification_code: String,
+    template_code: String,
+    channel: String,
+    audience_scope: String,
+    recipient: Value,
+    source_event: Value,
+    subject_refs: Value,
+    links: Value,
+    rendered_variables: Value,
+    current_status: String,
+    current_attempt: Option<i64>,
+    title: Option<String>,
+    body: Option<String>,
+    channel_result: Option<Value>,
+    retry_timeline: Vec<NotificationDispatchTimelineEntry>,
+    audit_timeline: Vec<NotificationAuditTimelineEntry>,
+    dead_letter: Option<NotificationDeadLetterRecord>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct NotificationDispatchTimelineEntry {
+    status: String,
+    message_text: String,
+    created_at: String,
+    attempt: Option<i64>,
+    error: Option<String>,
+    payload: Value,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct NotificationAuditTimelineEntry {
+    action_name: String,
+    result_code: String,
+    event_time: String,
+    metadata: Value,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct NotificationDeadLetterRecord {
+    dead_letter_event_id: String,
+    target_topic: String,
+    reprocess_status: String,
+    failed_reason: Option<String>,
+    created_at: String,
+    last_failed_at: Option<String>,
 }
 
 async fn preview_template_handler(
@@ -1338,15 +1867,18 @@ async fn replay_dead_letter_handler(
             &replay_envelope,
             "info",
             "notification dead letter replay dry-run prepared",
-            json!({
-                "dead_letter_event_id": target.dead_letter_event_id,
-                "original_event_id": target.original_event_id,
-                "reason": request.reason,
-                "step_up_ticket": request.step_up_ticket,
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "dry_run": true,
-            }),
+            merge_lookup_metadata(
+                &replay_envelope,
+                json!({
+                    "dead_letter_event_id": target.dead_letter_event_id,
+                    "original_event_id": target.original_event_id,
+                    "reason": request.reason,
+                    "step_up_ticket": request.step_up_ticket,
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "dry_run": true,
+                }),
+            ),
         )
         .await
         .map_err(internal_error)?;
@@ -1354,13 +1886,16 @@ async fn replay_dead_letter_handler(
             &client,
             &replay_envelope,
             "notification.reprocess.dry_run",
-            json!({
-                "dead_letter_event_id": target.dead_letter_event_id,
-                "original_event_id": target.original_event_id,
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "status": "dry_run_ready",
-            }),
+            merge_lookup_metadata(
+                &replay_envelope,
+                json!({
+                    "dead_letter_event_id": target.dead_letter_event_id,
+                    "original_event_id": target.original_event_id,
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "status": "dry_run_ready",
+                }),
+            ),
         )
         .await
         .map_err(internal_error)?;
@@ -1369,15 +1904,18 @@ async fn replay_dead_letter_handler(
             &replay_envelope,
             "notification.dispatch.reprocess.dry_run",
             "previewed",
-            json!({
-                "dead_letter_event_id": target.dead_letter_event_id,
-                "original_event_id": target.original_event_id,
-                "reason": request.reason,
-                "step_up_ticket": request.step_up_ticket,
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "dry_run": true,
-            }),
+            merge_lookup_metadata(
+                &replay_envelope,
+                json!({
+                    "dead_letter_event_id": target.dead_letter_event_id,
+                    "original_event_id": target.original_event_id,
+                    "reason": request.reason,
+                    "step_up_ticket": request.step_up_ticket,
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "dry_run": true,
+                }),
+            ),
         )
         .await
         .map_err(internal_error)?;
@@ -1419,15 +1957,18 @@ async fn replay_dead_letter_handler(
             &replay_envelope,
             "notification.dispatch.reprocess.failed",
             "failed",
-            json!({
-                "dead_letter_event_id": target.dead_letter_event_id,
-                "original_event_id": target.original_event_id,
-                "reason": request.reason,
-                "step_up_ticket": request.step_up_ticket,
-                "template_code": rendered.template_code,
-                "channel": rendered.channel,
-                "error": err,
-            }),
+            merge_lookup_metadata(
+                &replay_envelope,
+                json!({
+                    "dead_letter_event_id": target.dead_letter_event_id,
+                    "original_event_id": target.original_event_id,
+                    "reason": request.reason,
+                    "step_up_ticket": request.step_up_ticket,
+                    "template_code": rendered.template_code,
+                    "channel": rendered.channel,
+                    "error": err,
+                }),
+            ),
         )
         .await;
         return Err(internal_error(err));
@@ -1437,15 +1978,18 @@ async fn replay_dead_letter_handler(
         &replay_envelope,
         "warn",
         "notification dead letter replay requested",
-        json!({
-            "dead_letter_event_id": target.dead_letter_event_id,
-            "original_event_id": target.original_event_id,
-            "reason": request.reason,
-            "step_up_ticket": request.step_up_ticket,
-            "template_code": rendered.template_code,
-            "channel": rendered.channel,
-            "dry_run": false,
-        }),
+        merge_lookup_metadata(
+            &replay_envelope,
+            json!({
+                "dead_letter_event_id": target.dead_letter_event_id,
+                "original_event_id": target.original_event_id,
+                "reason": request.reason,
+                "step_up_ticket": request.step_up_ticket,
+                "template_code": rendered.template_code,
+                "channel": rendered.channel,
+                "dry_run": false,
+            }),
+        ),
     )
     .await
     .map_err(internal_error)?;
@@ -1453,13 +1997,16 @@ async fn replay_dead_letter_handler(
         &client,
         &replay_envelope,
         "notification.reprocess.requested",
-        json!({
-            "dead_letter_event_id": target.dead_letter_event_id,
-            "original_event_id": target.original_event_id,
-            "template_code": rendered.template_code,
-            "channel": rendered.channel,
-            "status": "reprocess_requested",
-        }),
+        merge_lookup_metadata(
+            &replay_envelope,
+            json!({
+                "dead_letter_event_id": target.dead_letter_event_id,
+                "original_event_id": target.original_event_id,
+                "template_code": rendered.template_code,
+                "channel": rendered.channel,
+                "status": "reprocess_requested",
+            }),
+        ),
     )
     .await
     .map_err(internal_error)?;
@@ -1468,15 +2015,18 @@ async fn replay_dead_letter_handler(
         &replay_envelope,
         "notification.dispatch.reprocess.requested",
         "accepted",
-        json!({
-            "dead_letter_event_id": target.dead_letter_event_id,
-            "original_event_id": target.original_event_id,
-            "reason": request.reason,
-            "step_up_ticket": request.step_up_ticket,
-            "template_code": rendered.template_code,
-            "channel": rendered.channel,
-            "dry_run": false,
-        }),
+        merge_lookup_metadata(
+            &replay_envelope,
+            json!({
+                "dead_letter_event_id": target.dead_letter_event_id,
+                "original_event_id": target.original_event_id,
+                "reason": request.reason,
+                "step_up_ticket": request.step_up_ticket,
+                "template_code": rendered.template_code,
+                "channel": rendered.channel,
+                "dry_run": false,
+            }),
+        ),
     )
     .await
     .map_err(internal_error)?;
@@ -1497,6 +2047,54 @@ async fn replay_dead_letter_handler(
         channel: rendered.channel,
         title: rendered.title,
         body: rendered.body,
+    }))
+}
+
+async fn notification_audit_search_handler(
+    State(state): State<Arc<WorkerState>>,
+    Json(request): Json<NotificationAuditLookupRequest>,
+) -> Result<Json<ApiResponse<NotificationAuditLookupResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let request = normalize_lookup_request(request);
+    validate_lookup_request(&request)?;
+    let client = state.db.client().map_err(|err| {
+        internal_error(format!(
+            "acquire notification worker db client failed: {err}"
+        ))
+    })?;
+    let request_id = request.request_id.clone().unwrap_or_else(new_uuid_string);
+    let trace_id = request
+        .trace_id
+        .clone()
+        .unwrap_or_else(|| request_id.clone());
+    let limit = lookup_limit(request.limit);
+    let event_ids = load_notification_audit_event_ids(&client, &request, limit)
+        .await
+        .map_err(internal_error)?;
+    let mut records = Vec::with_capacity(event_ids.len());
+    for event_id in event_ids {
+        records.push(
+            load_notification_audit_record(&client, &event_id)
+                .await
+                .map_err(internal_error)?,
+        );
+    }
+    write_notification_lookup_audit_event(&client, &request, &request_id, &trace_id, records.len())
+        .await
+        .map_err(internal_error)?;
+
+    Ok(ApiResponse::ok(NotificationAuditLookupResponse {
+        request_id,
+        trace_id,
+        filters: NotificationAuditLookupFilters {
+            order_id: request.order_id,
+            case_id: request.case_id,
+            template_code: request.template_code,
+            notification_code: request.notification_code,
+            event_id: request.event_id,
+            limit,
+        },
+        total: records.len(),
+        records,
     }))
 }
 
@@ -1551,6 +2149,118 @@ fn validate_replay_request(
         return Err(bad_request_error("step_up_ticket must not be empty"));
     }
     Ok(())
+}
+
+fn validate_lookup_request(
+    request: &NotificationAuditLookupRequest,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if request.reason.trim().is_empty() {
+        return Err(bad_request_error("lookup reason must not be empty"));
+    }
+    if request.step_up_ticket.trim().is_empty() {
+        return Err(bad_request_error("step_up_ticket must not be empty"));
+    }
+    if request
+        .order_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .is_none()
+        && request
+            .case_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .is_none()
+        && request
+            .template_code
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .is_none()
+        && request
+            .notification_code
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .is_none()
+        && request
+            .event_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .is_none()
+    {
+        return Err(bad_request_error(
+            "at least one of order_id, case_id, template_code, notification_code, or event_id is required",
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_lookup_request(
+    request: NotificationAuditLookupRequest,
+) -> NotificationAuditLookupRequest {
+    NotificationAuditLookupRequest {
+        order_id: normalize_filter_value(request.order_id),
+        case_id: normalize_filter_value(request.case_id),
+        template_code: normalize_filter_value(request.template_code),
+        notification_code: normalize_filter_value(request.notification_code),
+        event_id: normalize_filter_value(request.event_id),
+        limit: request.limit,
+        reason: request.reason.trim().to_string(),
+        step_up_ticket: request.step_up_ticket.trim().to_string(),
+        request_id: normalize_filter_value(request.request_id),
+        trace_id: normalize_filter_value(request.trace_id),
+    }
+}
+
+fn normalize_filter_value(value: Option<String>) -> Option<String> {
+    value.and_then(|raw| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn lookup_limit(limit: Option<i64>) -> i64 {
+    limit.unwrap_or(20).clamp(1, 50)
+}
+
+fn notification_lookup_metadata(envelope: &NotificationEnvelope) -> Value {
+    json!({
+        "event_id": envelope.event_id,
+        "aggregate_id": envelope.aggregate_id,
+        "request_id": envelope.request_id,
+        "trace_id": envelope.effective_trace_id(),
+        "idempotency_key": envelope.idempotency_key,
+        "notification_code": envelope.payload.notification_code,
+        "template_code": envelope.payload.template_code,
+        "channel": envelope.payload.channel,
+        "audience_scope": envelope.payload.audience_scope,
+        "recipient": envelope.payload.recipient,
+        "source_event": envelope.payload.source_event,
+        "subject_refs": envelope.payload.subject_refs,
+        "links": envelope.payload.links,
+        "variables": envelope.payload.variables,
+    })
+}
+
+fn merge_lookup_metadata(envelope: &NotificationEnvelope, extra: Value) -> Value {
+    merge_json_objects(notification_lookup_metadata(envelope), extra)
+}
+
+fn merge_json_objects(mut base: Value, extra: Value) -> Value {
+    if !base.is_object() {
+        base = json!({});
+    }
+    let Some(base_object) = base.as_object_mut() else {
+        return extra;
+    };
+    if let Some(extra_object) = extra.as_object() {
+        for (key, value) in extra_object {
+            base_object.insert(key.clone(), value.clone());
+        }
+    }
+    base
 }
 
 async fn load_dead_letter_replay_target(
@@ -2128,5 +2838,68 @@ mod tests {
             trace_id: None,
         };
         assert!(validate_replay_request(&invalid_step_up).is_err());
+    }
+
+    #[test]
+    fn lookup_request_requires_filter_reason_and_step_up_ticket() {
+        let no_filter = NotificationAuditLookupRequest {
+            order_id: None,
+            case_id: None,
+            template_code: None,
+            notification_code: None,
+            event_id: None,
+            limit: None,
+            reason: "trace notification history".to_string(),
+            step_up_ticket: "step-up-local-1".to_string(),
+            request_id: None,
+            trace_id: None,
+        };
+        assert!(validate_lookup_request(&no_filter).is_err());
+
+        let invalid_reason = NotificationAuditLookupRequest {
+            order_id: Some("order-1".to_string()),
+            case_id: None,
+            template_code: None,
+            notification_code: None,
+            event_id: None,
+            limit: None,
+            reason: "   ".to_string(),
+            step_up_ticket: "step-up-local-1".to_string(),
+            request_id: None,
+            trace_id: None,
+        };
+        assert!(validate_lookup_request(&invalid_reason).is_err());
+
+        let invalid_step_up = NotificationAuditLookupRequest {
+            order_id: Some("order-1".to_string()),
+            case_id: None,
+            template_code: None,
+            notification_code: None,
+            event_id: None,
+            limit: None,
+            reason: "trace notification history".to_string(),
+            step_up_ticket: "   ".to_string(),
+            request_id: None,
+            trace_id: None,
+        };
+        assert!(validate_lookup_request(&invalid_step_up).is_err());
+    }
+
+    #[test]
+    fn lookup_metadata_keeps_subject_refs_and_variables() {
+        let target = sample_dead_letter_target();
+        let payload = merge_lookup_metadata(
+            &target.envelope,
+            json!({
+                "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+                "attempt": 2,
+            }),
+        );
+
+        assert_eq!(payload["event_id"], target.original_event_id);
+        assert_eq!(payload["notification_code"], "payment.succeeded");
+        assert_eq!(payload["attempt"], 2);
+        assert!(payload["subject_refs"].is_array());
+        assert_eq!(payload["variables"]["orderId"], "ORD-1");
     }
 }

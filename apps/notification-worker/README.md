@@ -74,6 +74,10 @@
   - 请求默认 `dry_run=true`
   - 必须显式提供 `reason` 与 `step_up_ticket`
   - `dry_run=false` 时会把新 replay envelope 重新发布到 `dtp.notification.dispatch`
+- `POST /internal/notifications/audit/search` 提供内部联查入口：
+  - 至少传入 `order_id / case_id / template_code / notification_code / event_id` 之一
+  - 必须显式提供 `reason` 与 `step_up_ticket`
+  - 响应会返回发送记录、渲染变量、渠道结果、重试轨迹、审计轨迹与 dead-letter 摘要
 - 文件模板目录：`apps/notification-worker/templates/`
 - Redis 短期状态与重试队列
 - PostgreSQL 发送/审计/死信/trace 镜像，以及 `dtp.dead-letter` Kafka 双层 DLQ
@@ -91,6 +95,14 @@
   - `provider_mode`
   - `transport_status`
   - `backend_message_id`
+- 自 `NOTIF-010` 起，`ops.system_log` / `ops.trace_index` / `audit.audit_event` 中的通知留痕统一补齐：
+  - `notification_code`
+  - `template_code`
+  - `audience_scope`
+  - `subject_refs`
+  - `source_event`
+  - `variables`
+  - `links`
 - 重试耗尽后，worker 会同时：
   - 写入 `ops.dead_letter_event`
   - 写入 `ops.alert_event`

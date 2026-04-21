@@ -808,3 +808,90 @@
 - 备注：
   - 本批运行态联调中，manual replay 成功路径通过剥离内部故障注入字段 `simulate_failures` 验证；该字段仅用于 local 故障注入，不属于正式通知业务语义。
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+### BATCH-209（计划中）
+- 任务：`NOTIF-010` 通知审计联查
+- 状态：计划中
+- 说明：当前 `notification-worker` 已能真实发送、重试、DLQ 与 replay，但发送记录仍主要散落在 `ops.system_log / ops.trace_index / audit.audit_event / ops.dead_letter_event`，尚未形成可按 `order_id / case_id / template_code` 检索的统一联查入口。本批将先在 worker 内部控制面补齐最小查询能力，并同步把发送 / 重试 / dead-letter / replay 的结构化元数据补成可检索形态，使后续 `NOTIF-013` 的正式 OpenAPI 只需承接冻结结果，不再重新设计数据口径。
+- 追溯：本批不提前伪装成对外正式 `ops` OpenAPI，也不替代 `NOTIF-013/014` 的控制面归档和测试用例文件；重点是把运行时联查能力、审计留痕与 runbook 查询路径先做成真实可验证闭环。
+### BATCH-209（待审批）
+- 任务：`NOTIF-010` 通知审计联查
+- 状态：待审批
+- 当前任务编号：`NOTIF-010`
+- 前置依赖核对结果：`NOTIF-009` 已提供正式发送、重试、DLQ、replay 与审计基础；`AUD-004` 在执行源中已作为上游基线输入，当前批次据此把通知联查动作自身也纳入 `audit.audit_event`，但不越界到正式 `ops` OpenAPI。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批目标是“按订单号 / 案件号 / 模板查看发送记录、渲染变量、渠道结果、重试轨迹与关联事件”，而不是提前产出正式 OpenAPI。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核通知查询必须以 PostgreSQL 为主记录源，不绕过 Kafka 正式链路，也不把 README / runbook 当完成证明。
+  - `docs/04-runbooks/notification-worker.md`、`docs/05-test-cases/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：确认本批需先在运行时代码与 runbook 冻结联查入口，后续 `NOTIF-013/014` 再承接正式 OpenAPI 和测试文件。
+  - `../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`../原始PRD/审计、证据链与回放设计.md`、`../原始PRD/日志、可观测性与告警设计.md`：复核高敏感查询必须带审计动作，通知日志需保留 `request_id / trace_id / object_id / structured_payload`，失败事件也必须保留轨迹。
+  - `apps/notification-worker/**`、`apps/platform-core/src/modules/integration/**`：确认 `platform-core.integration` 已把 `subject_refs / source_event / variables / links` 写入正式 `notification.requested`，worker 本批只需要把这些字段继续镜像到 `ops.system_log / ops.trace_index / audit.audit_event` 并提供查询聚合。
+- 实现要点：
+  - `notification-worker` 新增内部联查入口 `POST /internal/notifications/audit/search`，至少要求一个主过滤条件：`order_id / case_id / template_code / notification_code / event_id`，并强制 `reason + step_up_ticket`。
+  - 新增联查响应模型，统一返回：
+    - 发送记录
+    - 渲染变量快照
+    - 渠道结果
+    - 当前状态 / 当前 attempt
+    - `retry_timeline`
+    - `audit_timeline`
+    - `dead_letter` 摘要
+  - `notification sent / retry_scheduled / dead_lettered / replay_requested / replay_dry_run` 的结构化日志、trace metadata 与 audit metadata 统一补齐：
+    - `notification_code`
+    - `template_code`
+    - `audience_scope`
+    - `recipient`
+    - `source_event`
+    - `subject_refs`
+    - `links`
+    - `variables`
+    - `event_id / request_id / trace_id / idempotency_key`
+  - 为兼容 `NOTIF-004 ~ NOTIF-009` 之前已通过 `platform-core.integration` 进入正式 outbox 的历史通知，本批查询还会回退读取 `ops.outbox_event.payload` 作为正式 envelope 补源，避免旧 `ops.system_log` 缺少 `subject_refs` 时完全丢失 `order_id / case_id` 联查能力。
+  - 查询动作本身会写入 `audit.audit_event(action_name=notification.dispatch.lookup)`，把过滤条件、`reason`、`step_up_ticket` 与命中记录数留痕。
+  - 更新 `apps/notification-worker/README.md` 与 `docs/04-runbooks/notification-worker.md`，写明内部联查入口、请求约束与建议回查字段。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p notification-worker`
+  3. `cargo test -p notification-worker`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. 启动最新 `notification-worker`
+  9. 通过 `POST /internal/notifications/send` 注入两类真实事件：
+     - 一条带 `simulate_failures=1` 的 `payment.succeeded`，并显式携带 `subject_refs=[order, product]`
+     - 一条 `dispute.escalated`，显式携带 `subject_refs=[order, dispute_case]`
+  10. `POST /internal/notifications/audit/search`
+      - 按 `order_id` 联查，验证能同时返回支付通知与争议通知；支付通知必须带 `retry_timeline=retry_scheduled -> processed`
+      - 按 `case_id + template_code=NOTIFY_DISPUTE_ESCALATED_V1` 联查，验证只返回争议通知
+      - 按 `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1` 联查，验证模板过滤本身可用
+  11. 使用 `psql` 回查 `audit.audit_event(action_name=notification.dispatch.lookup)`，确认联查动作自身进入正式审计链
+  12. 清理本批插入的 `ops.consumer_idempotency_record`、`ops.trace_index` 与 Redis 状态键；`audit.audit_event` 与 `ops.system_log` 按 append-only 保留
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过。
+  - 真实运行态验证通过：
+    - 支付通知样例 `event_id=71ba6413-5b4f-4dec-9d85-8e796d1ae035` 在第一次 `mock-log` 故障后进入 retry，第二次成功送达
+    - 争议通知样例 `event_id=2bfbc912-1e61-4f2f-8b87-790f11224ccb` 一次送达成功
+  - 按 `order_id=04b406d5-be60-4645-bcc9-432a8ff1f97e` 联查返回 `total=2`，同时命中支付通知和争议通知：
+    - 支付通知记录包含 `rendered_variables.order_id`、`channel_result.transport_status=delivered`
+    - `retry_timeline` 清晰展示 `retry_scheduled -> processed`
+    - `audit_timeline` 展示 `notification.dispatch.retry_scheduled` 与 `notification.dispatch.sent`
+  - 按 `case_id=0c0b02ba-6757-4459-8bfb-8e77a15abde3 + template_code=NOTIFY_DISPUTE_ESCALATED_V1` 联查返回 `total=1`，记录中可见：
+    - `source_event.aggregate_type=support.dispute_case`
+    - `subject_refs` 同时含 `order` 与 `dispute_case`
+    - `rendered_variables.case_id / reason_code / settlement_status`
+  - 按 `template_code=NOTIFY_PAYMENT_SUCCEEDED_V1` 联查已返回命中记录，说明模板过滤口径成立；同时历史正式 outbox 事件也能通过回退补源参与联查。
+  - 两次联查动作自身都写入正式审计链：
+    - `request_id=1692ad50-8dd5-43a4-b584-d83dc3fed352` 的 `notification.dispatch.lookup` 计数为 `1`
+    - `request_id=60e56fed-53e7-42e2-a704-4416ec186919` 的 `notification.dispatch.lookup` 计数为 `1`
+  - 测试数据清理结果：本批新增的 `ops.consumer_idempotency_record` 与 `ops.trace_index` 已删除，Redis `datab:v1:notification:state:*` 临时键已清理；`audit.audit_event` 与 `ops.system_log` 按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-010`
+  - `审计、证据链与回放设计.md`：查询动作需审计留痕，失败/成功轨迹不可覆盖
+  - `日志、可观测性与告警设计.md`：查询依赖的 `request_id / trace_id / structured_payload` 字段补齐
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：通知发送记录模型与联查接口必须在 `NOTIF` 代码实现批次补齐
+  - `docs/05-test-cases/README.md`、`V1-Core-TODO与预留清单.md`：当前批次先落运行时联查能力，OpenAPI / `notification-cases.md` 后续由 `NOTIF-013/014` 承接
+- 覆盖的任务清单条目：`NOTIF-010`
+- 未覆盖项：无。正式 `ops` OpenAPI 归档、`docs/02-openapi/ops.yaml` 与 `notification-cases.md` 仍按顺序留给 `NOTIF-013/014`。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - 模板过滤查询会带出历史通知记录；其中少量早于 `NOTIF-010` 的 replay / 手工样例若当时未写入完整结构化元数据，响应字段会依赖 `ops.outbox_event` / `ops.dead_letter_event` 回退补源。当前正式业务通知链路已具备完整联查字段，不影响本批验收。
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
