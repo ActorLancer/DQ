@@ -260,3 +260,94 @@
 - 未覆盖项：无。后续 `NOTIF-004 ~ NOTIF-007` 继续在本批模板模型上填充买方/卖方/运营差异化正文与业务触发逻辑。
 - 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
 - 备注：`V1-Core-人工审批记录.md` 仍由你手工维护；本批保留 PostgreSQL 中的发送/审计/trace 运行痕迹作为实施证据，不做删除。
+### BATCH-203（计划中）
+- 任务：`NOTIF-004` 支付成功 -> 待交付通知模板与发送逻辑
+- 状态：计划中
+- 说明：当前批次围绕 `TRADE-030` 的支付成功编排点落真实通知触发：支付结果把订单推进到 `buyer_locked / pending_delivery` 后，需要按冻结协议生成买方、卖方、运营三类通知，并确保业务用户通知正文不暴露内部风控/审计字段。
+- 追溯：本批先在既有 `notification-contract + ops.notification_template` 模型上补 `payment.succeeded / order.pending_delivery` 的模板版本与触发逻辑；若真实链路验证受 `outbox-publisher` 缺失阻塞，将先把它作为当前批次的必要运行前置补齐，不另起并行 task。
+### BATCH-203（待审批）
+- 任务：`NOTIF-004` 支付成功 -> 待交付通知模板与发送逻辑
+- 状态：待审批
+- 当前任务编号：`NOTIF-004`
+- 前置依赖核对结果：`NOTIF-002` 已冻结 `notification.requested -> dtp.notification.dispatch -> notification-worker` 协议、payload 与幂等键；`TRADE-030` 已提供支付成功后订单进入 `pending_delivery` 的编排点。本批不提前实现 `AUD-009` outbox publisher，而是在既有 canonical outbox writer 基础上完成支付成功通知模板、触发逻辑与 worker 消费验证。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批完成定义是“支付成功 -> 待交付”通知模板与发送逻辑，需区分 buyer / seller / ops 可见内容，禁止把内部风控/审计字段暴露给业务用户。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核通知仍以 PostgreSQL 为主记录、Kafka 为总线、Redis 为辅助状态、`notification-worker` 为外围消费进程，并要求本地 Keycloak / Redis / Kafka / Prometheus / Alertmanager / Loki / Tempo / Grafana 为真实依赖。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认通知正式 topic、route authority、consumer group 与异步写链边界。
+  - `../业务流程/业务流程图-V1-完整版.md`、`../页面说明书/页面说明书-V1-完整版.md`、`docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：确认支付成功后买方、卖方、运营三方通知的业务语义、订单详情入口与最小披露边界。
+  - `apps/notification-worker/**`、`apps/platform-core/src/modules/integration/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/05-test-cases/**`、`scripts/**`、`infra/**`：复用既有通知协议、模板模型、worker 审计/重试/指标能力与本地脚本，但不把已有 README / 草稿实现视为任务已完成证明。
+- 实现要点：
+  - `apps/platform-core/src/modules/integration/application/mod.rs` 新增 `queue_payment_success_notifications(...)`，在支付成功时统一组装 buyer / seller / ops 三类 `notification.requested` payload，并真实写入 canonical outbox：
+    - buyer：`payment.succeeded / NOTIFY_PAYMENT_SUCCEEDED_V1`
+    - seller：`order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
+    - ops：`order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
+  - buyer / seller payload 仅保留订单、商品、金额、状态与操作入口；ops payload 才保留 `billing_event_id / payment_intent_id / provider_reference_id / provider_result_source` 等联查字段。
+  - `apps/platform-core/src/modules/billing/payment_result_processor.rs` 在支付成功分支中接入通知编排，确保支付 webhook / 轮询结果统一走同一通知触发逻辑。
+  - 新增迁移 `076_notification_payment_success_pending_delivery_templates.sql` / downgrade，正式把 `NOTIFY_PAYMENT_SUCCEEDED_V1`、`NOTIFY_PENDING_DELIVERY_V1` version `2` 落为当前启用模板，并把 version `1` 标记为归档回退版本。
+  - 新增 `apps/platform-core/src/modules/integration/tests/notif004_payment_success_db.rs`，真实验证支付成功后 canonical outbox 中 buyer / seller / ops 三类消息的模板码、事件码、source_event 与字段披露边界。
+  - `apps/notification-worker/src/event.rs` / `src/main.rs` 补齐顶层 `trace_id=null` 兼容：worker 运行时统一以 `effective_trace_id = trace_id || request_id` 写入幂等、trace、审计与日志，避免 canonical outbox 顶层空值导致消费失败。
+  - 本批联调中同时修正本地基础设施基线：
+    - Keycloak 改为使用独立 `KEYCLOAK_DB_NAME=keycloak`，`up-local` 启动前自动确保服务数据库存在，避免 `migrate-reset` 重建业务库后破坏 realm 表
+    - Tempo healthcheck 改为镜像内可执行的 `/busybox/wget`
+    - compose 统一把 `host.docker.internal` 固定到 `host-gateway`，让 Prometheus / Alertmanager / mock-payment-provider 可以稳定访问宿主机进程
+    - Prometheus / Grafana / runbook 补齐 `notification-worker:8097` 与 `platform-core:8094` 本地口径、通知事件图表与 `NotificationRetryQueueBacklog` 告警规则
+- 验证步骤：
+  1. `bash -n scripts/up-local.sh scripts/ensure-local-service-dbs.sh scripts/check-observability-stack.sh infra/postgres/initdb/003_service_databases.sh`
+  2. `docker compose --profile core --profile observability --profile mocks --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml config >/tmp/datab-compose-local-check.yaml`
+  3. `./scripts/ensure-local-service-dbs.sh infra/docker/.env.local`
+  4. `docker compose --profile core --profile observability --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml up -d --force-recreate keycloak tempo`
+  5. `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+  6. `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/migrate-reset.sh`
+  7. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif004_payment_success_notifications_db_smoke -- --nocapture`
+  8. `cargo fmt --all`
+  9. `cargo check -p platform-core`
+  10. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core`
+  11. `cargo check -p notification-worker`
+  12. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p notification-worker`
+  13. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  14. `./scripts/check-query-compile.sh`
+  15. 启动 `platform-core`：
+      `set -a; source infra/docker/.env.local; set +a; APP_MODE=local PROVIDER_MODE=mock APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 cargo run -p platform-core-bin`
+  16. 启动 `notification-worker`：
+      `set -a; source infra/docker/.env.local; set +a; APP_MODE=local PROVIDER_MODE=mock APP_PORT=8097 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 cargo run -p notification-worker`
+  17. `curl http://127.0.0.1:8094/health/live`、`/health/ready`，`curl http://127.0.0.1:8097/health/live`、`/health/ready`、`/metrics`
+  18. 构造真实支付成功 webhook，`POST /api/v1/payments/webhooks/mock_payment` 后用 `psql` 回查 `ops.outbox_event` 中 `request_id=req-notif004-live-webhook-1776790875359510889` 的 canonical outbox 记录。
+  19. 由于 `AUD-009` outbox publisher 尚未进入依赖范围，本批从 canonical outbox 导出的原始 envelope 回放到正式 topic `dtp.notification.dispatch`，随后观察 `notification-worker` Kafka 消费、数据库落库、Redis 短状态与 `mock-log` 输出。
+  20. `psql` 回查 `ops.consumer_idempotency_record`、`ops.system_log`、`audit.audit_event`、`ops.trace_index`；`redis-cli -n 2` 回查通知短状态；`curl -G http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=notification_worker_events_total'`、Grafana `/api/search`、Alertmanager `/api/v2/status` 回查通知指标、看板与告警规则。
+  21. 清理临时业务测试数据：删除订单/支付/商品/幂等/Redis 短状态等业务/辅助状态；`audit.audit_event` 与 `ops.system_log` 作为 append-only 留痕保留。
+- 验证结果：
+  - Keycloak / Tempo 本地运行基线修复完成：`http://127.0.0.1:8081/realms/platform-local/.well-known/openid-configuration` 可用，`docker ps` 中 `datab-keycloak`、`datab-tempo` 均为 `healthy`；`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh` 全部通过。
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过。
+  - `notif004_payment_success_notifications_db_smoke` 在真实数据库中验证了支付成功后会写出 3 条通知 canonical outbox，且 buyer / seller / ops 的 `notification_code / template_code / source_event / metadata` 与冻结口径一致。
+  - 真实 webhook 验证通过：`processed_status=processed`；`ops.outbox_event` 中回查到 3 条目标 `dtp.notification.dispatch` 的通知记录，分别对应 buyer / seller / ops。
+  - 正式 topic 消费验证通过：`notification-worker` 只消费 `dtp.notification.dispatch`，Kafka 回查可见通知 envelope；worker 日志显示 3 条通知均通过 `mock-log` 成功送达。
+  - PostgreSQL / Redis / 审计 / trace 回查通过：
+    - `ops.consumer_idempotency_record` 中 3 条通知均为 `processed / attempt=1 / source=kafka`
+    - `ops.system_log` 记录 3 条 `notification sent via mock-log`
+    - `audit.audit_event` 写入 3 条 `notification.dispatch.sent / success`
+    - `ops.trace_index` 写入 3 条 `root_service_name=notification-worker / root_span_name=notification.dispatch`
+    - Redis DB `2` 中 3 个 `datab:v1:notification:state:*` 短状态均为 `processed`
+  - 模板与字段最小披露验证通过：
+    - buyer 正文使用 `NOTIFY_PAYMENT_SUCCEEDED_V1`，未暴露 `payment_intent_id / provider_reference_id`
+    - seller 正文使用 `NOTIFY_PENDING_DELIVERY_V1`，`show_ops_context=false`，未暴露内部联查字段
+    - ops 正文使用 `NOTIFY_PENDING_DELIVERY_V1`，`show_ops_context=true`，可见 `billing_event / payment_intent / provider_ref / source`
+  - 观测链路回查通过：
+    - `notification-worker` `/metrics` 暴露 `notification_worker_events_total{result="processed"} 3`、`notification_worker_send_total{channel="mock-log",result="success"} 3`、`notification_worker_retry_queue_depth 0`
+    - Prometheus 抓取 `notification-worker` 成功，`up{job="notification-worker"}=1`，`notification_worker_events_total` 可查询
+    - Grafana `Platform Overview` 看板可查，通知指标图表已注册
+    - Alertmanager 状态可用，Prometheus 规则中存在 `NotificationRetryQueueBacklog`
+  - 清理结果：`trade.order_main=0`、`payment.payment_intent=0`、`ops.outbox_event(request_id)=0`、`ops.consumer_idempotency_record=0`、`ops.trace_index(request_id)=0`，Redis 通知短状态键已删除；`audit.audit_event(request_id)=8`、`ops.system_log(request_id)=3` 作为 append-only 留痕保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-004`
+  - `业务流程图-V1-完整版.md`：支付成功后待交付与通知时机
+  - `页面说明书-V1-完整版.md`：订单详情页通知入口与业务用户可见信息边界
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：正式事件链、topic、进程名与渠道边界
+  - `notification-worker.md`、`kafka-topics.md`、`topics.v1.json`、`072/074`：通知路由、consumer group 与 canonical outbox 口径
+- 覆盖的任务清单条目：`NOTIF-004`
+- 未覆盖项：
+  - 不提前实现 `AUD-009` outbox publisher；本批只验证 canonical outbox 写入与正式 Kafka topic 消费两端，自动发布进程仍按既有 `TODO-AUD-EVENT-001` / `AUD-009; AUD-030; AUD-031` 后续收口。
+- 新增 TODO / 预留项：
+  - 新增非阻塞 `TODO-NOTIF-OBS-001`：通用 observability 自检仍包含历史 `platform-core / mock-payment-provider` Prometheus target 口径，但两者当前未提供可直接抓取的正式 metrics endpoint，本批只把 `notification-worker` 观测链路打通并登记后续补齐条件。
+- 备注：
+  - `ops.system_log` 与 `audit.audit_event` 均受 append-only 保护，本批按规则保留验证痕迹，不做删除。
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。

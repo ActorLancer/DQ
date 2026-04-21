@@ -2,13 +2,22 @@ groups:
   - name: platform-minimal-alerts
     rules:
       - alert: ServiceDown
-        expr: up{job=~"platform-core|mock-payment-provider|kafka-exporter|postgres-exporter|redis-exporter|minio-exporter|opensearch-exporter"} == 0
+        expr: up{job=~"platform-core|notification-worker|mock-payment-provider|kafka-exporter|postgres-exporter|redis-exporter|minio-exporter|opensearch-exporter"} == 0
         for: 2m
         labels:
           severity: warning
         annotations:
           summary: "Service target down"
           description: "Prometheus target {{ $labels.job }} / {{ $labels.instance }} is down."
+
+      - alert: NotificationRetryQueueBacklog
+        expr: notification_worker_retry_queue_depth > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification retry backlog detected"
+          description: "notification-worker retry queue depth remains above zero for more than 5 minutes."
 
       - alert: KafkaConsumerLagBacklog
         expr: kafka_consumergroup_lag_sum > 1000

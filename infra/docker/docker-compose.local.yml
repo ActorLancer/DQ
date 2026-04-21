@@ -4,6 +4,8 @@ x-service-defaults: &service-defaults
   # ENV-054 compose common strategy: unified restart/network/logging baseline.
   restart: unless-stopped
   init: true
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   networks:
     - datab-local
   logging:
@@ -31,6 +33,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-datab}
       POSTGRES_USER: ${POSTGRES_USER:-datab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-datab_local_pass}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloak}
       TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -199,13 +202,14 @@ services:
     environment:
       KC_DB: postgres
       KC_DB_URL_HOST: postgres
-      KC_DB_URL_DATABASE: ${POSTGRES_DB:-datab}
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloak}
       KC_DB_USERNAME: ${POSTGRES_USER:-datab}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-datab_local_pass}
       # Bootstrap-only admin vars for local Keycloak.
       # Runtime clients and scripts should use KEYCLOAK_BASE_URL / KEYCLOAK_REALM / KEYCLOAK_CLIENT_*.
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123456}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-platform-local}
       KEYCLOAK_REALM_IMPORT_DIR: /opt/keycloak/data/import
       KEYCLOAK_CLIENT_INIT_MODE: realm-import
     ports:
@@ -213,7 +217,11 @@ services:
     volumes:
       - ../keycloak/realm-export:/opt/keycloak/data/import:ro
     healthcheck:
-      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      test:
+        [
+          "CMD-SHELL",
+          "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8080; printf \"GET /realms/${KEYCLOAK_REALM:-platform-local}/.well-known/openid-configuration HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n\" >&3; timeout 5 cat <&3 | grep -q issuer'",
+        ]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -365,11 +373,11 @@ services:
       - ./monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempo_data:/tmp/tempo
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3200/ready >/dev/null"]
+      test: ["CMD", "/busybox/wget", "-qO-", "http://127.0.0.1:3200/ready"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 40s
 
   otel-collector:
     <<: *service-defaults

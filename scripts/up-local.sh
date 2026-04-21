@@ -6,7 +6,22 @@ COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-infra/docker/.env.local}"
 COMPOSE_PROFILES="${COMPOSE_PROFILES:-core}"
 
 ./scripts/bootstrap.sh "${COMPOSE_FILE}" "${COMPOSE_ENV_FILE}"
+if [[ -f "${COMPOSE_ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${COMPOSE_ENV_FILE}"
+  set +a
+fi
 export COMPOSE_PROFILES
+
+if [[ ",${COMPOSE_PROFILES}," == *",core,"* || ",${COMPOSE_PROFILES}," == *",demo,"* ]]; then
+  docker compose --env-file "${COMPOSE_ENV_FILE}" -f "${COMPOSE_FILE}" up -d postgres
+  until docker exec datab-postgres pg_isready -U "${POSTGRES_USER:-datab}" -d postgres >/dev/null 2>&1; do
+    sleep 1
+  done
+  ./scripts/ensure-local-service-dbs.sh "${COMPOSE_ENV_FILE}"
+fi
+
 docker compose --env-file "${COMPOSE_ENV_FILE}" -f "${COMPOSE_FILE}" up -d
 
 if [[ ",${COMPOSE_PROFILES}," == *",core,"* || ",${COMPOSE_PROFILES}," == *",demo,"* ]]; then

@@ -26,3 +26,4 @@ version,up_sql,down_sql
 073,docs/数据库设计/V1/upgrade/073_recommendation_runtime_alignment.sql,docs/数据库设计/V1/downgrade/073_recommendation_runtime_alignment.sql
 074,docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql,docs/数据库设计/V1/downgrade/074_event_topology_route_extensions.sql
 075,docs/数据库设计/V1/upgrade/075_notification_template_model.sql,docs/数据库设计/V1/downgrade/075_notification_template_model.sql
+076,docs/数据库设计/V1/upgrade/076_notification_payment_success_pending_delivery_templates.sql,docs/数据库设计/V1/downgrade/076_notification_payment_success_pending_delivery_templates.sql

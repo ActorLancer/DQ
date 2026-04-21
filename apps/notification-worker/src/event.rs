@@ -21,6 +21,7 @@ pub struct NotificationEnvelope {
     pub aggregate_type: String,
     pub aggregate_id: String,
     pub request_id: String,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
     pub trace_id: String,
     pub idempotency_key: String,
     pub occurred_at: String,
@@ -146,15 +147,32 @@ impl SendNotificationResponse {
             event_type: envelope.event_type.clone(),
             topic: topic.into(),
             request_id: envelope.request_id.clone(),
-            trace_id: envelope.trace_id.clone(),
+            trace_id: envelope.effective_trace_id().to_string(),
             aggregate_id: envelope.aggregate_id.clone(),
             idempotency_key: envelope.idempotency_key.clone(),
         }
     }
 }
 
+impl NotificationEnvelope {
+    pub fn effective_trace_id(&self) -> &str {
+        if self.trace_id.is_empty() {
+            &self.request_id
+        } else {
+            &self.trace_id
+        }
+    }
+}
+
 pub fn empty_json_object() -> Value {
     notification_contract::empty_json_object()
+}
+
+fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 fn ensure_json_object(value: &mut Value) -> &mut serde_json::Map<String, Value> {

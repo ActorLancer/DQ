@@ -1,1 +1,2 @@
+mod notif004_payment_success_db;
 mod notification_contract_db;

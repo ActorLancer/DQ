@@ -31,6 +31,11 @@
 ## 事件协议
 
 - `platform-core.integration` 使用共享 `notification-contract` 生成 `notification.requested` payload，并统一写入 `notification.dispatch_request / dtp.notification.dispatch`。
+- `NOTIF-004` 已冻结支付成功后的 audience 映射：
+  - 买方接收 `payment.succeeded / NOTIFY_PAYMENT_SUCCEEDED_V1`
+  - 卖方接收 `order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
+  - 运营接收 `order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
+  - `buyer/seller` payload 只保留订单、商品、金额、状态和操作入口；`ops` payload 才允许附带 `billing_event_id / payment_intent_id / provider_reference_id / provider_result_source`
 - 当前冻结的 `notification_code` 仅允许：
   - `order.created`
   - `payment.succeeded`
@@ -80,6 +85,11 @@
    - `GET http://127.0.0.1:8097/health/ready`
    - `GET http://127.0.0.1:8097/health/deps`
    - `GET http://127.0.0.1:8097/metrics`
+   - `GET 'http://127.0.0.1:9090/api/v1/query?query=up{job="notification-worker"}'`
+   - `GET 'http://127.0.0.1:9090/api/v1/query?query=notification_worker_events_total'`
+   - `GET 'http://127.0.0.1:9090/api/v1/query?query=notification_worker_send_total'`
+   - Grafana 查看 `Platform Overview` 中的 `Notification Events / Notification Sends / Notification Retry Queue Depth`
+   - Alertmanager 规则中应存在 `NotificationRetryQueueBacklog`
 6. 手工注入一条 `notification.requested` 事件：
    - `POST http://127.0.0.1:8097/internal/notifications/send`
    - 建议显式传入 `notification_code`、`audience_scope`、`source_event`、`subject_refs`、`links`
@@ -101,6 +111,10 @@
   - 查询维度：`template_code + channel + language_code`
   - 若指定语言无匹配，则回退到默认语言 `zh-CN`
   - 若指定模板缺失，则回退到 `DEFAULT_NOTIFICATION_V1`
+- `076_notification_payment_success_pending_delivery_templates.sql` 起：
+  - `NOTIFY_PAYMENT_SUCCEEDED_V1` version `2` 作为买方支付成功正式模板
+  - `NOTIFY_PENDING_DELIVERY_V1` version `2` 作为卖方 / 运营待交付正式模板
+  - version `1` 已归档，仅保留回退审计用途
 - file 模板目录 `apps/notification-worker/templates/` 仅保留为 local fallback，不再作为正式模板权威源
 - 不允许把内部风控、审计敏感字段直接透传到业务用户通知正文
 

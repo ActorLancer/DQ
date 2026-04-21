@@ -8,6 +8,7 @@
 
 - `docker-compose.local.yml` 中 `keycloak` 使用 `start-dev --import-realm`
 - 挂载路径：`/opt/keycloak/data/import`
+- Keycloak 使用独立数据库 `KEYCLOAK_DB_NAME=keycloak`，避免执行 `db/scripts/migrate-reset.sh` 重建业务库 `datab` 时误删 IAM / realm 表。
 
 ## 导入后验证
 

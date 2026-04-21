@@ -9,6 +9,8 @@
 2. 环境检查：`./scripts/check-local-env.sh infra/docker/docker-compose.local.yml infra/docker/.env.local infra/docker/.env.local`
 3. 启动基础设施（默认 core）：`make up-local`（或 `make up-core`）
    - 仅支付/回执联调时，追加 `make up-mocks`（`core + mock-payment-provider`）
+   - 启动脚本会先确保 `KEYCLOAK_DB_NAME` 对应的独立服务数据库存在，再拉起依赖服务，避免 `migrate-reset` 重建业务库后破坏 Keycloak
+   - compose 默认会把容器内 `host.docker.internal` 固定到 Docker `host-gateway`，保证 Prometheus、Alertmanager、mock-payment-provider 等容器可稳定回连宿主机运行的 `platform-core` / `notification-worker` / callback 端口
 4. 等待依赖就绪：`./scripts/wait-for-services.sh core`
 5. 基础设施健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
 6. （可选）校验应用层占位编排文件：`docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml -f infra/docker/docker-compose.apps.local.example.yml config >/tmp/datab-compose-apps-config.yaml`

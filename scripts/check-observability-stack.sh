@@ -28,7 +28,7 @@ required_jobs=(
 
 for job in "${required_jobs[@]}"; do
   curl -fsS "${PROM_URL}/api/v1/targets" \
-    | jq -e --arg job "${job}" '.data.activeTargets[] | select(.labels.job == $job)' >/dev/null
+    | jq -e --arg job "${job}" '.data.activeTargets[] | select(.labels.job == $job and .health == "up")' >/dev/null
 done
 
 required_alerts=(

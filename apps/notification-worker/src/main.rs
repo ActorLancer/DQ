@@ -606,7 +606,7 @@ async fn begin_processing_gate(
                     &retry.envelope.event_id,
                     &retry.envelope.aggregate_type,
                     &retry.envelope.aggregate_id,
-                    &retry.envelope.trace_id,
+                    &retry.envelope.effective_trace_id(),
                     &(retry.attempt as i32),
                     &process_source_name(source),
                 ],
@@ -853,7 +853,7 @@ async fn insert_dead_letter(
                     .map_err(|err| format!("encode dead letter payload failed: {err}"))?,
                 &error_message,
                 &envelope.request_id,
-                &envelope.trace_id,
+                &envelope.effective_trace_id(),
                 &"dtp.dead-letter",
             ],
         )
@@ -902,7 +902,7 @@ async fn insert_alert_event(
                 &envelope.aggregate_type,
                 &envelope.aggregate_id,
                 &envelope.request_id,
-                &envelope.trace_id,
+                &envelope.effective_trace_id(),
                 &SERVICE_NAME,
                 &"dtp.dead-letter",
                 &envelope.payload.template_code,
@@ -954,7 +954,7 @@ async fn write_system_log(
                 &SERVICE_NAME,
                 &log_level,
                 &envelope.request_id,
-                &envelope.trace_id,
+                &envelope.effective_trace_id(),
                 &message_text,
                 &structured_payload.to_string(),
                 &SERVICE_NAME,
@@ -1006,7 +1006,7 @@ async fn write_trace_index(
                $8::jsonb
              )",
             &[
-                &envelope.trace_id,
+                &envelope.effective_trace_id(),
                 &SERVICE_NAME,
                 &root_span_name,
                 &envelope.request_id,
@@ -1057,7 +1057,7 @@ async fn write_audit_event(
                 &action_name,
                 &result_code,
                 &envelope.request_id,
-                &envelope.trace_id,
+                &envelope.effective_trace_id(),
                 &metadata.to_string(),
             ],
         )
@@ -1132,12 +1132,13 @@ async fn preview_template_handler(
         .render(&client, &envelope, &envelope.payload)
         .await
         .map_err(internal_error)?;
+    let effective_trace_id = envelope.effective_trace_id().to_string();
 
     Ok(ApiResponse::ok(PreviewTemplateResponse {
         event_id: envelope.event_id,
         aggregate_id: envelope.aggregate_id,
         request_id: envelope.request_id,
-        trace_id: envelope.trace_id,
+        trace_id: effective_trace_id,
         template_code: rendered.template_code,
         channel: rendered.channel,
         language_code: rendered.language_code,

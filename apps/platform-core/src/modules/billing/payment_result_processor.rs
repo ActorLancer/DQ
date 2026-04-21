@@ -2,6 +2,9 @@ use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::repo::billing_event_repository::{
     RecordBillingEventRequest, infer_payment_success_event_type, record_billing_event,
 };
+use crate::modules::integration::application::{
+    PaymentSuccessNotificationDispatchInput, queue_payment_success_notifications,
+};
 use crate::modules::order::application::apply_payment_result_to_order;
 use crate::modules::order::domain::{
     PaymentResultKind, derive_target_state, payment_status_for_result,
@@ -266,7 +269,7 @@ pub async fn process_payment_result(
 
     if transitioned_order && request.target_status == "succeeded" {
         if let Some(event_type) = infer_payment_success_event_type(&context.price_snapshot_json) {
-            let _ = record_billing_event(
+            let (billing_event, _) = record_billing_event(
                 client,
                 &RecordBillingEventRequest {
                     order_id: context.order_id.clone(),
@@ -298,6 +301,24 @@ pub async fn process_payment_result(
                 trace_id,
             )
             .await?;
+            let notification_tx = client.transaction().await.map_err(map_db_error)?;
+            let _ = queue_payment_success_notifications(
+                &notification_tx,
+                PaymentSuccessNotificationDispatchInput {
+                    order_id: &context.order_id,
+                    billing_event_id: &billing_event.billing_event_id,
+                    payment_intent_id: &request.payment_intent_id,
+                    provider_reference_id: &request.reference_id,
+                    provider_result_source: source_label,
+                    provider_status: &request.target_status,
+                    occurred_at: request.occurred_at.as_deref(),
+                    request_id,
+                    trace_id,
+                },
+            )
+            .await
+            .map_err(map_db_error)?;
+            notification_tx.commit().await.map_err(map_db_error)?;
         }
     }
 

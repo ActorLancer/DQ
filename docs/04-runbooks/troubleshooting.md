@@ -46,6 +46,7 @@
   4. realm 校验：`./scripts/check-keycloak-realm.sh`
 - 修复建议：
   - DB 凭据不一致时统一 `POSTGRES_*` 与派生的 `DATABASE_URL`
+  - 若刚执行过 `db/scripts/migrate-reset.sh`，确认 `keycloak` 仍指向独立 `KEYCLOAK_DB_NAME`，而不是业务库 `POSTGRES_DB`
   - realm 不一致时统一 `KEYCLOAK_BASE_URL / KEYCLOAK_REALM` 与本地 bootstrap 管理员口径
   - realm JSON 损坏时恢复 `infra/keycloak/realm-export` 基线文件
 

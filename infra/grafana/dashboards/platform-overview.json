@@ -34,12 +34,114 @@
       },
       "targets": [
         {
-          "expr": "sum(up{job=~\"platform-core|mock-payment-provider|kafka-exporter|postgres-exporter|redis-exporter|minio-exporter|opensearch-exporter\"})",
+          "expr": "sum(up{job=~\"platform-core|notification-worker|mock-payment-provider|kafka-exporter|postgres-exporter|redis-exporter|minio-exporter|opensearch-exporter\"})",
           "legendFormat": "healthy_targets",
           "refId": "A"
         }
       ],
       "title": "Healthy Targets",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (result) (notification_worker_events_total)",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Notification Events",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (channel, result) (notification_worker_send_total)",
+          "legendFormat": "{{channel}} / {{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Notification Sends",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "notification_worker_retry_queue_depth",
+          "legendFormat": "retry_queue_depth",
+          "refId": "A"
+        }
+      ],
+      "title": "Notification Retry Queue Depth",
       "type": "timeseries"
     }
   ],
@@ -60,6 +162,6 @@
   "timezone": "",
   "title": "Platform Overview",
   "uid": "v1-platform-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

@@ -40,6 +40,11 @@
 - PostgreSQL 模板权威源：`ops.notification_template`
   - 字段至少包含：`template_code`、`language_code`、`channel`、`version_no`、`enabled`、`status`、`variables_schema_json`、`title_template`、`body_template`、`fallback_body_template`
   - `notification-worker` 运行时优先从 PostgreSQL 读取启用中的最新模板版本；`apps/notification-worker/templates/` 只保留本地 file fallback
+- `NOTIF-004` 起，支付成功链路的正式模板分工固定为：
+  - 买方：`payment.succeeded / NOTIFY_PAYMENT_SUCCEEDED_V1`
+  - 卖方：`order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
+  - 运营：`order.pending_delivery / NOTIFY_PENDING_DELIVERY_V1`
+  - 买方/卖方正文只允许展示订单、商品、金额、状态与操作入口；`payment_intent_id / provider_reference_id / 内部联查字段` 仅允许进入运营视图
 - `POST /internal/notifications/send` 手工注入通知事件到 Kafka
 - `POST /internal/notifications/templates/preview` 预览模板渲染结果，返回解析后的语言、版本、schema 与 fallback 使用情况
 - 文件模板目录：`apps/notification-worker/templates/`
