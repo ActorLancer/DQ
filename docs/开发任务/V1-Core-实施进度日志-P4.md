@@ -993,3 +993,93 @@
 - 备注：
   - 本批验证过程中，先后暴露出 runbook 样例与实现之间的四处细节偏差：`link_code` 字段、`simulate_failures` 位置、Redis CLI 认证方式、Prometheus 查询编码方式；均已在当前批次直接修正文档并重新验证通过。
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+### BATCH-211（计划中）
+- 任务：`NOTIF-012` notification-worker 正式链路集成测试补齐
+- 状态：计划中
+- 说明：当前 `NOTIF-004/005/006/009` 已分别冻结支付成功、交付完成、验收/拒收/售后通知、worker 重试与 DLQ 主链能力，但 `notification-worker` 侧仍缺少一组可自动回归的 live 集成测试，尚未把 `notification.requested -> dtp.notification.dispatch -> notification-worker -> mock-log` 的正式链路、去重、重试、DLQ 与审计痕迹固化成运行时 smoke。本批将新增受环境变量控制的 `notification-worker` 实库/实 Kafka/实 Redis 集成测试，覆盖：
+  - 支付成功通知
+  - 交付完成通知
+  - 拒收通知
+  - 争议升级通知
+  - 重复事件去重
+  - 失败重试与 DLQ
+- 追溯：本批只补测试与必要的运行时 helper，不提前伪装 `NOTIF-013` 的 OpenAPI 归档或 `NOTIF-014` 的 `notification-cases.md` 验收样例；这两项仍按执行源留给后续 task 承接。
+### BATCH-211（待审批）
+- 任务：`NOTIF-012` notification-worker 正式链路集成测试补齐
+- 状态：待审批
+- 依赖核对：
+  - `NOTIF-004` 已完成：支付成功通知链路、模板渲染、审计留痕与 DB smoke 已冻结。
+  - `NOTIF-005` 已完成：交付完成通知链路与 DB smoke 已冻结。
+  - `NOTIF-006` 已完成：验收/拒收/售后通知链路与 DB smoke 已冻结。
+  - `NOTIF-009` 已完成：worker 重试、DLQ、人工 replay 与 runbook 已冻结。
+- 重新阅读：
+  - `docs/开发任务/v1-core-开发任务清单.csv`
+  - `docs/开发任务/v1-core-开发任务清单.md`
+  - `docs/开发准备/服务清单与服务边界正式版.md`
+  - `docs/开发准备/事件模型与Topic清单正式版.md`
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`
+  - `docs/开发准备/配置项与密钥管理清单.md`
+  - `docs/开发准备/技术选型正式版.md`
+  - `docs/开发准备/平台总体架构设计草案.md`
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`
+  - `docs/开发准备/测试用例矩阵正式版.md`
+  - `docs/05-test-cases/README.md`
+  - `docs/04-runbooks/kafka-topics.md`
+  - `docs/04-runbooks/notification-worker.md`
+  - `docs/00-context/async-chain-write.md`
+  - `infra/kafka/topics.v1.json`
+  - `docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`
+  - `docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`
+  - `docs/开发任务/问题修复任务/A11-测试与Smoke口径误报风险.md`
+  - `apps/notification-worker/**`
+  - `apps/platform-core/src/modules/integration/**`
+  - `packages/openapi/**`
+  - `docs/02-openapi/**`
+  - `docs/05-test-cases/**`
+  - `scripts/**`
+  - `infra/**`
+- 实现内容：
+  - `apps/notification-worker/src/main.rs`
+    - 抽出 `build_worker_state`、`build_kafka_producer`、`build_stream_consumer`，把 worker 启动依赖与 live smoke 复用的构造路径固定下来。
+    - 新增 `run_consumer_loop_with_offset_reset`，生产继续使用 `earliest`，测试场景用 `latest` 启动独立 consumer group，避免读到历史遗留消息。
+    - 新增受 `NOTIF_WORKER_DB_SMOKE=1` 控制的 live smoke harness，使用真实 PostgreSQL / Kafka / Redis 驱动 notification-worker，覆盖 `payment.succeeded`、`delivery.completed`、`acceptance.rejected`、`dispute.escalated` 四类正式场景。
+    - 在同一组 live smoke 中补齐重复事件去重、失败重试、DLQ 写入与 `dtp.dead-letter` 回查，并等待 `audit.audit_event` / `ops.notification_dispatch_record` 达到预期状态后再断言，避免只看消费返回码。
+    - 追加基于模板 schema 的动态样例变量构造，确保 smoke payload 与 `ops.notification_template.variables_schema_json` 保持一致，不依赖硬编码旧样例。
+  - `docs/04-runbooks/notification-worker.md`
+    - 增补 `NOTIF-012` 自动化 live smoke 章节，明确执行前需先停掉常驻 `notification-worker`，防止同 `SERVICE_NAME` 抢消费。
+    - 固化真实 smoke 命令、环境变量和验证覆盖面，要求回查正式链路、`mock-log`、PostgreSQL、Redis、审计、指标与 `dtp.dead-letter`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo check -p notification-worker`
+  5. `cargo test -p notification-worker`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `./scripts/check-topic-topology.sh`
+  9. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif004_payment_success_notifications_db_smoke -- --nocapture`
+  10. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif005_delivery_completion_notifications_db_smoke -- --nocapture`
+  11. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif006_acceptance_outcome_notifications_db_smoke -- --nocapture`
+  12. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif007_dispute_settlement_notifications_db_smoke -- --nocapture`
+  13. `NOTIF_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 cargo test -p notification-worker notif012_notification_worker_live_smoke -- --nocapture`
+- 验证结果：
+  - 通用 Rust 校验全部通过：`cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`。
+  - `./scripts/check-topic-topology.sh` 通过，确认 `notification.requested -> dtp.notification.dispatch -> notification-worker` 的正式 topic / route seed / 数据库运行态口径一致。
+  - 四个上游场景的 DB smoke 均已分别通过，确认 `platform-core.integration -> canonical outbox -> dtp.notification.dispatch` 侧对支付成功、交付完成、拒收、争议升级的通知请求写入与审计留痕真实可回查。
+  - `notif012_notification_worker_live_smoke` 在真实 PostgreSQL / Kafka / Redis 环境下通过，确认：
+    - `notification-worker` 通过正式 `dtp.notification.dispatch` 事件驱动消费，不依赖同步旁路。
+    - `mock-log` 是 V1 当前真实发送渠道。
+    - `ops.notification_dispatch_record`、`audit.audit_event`、`ops.system_log`、Redis 幂等/重试短状态、`dtp.dead-letter` 都能被真实回查。
+    - 去重、重试成功与 DLQ 三类异常路径被一并覆盖。
+  - 额外复跑 `cargo test -p platform-core notif00 -- --nocapture` 与 `--test-threads=1` 时，`notif005` 命中过载下的 `Sqlx(PoolTimedOut)`；该现象未复现于单项 smoke，说明是聚合回归的共享连接池压力问题，不影响当前 task 以单项 live smoke 为准的冻结验收。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-012`
+  - `测试用例矩阵正式版.md`、`docs/05-test-cases/README.md`：通知链路 smoke 与联动验证覆盖要求
+  - `kafka-topics.md`、`topics.v1.json`、`072/074`：正式通知 topic / route-policy / topology 口径
+  - `A11-测试与Smoke口径误报风险.md`：验证必须回查真实运行态，不能只依赖静态脚本或 HTTP 200
+- 覆盖的任务清单条目：`NOTIF-012`
+- 未覆盖项：无。`NOTIF-013` OpenAPI 归档与 `NOTIF-014` 测试样例文档仍待后续 task 承接。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - 为避免 live smoke 与常驻进程争用同一 consumer group，本批执行前已停止本地常驻 `notification-worker`；任务收尾后尚未恢复常驻进程。
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。

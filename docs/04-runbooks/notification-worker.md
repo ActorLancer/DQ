@@ -52,6 +52,23 @@
    - `curl -sS http://127.0.0.1:3000/api/health`
    - `curl -sS http://127.0.0.1:3100/ready`
    - `curl -sS http://127.0.0.1:3200/metrics | rg 'tempo_build_info'`
+6. 自动化 live smoke（`NOTIF-012`）：
+   - 执行前先停止任何已在运行的 `notification-worker` 进程；该 smoke 会以同一 `SERVICE_NAME` 订阅 `dtp.notification.dispatch`，不应与常驻实例并发抢消费。
+   - 运行命令：
+     ```bash
+     NOTIF_WORKER_DB_SMOKE=1 \
+     DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+     REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 \
+     KAFKA_BROKERS=127.0.0.1:9094 \
+     cargo test -p notification-worker notif012_notification_worker_live_smoke -- --nocapture
+     ```
+   - smoke 会真实验证：
+     - `notification.requested -> dtp.notification.dispatch -> notification-worker`
+     - `payment.succeeded / delivery.completed / acceptance.rejected / dispute.escalated`
+     - duplicate dedupe
+     - retry success
+     - DLQ + `dtp.dead-letter`
+     - PostgreSQL / Redis / audit / metrics 留痕
 
 ## 正式发送策略
 

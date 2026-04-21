@@ -86,37 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok();
 
     let cfg = NotificationWorkerConfig::from_env()?;
-    let db = Arc::new(
-        AppDb::connect(
-            DbPoolConfig {
-                dsn: cfg.database_url.clone(),
-                max_connections: 16,
-            }
-            .into(),
-        )
-        .await?,
-    );
-    let redis_client = redis::Client::open(cfg.redis_url.clone())
-        .map_err(|err| AppError::Startup(format!("redis client init failed: {err}")))?;
-    let producer = ClientConfig::new()
-        .set("bootstrap.servers", &cfg.kafka_brokers)
-        .set("message.timeout.ms", "5000")
-        .create::<FutureProducer>()
-        .map_err(|err| AppError::Startup(format!("kafka producer init failed: {err}")))?;
-    let metrics = Arc::new(WorkerMetrics::new()?);
-    let channels = Arc::new(ChannelRegistry::new(
-        cfg.runtime.mode.clone(),
-        cfg.runtime.provider.clone(),
-    ));
-    let state = Arc::new(WorkerState {
-        cfg: cfg.clone(),
-        db,
-        redis_client,
-        producer,
-        templates: TemplateStore::new(cfg.template_dir.clone()),
-        metrics,
-        channels,
-    });
+    let state = build_worker_state(cfg.clone()).await?;
 
     info!(
         topic = %cfg.topic,
@@ -155,6 +125,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+async fn build_worker_state(cfg: NotificationWorkerConfig) -> AppResult<Arc<WorkerState>> {
+    let db = Arc::new(
+        AppDb::connect(
+            DbPoolConfig {
+                dsn: cfg.database_url.clone(),
+                max_connections: 16,
+            }
+            .into(),
+        )
+        .await?,
+    );
+    let redis_client = redis::Client::open(cfg.redis_url.clone())
+        .map_err(|err| AppError::Startup(format!("redis client init failed: {err}")))?;
+    let producer = build_kafka_producer(&cfg.kafka_brokers)?;
+    let metrics = Arc::new(WorkerMetrics::new()?);
+    let channels = Arc::new(ChannelRegistry::new(
+        cfg.runtime.mode.clone(),
+        cfg.runtime.provider.clone(),
+    ));
+
+    Ok(Arc::new(WorkerState {
+        templates: TemplateStore::new(cfg.template_dir.clone()),
+        cfg,
+        db,
+        redis_client,
+        producer,
+        metrics,
+        channels,
+    }))
+}
+
+fn build_kafka_producer(brokers: &str) -> AppResult<FutureProducer> {
+    ClientConfig::new()
+        .set("bootstrap.servers", brokers)
+        .set("message.timeout.ms", "5000")
+        .create::<FutureProducer>()
+        .map_err(|err| AppError::Startup(format!("kafka producer init failed: {err}")))
+}
+
+fn build_stream_consumer(
+    brokers: &str,
+    group_id: &str,
+    auto_offset_reset: &str,
+) -> AppResult<StreamConsumer> {
+    ClientConfig::new()
+        .set("bootstrap.servers", brokers)
+        .set("group.id", group_id)
+        .set("enable.auto.commit", "false")
+        .set("auto.offset.reset", auto_offset_reset)
+        .create()
+        .map_err(|err| AppError::Startup(format!("kafka consumer init failed: {err}")))
+}
+
 async fn run_http_server(state: Arc<WorkerState>) -> AppResult<()> {
     let ip = state
         .cfg
@@ -189,13 +212,18 @@ async fn run_http_server(state: Arc<WorkerState>) -> AppResult<()> {
 }
 
 async fn run_consumer_loop(state: Arc<WorkerState>) -> AppResult<()> {
-    let consumer: StreamConsumer = ClientConfig::new()
-        .set("bootstrap.servers", &state.cfg.kafka_brokers)
-        .set("group.id", &state.cfg.consumer_group)
-        .set("enable.auto.commit", "false")
-        .set("auto.offset.reset", "earliest")
-        .create()
-        .map_err(|err| AppError::Startup(format!("kafka consumer init failed: {err}")))?;
+    run_consumer_loop_with_offset_reset(state, "earliest").await
+}
+
+async fn run_consumer_loop_with_offset_reset(
+    state: Arc<WorkerState>,
+    auto_offset_reset: &str,
+) -> AppResult<()> {
+    let consumer = build_stream_consumer(
+        &state.cfg.kafka_brokers,
+        &state.cfg.consumer_group,
+        auto_offset_reset,
+    )?;
     consumer
         .subscribe(&[&state.cfg.topic])
         .map_err(|err| AppError::Startup(format!("kafka subscribe failed: {err}")))?;
@@ -2700,7 +2728,59 @@ fn resolve_kafka_target(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::NotificationRecipient;
+    use crate::event::{
+        NotificationRecipient, NotificationRetryPolicy, NotificationSourceEvent,
+        NotificationSubjectRef,
+    };
+    use rdkafka::consumer::Consumer;
+    use serde_json::{Map, Value, json};
+    use std::time::Duration;
+    use tokio::{task::JoinHandle, time::Instant};
+
+    #[derive(Clone, Copy)]
+    struct LiveSceneCase {
+        notification_code: &'static str,
+        template_code: &'static str,
+        audience_scope: &'static str,
+        source_event_aggregate_type: &'static str,
+        source_event_event_type: &'static str,
+        subject_ref_types: &'static [&'static str],
+    }
+
+    const NOTIF012_SUCCESS_CASES: &[LiveSceneCase] = &[
+        LiveSceneCase {
+            notification_code: "payment.succeeded",
+            template_code: "NOTIFY_PAYMENT_SUCCEEDED_V1",
+            audience_scope: "buyer",
+            source_event_aggregate_type: "billing.billing_event",
+            source_event_event_type: "billing.event.recorded",
+            subject_ref_types: &["order"],
+        },
+        LiveSceneCase {
+            notification_code: "delivery.completed",
+            template_code: "NOTIFY_DELIVERY_COMPLETED_V1",
+            audience_scope: "buyer",
+            source_event_aggregate_type: "delivery.delivery_record",
+            source_event_event_type: "delivery.committed",
+            subject_ref_types: &["order"],
+        },
+        LiveSceneCase {
+            notification_code: "acceptance.rejected",
+            template_code: "NOTIFY_ACCEPTANCE_REJECTED_V1",
+            audience_scope: "buyer",
+            source_event_aggregate_type: "trade.acceptance_record",
+            source_event_event_type: "acceptance.rejected",
+            subject_ref_types: &["order"],
+        },
+        LiveSceneCase {
+            notification_code: "dispute.escalated",
+            template_code: "NOTIFY_DISPUTE_ESCALATED_V1",
+            audience_scope: "buyer",
+            source_event_aggregate_type: "support.dispute_case",
+            source_event_event_type: "dispute.created",
+            subject_ref_types: &["order", "dispute_case"],
+        },
+    ];
 
     #[test]
     fn build_short_state_payload_keeps_optional_details() {
@@ -2901,5 +2981,935 @@ mod tests {
         assert_eq!(payload["attempt"], 2);
         assert!(payload["subject_refs"].is_array());
         assert_eq!(payload["variables"]["orderId"], "ORD-1");
+    }
+
+    fn live_worker_enabled() -> bool {
+        std::env::var("NOTIF_WORKER_DB_SMOKE").ok().as_deref() == Some("1")
+    }
+
+    struct LiveWorkerHarness {
+        state: Arc<WorkerState>,
+        consumer_task: JoinHandle<AppResult<()>>,
+        retry_task: JoinHandle<AppResult<()>>,
+    }
+
+    impl LiveWorkerHarness {
+        async fn start() -> Self {
+            let run_id = new_uuid_string();
+            let mut cfg =
+                NotificationWorkerConfig::from_env().expect("load notification worker config");
+            cfg.consumer_group = format!("cg-notification-worker-notif012-{run_id}");
+            cfg.redis_namespace = format!("datab:v1:notif012:{run_id}");
+            cfg.retry_poll_interval_ms = 50;
+            cfg.retry_backoff_ms = 50;
+            let state = build_worker_state(cfg)
+                .await
+                .expect("build notification worker state");
+            let consumer_state = state.clone();
+            let retry_state = state.clone();
+            let consumer_task = tokio::spawn(async move {
+                run_consumer_loop_with_offset_reset(consumer_state, "latest").await
+            });
+            let retry_task = tokio::spawn(async move { run_retry_loop(retry_state).await });
+            tokio::time::sleep(Duration::from_millis(800)).await;
+
+            Self {
+                state,
+                consumer_task,
+                retry_task,
+            }
+        }
+
+        async fn shutdown(self) {
+            let Self {
+                state,
+                consumer_task,
+                retry_task,
+            } = self;
+            consumer_task.abort();
+            retry_task.abort();
+            let _ = consumer_task.await;
+            let _ = retry_task.await;
+            Self::cleanup_redis_state(&state).await;
+        }
+
+        async fn cleanup_redis_state(state: &Arc<WorkerState>) {
+            let mut conn = redis_connection(state)
+                .await
+                .expect("connect redis for notif012 cleanup");
+            let pattern = format!("{}:notification:*", state.cfg.redis_namespace);
+            let mut cursor = 0_u64;
+            loop {
+                let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                    .arg(cursor)
+                    .arg("MATCH")
+                    .arg(&pattern)
+                    .arg("COUNT")
+                    .arg(100)
+                    .query_async(&mut conn)
+                    .await
+                    .expect("scan notif012 redis keys");
+                if !keys.is_empty() {
+                    let _: () = conn.del(keys).await.expect("delete notif012 redis keys");
+                }
+                if next_cursor == 0 {
+                    break;
+                }
+                cursor = next_cursor;
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn notif012_notification_worker_live_smoke() {
+        if !live_worker_enabled() {
+            eprintln!("skip notif012_notification_worker_live_smoke; set NOTIF_WORKER_DB_SMOKE=1");
+            return;
+        }
+
+        let harness = LiveWorkerHarness::start().await;
+        let client = harness.state.db.client().expect("acquire db client");
+
+        for case in NOTIF012_SUCCESS_CASES {
+            assert_active_template_version(&client, case.template_code, 2).await;
+            let baseline_processed =
+                metric_value(&harness.state.metrics.event_results, &["processed"]);
+            let envelope = build_live_envelope(&harness.state, *case, 0, None).await;
+            publish_envelope(&harness.state, &envelope)
+                .await
+                .expect("publish live notification envelope");
+            let record = wait_for_audit_record(
+                &client,
+                &envelope.event_id,
+                "processed",
+                "notification.dispatch.sent",
+            )
+            .await;
+            wait_for_metric(
+                &harness.state.metrics.event_results,
+                &["processed"],
+                baseline_processed + 1,
+            )
+            .await;
+            assert_live_success_record(&record, &envelope, *case);
+        }
+
+        let duplicate_case = NOTIF012_SUCCESS_CASES[0];
+        let duplicate_envelope = build_live_envelope(&harness.state, duplicate_case, 0, None).await;
+        publish_envelope(&harness.state, &duplicate_envelope)
+            .await
+            .expect("publish duplicate baseline envelope");
+        let duplicate_record = wait_for_audit_record(
+            &client,
+            &duplicate_envelope.event_id,
+            "processed",
+            "notification.dispatch.sent",
+        )
+        .await;
+        assert_live_success_record(&duplicate_record, &duplicate_envelope, duplicate_case);
+        let duplicate_metric_before =
+            metric_value(&harness.state.metrics.event_results, &["duplicate"]);
+        publish_envelope(&harness.state, &duplicate_envelope)
+            .await
+            .expect("publish duplicate replay envelope");
+        wait_for_metric(
+            &harness.state.metrics.event_results,
+            &["duplicate"],
+            duplicate_metric_before + 1,
+        )
+        .await;
+        assert_eq!(
+            count_notification_system_logs(
+                &client,
+                &duplicate_envelope.event_id,
+                "notification sent via mock-log",
+            )
+            .await,
+            1,
+            "duplicate delivery must not write a second success log",
+        );
+        assert_eq!(
+            count_notification_audit(
+                &client,
+                duplicate_envelope.effective_trace_id(),
+                "notification.dispatch.sent",
+            )
+            .await,
+            1,
+            "duplicate delivery must not write a second sent audit event",
+        );
+
+        let retry_case = NOTIF012_SUCCESS_CASES[0];
+        let retry_failed_before =
+            metric_value(&harness.state.metrics.send_results, &["mock-log", "failed"]);
+        let retry_success_before = metric_value(
+            &harness.state.metrics.send_results,
+            &["mock-log", "success"],
+        );
+        let retrying_before = metric_value(&harness.state.metrics.event_results, &["retrying"]);
+        let retry_envelope = build_live_envelope(
+            &harness.state,
+            retry_case,
+            1,
+            Some(NotificationRetryPolicy {
+                max_attempts: 2,
+                backoff_ms: 50,
+            }),
+        )
+        .await;
+        publish_envelope(&harness.state, &retry_envelope)
+            .await
+            .expect("publish retry envelope");
+        let retry_record = wait_for_audit_record(
+            &client,
+            &retry_envelope.event_id,
+            "processed",
+            "notification.dispatch.sent",
+        )
+        .await;
+        wait_for_metric(
+            &harness.state.metrics.send_results,
+            &["mock-log", "failed"],
+            retry_failed_before + 1,
+        )
+        .await;
+        wait_for_metric(
+            &harness.state.metrics.send_results,
+            &["mock-log", "success"],
+            retry_success_before + 1,
+        )
+        .await;
+        wait_for_metric(
+            &harness.state.metrics.event_results,
+            &["retrying"],
+            retrying_before + 1,
+        )
+        .await;
+        assert_live_retry_record(&retry_record);
+        let retry_state = load_short_state(&harness.state, &retry_envelope.event_id)
+            .await
+            .expect("retry short state should exist");
+        assert_eq!(retry_state["status"], "processed");
+        assert_eq!(retry_state["attempt"], 2);
+        assert_eq!(redis_retry_queue_depth(&harness.state).await, 0);
+        assert!(
+            load_retry_payload(&harness.state, &retry_envelope.event_id)
+                .await
+                .is_none(),
+            "retry payload must be cleared after success",
+        );
+
+        let dead_letter_before =
+            metric_value(&harness.state.metrics.event_results, &["dead_lettered"]);
+        let dead_letter_envelope = build_live_envelope(
+            &harness.state,
+            retry_case,
+            2,
+            Some(NotificationRetryPolicy {
+                max_attempts: 2,
+                backoff_ms: 50,
+            }),
+        )
+        .await;
+        publish_envelope(&harness.state, &dead_letter_envelope)
+            .await
+            .expect("publish dead letter envelope");
+        let dead_letter_record = wait_for_audit_record(
+            &client,
+            &dead_letter_envelope.event_id,
+            "dead_lettered",
+            "notification.dispatch.dead_lettered",
+        )
+        .await;
+        wait_for_metric(
+            &harness.state.metrics.event_results,
+            &["dead_lettered"],
+            dead_letter_before + 1,
+        )
+        .await;
+        let dead_letter_consumer = build_topic_consumer(
+            &harness.state,
+            &format!("notif012-dlq-{}", new_uuid_string()),
+            &harness.state.cfg.dead_letter_topic,
+            "earliest",
+        )
+        .await;
+        let dead_letter_message =
+            wait_for_dead_letter_message(&dead_letter_consumer, &dead_letter_envelope.event_id)
+                .await;
+        assert_live_dead_letter_record(
+            &dead_letter_record,
+            &dead_letter_envelope,
+            &harness.state.cfg.dead_letter_topic,
+            &dead_letter_message,
+        );
+        assert_eq!(
+            count_alert_events(&client, &dead_letter_envelope.event_id).await,
+            1,
+            "dead letter flow must raise an alert event",
+        );
+        let dlq_state = load_short_state(&harness.state, &dead_letter_envelope.event_id)
+            .await
+            .expect("dead letter short state should exist");
+        assert_eq!(dlq_state["status"], "dead_lettered");
+        assert_eq!(dlq_state["attempt"], 2);
+        assert_eq!(redis_retry_queue_depth(&harness.state).await, 0);
+        assert!(
+            load_retry_payload(&harness.state, &dead_letter_envelope.event_id)
+                .await
+                .is_none(),
+            "dead letter flow must clear retry payload state",
+        );
+
+        harness.shutdown().await;
+    }
+
+    async fn assert_active_template_version(
+        client: &(impl GenericClient + Sync),
+        template_code: &str,
+        expected_version: i32,
+    ) {
+        let row = client
+            .query_one(
+                "SELECT version_no
+                   FROM ops.notification_template
+                  WHERE template_code = $1
+                    AND channel = 'mock-log'
+                    AND language_code = 'zh-CN'
+                    AND enabled = TRUE
+                    AND status = 'active'
+                  ORDER BY version_no DESC, created_at DESC
+                  LIMIT 1",
+                &[&template_code],
+            )
+            .await
+            .expect("load active template version");
+        assert_eq!(row.get::<_, i32>(0), expected_version);
+    }
+
+    async fn build_live_envelope(
+        state: &Arc<WorkerState>,
+        case: LiveSceneCase,
+        simulate_failures: u32,
+        retry_policy: Option<NotificationRetryPolicy>,
+    ) -> NotificationEnvelope {
+        let client = state.db.client().expect("acquire db client");
+        let (version_no, schema) = load_active_template_schema(&client, case.template_code).await;
+        assert_eq!(
+            version_no,
+            2,
+            "notif012 expects template {code} to stay on version 2",
+            code = case.template_code
+        );
+        let order_id = new_uuid_string();
+        let dispute_case_id = case
+            .subject_ref_types
+            .iter()
+            .copied()
+            .find(|ref_type| *ref_type == "dispute_case")
+            .map(|_| new_uuid_string());
+        let source_aggregate_id = if case.source_event_aggregate_type == "support.dispute_case" {
+            dispute_case_id.clone().unwrap_or_else(new_uuid_string)
+        } else {
+            new_uuid_string()
+        };
+        let variables = build_live_variables(&schema, case, &order_id, dispute_case_id.as_deref());
+        let subject_refs = build_subject_refs(
+            case.subject_ref_types,
+            &order_id,
+            dispute_case_id.as_deref(),
+        );
+
+        SendNotificationRequest {
+            event_id: Some(new_uuid_string()),
+            aggregate_id: Some(new_uuid_string()),
+            notification_code: Some(case.notification_code.to_string()),
+            audience_scope: Some(case.audience_scope.to_string()),
+            template_code: Some(case.template_code.to_string()),
+            channel: Some("mock-log".to_string()),
+            recipient: NotificationRecipient {
+                kind: "user".to_string(),
+                address: format!("{}@example.test", new_uuid_string()),
+                id: Some(new_uuid_string()),
+                display_name: Some("Notification Smoke".to_string()),
+            },
+            variables: Some(variables),
+            metadata: Some(json!({
+                "task_id": "NOTIF-012",
+                "scenario": case.notification_code,
+                "run_namespace": state.cfg.redis_namespace,
+            })),
+            source_event: Some(NotificationSourceEvent {
+                aggregate_type: case.source_event_aggregate_type.to_string(),
+                aggregate_id: source_aggregate_id,
+                event_type: case.source_event_event_type.to_string(),
+                event_id: Some(new_uuid_string()),
+                target_topic: Some("dtp.outbox.domain-events".to_string()),
+                occurred_at: Some("2026-04-22T00:00:00.000Z".to_string()),
+            }),
+            subject_refs: Some(subject_refs),
+            links: None,
+            idempotency_key: Some(format!(
+                "notif012:{}:{}:{}",
+                case.notification_code, case.audience_scope, order_id
+            )),
+            request_id: Some(format!("req-notif012-{}", new_uuid_string())),
+            trace_id: Some(format!("trace-notif012-{}", new_uuid_string())),
+            retry_policy,
+            simulate_failures: Some(simulate_failures),
+        }
+        .into_envelope()
+        .expect("build notif012 live envelope")
+    }
+
+    async fn load_active_template_schema(
+        client: &(impl GenericClient + Sync),
+        template_code: &str,
+    ) -> (i32, Value) {
+        let row = client
+            .query_one(
+                "SELECT version_no, variables_schema_json
+                   FROM ops.notification_template
+                  WHERE template_code = $1
+                    AND channel = 'mock-log'
+                    AND language_code = 'zh-CN'
+                    AND enabled = TRUE
+                    AND status = 'active'
+                  ORDER BY version_no DESC, created_at DESC
+                  LIMIT 1",
+                &[&template_code],
+            )
+            .await
+            .expect("load active template schema");
+        (row.get(0), row.get(1))
+    }
+
+    fn build_live_variables(
+        schema: &Value,
+        case: LiveSceneCase,
+        order_id: &str,
+        dispute_case_id: Option<&str>,
+    ) -> Value {
+        let mut variables = sample_value_from_schema("variables", schema);
+        let object = ensure_value_object(&mut variables);
+        object.insert(
+            "subject".to_string(),
+            Value::String(format!("{} smoke subject", case.notification_code)),
+        );
+        object.insert(
+            "headline".to_string(),
+            Value::String(format!("{} smoke headline", case.notification_code)),
+        );
+        object.insert("order_id".to_string(), Value::String(order_id.to_string()));
+        object.insert(
+            "action_label".to_string(),
+            Value::String("查看详情".to_string()),
+        );
+        object.insert(
+            "action_href".to_string(),
+            Value::String(format!(
+                "/mock/{}",
+                case.notification_code.replace('.', "/")
+            )),
+        );
+        object.insert("show_ops_context".to_string(), Value::Bool(false));
+        object.insert(
+            "action_summary".to_string(),
+            Value::String("通过 NOTIF-012 live smoke 触发".to_string()),
+        );
+        object.insert(
+            "product_title".to_string(),
+            Value::String("Notification Smoke Asset".to_string()),
+        );
+        object.insert(
+            "buyer_org_name".to_string(),
+            Value::String("Buyer Org".to_string()),
+        );
+        object.insert(
+            "seller_org_name".to_string(),
+            Value::String("Seller Org".to_string()),
+        );
+        object.insert(
+            "order_amount".to_string(),
+            Value::String("100.00".to_string()),
+        );
+        object.insert(
+            "currency_code".to_string(),
+            Value::String("CNY".to_string()),
+        );
+        object.insert(
+            "payment_status".to_string(),
+            Value::String("paid".to_string()),
+        );
+        object.insert(
+            "delivery_status".to_string(),
+            Value::String("delivered".to_string()),
+        );
+        object.insert(
+            "acceptance_status".to_string(),
+            Value::String("rejected".to_string()),
+        );
+        object.insert(
+            "settlement_status".to_string(),
+            Value::String("frozen".to_string()),
+        );
+        object.insert(
+            "dispute_status".to_string(),
+            Value::String("open".to_string()),
+        );
+        object.insert(
+            "current_state".to_string(),
+            Value::String("notification_ready".to_string()),
+        );
+        object.insert(
+            "current_state_label".to_string(),
+            Value::String("通知待确认".to_string()),
+        );
+        object.insert(
+            "acceptance_status_label".to_string(),
+            Value::String("待处理".to_string()),
+        );
+        object.insert(
+            "delivery_branch_label".to_string(),
+            Value::String("标准交付".to_string()),
+        );
+        object.insert(
+            "delivery_type".to_string(),
+            Value::String("query_result".to_string()),
+        );
+        object.insert(
+            "delivery_route".to_string(),
+            Value::String("template_query".to_string()),
+        );
+        object.insert(
+            "reason_code".to_string(),
+            Value::String("notif012_smoke".to_string()),
+        );
+        if let Some(case_id) = dispute_case_id {
+            object.insert("case_id".to_string(), Value::String(case_id.to_string()));
+        }
+        variables
+    }
+
+    fn build_subject_refs(
+        ref_types: &[&str],
+        order_id: &str,
+        dispute_case_id: Option<&str>,
+    ) -> Vec<NotificationSubjectRef> {
+        ref_types
+            .iter()
+            .map(|ref_type| NotificationSubjectRef {
+                ref_type: (*ref_type).to_string(),
+                ref_id: match *ref_type {
+                    "order" => order_id.to_string(),
+                    "dispute_case" => dispute_case_id
+                        .expect("dispute case id should exist for dispute ref")
+                        .to_string(),
+                    _ => new_uuid_string(),
+                },
+            })
+            .collect()
+    }
+
+    fn ensure_value_object(value: &mut Value) -> &mut Map<String, Value> {
+        if !value.is_object() {
+            *value = json!({});
+        }
+        value
+            .as_object_mut()
+            .expect("value just normalized to object")
+    }
+
+    fn sample_value_from_schema(path: &str, schema: &Value) -> Value {
+        if let Some(options) = schema
+            .get("oneOf")
+            .and_then(Value::as_array)
+            .or_else(|| schema.get("anyOf").and_then(Value::as_array))
+        {
+            if let Some(first) = options.first() {
+                return sample_value_from_schema(path, first);
+            }
+        }
+        if let Some(enum_values) = schema.get("enum").and_then(Value::as_array) {
+            if let Some(first) = enum_values.first() {
+                return first.clone();
+            }
+        }
+        let schema_kind = schema_kind(schema).unwrap_or_else(|| "string".to_string());
+        match schema_kind.as_str() {
+            "object" => {
+                let mut object = Map::new();
+                if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
+                    for (key, property_schema) in properties {
+                        object.insert(
+                            key.clone(),
+                            sample_value_from_schema(&format!("{path}.{key}"), property_schema),
+                        );
+                    }
+                }
+                Value::Object(object)
+            }
+            "array" => {
+                let item_schema = schema
+                    .get("items")
+                    .cloned()
+                    .unwrap_or_else(|| json!({ "type": "string" }));
+                Value::Array(vec![sample_value_from_schema(
+                    &format!("{path}[0]"),
+                    &item_schema,
+                )])
+            }
+            "integer" => json!(1),
+            "number" => json!(100.25),
+            "boolean" => json!(false),
+            _ => Value::String(sample_string_value(path)),
+        }
+    }
+
+    fn schema_kind(schema: &Value) -> Option<String> {
+        if let Some(kind) = schema.get("type").and_then(Value::as_str) {
+            return Some(kind.to_string());
+        }
+        if let Some(kinds) = schema.get("type").and_then(Value::as_array) {
+            return kinds
+                .iter()
+                .filter_map(Value::as_str)
+                .find(|kind| *kind != "null")
+                .map(ToString::to_string);
+        }
+        if schema.get("properties").is_some() {
+            return Some("object".to_string());
+        }
+        if schema.get("items").is_some() {
+            return Some("array".to_string());
+        }
+        None
+    }
+
+    fn sample_string_value(path: &str) -> String {
+        let key = path.rsplit('.').next().unwrap_or(path);
+        match key {
+            "subject" => "通知主题".to_string(),
+            "headline" => "通知摘要".to_string(),
+            "order_id"
+            | "case_id"
+            | "delivery_ref_id"
+            | "acceptance_record_id"
+            | "legal_hold_id"
+            | "freeze_ticket_id" => new_uuid_string(),
+            "action_label" => "查看详情".to_string(),
+            "action_href" => "/mock/notification".to_string(),
+            "order_amount" => "100.00".to_string(),
+            "currency_code" => "CNY".to_string(),
+            "payment_status" => "paid".to_string(),
+            "delivery_status" => "delivered".to_string(),
+            "acceptance_status" => "rejected".to_string(),
+            "settlement_status" => "frozen".to_string(),
+            "dispute_status" => "open".to_string(),
+            "current_state" => "notification_ready".to_string(),
+            "current_state_label" => "通知待确认".to_string(),
+            "acceptance_status_label" => "待处理".to_string(),
+            "delivery_branch_label" => "标准交付".to_string(),
+            "delivery_type" => "query_result".to_string(),
+            "delivery_route" => "template_query".to_string(),
+            "product_title" => "Notification Smoke Asset".to_string(),
+            "buyer_org_name" => "Buyer Org".to_string(),
+            "seller_org_name" => "Seller Org".to_string(),
+            "reason_code" => "notif012_smoke".to_string(),
+            "reason_detail" => "generated by notif012 live smoke".to_string(),
+            "action_summary" => "通过 NOTIF-012 live smoke 触发".to_string(),
+            "receipt_hash" => "receipt-smoke".to_string(),
+            "delivery_commit_hash" => "commit-smoke".to_string(),
+            "buyer_locked_at" => now_iso8601(),
+            _ if key.ends_with("_href") => "/mock/default".to_string(),
+            _ if key.ends_with("_id") => new_uuid_string(),
+            _ if key.ends_with("_at") => now_iso8601(),
+            _ => format!("{key}-smoke"),
+        }
+    }
+
+    async fn wait_for_audit_record(
+        client: &(impl GenericClient + Sync),
+        event_id: &str,
+        expected_status: &str,
+        required_action_name: &str,
+    ) -> NotificationAuditLookupRecord {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            if let Ok(record) = load_notification_audit_record(client, event_id).await {
+                let action_ready = record
+                    .audit_timeline
+                    .iter()
+                    .any(|entry| entry.action_name == required_action_name);
+                if record.current_status == expected_status && action_ready {
+                    return record;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for notification audit record {event_id} -> {expected_status} with {required_action_name}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    async fn wait_for_metric(counter: &IntCounterVec, labels: &[&str], expected_at_least: u64) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            if metric_value(counter, labels) >= expected_at_least {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for metric {:?} >= {}",
+                labels,
+                expected_at_least
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    fn metric_value(counter: &IntCounterVec, labels: &[&str]) -> u64 {
+        counter.with_label_values(labels).get()
+    }
+
+    fn assert_live_success_record(
+        record: &NotificationAuditLookupRecord,
+        envelope: &NotificationEnvelope,
+        case: LiveSceneCase,
+    ) {
+        assert_eq!(record.event_id, envelope.event_id);
+        assert_eq!(record.notification_code, case.notification_code);
+        assert_eq!(record.template_code, case.template_code);
+        assert_eq!(record.channel, "mock-log");
+        assert_eq!(record.current_status, "processed");
+        assert_eq!(record.current_attempt, Some(1));
+        assert_eq!(
+            record.source_event["aggregate_type"].as_str(),
+            Some(case.source_event_aggregate_type)
+        );
+        assert_eq!(
+            record.source_event["event_type"].as_str(),
+            Some(case.source_event_event_type)
+        );
+        assert_eq!(
+            subject_ref_types(&record.subject_refs),
+            case.subject_ref_types
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            record
+                .channel_result
+                .as_ref()
+                .and_then(|value| value["transport_status"].as_str()),
+            Some("delivered")
+        );
+        assert_eq!(
+            record
+                .retry_timeline
+                .iter()
+                .map(|entry| entry.status.as_str())
+                .collect::<Vec<_>>(),
+            vec!["processed"]
+        );
+        assert!(
+            record
+                .audit_timeline
+                .iter()
+                .any(|entry| entry.action_name == "notification.dispatch.sent")
+        );
+    }
+
+    fn assert_live_retry_record(record: &NotificationAuditLookupRecord) {
+        assert_eq!(record.current_status, "processed");
+        assert_eq!(record.current_attempt, Some(2));
+        assert_eq!(
+            record
+                .retry_timeline
+                .iter()
+                .map(|entry| entry.status.as_str())
+                .collect::<Vec<_>>(),
+            vec!["retry_scheduled", "processed"]
+        );
+        assert!(
+            record
+                .audit_timeline
+                .iter()
+                .any(|entry| entry.action_name == "notification.dispatch.retry_scheduled")
+        );
+        assert!(
+            record
+                .audit_timeline
+                .iter()
+                .any(|entry| entry.action_name == "notification.dispatch.sent")
+        );
+    }
+
+    fn assert_live_dead_letter_record(
+        record: &NotificationAuditLookupRecord,
+        envelope: &NotificationEnvelope,
+        dead_letter_topic: &str,
+        dead_letter_message: &Value,
+    ) {
+        let dead_letter = record
+            .dead_letter
+            .as_ref()
+            .expect("dead letter record should exist");
+        assert_eq!(record.current_status, "dead_lettered");
+        assert_eq!(record.current_attempt, Some(2));
+        assert_eq!(dead_letter.target_topic, dead_letter_topic);
+        assert_eq!(dead_letter.reprocess_status, "not_reprocessed");
+        assert_eq!(
+            record
+                .retry_timeline
+                .iter()
+                .map(|entry| entry.status.as_str())
+                .collect::<Vec<_>>(),
+            vec!["retry_scheduled", "dead_lettered"]
+        );
+        assert!(
+            record
+                .audit_timeline
+                .iter()
+                .any(|entry| entry.action_name == "notification.dispatch.dead_lettered")
+        );
+        assert_eq!(
+            dead_letter_message["event_id"].as_str(),
+            Some(envelope.event_id.as_str())
+        );
+        assert_eq!(
+            dead_letter_message["target_topic"].as_str(),
+            Some(dead_letter_topic)
+        );
+        assert_eq!(
+            dead_letter_message["dead_letter_event_id"].as_str(),
+            Some(dead_letter.dead_letter_event_id.as_str())
+        );
+    }
+
+    fn subject_ref_types(subject_refs: &Value) -> Vec<String> {
+        subject_refs
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|subject_ref| subject_ref["ref_type"].as_str().map(ToString::to_string))
+            .collect()
+    }
+
+    async fn count_notification_system_logs(
+        client: &(impl GenericClient + Sync),
+        event_id: &str,
+        message_text: &str,
+    ) -> i64 {
+        client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                   FROM ops.system_log
+                  WHERE service_name = $1
+                    AND object_type = 'notification_dispatch'
+                    AND object_id = $2::text::uuid
+                    AND message_text = $3",
+                &[&SERVICE_NAME, &event_id, &message_text],
+            )
+            .await
+            .expect("count notification system logs")
+            .get(0)
+    }
+
+    async fn count_notification_audit(
+        client: &(impl GenericClient + Sync),
+        trace_id: &str,
+        action_name: &str,
+    ) -> i64 {
+        client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                   FROM audit.audit_event
+                  WHERE domain_name = 'notification'
+                    AND trace_id = $1
+                    AND action_name = $2",
+                &[&trace_id, &action_name],
+            )
+            .await
+            .expect("count notification audit rows")
+            .get(0)
+    }
+
+    async fn count_alert_events(client: &(impl GenericClient + Sync), event_id: &str) -> i64 {
+        client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                   FROM ops.alert_event
+                  WHERE metadata->>'event_id' = $1",
+                &[&event_id],
+            )
+            .await
+            .expect("count alert rows")
+            .get(0)
+    }
+
+    async fn load_short_state(state: &Arc<WorkerState>, event_id: &str) -> Option<Value> {
+        let mut conn = redis_connection(state).await.expect("connect redis");
+        let raw: Option<String> = conn
+            .get(short_state_key(state, event_id))
+            .await
+            .expect("load short state");
+        raw.map(|raw| serde_json::from_str(&raw).expect("decode short state"))
+    }
+
+    async fn load_retry_payload(state: &Arc<WorkerState>, event_id: &str) -> Option<String> {
+        let mut conn = redis_connection(state).await.expect("connect redis");
+        conn.get(retry_payload_key(state, event_id))
+            .await
+            .expect("load retry payload")
+    }
+
+    async fn redis_retry_queue_depth(state: &Arc<WorkerState>) -> usize {
+        let mut conn = redis_connection(state).await.expect("connect redis");
+        redis::cmd("ZCARD")
+            .arg(retry_queue_key(state))
+            .query_async(&mut conn)
+            .await
+            .expect("query retry queue depth")
+    }
+
+    async fn build_topic_consumer(
+        state: &Arc<WorkerState>,
+        group_id: &str,
+        topic: &str,
+        auto_offset_reset: &str,
+    ) -> StreamConsumer {
+        let consumer = build_stream_consumer(&state.cfg.kafka_brokers, group_id, auto_offset_reset)
+            .expect("build topic consumer");
+        consumer
+            .subscribe(&[topic])
+            .expect("subscribe topic consumer");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        consumer
+    }
+
+    async fn wait_for_dead_letter_message(
+        consumer: &StreamConsumer,
+        expected_event_id: &str,
+    ) -> Value {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let message = tokio::time::timeout(remaining, consumer.recv())
+                .await
+                .expect("wait for dead letter kafka message")
+                .expect("receive dead letter kafka message");
+            let payload = message.payload().expect("dead letter message payload");
+            let value: Value = serde_json::from_slice(payload).expect("decode dead letter message");
+            if value["event_id"].as_str() == Some(expected_event_id) {
+                return value;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for dead letter message {expected_event_id}"
+            );
+        }
     }
 }
