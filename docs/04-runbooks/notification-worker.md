@@ -102,6 +102,10 @@
 ## V1 渠道与模板边界
 
 - 默认只允许 `mock-log` 渠道输出发送结果
+- 发送实现通过渠道适配器注册表分发：
+  - active：`mock-log -> mock-log-adapter`
+  - reserved：`email`、`webhook`
+- local 模式下即使手工注入 `channel=email|webhook`，也只会命中“边界已预留但未启用”的错误，不作为 `V1` 完成证据
 - 模板需支持：
   - 模板编码
   - 语言
@@ -139,6 +143,9 @@
   - `NOTIFY_SETTLEMENT_FROZEN_V1` version `2` 作为结算冻结正式模板
   - `NOTIFY_SETTLEMENT_RESUMED_V1` version `2` 作为恢复结算正式模板
   - version `1` 已归档，仅保留回退审计用途
+- `NOTIF-008` 起：
+  - `ops.system_log.structured_payload.result` 会回写 `adapter_key / runtime_mode / provider_mode / transport_status / backend_message_id`
+  - 用于证明当前真实命中的发送适配器是 `mock-log-adapter`
 - file 模板目录 `apps/notification-worker/templates/` 仅保留为 local fallback，不再作为正式模板权威源
 - 不允许把内部风控、审计敏感字段直接透传到业务用户通知正文
 

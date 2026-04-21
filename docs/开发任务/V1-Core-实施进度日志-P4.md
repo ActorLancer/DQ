@@ -622,3 +622,89 @@
 - 备注：
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
   - 本批中途发现 `risk.governance_action_log` smoke 建数错误使用了不存在的 `payload` 列，已按正式 schema 修正为 `action_payload`，不影响冻结业务口径。
+### BATCH-207（计划中）
+- 任务：`NOTIF-008` 通知发送适配器抽象
+- 状态：计划中
+- 说明：当前 worker 运行态已经具备 `mock-log` 发送、幂等、重试和审计闭环，但发送实现仍硬编码在 `send_via_mock_log`。本批将其抽象为正式通知渠道适配器层：`V1` 真实启用 `mock-log`，`email / webhook` 仅保留 provider 边界与未启用实现，不改变 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式链路，也不把外部真实 provider 提前做成 V1 阻塞项。
+- 追溯：本批优先复用既有 Worker 的模板渲染、审计、系统日志、trace、Redis 重试与 Prometheus 指标能力，只做“发送适配器层”的正式抽象，不提前把 `NOTIF-009` 的人工重放入口和 `NOTIF-010` 的联查控制面混入实现。
+### BATCH-207（待审批）
+- 任务：`NOTIF-008` 通知发送适配器抽象
+- 状态：待审批
+- 当前任务编号：`NOTIF-008`
+- 前置依赖核对结果：`NOTIF-001` 已冻结 `notification-worker` 本地运行基线、DB/Redis/Kafka/Keycloak/观测栈依赖与正式 topic 校验；`NOTIF-002` 已冻结 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式事件契约；`CORE-018` 作为既有完成基线已提供统一 provider / mock 边界原则。本批不改 scene catalog、不改 topic、不新引入外部真实 provider，只把发送层抽象成正式适配器注册表。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批完成标准是发送适配器抽象、`V1` 真实只启用 `mock-log`、`email/webhook` 仅保留边界、幂等/重试/审计仍可验证。
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`：复核通知仍必须沿 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式异步链路执行。
+  - `docs/原始PRD/审计、证据链与回放设计.md`、`docs/原始PRD/日志、可观测性与告警设计.md`：确认发送适配器抽象不能绕开正式审计、系统日志、trace 与告警链。
+  - `docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：确认 `mock-log` 是 `V1` 当前真实发送渠道，`email/webhook` 仍是 provider 边界，不得伪装成已完成真实发送。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 PostgreSQL / Kafka / Redis / Keycloak / Loki / Tempo / Prometheus / Alertmanager / Grafana 的真实接入要求与 local 联调边界。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：复核通知 route authority、正式 topic 拓扑与 runtime DB route seed。
+  - `apps/notification-worker/**`、`apps/platform-core/src/modules/integration/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/05-test-cases/**`、`scripts/**`、`infra/**`：复核现有 worker、通知桥接与验证脚本，只把已有实现作为参考，不把现状直接视为完成证明。
+- 实现要点：
+  - 新增 `apps/notification-worker/src/channel.rs`，建立 `ChannelRegistry` 正式发送适配器层：
+    - active：`mock-log -> mock-log-adapter`
+    - reserved：`email`、`webhook`
+    - `mock-log` 适配器保留既有 `simulate_failures` 故障注入，用于真实验证重试与 DLQ 前序链路
+  - `notification-worker` 启动时根据 `runtime.mode + provider.mode` 构建渠道注册表，并在启动日志显式输出 `active_channels` 与 `reserved_channels`，避免再由硬编码函数隐式定义当前真实发送渠道。
+  - `process_retry_envelope` 改为统一走 `state.channels.send(...)`，删除直接写死的 `send_via_mock_log`；适配器抽象不改变模板渲染、幂等判重、Redis 重试、Kafka 消费、PostgreSQL 审计 / 系统日志 / trace 镜像。
+  - `ops.system_log.structured_payload.result` 现在固定回写：
+    - `channel`
+    - `adapter_key`
+    - `runtime_mode`
+    - `provider_mode`
+    - `transport_status`
+    - `backend_message_id`
+    - `recipient`
+    - `attempt`
+    - `delivered_at`
+    用于证明当前真实命中的发送适配器是 `mock-log-adapter`，而不是 README / 配置占位。
+  - 新增 `channel` 单元测试，覆盖：
+    - active/reserved 渠道注册结果
+    - `email/webhook` 在 local 下命中“边界已预留但未启用”错误
+    - `mock-log` 故障注入仍能驱动重试链
+  - 更新 `apps/notification-worker/README.md` 与 `docs/04-runbooks/notification-worker.md`，补齐 `NOTIF-008` 的渠道适配器口径、active/reserved 列表、`structured_payload.result` 字段说明与本地联调边界。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo test -p notification-worker channel`
+  3. `cargo check -p notification-worker`
+  4. `cargo test -p notification-worker`
+  5. `cargo check -p platform-core`
+  6. `cargo test -p platform-core`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. `./scripts/check-topic-topology.sh`
+  10. `curl http://127.0.0.1:8097/health/deps`
+  11. `POST /internal/notifications/send`：
+      - `payment.succeeded / buyer` 成功发送后重复投递一次，验证重复事件不会形成第二条处理结果
+      - `payment.succeeded / buyer` 携带 `simulate_failures=1`，验证 Redis 重试队列、DB 幂等状态、trace 与系统日志
+  12. `psql`、`redis-cli`、`curl` 回查 `ops.system_log`、`ops.consumer_idempotency_record`、`ops.trace_index`、worker `/metrics`、Prometheus / Alertmanager / Grafana / Loki / Tempo 的运行态证据。
+  13. 清理本批非 append-only 测试数据：删除 `ops.consumer_idempotency_record`、`ops.trace_index`、Redis 短状态与重试载荷；`ops.system_log` / `audit.audit_event` 按 append-only 保留。
+- 验证结果：
+  - `cargo fmt --all`、`cargo test -p notification-worker channel`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-topic-topology.sh` 全部通过。
+  - worker 新启动实例的启动日志显示：
+    - `active_channels=["mock-log"]`
+    - `reserved_channels=["email", "webhook"]`
+    证明 `V1` 真实只启用了 `mock-log`。
+  - `curl http://127.0.0.1:8097/health/deps` 返回 `db / redis / kafka / keycloak reachable=true`，发送适配器抽象未破坏本地正式依赖接入。
+  - 手工发送 `payment.succeeded / buyer` 成功后，`ops.system_log` 可回查：
+    - `message_text='notification sent via mock-log'`
+    - `structured_payload.result.adapter_key='mock-log-adapter'`
+    - `structured_payload.result.provider_mode='mock'`
+    - `structured_payload.result.transport_status='delivered'`
+    证明真实命中的是 `mock-log-adapter`，不是仅靠配置或 README 口头声明。
+  - 同一 `event_id` 重复投递后，`ops.system_log` 对该事件仍只保留单次成功发送记录，`ops.consumer_idempotency_record` 为 `processed|1`，worker `/metrics` 与 Prometheus 中 `notification_worker_events_total{result="duplicate"}` 增长，说明渠道抽象没有破坏幂等去重。
+  - 注入 `simulate_failures=1` 后，Redis `datab:v1:notification:retry-queue` 先升至 `1` 再回到 `0`；短状态经历 `retrying -> processed`，`ops.consumer_idempotency_record` 最终为 `processed|2`；`ops.system_log`、`ops.trace_index` 与 `audit.audit_event` 仍能联查到 `retry_scheduled -> sent` 的完整轨迹，说明渠道抽象没有破坏重试与审计闭环。
+  - worker `/metrics`、Prometheus API、Alertmanager API、Grafana `/api/health`、Loki `/ready`、Tempo `/metrics` 均可回查，通知链观测栈仍为真实接入。
+  - 临时测试数据清理结果：本批手工事件对应的 `ops.consumer_idempotency_record`、`ops.trace_index`、Redis 短状态与重试载荷已删除；`ops.system_log` 与 `audit.audit_event` 按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-008`
+  - `12-API 设计、事件模型与消息总线.md`：通知仍走正式异步事件链
+  - `审计、证据链与回放设计.md`、`日志、可观测性与告警设计.md`：发送适配器抽象不得绕开审计 / 观测链
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：`mock-log` 为 `V1` 唯一真实发送渠道，`email/webhook` 仅保留边界
+  - `kafka-topics.md`、`notification-worker.md`、`topics.v1.json`、`072/074` SQL：正式 topic、route authority 与运行态路由回查
+- 覆盖的任务清单条目：`NOTIF-008`
+- 未覆盖项：无。人工重放入口、通知控制面查询接口、OpenAPI / 测试清单与更完整 runbook 仍按顺序留给 `NOTIF-009 ~ NOTIF-014`。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+  - 本批运行态验证中 `ops.system_log` 的正式排序列为 `created_at`，已按真实 schema 回查适配器落库证据，不影响冻结业务口径。

@@ -5,6 +5,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
+use channel::{ChannelRegistry, ChannelSendRequest};
 use db::{AppDb, DbPoolConfig, GenericClient};
 use http::{ApiResponse, DependenciesReport, DependencyStatus, serve};
 use kernel::{AppError, AppResult, ErrorResponse};
@@ -23,6 +24,7 @@ use tokio::net::TcpStream;
 use tokio::time;
 use tracing::{error, info, warn};
 
+mod channel;
 mod config;
 mod event;
 mod template;
@@ -43,6 +45,7 @@ struct WorkerState {
     producer: FutureProducer,
     templates: TemplateStore,
     metrics: Arc<WorkerMetrics>,
+    channels: Arc<ChannelRegistry>,
 }
 
 #[derive(Clone)]
@@ -101,6 +104,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .create::<FutureProducer>()
         .map_err(|err| AppError::Startup(format!("kafka producer init failed: {err}")))?;
     let metrics = Arc::new(WorkerMetrics::new()?);
+    let channels = Arc::new(ChannelRegistry::new(
+        cfg.runtime.mode.clone(),
+        cfg.runtime.provider.clone(),
+    ));
     let state = Arc::new(WorkerState {
         cfg: cfg.clone(),
         db,
@@ -108,6 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         producer,
         templates: TemplateStore::new(cfg.template_dir.clone()),
         metrics,
+        channels,
     });
 
     info!(
@@ -115,6 +123,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         group = %cfg.consumer_group,
         template_dir = %cfg.template_dir.display(),
         kafka_brokers = %cfg.kafka_brokers,
+        active_channels = ?state.channels.active_channels(),
+        reserved_channels = ?state.channels.reserved_channels(),
         "notification-worker started"
     );
 
@@ -289,7 +299,14 @@ async fn process_retry_envelope(
             .await;
         }
     };
-    match send_via_mock_log(&retry, &rendered).await {
+    match state
+        .channels
+        .send(ChannelSendRequest {
+            retry: &retry,
+            rendered: &rendered,
+        })
+        .await
+    {
         Ok(channel_result) => {
             finalize_processing(state, &client, &retry, &rendered, channel_result).await?;
             state
@@ -300,7 +317,7 @@ async fn process_retry_envelope(
             state
                 .metrics
                 .send_results
-                .with_label_values(&["mock-log", "success"])
+                .with_label_values(&[rendered.channel.as_str(), "success"])
                 .inc();
             Ok(ProcessOutcome::Processed)
         }
@@ -308,7 +325,7 @@ async fn process_retry_envelope(
             state
                 .metrics
                 .send_results
-                .with_label_values(&["mock-log", "failed"])
+                .with_label_values(&[retry.envelope.payload.channel.as_str(), "failed"])
                 .inc();
             handle_failed_attempt(state, &client, retry, rendered, err).await
         }
@@ -320,7 +337,7 @@ async fn finalize_processing(
     client: &(impl GenericClient + Sync),
     retry: &RetryEnvelope,
     rendered: &RenderedNotification,
-    channel_result: Value,
+    channel_result: channel::ChannelSendResult,
 ) -> Result<(), String> {
     update_processing_result(
         client,
@@ -341,7 +358,7 @@ async fn finalize_processing(
             "title": rendered.title,
             "body": rendered.body,
             "attempt": retry.attempt,
-            "result": channel_result,
+            "result": channel_result.as_json(),
         }),
     )
     .await?;
@@ -648,38 +665,6 @@ async fn update_processing_result(
         .await
         .map_err(|err| format!("update consumer idempotency result failed: {err}"))?;
     Ok(())
-}
-
-async fn send_via_mock_log(
-    retry: &RetryEnvelope,
-    rendered: &RenderedNotification,
-) -> Result<Value, String> {
-    let simulate_failures = retry.envelope.payload.metadata["simulate_failures"]
-        .as_u64()
-        .unwrap_or(0) as u32;
-    if retry.attempt <= simulate_failures {
-        return Err(format!(
-            "mock-log forced failure on attempt {} for event {}",
-            retry.attempt, retry.envelope.event_id
-        ));
-    }
-
-    info!(
-        event_id = %retry.envelope.event_id,
-        template_code = %rendered.template_code,
-        recipient = %retry.envelope.payload.recipient.address,
-        title = %rendered.title,
-        body = %rendered.body,
-        attempt = retry.attempt,
-        "notification-worker mock-log delivered"
-    );
-    Ok(json!({
-        "channel": "mock-log",
-        "backend_message_id": format!("mocklog-{}", retry.envelope.event_id),
-        "attempt": retry.attempt,
-        "recipient": retry.envelope.payload.recipient.address,
-        "delivered_at": now_iso8601(),
-    }))
 }
 
 async fn schedule_retry(

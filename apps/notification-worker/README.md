@@ -6,6 +6,8 @@
 - 对应事件：`notification.requested`
 - 本地默认 consumer group：`cg-notification-worker`
 - `V1` 实接渠道：`mock-log`
+- `V1` 发送适配器：`mock-log-adapter`
+- `email` / `webhook`：仅保留 provider 边界与未启用适配器，不作为 `V1` 实接渠道
 - 不直接消费：`dtp.outbox.domain-events`
 
 当前实现能力：
@@ -72,6 +74,20 @@
 - Redis 短期状态与重试队列
 - PostgreSQL 发送/审计/死信/trace 镜像
 - 健康检查与指标端点：`/health/live`、`/health/ready`、`/health/deps`、`/metrics`
+
+发送适配器口径：
+
+- worker 运行时通过渠道注册表分发发送请求，不再直接硬编码 `send_via_mock_log`
+- 当前 active 渠道只有 `mock-log`
+- 当前 reserved 渠道是 `email`、`webhook`
+- `mock-log` 发送结果会回写 `ops.system_log.structured_payload.result`，其中包含：
+  - `channel`
+  - `adapter_key`
+  - `runtime_mode`
+  - `provider_mode`
+  - `transport_status`
+  - `backend_message_id`
+- 若手工请求显式指定 `channel=email|webhook`，local 模式会按“边界已预留但未启用”拒绝，不会绕过 `V1` 冻结口径偷偷切外部 provider
 
 本地启动：
 
