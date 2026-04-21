@@ -12,6 +12,20 @@
 - 项目根环境模板：`.env.local.example`、`.env.example`
 - CI/CD 注入：Pipeline Secret Store（GitHub Actions Secret / 私有 CI Secret）
 
+## 正式映射规则
+
+- 数据库：
+  - `POSTGRES_*` 只用于本地 PostgreSQL / Keycloak bootstrap
+  - 应用与大部分脚本正式读取 `DATABASE_URL`
+  - `PGHOST / PGPORT / PGDATABASE / PGUSER / PGPASSWORD` 仅用于 `psql / libpq` 临时调试
+- MinIO：
+  - `MINIO_ROOT_*` 只用于 MinIO 服务端 bootstrap
+  - 应用与脚本正式读取 `MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY`
+- Keycloak：
+  - `KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD` 只用于本地 Keycloak bootstrap
+  - 应用与脚本正式读取 `KEYCLOAK_BASE_URL / KEYCLOAK_REALM / KEYCLOAK_CLIENT_*`
+  - `KEYCLOAK_ADMIN_USERNAME` 不再作为正式主配置名
+
 ## 分类规则
 
 | 分类 | 是否允许写入 `.env.local` | 说明 |
@@ -27,11 +41,12 @@
 - 命名类：`TOPIC_*`、`BUCKET_*`、`INDEX_ALIAS_*`
 - 本地演示账号：`POSTGRES_USER`、`MINIO_ROOT_USER`、`KEYCLOAK_ADMIN`
 - 本地演示密码（仅 local fake）：`POSTGRES_PASSWORD`、`MINIO_ROOT_PASSWORD`、`KEYCLOAK_ADMIN_PASSWORD`、`REDIS_PASSWORD`
+- 本地运行时入口样例：`DATABASE_URL`、`MINIO_ACCESS_KEY`、`MINIO_SECRET_KEY`、`KEYCLOAK_REALM`
 
 ## 必须走 secret 文件或 CI Secret 的变量
 
 - 外部支付/通知/身份集成密钥：`*_API_KEY`、`*_CLIENT_SECRET`、`*_SIGNING_SECRET`
-- 真实环境密码：`PG_PASSWORD`、`REDIS_PASSWORD`、`OPENSEARCH_PASSWORD`、`KEYCLOAK_CLIENT_SECRET`
+- 真实环境密码：带密码的 `DATABASE_URL`、`REDIS_PASSWORD`、`OPENSEARCH_PASSWORD`、`MINIO_SECRET_KEY`、`KEYCLOAK_CLIENT_SECRET`
 - 链路与证书密钥：`FABRIC_PRIVATE_KEY_PATH` 指向的私钥文件内容、TLS 私钥、服务签名私钥
 
 推荐落位：
@@ -53,6 +68,10 @@
 4. 启动并校验：
    - `make up-local`
    - `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+
+补充说明：
+
+- 若修改 `POSTGRES_*`、`MINIO_ROOT_*`、`KEYCLOAK_ADMIN*` 本地演示值，必须同步更新 `infra/docker/.env.local` 中派生出的 `DATABASE_URL`、`MINIO_ACCESS_KEY / MINIO_SECRET_KEY`、`KEYCLOAK_REALM` 等运行时入口样例。
 
 ## 审计与轮换建议
 

@@ -1042,7 +1042,7 @@ async fn revoke_session(
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<SessionView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, IamPermission::IdentityWrite, "session revoke")?;
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let row = tx
         .query_opt(
@@ -1333,7 +1333,7 @@ async fn get_auth_me(
         ));
     };
 
-    let mut client = state.db.client().map_err(map_db_error)?;
+    let client = state.db.client().map_err(map_db_error)?;
     let row = client
         .query_opt(
             "SELECT user_id::text, org_id::text, login_id::text, display_name

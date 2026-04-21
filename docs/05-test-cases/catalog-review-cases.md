@@ -20,14 +20,14 @@
 ## 3. 前置环境
 
 - 本地核心栈已启动：`make up-local`
-- 应用联调库：`postgres://datab:datab_local_pass@127.0.0.1:5432/datab`
+- 应用联调统一读取：`infra/docker/.env.local`
+- 宿主机直连 Kafka 时一律使用 `127.0.0.1:9094`；`kafka:9092` / 容器内 `localhost:9092` 仅供 compose 网络内部与容器内探测使用
 - 服务启动（示例）：
 
 ```bash
+set -a; source infra/docker/.env.local; set +a
 APP_PORT=18080 APP_HOST=127.0.0.1 \
-DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
-KAFKA_BROKERS=127.0.0.1:9092 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 \
-MINIO_ENDPOINT=http://127.0.0.1:9000 OPENSEARCH_ENDPOINT=http://127.0.0.1:9200 \
+KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
 cargo run -p platform-core
 ```
 

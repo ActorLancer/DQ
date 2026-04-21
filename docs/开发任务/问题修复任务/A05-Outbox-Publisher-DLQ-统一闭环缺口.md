@@ -1,5 +1,22 @@
 # A05 Outbox Publisher 与 DLQ 统一闭环缺口
 
+## 0. 当前状态
+
+- 本文当前角色：outbox publisher、双层 DLQ 与旁路消费清理的治理说明，用于约束后续 `AUD` 实现批次的闭环目标。
+- 当前 topic / route / dual-DLQ 目标已经冻结，但 publisher worker、旁路消费清理和 reprocess 的完整实现仍属于后续任务承接范围。
+- 第 `2` 节与第 `4` 节记录的是问题发现时的历史起点，不再直接代表当前实现进度。
+
+### 0.1 当前已收缩部分
+
+- canonical topic、route policy、dual-DLQ 目标与任务承接关系已经写回执行源。
+- `A05` 当前主要承担后续 `AUD-008 / 009 / 010 / 026 / 031` 的治理边界说明，不再重新打开 topology 选择空间。
+
+### 0.2 当前剩余未完成项
+
+- `outbox-publisher` 的真实实现与编排
+- 模块直接消费 `ops.outbox_event` 的旁路清理
+- `dead_letter_event + Kafka DLQ + reprocess` 的完整动态闭环
+
 ## 1. 任务定位
 
 - 问题编号：`A05`
@@ -8,19 +25,19 @@
 - 关联任务：`AUD-008`、`AUD-009`、`AUD-010`、`AUD-026`、`AUD-031`
 - 处理方式：补齐 `outbox_event -> publisher -> Kafka -> consumer -> dead_letter/reconcile` 的正式闭环，并清理模块直接把 `ops.outbox_event` 当工作队列消费的旁路实现
 
-## 2. 问题描述
+## 2. 历史问题起点（归档）
 
-当前系统中，统一 outbox 闭环尚未真正落地：
+问题发现时，统一 outbox 闭环尚未真正落地：
 
-1. `workers/outbox-publisher` 仍为空骨架
+1. `workers/outbox-publisher` 当时仍为空骨架
 2. compose 中对应进程仍是 placeholder
 3. `dead_letter_event` 基本没有形成完整写入/消费路径
 4. 反而 Billing 已直接把 `ops.outbox_event` 当工作队列消费
 
-当前已确认的典型现象：
+问题发现时已确认的典型现象：
 
 - schema 已为 outbox / publish attempt / consumer idempotency / dead letter 做好建模
-- 但 publisher worker 本身没有正式实现
+- 但当时 publisher worker 本身没有正式实现
 - Billing bridge 直接 `FOR UPDATE` 读取 `ops.outbox_event` 并更新状态
 
 这意味着：
@@ -43,9 +60,9 @@
 - 不允许把 `Kafka` 当业务真相源
 - 不允许让单个业务模块直接把 `ops.outbox_event` 当私有工作队列长期消费
 
-## 4. 已知证据
+## 4. 历史问题证据（归档）
 
-已核对的典型漂移点包括但不限于：
+问题处理前已核对的典型漂移点包括但不限于：
 
 - [数据交易平台-全集成基线-V1.md](/home/luna/Documents/DataB/docs/全集成文档/数据交易平台-全集成基线-V1.md)
   - 已冻结 `DB transaction + outbox + publisher worker + Kafka`

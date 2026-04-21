@@ -1,5 +1,12 @@
 # A01 Kafka Topic 口径统一
 
+## 0. 当前状态
+
+- 本文当前角色：`Kafka` topic 冻结、拓扑治理与剩余边界说明，不再作为当前实现状态的唯一来源。
+- 当前正式口径已收敛到 `topics.v1.json + runbook + task` 三层执行源；后文第 `2` 节与第 `4` 节主要保留问题发现时的历史起点。
+- 通知与 Fabric 的 `V1` 正式消费入口已裁决为专用 topic 单入口：`notification-worker -> dtp.notification.dispatch`，`fabric-adapter -> dtp.audit.anchor / dtp.fabric.requests`，不再作为 `dtp.outbox.domain-events` 默认 consumer。
+- 后续若继续新增 topic 或调整 producer / consumer / consumer group，必须先同步 canonical source、runbook 和任务清单，再更新本文件。
+
 ## 1. 任务定位
 
 - 问题编号：`A01`
@@ -8,7 +15,7 @@
 - 关联任务：`ENV-010`、`ENV-011`、`AUD-009`、`AUD-022`、`SEARCHREC-001`、`NOTIF-001`、`NOTIF-002`、`NOTIF-009`、`TEST-028`
 - 处理方式：先统一冻结口径，再统一代码/脚本/文档/测试，不允许仅做表面字符串替换
 
-## 2. 问题描述
+## 2. 历史问题起点（归档）
 
 当前仓库中的 Kafka topic 已经分裂成三套口径：
 
@@ -46,12 +53,13 @@
 
 - `dtp.dead-letter` 是统一死信流
 - `Kafka` 是分发总线，不是业务权威源
+- `dtp.outbox.domain-events` 是通用主领域事件流；通知/Fabric 不直接消费它，而是通过 `ops.event_route_policy` 直达各自专用 topic
 - 不允许继续长期保留历史 topic 与新 topic 双轨并存
 - 不允许新增未冻结的旁路 topic 作为主链路默认值
 
-## 4. 已知证据
+## 4. 历史问题证据（归档）
 
-已核对的典型漂移点包括但不限于：
+问题处理前已核对的典型漂移点包括但不限于：
 
 - [事件模型与Topic清单正式版.md](/home/luna/Documents/DataB/docs/开发准备/事件模型与Topic清单正式版.md)
 - [init-topics.sh](/home/luna/Documents/DataB/infra/kafka/init-topics.sh)

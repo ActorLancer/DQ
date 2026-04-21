@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 echo "[info] running query compile checks for platform-core/db"
 if [[ -z "$(find .sqlx -type f -print -quit 2>/dev/null)" ]]; then
-  echo "[error] missing .sqlx metadata; run DATABASE_URL=... cargo sqlx prepare --workspace first" >&2
+  echo "[error] missing .sqlx metadata; source infra/docker/.env.local or otherwise provide DATABASE_URL, then run cargo sqlx prepare --workspace" >&2
   exit 1
 fi
 

@@ -24,7 +24,7 @@
 
 | Topic | Producer | Consumer | Local Consumer Group |
 | --- | --- | --- | --- |
-| `dtp.outbox.domain-events` | `outbox-publisher` | `notification-worker` / `fabric-adapter` | `cg-notification-worker` / `cg-fabric-adapter` |
+| `dtp.outbox.domain-events` | `outbox-publisher` | `-` | `-` |
 | `dtp.search.sync` | `outbox-publisher` | `search-indexer` | `cg-search-indexer` |
 | `dtp.recommend.behavior` | `platform-core.recommendation` | `recommendation-aggregator` | `cg-recommendation-aggregator` |
 | `dtp.notification.dispatch` | `platform-core.integration` | `notification-worker` | `cg-notification-worker` |
@@ -50,6 +50,7 @@
 
 - 同一 consumer service 在多个 topic 上复用同一组名，例如 `fabric-adapter -> cg-fabric-adapter`。
 - `outbox-publisher` 轮询 `ops.outbox_event`，不是 `dtp.outbox.domain-events` 的 Kafka consumer。
+- `notification-worker` 与 `fabric-adapter` 的 `V1` 正式消费入口分别是 `dtp.notification.dispatch`、`dtp.audit.anchor` / `dtp.fabric.requests`；两者不再直接消费 `dtp.outbox.domain-events`。
 - 新增 topic 订阅者前，必须先在 `topics.v1.json` 中声明 consumer 与 group，再同步 runbook / compose / 实现。
 
 ## Topic 策略默认值
@@ -78,7 +79,7 @@ infra/kafka/init-topics.sh
 - `kafka-topics-init` 会等待 `kafka` healthy，再调用 `infra/kafka/init-topics.sh` 初始化 canonical topics。
 - 本地 Kafka 已关闭 `KAFKA_AUTO_CREATE_TOPICS_ENABLE`；topic 必须来自 `topics.v1.json`，不再允许通过自动创建掩盖命名漂移。
 
-## 静态校验
+## 关键拓扑静态校验
 
 执行：
 
@@ -86,8 +87,23 @@ infra/kafka/init-topics.sh
 ./scripts/check-topic-topology.sh
 ```
 
-该脚本会校验：
+该脚本只校验通知 / Fabric / audit-anchor 相关的关键静态拓扑，不替代全量 canonical smoke。当前覆盖：
 
-- `topics.v1.json` 中的关键 producer / consumer / consumer group 口径
-- 事件模型文档与 runbook 是否仍与 canonical source 对齐
+- `dtp.outbox.domain-events`
+- `dtp.notification.dispatch`
+- `dtp.fabric.requests`
+- `dtp.fabric.callbacks`
+- `dtp.audit.anchor`
+- `notification-worker` / `fabric-adapter` 未被错误登记为 `dtp.outbox.domain-events` 直接 consumer
+- 事件模型文档与 runbook 中对应关键行是否仍与 canonical source 对齐
 - `ops.event_route_policy` 的 V1 seed 是否覆盖 `notification.requested`、`audit.anchor_requested`、`fabric.proof_submit_requested`
+
+## 全量 canonical smoke 校验
+
+执行：
+
+```bash
+ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh
+```
+
+该 smoke 会按 `infra/kafka/topics.v1.json` 中 `required_in_smoke == true` 的定义，逐项检查 canonical topics 是否真实存在，并同时覆盖宿主机 / 容器内 Kafka 地址边界。若需要验证全量 topic 真实落盘，不应只运行 `check-topic-topology.sh`。

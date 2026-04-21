@@ -58,11 +58,30 @@ fn unique_suffix() -> String {
     format!("{:x}-{:x}", std::process::id(), now)
 }
 
+async fn live_platform_core_ready(base: &str) -> bool {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .expect("build healthz client");
+    match client.get(format!("{base}/healthz")).send().await {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires running platform-core service and local postgres"]
 async fn iam_party_access_flow_live() {
-    let client = Client::new();
     let base = base_url();
+    if !live_platform_core_ready(&base).await {
+        eprintln!(
+            "skip iam_party_access_flow_live: platform-core is not reachable at {base}; \
+             start local platform-core first or override IAM_IT_BASE_URL"
+        );
+        return;
+    }
+
+    let client = Client::new();
     let ids = LiveRunIds::new();
 
     let org = client

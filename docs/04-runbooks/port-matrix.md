@@ -24,7 +24,7 @@
 | Grafana | `3000` | `http://127.0.0.1:3000` | `admin` | `admin123456` |
 | Loki | `3100` | `http://127.0.0.1:3100` | `N/A` | `N/A` |
 | Tempo | `3200` | `http://127.0.0.1:3200` | `N/A` | `N/A` |
-| Mock Payment | `8089` | `http://127.0.0.1:8089` | `N/A` | `N/A` |
+| Mock Payment（`mocks/demo`） | `8089` | `http://127.0.0.1:8089` | `N/A` | `N/A` |
 
 ## 初始 Bucket 矩阵
 
@@ -69,4 +69,5 @@
 
 - 导出当前配置快照：`./scripts/export-local-config.sh`
 - 核心健康检查：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core`
+- Mock Payment 联调检查：`make up-mocks && ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh mocks`
 - 全量 smoke 套件：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`

@@ -1,5 +1,11 @@
 # A02 统一事件 Envelope 与路由权威源
 
+## 0. 当前状态
+
+- 本文当前角色：统一事件 envelope、route authority 与 canonical outbox writer 的治理说明，用于约束后续实现继续沿同一口径推进。
+- 当前主链已冻结为“应用层 canonical outbox writer + `ops.event_route_policy` 运行时路由 authority”；后文第 `2` 节与第 `4` 节保留问题发现时的历史起点。
+- 后续若新增事件源、topic 或兼容层，必须先更新 route policy、task 与 runbook，再补本文件的剩余边界说明。
+
 ## 1. 任务定位
 
 - 问题编号：`A02`
@@ -8,7 +14,7 @@
 - 关联任务：`AUD-001`、`AUD-008`、`AUD-009`、`AUD-030`、`SEARCHREC-001`
 - 处理方式：先收口事件 envelope 与 route authority，再统一 outbox 生产方式；不允许继续维持触发器自动派生、业务代码手工直写、绕过路由策略三套并存
 
-## 2. 问题描述
+## 2. 历史问题起点（归档）
 
 当前仓库中的统一事件协议并没有真正成为唯一权威源，存在三类并行路径：
 
@@ -16,7 +22,7 @@
 2. 业务代码手工写 outbox
 3. 完全绕过 `event_route_policy` 的路径
 
-目前已确认的典型现象包括：
+问题发现时已确认的典型现象包括：
 
 - 数据库里已经建了 `ops.event_route_policy`，但应用代码并未实际使用
 - `common.tg_write_outbox()` 仍按 `schema.table -> target_topic` 自动派生 topic
@@ -54,9 +60,9 @@
 - producer 不应在不同模块各自拼装私有 envelope
 - 不允许继续依赖“按 schema.table 自动派生 topic”作为正式路由规则
 
-## 4. 已知证据
+## 4. 历史问题证据（归档）
 
-已核对的典型漂移点包括但不限于：
+问题处理前已核对的典型漂移点包括但不限于：
 
 - [事件模型与Topic清单正式版.md](/home/luna/Documents/DataB/docs/开发准备/事件模型与Topic清单正式版.md)
   - 冻结要求完整 envelope 顶层字段

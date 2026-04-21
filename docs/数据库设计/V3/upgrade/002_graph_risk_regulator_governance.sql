@@ -83,10 +83,13 @@ CREATE TABLE IF NOT EXISTS risk.governance_action_log (
 CREATE INDEX IF NOT EXISTS idx_risk_alert_subject ON risk.risk_alert(subject_type, subject_id);
 CREATE INDEX IF NOT EXISTS idx_graph_edge_from_to ON risk.graph_edge(from_node_id, to_node_id);
 
+DROP TRIGGER IF EXISTS trg_risk_alert_updated_at ON risk.risk_alert;
 CREATE TRIGGER trg_risk_alert_updated_at BEFORE UPDATE ON risk.risk_alert
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+DROP TRIGGER IF EXISTS trg_risk_case_updated_at ON risk.risk_case;
 CREATE TRIGGER trg_risk_case_updated_at BEFORE UPDATE ON risk.risk_case
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+DROP TRIGGER IF EXISTS trg_freeze_ticket_updated_at ON risk.freeze_ticket;
 CREATE TRIGGER trg_freeze_ticket_updated_at BEFORE UPDATE ON risk.freeze_ticket
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 -- Trust-boundary baseline sync: V3 storage-trace governance reuses existing risk/regulator tables; no extra structural change required in this file.

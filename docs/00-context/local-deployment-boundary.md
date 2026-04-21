@@ -25,6 +25,12 @@
 2. 再启动业务应用：`platform-core` 等本机进程。
 3. 使用检查脚本做健康检查，再执行业务联调或集成测试。
 
+补充说明：
+
+- 通过 compose profile 或额外依赖组合把本地环境调成更接近 staging 的联调姿态，是 `local` 的子场景，不构成新的正式运行模式。
+- `mocks` 若作为描述性术语出现，只能表示“local 下启用 mock-payment-provider 的联调子 profile”，不能等同于新的 `APP_ENV` 或独立运行模式。
+- `staging-local` 若继续作为描述性术语出现，只能表示“local 下的 staging-like 联调姿态”，不能等同于新的 `APP_ENV`。
+
 ## 约束
 
 - 禁止把 `platform-core`、`search-indexer`、`notification-worker`、`fabric-adapter` 全部直接塞进 `docker-compose.local.yml`。

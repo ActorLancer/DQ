@@ -18,6 +18,7 @@
 - `audit.anchor_requested -> dtp.audit.anchor -> fabric-adapter`
 - `fabric.proof_submit_requested -> dtp.fabric.requests -> fabric-adapter`
 - `fabric-event-listener -> dtp.fabric.callbacks -> platform-core.consistency`
+- `dtp.outbox.domain-events` 仅保留为通用主领域事件流，不作为 `fabric-adapter` 的正式消费入口
 - 本地默认 consumer group：
   - `fabric-adapter -> cg-fabric-adapter`
   - `platform-core.consistency -> cg-platform-core-consistency`
@@ -52,6 +53,6 @@
 
 1. `infra/kafka/topics.v1.json`
 2. `docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`
-3. `./scripts/check-topic-topology.sh`
+3. `./scripts/check-topic-topology.sh`（仅覆盖 Fabric / notification / audit-anchor 相关关键静态拓扑与 route seed，不替代全量 smoke）
 
 若 `audit.anchor_requested` 或 `fabric.proof_submit_requested` 未命中 route policy，不得继续按猜测 topic 联调。

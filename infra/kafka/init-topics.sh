@@ -22,11 +22,6 @@ if [[ -z "${KAFKA_BOOTSTRAP}" ]]; then
   fi
 fi
 
-command -v jq >/dev/null 2>&1 || {
-  echo "[fail] jq not found" >&2
-  exit 1
-}
-
 if [[ "${KAFKA_EXEC_MODE}" == "docker" ]]; then
   command -v docker >/dev/null 2>&1 || {
     echo "[fail] docker not found for KAFKA_EXEC_MODE=docker" >&2
@@ -46,6 +41,70 @@ fi
 [[ -f "${TOPIC_CATALOG}" ]] || {
   echo "[fail] topic catalog not found: ${TOPIC_CATALOG}" >&2
   exit 1
+}
+
+parse_topic_catalog() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.topics[] | [
+      .env_key,
+      .name,
+      (.partitions // 3),
+      (.retention_ms // ""),
+      (.cleanup_policy // "")
+    ] | @tsv' "${TOPIC_CATALOG}"
+    return 0
+  fi
+
+  local in_topics=false
+  local in_topic=false
+  local env_key=""
+  local topic_name=""
+  local partitions=""
+  local retention_ms=""
+  local cleanup_policy=""
+  local line=""
+
+  while IFS= read -r line; do
+    if [[ "${in_topics}" == false ]]; then
+      if [[ "${line}" =~ \"topics\"[[:space:]]*:[[:space:]]*\[ ]]; then
+        in_topics=true
+      fi
+      continue
+    fi
+
+    if [[ "${in_topic}" == false ]]; then
+      if [[ "${line}" =~ ^[[:space:]]*\{[[:space:]]*$ ]]; then
+        in_topic=true
+        env_key=""
+        topic_name=""
+        partitions=""
+        retention_ms=""
+        cleanup_policy=""
+      fi
+      continue
+    fi
+
+    if [[ "${line}" =~ \"env_key\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+      env_key="${BASH_REMATCH[1]}"
+    fi
+    if [[ "${line}" =~ \"name\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+      topic_name="${BASH_REMATCH[1]}"
+    fi
+    if [[ "${line}" =~ \"partitions\"[[:space:]]*:[[:space:]]*([0-9]+) ]]; then
+      partitions="${BASH_REMATCH[1]}"
+    fi
+    if [[ "${line}" =~ \"retention_ms\"[[:space:]]*:[[:space:]]*([0-9]+) ]]; then
+      retention_ms="${BASH_REMATCH[1]}"
+    fi
+    if [[ "${line}" =~ \"cleanup_policy\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+      cleanup_policy="${BASH_REMATCH[1]}"
+    fi
+
+    if [[ "${line}" =~ ^[[:space:]]*\}[[:space:]]*,?[[:space:]]*$ ]]; then
+      printf '%s\t%s\t%s\t%s\t%s\n' "${env_key}" "${topic_name}" "${partitions}" "${retention_ms}" "${cleanup_policy}"
+      in_topic=false
+    fi
+  done < "${TOPIC_CATALOG}"
 }
 
 resolve_topic_name() {
@@ -91,13 +150,9 @@ wait_for_kafka_ready() {
 
 wait_for_kafka_ready
 
-while IFS= read -r topic_entry; do
-  env_key="$(jq -r '.env_key' <<<"${topic_entry}")"
-  default_name="$(jq -r '.name' <<<"${topic_entry}")"
-  partitions="$(jq -r '.partitions // 3' <<<"${topic_entry}")"
-  retention_ms="$(jq -r '.retention_ms // empty' <<<"${topic_entry}")"
-  cleanup_policy="$(jq -r '.cleanup_policy // empty' <<<"${topic_entry}")"
+while IFS=$'\t' read -r env_key default_name partitions retention_ms cleanup_policy; do
   topic="$(resolve_topic_name "${env_key}" "${default_name}")"
+  partitions="${partitions:-3}"
   retention_ms="${retention_ms:-${KAFKA_DEFAULT_RETENTION_MS}}"
   cleanup_policy="${cleanup_policy:-${KAFKA_DEFAULT_CLEANUP_POLICY}}"
   if [[ "${topic}" == "${TOPIC_DEAD_LETTER_EVENTS:-dtp.dead-letter}" ]]; then
@@ -120,6 +175,6 @@ while IFS= read -r topic_entry; do
     --add-config "retention.ms=${retention_ms},cleanup.policy=${cleanup_policy}" >/dev/null
 
   echo "[ok] topic ready: ${topic}"
-done < <(jq -c '.topics[]' "${TOPIC_CATALOG}")
+done < <(parse_topic_catalog)
 
 echo "[done] kafka topics initialized"

@@ -1,5 +1,22 @@
 # A11 测试与 Smoke 口径误报风险
 
+## 0. 当前状态
+
+- 本文当前角色：测试、smoke、契约校验与误报风险的治理说明，不再把旧检查器状态直接当作当前现状。
+- 当前 `smoke-local.sh`、`check-openapi-schema.sh`、`check-topic-topology.sh` 与相关 runbook 已完成第一轮收口；后续仍需继续补业务级 canonical checker、通知/AUD/SEARCHREC 的完整契约验证。
+- 第 `2` 节与第 `4` 节保留问题发现时的历史起点，当前真实验证边界应同时以脚本、README、runbook 和任务清单为准。
+
+### 0.1 当前已收缩部分
+
+- `smoke-local.sh` 已按 `topics.v1.json` 的 canonical topic smoke 运行。
+- `check-openapi-schema.sh` 已覆盖当前实现期的 `search / recommendation` 业务路径。
+- `check-topic-topology.sh` 与 `smoke-local.sh` 的职责边界已在 runbook 中拆开写明。
+
+### 0.2 当前剩余未完成项
+
+- `AUD / NOTIF / SEARCHREC` 领域的更完整 contract/smoke/checker 增强
+- worker 侧副作用、DLQ、reprocess 的更强集成验证矩阵
+
 ## 1. 任务定位
 
 - 问题编号：`A11`
@@ -8,16 +25,16 @@
 - 关联任务：`AUD-026`、`SEARCHREC-015`、`SEARCHREC-017`、`NOTIF-012`、`TEST-005`、`TEST-016`、`TEST-027`、`TEST-028`
 - 处理方式：先收口测试、smoke、契约检查的验证目标，使其对准真实冻结接口、canonical topic 和完整业务闭环，避免“测过但口径仍错”
 
-## 2. 问题描述
+## 2. 历史问题起点（归档）
 
-当前部分测试、smoke 和契约检查仍停留在旧 topic、局部 outbox 行、局部投影字段或骨架 OpenAPI 路径上，不能证明系统真的符合冻结口径。
+问题发现时，部分测试、smoke 和契约检查仍停留在旧 topic、局部 outbox 行、局部投影字段或骨架 OpenAPI 路径上，不能证明系统真的符合冻结口径。
 
-当前已确认的典型现象：
+问题发现时已确认的典型现象：
 
 1. 搜索相关测试只验证商品详情中的搜索投影字段或 `search.product.changed` outbox 行
 2. 多条 Billing / Delivery 测试仍断言历史 topic `billing.events`
-3. `scripts/smoke-local.sh` 仍只检查旧 topic
-4. `scripts/check-openapi-schema.sh` 只覆盖极少数 `health/internal` 路径
+3. `scripts/smoke-local.sh` 当时仍只检查旧 topic
+4. `scripts/check-openapi-schema.sh` 当时只覆盖极少数 `health/internal` 路径
 
 这意味着：
 
@@ -53,9 +70,9 @@
 - OpenAPI 检查必须覆盖真实业务路径
 - 不能只检查 `health/internal` 一类骨架路径
 
-## 4. 已知证据
+## 4. 历史问题证据（归档）
 
-已核对的典型漂移点包括但不限于：
+问题处理前已核对的典型漂移点包括但不限于：
 
 - [cat022_search_visibility_db.rs](/home/luna/Documents/DataB/apps/platform-core/src/modules/catalog/tests/cat022_search_visibility_db.rs)
   - 只验证投影字段和 `search.product.changed` outbox，未验证 `GET /api/v1/catalog/search` 或完整搜索闭环
@@ -66,9 +83,9 @@
 - [dlv002_file_delivery_commit_db.rs](/home/luna/Documents/DataB/apps/platform-core/src/modules/delivery/tests/dlv002_file_delivery_commit_db.rs)
   - 仍断言旧 topic
 - [smoke-local.sh](/home/luna/Documents/DataB/scripts/smoke-local.sh)
-  - 仍检查旧 topic
+  - 问题发现时仍检查旧 topic
 - [check-openapi-schema.sh](/home/luna/Documents/DataB/scripts/check-openapi-schema.sh)
-  - 当前只覆盖极少数路径
+  - 问题发现时只覆盖极少数路径
 
 ## 5. 任务目标
 

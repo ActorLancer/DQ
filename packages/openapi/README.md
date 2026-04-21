@@ -1,17 +1,23 @@
-# OpenAPI 分域骨架（BOOT-007）
+# OpenAPI 分域说明（BOOT-007）
 
-本目录按领域拆分 OpenAPI：
+本目录按领域拆分当前实现阶段使用的 OpenAPI 设计参考与版本对象。
 
-- `packages/openapi/*.yaml` 是当前实现阶段的 OpenAPI 设计参考与版本对象。
-- `docs/02-openapi/*.yaml` 只承接实现校验后的归档副本，不作为当前实现期权威源。
+- `packages/openapi/*.yaml` 是当前实现期的设计参考与变更落点。
+- `docs/02-openapi/*.yaml` 只承接实现校验后的归档副本或归档占位，不作为当前实现期权威源。
+- 当前阶段约束、归档策略和后续补齐义务以 [docs/02-openapi/README.md](../../docs/02-openapi/README.md) 为准。
 
-- `iam.yaml`
-- `catalog.yaml`
-- `trade.yaml`
-- `billing.yaml`
-- `search.yaml`
-- `recommendation.yaml`
-- `audit.yaml`
-- `ops.yaml`
+当前子域成熟度：
 
-使用 `merge-openapi.sh` 生成聚合输出占位（当前仅做骨架）。
+- `iam.yaml`：IAM/Party/Access 领域 V1 当前接口参考。
+- `catalog.yaml`：Catalog/Review/Support 领域 V1 当前接口参考。
+- `trade.yaml`：Order/Contract/Authorization 主交易链路 V1 当前接口参考。
+- `billing.yaml`：Billing/Payment/Settlement/Dispute 子域 V1 当前接口参考。
+- `delivery.yaml`：Delivery/Storage/Query Execution 子域 V1 当前接口参考。
+- `search.yaml`：Search/Ops Search 子域当前实现期设计参考；实现校验通过后再同步归档到 `docs/02-openapi/search.yaml`。
+- `recommendation.yaml`：Recommendation/Ops Recommendation 子域当前实现期设计参考。
+- `audit.yaml`：当前仍属 `AUD / integration` 实现前占位；进入对应代码实现批次后必须补齐。
+- `ops.yaml`：当前仅保留最小健康与内部端点；进入 `AUD / consistency / NOTIF` 实现批次后必须补齐正式控制面接口。
+
+通知、Fabric 及相关联查/重试/DLQ 的契约补齐，不代表会新建独立 `packages/openapi/notification.yaml` 或 `fabric.yaml`；现阶段统一由 `audit.yaml`、`ops.yaml` 及 `docs/02-openapi/README.md` 中的阶段约束承接。
+
+`merge-openapi.sh` 用于生成聚合输出占位与本地校验输入；这不代表所有子域都处于同一成熟度，也不代表 `audit/ops` 已完成实现期契约落盘。

@@ -21,6 +21,7 @@
   4. 容器内验证：`docker exec datab-postgres pg_isready -U "${POSTGRES_USER:-datab}" -d "${POSTGRES_DB:-datab}"`
 - 修复建议：
   - 端口冲突时调整 `POSTGRES_PORT`
+  - 若应用或脚本连库失败，先核对 `infra/docker/.env.local` 中 `POSTGRES_*` 与派生的 `DATABASE_URL` 是否同步
   - 数据目录损坏时执行 `./scripts/prune-local.sh --force` 后重启
 
 ## Kafka 启动失败
@@ -44,7 +45,8 @@
   3. 检查 realm 导入挂载：`infra/keycloak/realm-export`
   4. realm 校验：`./scripts/check-keycloak-realm.sh`
 - 修复建议：
-  - DB 凭据不一致时统一 `POSTGRES_*` 与 `KEYCLOAK_*`
+  - DB 凭据不一致时统一 `POSTGRES_*` 与派生的 `DATABASE_URL`
+  - realm 不一致时统一 `KEYCLOAK_BASE_URL / KEYCLOAK_REALM` 与本地 bootstrap 管理员口径
   - realm JSON 损坏时恢复 `infra/keycloak/realm-export` 基线文件
 
 ## MinIO 启动失败
@@ -56,7 +58,7 @@
   3. bucket 初始化：`./infra/minio/init-minio.sh`
   4. 使用 `mc` 探测：`docker run --rm --network host minio/mc:RELEASE.2025-08-13T08-35-41Z --help >/dev/null`
 - 修复建议：
-  - 确认 `MINIO_ROOT_USER/PASSWORD` 与 env 文件一致
+  - 确认 `MINIO_ROOT_USER / MINIO_ROOT_PASSWORD` 与 `MINIO_ACCESS_KEY / MINIO_SECRET_KEY` 的本地映射一致
   - bucket 不存在时先执行初始化脚本再运行 smoke
 
 ## OpenSearch 启动失败

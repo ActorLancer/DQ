@@ -7,11 +7,12 @@
 
 ## 2. 主路径
 
-`主对象事务提交 -> outbox_event -> Kafka -> fabric-adapter -> fabric-event-listener -> consistency 回写`
+`主对象事务提交 -> outbox_event -> publisher worker -> dtp.audit.anchor / dtp.fabric.requests -> fabric-adapter -> fabric-event-listener -> consistency 回写`
 
 ## 3. 执行约束
 
 - 业务事务内必须同时写入：主对象、审计记录、`outbox_event`。
+- `fabric-adapter` 的 `V1` 正式消费入口是 `dtp.audit.anchor` / `dtp.fabric.requests`，不直接消费 `dtp.outbox.domain-events`。
 - `fabric-adapter` 仅处理链提交与回执，不作为业务主状态机。
 - 链确认结果回写后，只能更新镜像/证明相关状态，不得越权篡改业务主状态。
 - 失败事件进入 dead-letter 并支持 dry-run 重处理。

@@ -26,6 +26,8 @@ services:
     image: pgvector/pgvector:pg16
     container_name: datab-postgres
     environment:
+      # Bootstrap-only vars for the PostgreSQL container.
+      # Runtime apps and most scripts must read DATABASE_URL from infra/docker/.env.local.
       POSTGRES_DB: ${POSTGRES_DB:-datab}
       POSTGRES_USER: ${POSTGRES_USER:-datab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-datab_local_pass}
@@ -130,6 +132,8 @@ services:
     container_name: datab-minio
     command: server /data --console-address ":9001"
     environment:
+      # Bootstrap-only vars for the MinIO service.
+      # Runtime clients and scripts should use MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY.
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-datab}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-datab_local_pass}
     ports:
@@ -198,6 +202,8 @@ services:
       KC_DB_URL_DATABASE: ${POSTGRES_DB:-datab}
       KC_DB_USERNAME: ${POSTGRES_USER:-datab}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-datab_local_pass}
+      # Bootstrap-only admin vars for local Keycloak.
+      # Runtime clients and scripts should use KEYCLOAK_BASE_URL / KEYCLOAK_REALM / KEYCLOAK_CLIENT_*.
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123456}
       KEYCLOAK_REALM_IMPORT_DIR: /opt/keycloak/data/import

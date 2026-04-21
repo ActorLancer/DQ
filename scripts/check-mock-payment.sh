@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MOCK_BASE_URL="${MOCK_BASE_URL:-http://127.0.0.1:8089}"
+MOCK_BASE_URL="${MOCK_BASE_URL:-${MOCK_PAYMENT_BASE_URL:-http://127.0.0.1:${MOCK_PAYMENT_PORT:-8089}}}"
 
-curl -fsS "${MOCK_BASE_URL}/health/ready" >/dev/null
+if ! curl -fsS "${MOCK_BASE_URL}/health/ready" >/dev/null; then
+  echo "[fail] mock-payment-provider is not ready at ${MOCK_BASE_URL}" >&2
+  echo "[hint] start it with 'make up-mocks' or 'make up-demo' before running this check" >&2
+  exit 1
+fi
 
 code_success="$(curl -sS -o /tmp/mock_success.json -w '%{http_code}' -X POST "${MOCK_BASE_URL}/mock/payment/charge/success")"
 code_fail="$(curl -sS -o /tmp/mock_fail.json -w '%{http_code}' -X POST "${MOCK_BASE_URL}/mock/payment/charge/fail")"

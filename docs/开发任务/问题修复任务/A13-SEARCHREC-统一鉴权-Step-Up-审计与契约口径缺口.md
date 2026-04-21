@@ -1,5 +1,11 @@
 # A13 SEARCHREC 统一鉴权 / Step-Up / 审计与契约口径缺口
 
+## 0. 当前状态
+
+- 本文当前角色：`SEARCHREC` 统一鉴权、权限、`step-up`、审计与契约的治理说明。
+- 当前批次已经完成正式口径冻结、runbook 清理和任务回写；运行时代码、OpenAPI 本体与测试矩阵的真实改造仍由后续 `AUD / SEARCHREC` 实现批次承接。
+- 第 `2` 节与第 `4` 节保留问题发现时的背景与历史证据，当前实现状态应以任务清单、TODO 与现有 runbook/README 为准。
+
 ## 1. 任务定位
 
 - 问题编号：`A13`
@@ -24,7 +30,7 @@
 - `packages/openapi/search.yaml`、`packages/openapi/recommendation.yaml` 与 `docs/02-openapi/**` 归档
 - `docs/05-test-cases/search-rec-cases.md` 中的统一鉴权 / 审计 / 错误码验收项
 
-## 2. 问题描述
+## 2. 历史问题起点（归档）
 
 当前 `SEARCHREC` 运行时、OpenAPI、测试之间仍没有共享同一套正式契约；本批次虽然已先修正 runbook，但代码与契约层仍混用了两套语义：
 
@@ -106,9 +112,9 @@
 - 测试样例必须验证正式请求头、正式权限点、必要的 `step-up` 与审计留痕
 - 后续不得继续使用 `x-role` 占位请求来证明“接口已通过”
 
-## 4. 已知证据
+## 4. 历史问题证据（归档）
 
-已核对的典型漂移点包括但不限于：
+问题处理前已核对的典型漂移点包括但不限于：
 
 - [商品搜索、排序与索引同步接口协议正式版.md](/home/luna/Documents/DataB/docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md)
   - 已冻结搜索接口头、运维接口、错误码与 `X-Idempotency-Key`

@@ -35,7 +35,7 @@
 - `observability`：`prometheus/alertmanager/*-exporter/grafana/loki/tempo`
 - `fabric`：`fabric-ca/fabric-orderer/fabric-peer`
 - `demo`：全量联调集合（覆盖 core + observability + fabric + mock-payment）
-- `mocks`：`mock-payment-provider` 单独可选
+- `mocks`：`local` 下的可选联调子 profile，仅承载 `mock-payment-provider`
 
 ## 端口矩阵（主入口）
 
@@ -60,14 +60,20 @@
 
 ## 启动顺序与前置动作
 
-1. `make up-local` / `make up-demo`
-2. `./scripts/wait-for-services.sh core|full`
+1. `make up-local` / `make up-mocks` / `make up-demo`
+2. `./scripts/wait-for-services.sh core|mocks|full`
 3. Seed 初始化：
    - Kafka topics 默认由 compose 内一次性 `kafka-topics-init` 自动初始化；如需手动重跑：`./infra/kafka/init-topics.sh`
    - `./infra/minio/init-minio.sh`
    - `./infra/opensearch/init-opensearch.sh`
 4. 健康检查：
-   - `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core|full`
+   - `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core|mocks|full`
+
+补充说明：
+
+- `make up-local` 默认只启动 `core`
+- `make up-mocks` 启动 `core + mocks`，用于支付/回执联调
+- `make up-demo` 启动全量演示组合
 
 ## 旧资产兼容边界（ENV-001）
 

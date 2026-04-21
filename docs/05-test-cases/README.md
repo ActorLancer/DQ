@@ -6,6 +6,11 @@
 
 - 当前批次若只做“口径收缩/事件拓扑冻结/命名统一”，不要求提前伪造尚未实现模块的测试样例文件。
 - 但这不代表测试样例已完成；进入对应模块代码实现批次后，Agent 必须同步补齐测试样例文档、集成测试与 smoke 校验，不能把“设计口径已冻结”误报为“测试基线已落盘”。
+- 除非文档明确标注为“容器内探测 / compose 网络内部调用”，宿主机启动应用、手工验收和 test-case 示例都必须使用宿主机地址边界：
+  - Kafka：`127.0.0.1:9094`
+  - 容器内 / compose 网络：`kafka:9092` 或容器内 `localhost:9092`
+- 宿主机示例优先使用 `set -a; source infra/docker/.env.local; set +a` 载入运行时入口，避免手工散落 Kafka / DB / MinIO 地址后再次漂移。
+- `./scripts/check-topic-topology.sh` 只用于通知 / Fabric / audit-anchor 相关关键静态 topology 与 route seed 校验；若要验证 `infra/kafka/topics.v1.json` 中全部 canonical topics 是否真实存在，应执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`。
 - 对于 `notification.requested / audit.anchor_requested / fabric.proof_submit_requested` 三条事件，后续实现阶段至少要同步补齐：
   - `docs/05-test-cases/audit-consistency-cases.md`
   - 通知事件链路验收清单

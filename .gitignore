@@ -1,10 +1,10 @@
 /target
 /Cargo.lock
+Cargo.lock
 /.idea
 /.vscode
 .DS_Store
 Thumbs.db
-Cargo.lock
 
 # Env files
 .env

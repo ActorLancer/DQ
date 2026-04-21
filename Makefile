@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up-local down-local up-core up-observability up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel
+.PHONY: up-local down-local up-core up-observability up-mocks up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel
 COMPOSE_FILE ?= infra/docker/docker-compose.local.yml
 COMPOSE_ENV_FILE ?= infra/docker/.env.local
 
@@ -12,6 +12,9 @@ up-core:
 
 up-observability:
 	COMPOSE_PROFILES="core,observability" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+
+up-mocks:
+	COMPOSE_PROFILES="core,mocks" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
 
 up-fabric:
 	COMPOSE_PROFILES="core,fabric" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh

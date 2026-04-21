@@ -14,6 +14,7 @@
 - `V1-Core` 以 `../全集成文档/数据交易平台-全集成基线-V1.md` 为业务真值入口。
 - 若多个技术参考之间存在冲突，按 `../全集成文档/数据交易平台-全集成映射索引.md` 的冲突处理规则执行。
 - `技术选型正式版.md` 的正确引用路径为 `../开发准备/技术选型正式版.md`。
+- 若 `技术参考` 引用了 `问题修复任务/A*.md`，必须先读该文档的 `## 0. 当前状态`，再读归档的历史问题起点；当前执行状态仍以 `CSV / TODO / README / runbook / scripts` 为准。
 
 ## 0B. 与旧清单合并后的执行口径
 
@@ -113,13 +114,13 @@
   验收：完成物已创建并可被后续任务引用。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
   技术参考：../全集成文档/数据交易平台-全集成基线-V1.md:L216（5.3.2 首批 5 条标准链路） | ../业务流程/业务流程图-V1-完整版.md:L66（4. 主业务流程） | ../data_trading_blockchain_system_design_split/06-Phase 1：最小可信交易闭环系统设计.md:L21（6.2 业务流程设计）
-- **CTX-008** [ARCH][P0][W0][serial-first] 在 `docs/00-context/run-modes.md` 冻结三套运行模式：`local`、`staging`、`demo`；要求一切环境切换通过配置完成，禁止手工改代码切换。  
+- **CTX-008** [ARCH][P0][W0][serial-first] 在 `docs/00-context/run-modes.md` 冻结三套运行模式：`local`、`staging`、`demo`；要求一切环境切换通过配置完成，禁止手工改代码切换，并明确 `staging-local` 只允许作为 `local` 下的 staging-like 联调姿态，不得扩张为第四套正式 mode。
   依赖：无  
   交付：docs/00-context/run-modes.md  
-  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
-  验收：完成物已创建并可被后续任务引用。  
+  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；三套正式运行模式与 `local` 子场景边界清晰；被 README、索引或上游任务引用。
+  验收：完成物已创建并可被后续任务引用，且不会把本地 profile / 联调姿态误导成新的正式 mode。
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../开发准备/技术选型正式版.md:L44（3.2 职责边界） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构）
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../开发准备/技术选型正式版.md:L44（3.2 职责边界） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../00-context/local-deployment-boundary.md:L1（本地部署边界） | ../开发准备/本地开发环境与中间件部署清单.md:L267（当前开发模式冻结）
 - **CTX-009** [ARCH][P0][W0][serial-first] 在 `docs/00-context/provider-boundary.md` 定义统一 Provider 适配原则：KYC/KYB、签章、支付、通知、链写入、风控外部能力必须有 `mock` / `real` 双实现。  
   依赖：无  
   交付：docs/00-context/provider-boundary.md  
@@ -127,7 +128,7 @@
   验收：完成物已创建并可被后续任务引用。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
   技术参考：../开发准备/技术选型正式版.md:L53（4. 语言分工） | ../开发准备/技术选型正式版.md:L121（5. 服务拆分建议） | ../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座）
-- **CTX-010** [ARCH][P0][W0][serial-first] 在 `docs/00-context/async-chain-write.md` 冻结“所有上链动作走异步事件链路”，明确 `outbox_event -> Kafka -> fabric-adapter` 主路径，业务请求不得同步阻塞等链确认。  
+- **CTX-010** [ARCH][P0][W0][serial-first] 在 `docs/00-context/async-chain-write.md` 冻结“所有上链动作走异步事件链路”，明确 `outbox_event -> publisher worker -> dtp.audit.anchor / dtp.fabric.requests -> fabric-adapter` 主路径，业务请求不得同步阻塞等链确认。
   依赖：无  
   交付：docs/00-context/async-chain-write.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
@@ -218,13 +219,13 @@
   验收：完成物已创建并可被后续任务引用。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
   技术参考：../全集成文档/数据交易平台-全集成基线-V1.md:L19294（7. 技术架构与服务设计） | ../开发准备/仓库拆分与目录结构建议.md:L1（仓库拆分与目录结构建议） | ../开发准备/服务清单与服务边界正式版.md:L165（5. 主应用 `platform-core`）
-- **CTX-023** [ARCH][P0][W0][serial-first] 盘点当前本地部署与运维资产：`部署脚本/docker-compose.local.yml`、数据库校验脚本、现有容器配置、Mock Provider、Fabric 测试网络脚本和本地观测配置。  
+- **CTX-023** [ARCH][P0][W0][serial-first] 盘点当前本地部署与运维资产：`infra/docker/docker-compose.local.yml`、PostgreSQL 迁移测试编排、数据库校验脚本、现有容器配置、Mock Provider、Fabric 测试网络脚本和本地观测配置。
   依赖：CTX-001  
   交付：docs/00-context/current-local-stack-assets.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
   验收：完成物已创建并可被后续任务引用。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
-  技术参考：../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../部署脚本/validate_database_migrations.sh:L1（脚本入口） | ../开发准备/平台总体架构设计草案.md:L1（平台总体架构设计草案）
+  技术参考：../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../../scripts/validate_database_migrations.sh:L1（迁移校验脚本入口） | ../../部署脚本/docker-compose.postgres-test.yml:L1（PostgreSQL 迁移测试编排） | ../开发准备/配置项与密钥管理清单.md:L1（本地配置与密钥边界） | ../开发准备/平台总体架构设计草案.md:L1（平台总体架构设计草案）
 - **CTX-024** [ARCH][P0][W0][serial-first] 对照当前仓库里的 `开发任务/`、`开发准备/`、`开发前设计文档/` 与本清单，输出“已存在可复用 / 需迁移 / 需重写 / 可删除重复”的差异清单。  
   依赖：CTX-001  
   交付：docs/00-context/current-task-baseline-gap.md  
@@ -251,7 +252,7 @@
   验收：目标目录树与当前仓库实际结构对齐，`repo-layout.md` 能作为后续任务的唯一路径参考。  
   阻塞风险：边界未冻结会导致后续目录、模块和命名漂移。  
   技术参考：../开发准备/技术选型正式版.md:L53（4. 语言分工） | ../开发准备/技术选型正式版.md:L121（5. 服务拆分建议） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理）
-- **BOOT-003** [ARCH][P0][W0][serial-first] 在根目录创建 `Makefile`，统一封装 `make up-local`、`make down-local`、`make logs`、`make migrate-up`、`make migrate-down`、`make seed-local`、`make test`、`make lint`。  
+- **BOOT-003** [ARCH][P0][W0][serial-first] 在根目录创建 `Makefile`，统一封装 `make up-local`、`make up-core`、`make up-mocks`、`make up-observability`、`make up-fabric`、`make up-demo`、`make down-local`、`make logs`、`make migrate-up`、`make migrate-down`、`make seed-local`、`make test`、`make lint`。
   依赖：CTX-001; CTX-004; CTX-008; CTX-013; CTX-014  
   交付：Makefile  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
@@ -529,14 +530,14 @@
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../开发准备/技术选型正式版.md:L44（3.2 职责边界）
-- **ENV-010** [ARCH][P0][W0][serial-first] 建立 Kafka topic 初始化脚本，至少包含：`dtp.outbox.domain-events`、`dtp.search.sync`、`dtp.recommend.behavior`、`dtp.notification.dispatch`、`dtp.fabric.requests`、`dtp.fabric.callbacks`、`dtp.payment.callbacks`、`dtp.audit.anchor`、`dtp.consistency.reconcile`、`dtp.dead-letter`，并明确 topic 只能来自 `infra/kafka/topics.v1.json`。  
+- **ENV-010** [ARCH][P0][W0][serial-first] 建立 Kafka topic 初始化脚本，至少包含：`dtp.outbox.domain-events`、`dtp.search.sync`、`dtp.recommend.behavior`、`dtp.notification.dispatch`、`dtp.fabric.requests`、`dtp.fabric.callbacks`、`dtp.payment.callbacks`、`dtp.audit.anchor`、`dtp.consistency.reconcile`、`dtp.dead-letter`，并明确 topic 只能来自 `infra/kafka/topics.v1.json`；通知与 Fabric 的正式消费入口分别固定为 `dtp.notification.dispatch` 与 `dtp.audit.anchor / dtp.fabric.requests`，不直接消费 `dtp.outbox.domain-events`。
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../原始PRD/IAM 技术接入方案.md:L130（5. V1 推荐落地方式） | ../数据库设计/接口协议/身份与会话接口协议正式版.md:L36（4. V1 接口） | ../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一）
-- **ENV-011** [AGENT][P0][W0][limited] 为 Kafka 配置 consumer group、DLQ、retention、cleanup policy 的本地默认值，并写入 `docs/04-runbooks/kafka-topics.md`；本地 topic 必须经 `topics.v1.json + init-topics.sh` 显式初始化，不再依赖 auto-create。  
+- **ENV-011** [AGENT][P0][W0][limited] 为 Kafka 配置 consumer group、DLQ、retention、cleanup policy 的本地默认值，并写入 `docs/04-runbooks/kafka-topics.md`；本地 topic 必须经 `topics.v1.json + init-topics.sh` 显式初始化，不再依赖 auto-create；同时明确区分关键拓扑静态检查（`check-topic-topology.sh`）与全量 canonical smoke（`smoke-local.sh`）的职责边界，并冻结通知/Fabric 的专用 topic 单入口。
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：docs/04-runbooks/kafka-topics.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
@@ -603,16 +604,16 @@
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
-  验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
+  验收：执行 `make up-mocks` 或 `make up-demo` 后，Mock Payment Provider 可触发 success/fail/timeout/refund/manual-transfer 场景，且 `scripts/check-local-stack.sh mocks|full` 通过。
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
 - **ENV-021** [AGENT][P0][W0][limited] 实现 Mock Payment Provider 的 compose 健康检查与 readiness 路径，并在 `docs/04-runbooks/mock-payment.md` 写明如何手工触发模拟事件。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：docs/04-runbooks/mock-payment.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
-  验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
+  验收：文档已明确写出 `mock-payment-provider` 仅属于 `mocks/demo`，且执行 `make up-mocks` 或 `make up-demo` 后 `./scripts/check-mock-payment.sh` 与 `scripts/check-local-stack.sh mocks|full` 通过。
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合）
+  技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | ../04-runbooks/compose-profiles.md:L1（Compose profile 边界）
 - **ENV-022** [ARCH][P0][W0][serial-first] 在 `infra/fabric/` 下接入 Hyperledger Fabric 测试网络启动脚本，封装 peer/orderer/ca 初始化，保证 local 模式也能选择启用测试链。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/fabric/  
@@ -645,7 +646,7 @@
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
-  验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
+  验收：执行 `make up-demo`（或至少 `core + observability + mocks` 组合）后，Prometheus 可抓到 `mock-payment-provider` 与其他 exporter 指标。
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/09-通用基础能力：身份、密钥、存储、日志、监控与运维.md:L61（9.5 运维控制要求） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理）
 - **ENV-027** [AGENT][P0][W0][limited] 配置 Alertmanager 最小规则集：服务不可用、队列积压、DB 连接失败、链适配失败、outbox 重试异常、DLQ 增长。  
@@ -669,7 +670,7 @@
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L5（14.1 环境规划） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构）
-- **ENV-030** [ARCH][P0][W0][serial-first] 在 compose 中实现 profile 机制：`core`、`observability`、`fabric`、`demo`，允许先启动最小核心栈，再按需附加观测与链环境。  
+- **ENV-030** [ARCH][P0][W0][serial-first] 在 compose 中实现 profile 机制：`core`、`observability`、`mocks`、`fabric`、`demo`，允许先启动最小核心栈，再按需附加观测、Mock Payment 与链环境。
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
@@ -683,20 +684,20 @@
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
   技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L5（14.1 环境规划） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构）
-- **ENV-032** [ARCH][P0][W0][serial-first] 建立 `make up-core`、`make up-observability`、`make up-fabric`、`make up-demo` 组合命令，满足文档要求的 local/staging/demo 三套模式切换基础。  
+- **ENV-032** [ARCH][P0][W0][serial-first] 建立 `make up-core`、`make up-observability`、`make up-mocks`、`make up-fabric`、`make up-demo` 组合命令，满足文档要求的 local/staging/demo 三套模式切换基础，并显式承接 `local` 下的 `mocks` 子 profile。
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
   验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/09-通用基础能力：身份、密钥、存储、日志、监控与运维.md:L61（9.5 运维控制要求） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理）
+  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/09-通用基础能力：身份、密钥、存储、日志、监控与运维.md:L61（9.5 运维控制要求） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理） | ../04-runbooks/compose-profiles.md:L1（Compose profile 边界）
 - **ENV-033** [ARCH][P0][W0][serial-first] 在 `docs/04-runbooks/local-startup.md` 写清本地启动顺序：先基础设施，再 schema/migration，再 seed，再应用，再回执模拟。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：docs/04-runbooks/local-startup.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
-  验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
+  验收：文档已明确区分 `make up-local`、`make up-mocks`、`make up-demo` 的用途，并写清 `./scripts/check-mock-payment.sh` 只在 `mocks/demo` 前置条件满足时执行。
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/09-通用基础能力：身份、密钥、存储、日志、监控与运维.md:L61（9.5 运维控制要求） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理）
+  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../data_trading_blockchain_system_design_split/09-通用基础能力：身份、密钥、存储、日志、监控与运维.md:L61（9.5 运维控制要求） | ../data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md:L43（14.4 持续交付与版本治理） | ../04-runbooks/compose-profiles.md:L1（Compose profile 边界）
 - **ENV-034** [AGENT][P1][W2][yes] 补充 `docker-compose.staging.example.yml` 占位文件，不部署真实生产资源，但明确后续 Helm/K8s 迁移时组件映射关系。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：docker-compose.staging.example.yml  
@@ -743,9 +744,9 @@
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：infra/**; docs/04-runbooks/**; scripts/**; fixtures/local/**  
   完成定义：compose/脚本可执行；healthcheck 与自检通过；runbook 已更新；至少一条 smoke test 成功。  
-  验收：执行 `make up-local` 或等价脚本后，`scripts/check-local-stack.sh` 通过。  
+  验收：执行 `make up-demo`（或至少 `core + observability + mocks` 组合）后，`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh` 通过。
   阻塞风险：本地基础设施不稳定会阻塞所有联调和测试。  
-  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警）
+  技术参考：../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../全集成文档/数据交易平台-全集成基线-V1.md:L7430（30. 日志、可观测性与告警） | ../04-runbooks/local-startup.md:L1（本地启动顺序）
 - **ENV-041** [AGENT][P1][W2][yes] 在 `fixtures/local/` 下准备五条标准链路所需最小演示数据：企业主体、卖方、买方、产品、SKU、模板、订单、支付与交付样例。  
   依赖：BOOT-001; BOOT-002; BOOT-003; BOOT-004  
   交付：fixtures/local/  
@@ -827,9 +828,9 @@
   依赖：BOOT-003; BOOT-004  
   交付：infra/docker/docker-compose.local.yml  
   完成定义：compose 分组已拆出；服务定义清晰；可被总 compose 聚合。  
-  验收：Mock Payment Provider 服务块已写入 compose，并能单独启动。  
+  验收：Mock Payment Provider 服务块已写入 compose，并明确只属于 `mocks/demo`；执行 `make up-mocks` 或 `make up-demo` 后可单独启动，不污染默认 `core`。
   阻塞风险：本地环境未分块会导致 compose 维护困难。  
-  技术参考：../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../开发准备/服务清单与服务边界正式版.md:L568（外围进程）
+  技术参考：../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../开发准备/服务清单与服务边界正式版.md:L568（外围进程） | ../04-runbooks/compose-profiles.md:L1（Compose profile 边界）
 - **ENV-053** [ARCH][P0][W0][serial-first] 拆分并收敛 Fabric 测试网络服务块或其外部脚本调用边界。  
   依赖：BOOT-003; BOOT-004  
   交付：infra/docker/docker-compose.local.yml  
@@ -866,13 +867,13 @@
   阻塞风险：本地环境未分块会导致 compose 维护困难。  
   技术参考：../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../开发准备/平台总体架构设计草案.md:L1（平台总体架构设计草案） | ../开发准备/技术选型正式版.md:L147（6. 本地与联调环境）
 
-- **ENV-058** [AGENT][P0][W1][limited] 收敛配置项与资源命名：统一 `BUCKET_* / INDEX_ALIAS_* / Redis key / compose 主入口` 口径，修正文档与脚本漂移，并补最小一致性校验。  
+- **ENV-058** [AGENT][P0][W1][limited] 收敛配置项与资源命名：冻结数据库 / MinIO / Keycloak 的 bootstrap 与运行时入口映射，统一 `DATABASE_URL / MINIO_* / KEYCLOAK_* / BUCKET_* / INDEX_ALIAS_* / Redis key / compose 主入口` 口径，并同步文档、样例、脚本与 runbook。
   依赖：ENV-011; ENV-013; ENV-016; ENV-017; CORE-028  
-  交付：infra/**; docs/04-runbooks/**; scripts/**; apps/platform-core/src/**  
-  完成定义：配置清单、初始化脚本、运行时代码与 runbook 已统一使用同一套 env 名、bucket、index alias、Redis key 与 compose 主入口命名；最小一致性校验已建立。  
-  验收：至少一条本地 smoke 或手工校验通过，并能证明文档、脚本与运行时读取的配置名和资源名一致。  
+  交付：docs/开发准备/**; infra/**; docs/04-runbooks/**; scripts/**; apps/platform-core/src/**
+  完成定义：配置清单、本地样例、初始化脚本、运行时入口说明与 runbook 已统一使用同一套数据库 / MinIO / Keycloak 映射、bucket、index alias、Redis key 与 compose 主入口命名；旧的 `PG_*` 主配置名与 `KEYCLOAK_ADMIN_USERNAME` 已退回历史兼容说明，不再作为正式默认口径。
+  验收：既有本地 smoke 或手工校验通过，并能证明 `DATABASE_URL`、`MINIO_ACCESS_KEY / MINIO_SECRET_KEY`、`KEYCLOAK_REALM` 与 `.env.local`、compose bootstrap、runbook、脚本说明一致。
   阻塞风险：命名漂移会导致环境配置、资源初始化与运维动作对错对象。  
-  技术参考：../开发准备/配置项与密钥管理清单.md:L1（配置项与密钥管理清单） | ../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../开发准备/事件模型与Topic清单正式版.md:L1（事件模型与 Topic 清单） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
+  技术参考：../开发准备/配置项与密钥管理清单.md:L1（配置项与密钥管理清单） | ../开发准备/本地开发环境与中间件部署清单.md:L1（本地开发环境与中间件部署清单） | ../04-runbooks/local-startup.md:L1（Local Startup） | ../04-runbooks/secrets-policy.md:L1（Local Secrets Policy） | ../开发准备/事件模型与Topic清单正式版.md:L1（事件模型与 Topic 清单） | 问题修复任务/A12-配置项与资源命名漂移.md:L1（配置项与资源命名漂移）
 ## 7. platform-core 基础骨架（这一组建议由我先做） [CORE]
 
 这一组负责在现有 `platform-core` 最小骨架基础上补齐统一运行时、共享 crate 与模块模板。
@@ -1809,13 +1810,13 @@
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
   技术参考：../领域模型/全量领域模型与对象关系说明.md:L200（4.2 目录与商品聚合） | ../数据库设计/接口协议/目录与商品接口协议正式版.md:L82（5. V1 接口） | ../业务流程/业务流程图-V1-完整版.md:L86（4.2 商品创建、模板绑定与上架流程）
-- **CAT-026** [AGENT][P1][W3][yes] 生成 `docs/05-test-cases/catalog-review-cases.md`，覆盖上架规则、字段缺失、模板不匹配、风险阻断。  
+- **CAT-026** [AGENT][P1][W3][yes] 生成 `docs/05-test-cases/catalog-review-cases.md`，覆盖上架规则、字段缺失、模板不匹配、风险阻断。
   依赖：CORE-001; CORE-004; CORE-005; CORE-006; DB-004; DB-005  
   交付：docs/05-test-cases/catalog-review-cases.md  
-  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
-  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
+  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用；宿主机示例不再把 Kafka 误写成容器内 `9092`。
+  验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹；宿主机示例与端口矩阵保持一致。
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
-  技术参考：../领域模型/全量领域模型与对象关系说明.md:L200（4.2 目录与商品聚合） | ../数据库设计/接口协议/目录与商品接口协议正式版.md:L82（5. V1 接口） | ../业务流程/业务流程图-V1-完整版.md:L86（4.2 商品创建、模板绑定与上架流程）
+  技术参考：../领域模型/全量领域模型与对象关系说明.md:L200（4.2 目录与商品聚合） | ../数据库设计/接口协议/目录与商品接口协议正式版.md:L82（5. V1 接口） | ../业务流程/业务流程图-V1-完整版.md:L86（4.2 商品创建、模板绑定与上架流程） | ../05-test-cases/README.md:L7（测试样例公共前置条件） | ../04-runbooks/local-startup.md:L39（宿主机 Kafka 地址） | ../04-runbooks/port-matrix.md:L15（Kafka 外部端口矩阵）
 
 ## 11. Order / Contract / Authorization 主交易链路 [TRADE]
 
@@ -2469,11 +2470,11 @@
 - **NOTIF-001** [AGENT][P0][W1][partial] 初始化 `apps/notification-worker/` 骨架，约定运行模式、消费 topic、模板目录、发送适配器、重试队列与健康检查接口。  
   依赖：BOOT-002; ENV-010; CORE-009  
   交付：apps/notification-worker/  
-  完成定义：正式进程名、topic、consumer group、V1 渠道边界与健康检查口径已冻结为 `notification-worker -> dtp.notification.dispatch -> cg-notification-worker`；Worker 可消费事件并发送 `mock-log` 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
+  完成定义：正式进程名、topic、consumer group、V1 渠道边界与健康检查口径已冻结为 `notification-worker -> dtp.notification.dispatch -> cg-notification-worker`；`notification-worker` 不直接消费 `dtp.outbox.domain-events`；Worker 可消费事件并发送 `mock-log` 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
   技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
-- **NOTIF-002** [AGENT][P0][W1][partial] 定义通知事件协议：统一收口到 `notification.requested -> dtp.notification.dispatch -> notification-worker`，覆盖订单创建、支付成功、支付失败、待交付、交付完成、待验收、验收通过、拒收、争议升级、退款完成、赔付完成、监管冻结、恢复结算；统一事件字段和幂等键。  
+- **NOTIF-002** [AGENT][P0][W1][partial] 定义通知事件协议：统一收口到 `notification.requested -> dtp.notification.dispatch -> notification-worker`，覆盖订单创建、支付成功、支付失败、待交付、交付完成、待验收、验收通过、拒收、争议升级、退款完成、赔付完成、监管冻结、恢复结算；统一事件字段和幂等键，不再并行消费 `dtp.outbox.domain-events`。
   依赖：NOTIF-001; TRADE-033; BIL-023  
   交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
   完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
@@ -2529,41 +2530,41 @@
   验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
   阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
   技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
-- **NOTIF-010** [AGENT][P1][W3][yes] 实现通知审计联查：按订单号/案件号/通知模板查看发送记录、渲染变量、渠道结果、重试轨迹与关联事件。  
+- **NOTIF-010** [AGENT][P1][W3][limited] 实现通知审计联查：按订单号/案件号/通知模板查看发送记录、渲染变量、渠道结果、重试轨迹与关联事件。
   依赖：NOTIF-009; AUD-004  
-  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
-  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
-  验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
-  阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
-- **NOTIF-011** [AGENT][P1][W3][yes] 在 `docs/04-runbooks/notification-worker.md` 写明通知事件来源、模板清单、发送策略、失败排查与人工补发流程。  
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md
+  完成定义：当前执行源已冻结通知联查的目标范围、正式事件链与后续 OpenAPI / 验收承接，不再将其视为已完成运行时能力。
+  验收：当前阶段以 runbook、`docs/05-test-cases/README.md` 与 TODO 已明确后续需补齐的发送记录、渲染变量、渠道结果、重试轨迹与关联事件范围为准；进入 `NOTIF` 代码实现批次后再按真实运行结果验收。
+  阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../04-runbooks/notification-worker.md:L12（当前批次边界） | ../05-test-cases/README.md:L24（通知验收清单尚未落盘） | V1-Core-TODO与预留清单.md:L65（NOTIF OpenAPI 与测试义务） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
+- **NOTIF-011** [AGENT][P1][W3][yes] 在 `docs/04-runbooks/notification-worker.md` 写明通知事件来源、模板清单、发送策略、失败排查与人工补发流程。
   依赖：NOTIF-001; NOTIF-002; NOTIF-009  
-  交付：docs/04-runbooks/notification-worker.md  
-  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。  
-  验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
-  阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
-- **NOTIF-012** [AGENT][P1][W3][yes] 为通知链路编写集成测试：支付成功通知、交付完成通知、拒收通知、争议升级通知、重复事件去重、失败重试与 DLQ；校验正式链路 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log` 渠道与审计痕迹。  
+  交付：docs/04-runbooks/notification-worker.md
+  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用。
+  验收：runbook 已明确正式进程名、正式 topic、consumer group、V1 渠道边界、失败排查、人工补发入口，以及当前批次未完成的 OpenAPI / `notification-cases.md` 承接关系，并被 README / 任务清单引用。
+  阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../04-runbooks/notification-worker.md:L12（当前批次边界） | ../05-test-cases/README.md:L24（通知验收清单尚未落盘） | V1-Core-TODO与预留清单.md:L65（NOTIF OpenAPI 与测试义务） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界）
+- **NOTIF-012** [AGENT][P1][W3][limited] 为通知链路编写集成测试：支付成功通知、交付完成通知、拒收通知、争议升级通知、重复事件去重、失败重试与 DLQ；校验正式链路 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log` 渠道与审计痕迹。
   依赖：NOTIF-004; NOTIF-005; NOTIF-006; NOTIF-009  
-  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md  
-  完成定义：通知 Worker 可消费事件并发送 mock 通知；模板/幂等/重试可验证；审计和 runbook 已覆盖。  
-  验收：触发对应事件后能看到通知发送记录、幂等去重和失败重试结果。  
-  阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+  交付：apps/notification-worker/**; docs/04-runbooks/notification-worker.md
+  完成定义：当前执行源已冻结通知集成测试目标场景、正式事件链、`mock-log` / `DLQ` / 审计痕迹与后续 `notification-cases.md` 承接，不再将其视为已完成测试基线。
+  验收：当前阶段以 runbook、`docs/05-test-cases/README.md` 与 TODO 已明确后续需补齐的通知事件链路验收矩阵为准；进入 `NOTIF` 代码实现批次后再按真实集成测试结果验收。
+  阻塞风险：事件和模板不统一会导致重复通知、漏通知或越权披露。
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../原始PRD/日志、可观测性与告警设计.md:L115（6. 日志字段规范） | ../04-runbooks/notification-worker.md:L12（当前批次边界） | ../05-test-cases/README.md:L24（通知验收清单尚未落盘） | V1-Core-TODO与预留清单.md:L65（NOTIF OpenAPI 与测试义务） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
 - **NOTIF-013** [AGENT][P1][W3][limited] 补齐通知联查与控制面 OpenAPI 归档/示例，覆盖发送记录、模板、渠道结果、重试/DLQ、人工补发入口与 `event_type / target_topic / aggregate_type` 过滤口径。  
   依赖：NOTIF-010; AUD-003; AUD-025  
   交付：packages/openapi/ops.yaml; docs/02-openapi/ops.yaml  
   完成定义：通知联查与控制面 OpenAPI 归档/示例已建立；发送记录、模板、渠道结果、重试/DLQ/人工补发与事件过滤口径已与正式事件链一致，且不再使用旧命名。  
   验收：至少一条契约校验或手工 API 验证通过，并能证明通知联查示例与 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式口径一致。  
   阻塞风险：通知控制面契约缺失会导致后续联查、控制台与测试继续在错误接口上叠加返工。  
-  技术参考：../原始PRD/审计、证据链与回放设计.md:L93（通知相关审计事件） | ../开发准备/事件模型与Topic清单正式版.md:L128（通知事件与 topic） | docs/02-openapi/README.md:L10（实现阶段 OpenAPI 约束） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+  技术参考：../原始PRD/审计、证据链与回放设计.md:L93（通知相关审计事件） | ../原始PRD/日志、可观测性与告警设计.md:L115（通知与观测字段规范） | ../开发准备/事件模型与Topic清单正式版.md:L128（通知事件与 topic） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L20（事件路由与一致性控制面） | ../02-openapi/README.md:L10（实现阶段 OpenAPI 约束） | ../04-runbooks/notification-worker.md:L17（通知运行与 OpenAPI 承接） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
 - **NOTIF-014** [AGENT][P1][W3][limited] 生成 `docs/05-test-cases/notification-cases.md`，覆盖支付成功、交付完成、验收通过、拒收、争议升级、监管冻结/恢复结算、重复去重、失败重试、DLQ 与人工补发。  
   依赖：NOTIF-009; NOTIF-010; NOTIF-013  
   交付：docs/05-test-cases/notification-cases.md  
   完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用，并明确登记 mock-log、幂等、重试、DLQ、人工补发与审计联查验收项。  
   验收：至少一条 smoke 或手工验证通过，并能证明通知验收清单覆盖正式 topic、正式进程名、正式渠道边界与联查路径。  
   阻塞风险：通知测试基线若继续缺失，会让 NOTIF 阶段只能证明“有日志输出”，不能证明正式链路闭环。  
-  技术参考：docs/05-test-cases/README.md:L7（测试样例批次边界） | docs/04-runbooks/notification-worker.md:L14（NOTIF 当前批次边界） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+  技术参考：../开发准备/测试用例矩阵正式版.md:L1（通知链路验收基线） | ../开发准备/事件模型与Topic清单正式版.md:L128（通知事件与 topic） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L80（dead letter 与重处理） | ../05-test-cases/README.md:L7（测试样例批次边界） | ../04-runbooks/notification-worker.md:L14（NOTIF 当前批次边界） | 问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md:L1（NOTIF 通知链路与命名边界） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
 ## 15. Audit / Evidence / Consistency / Fabric / Ops [AUD]
 
 这一组落地审计、证据链、回放、一致性和 Fabric 最小摘要链路。
@@ -2627,7 +2628,7 @@
 - **AUD-009** [AGENT][P0][W1][limited] 实现 outbox publisher worker，从数据库读取待发布事件并推送到 Kafka。  
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；publisher 只按统一 event envelope 与 `ops.event_route_policy` / canonical topic 口径发布，记录 `outbox_publish_attempt`，并与上下游模块联调通过。  
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；publisher 只按统一 event envelope 与 `ops.event_route_policy` / canonical topic 口径发布，记录 `outbox_publish_attempt`，并与上下游模块联调通过；不再为 `notification-worker` / `fabric-adapter` 保留 `dtp.outbox.domain-events` 并行入口。
   验收：至少一条集成测试或手工 API 验证通过，并能证明发布尝试、目标 topic、失败隔离与审计痕迹可联查，且不存在并行 topic 口径。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
   技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L57（4.2 outbox 查询） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A02-统一事件-Envelope-与路由权威源.md:L1（统一事件 Envelope 与路由权威源） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A05-Outbox-Publisher-DLQ-统一闭环缺口.md:L1（Outbox Publisher 与 DLQ 闭环）
@@ -2652,14 +2653,14 @@
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
   技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L329（7.1 outbox_event） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L90（4.5 一致性修复） | ../领域模型/全量领域模型与对象关系说明.md:L1539（9. 链上链下对象映射） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
-- **AUD-013** [AGENT][P0][W1][limited] 初始化 `services/fabric-adapter/`（Go），定义接收业务摘要事件、调用链码、回写链回执的基础框架。  
+- **AUD-013** [AGENT][P0][W1][limited] 初始化 `services/fabric-adapter/`（Go），定义从 `dtp.audit.anchor` / `dtp.fabric.requests` 接收业务摘要事件、调用链码、回写链回执的基础框架。
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：services/fabric-adapter/  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。  
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。  
   技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口）
-- **AUD-014** [AGENT][P0][W1][limited] 在 `fabric-adapter` 中先实现订单摘要、授权摘要、验收摘要、证据批次根四类消息处理占位。  
+- **AUD-014** [AGENT][P0][W1][limited] 在 `fabric-adapter` 中先实现订单摘要、授权摘要、验收摘要、证据批次根四类消息处理占位，并保持 `dtp.audit.anchor` / `dtp.fabric.requests` 单入口。
   依赖：CORE-007; CORE-008; DB-008; ENV-022  
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**  
   完成定义：业务规则、状态机、审计、事件与测试已齐备；与上下游模块联调通过。  
@@ -2935,7 +2936,7 @@
   完成定义：搜索 alias 权威源、结构化命名和阶段边界已统一；`search.index_alias_binding`、初始化脚本、运行默认值、ops 接口与 runbook 共享同一套 alias 答案，且 alias switch 被明确纳入 V1 最小运维能力。  
   验收：至少一条集成测试或手工 API 验证通过，并能证明 schema / 脚本 / runbook / ops 接口使用同一套 alias 名称与切换边界。  
   阻塞风险：若 alias 权威源与阶段边界继续漂移，重建、切换、初始化脚本与运维接口会分别对着不同索引/别名工作。  
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（V1 正式搜索方案） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L41（搜索运维接口族） | docs/04-runbooks/search-reindex.md:L45（当前 V1 口径） | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界）
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（V1 正式搜索方案） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L41（搜索运维接口族） | ../开发准备/技术选型正式版.md:L24（OpenSearch 读模型边界） | ../开发准备/事件模型与Topic清单正式版.md:L80（搜索同步事件与 topic） | ../04-runbooks/search-reindex.md:L45（当前 V1 口径） | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界）
 ## 17. 前端最小页面闭环（portal-web / console-web） [WEB]
 
 这一组落地门户和控制台的最小页面闭环。
@@ -3127,13 +3128,13 @@
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
   技术参考：../数据库设计/数据库设计总说明.md:L176（7. 迁移执行顺序） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../数据库设计/README.md:L67（4. 迁移策略）
-- **TEST-005** [AGENT][P0][W3][yes] 建立本地环境 smoke test，验证 compose 启动、核心服务 ready、Grafana 数据源可连、Keycloak realm 导入成功，并校验 canonical topics 与关键控制面入口不再回退到旧口径。  
+- **TEST-005** [AGENT][P0][W3][yes] 建立本地环境 smoke test，验证 compose 启动、核心服务 ready、Grafana 数据源可连、Keycloak realm 导入成功，并校验 canonical topics 与关键控制面入口不再回退到旧口径。
   依赖：ENV-040; DB-032; CORE-024  
   交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
-  完成定义：测试脚本可在本地或 CI 运行；断言明确；失败可定位；结果纳入验收清单。  
-  验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
+  完成定义：测试脚本可在本地或 CI 运行；断言明确；失败可定位；结果纳入验收清单；宿主机与容器内 Kafka 地址边界已写入公共前置条件与活跃 test-case。
+  验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果；宿主机示例统一使用 `127.0.0.1:9094`，容器内探测继续使用 `kafka:9092` / `localhost:9092`。
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
-  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+  技术参考：../开发准备/技术选型正式版.md:L147（6. 本地与联调环境） | ../原始PRD/日志、可观测性与告警设计.md:L58（4. V1 正式采用的观测技术栈） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../05-test-cases/README.md:L7（测试样例公共前置条件） | ../04-runbooks/local-startup.md:L39（宿主机 Kafka 地址） | ../04-runbooks/port-matrix.md:L15（Kafka 外部端口矩阵） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
 - **TEST-006** [AGENT][P0][W3][yes] 建立订单端到端测试，严格按五条标准链路命名与验收：工业设备运行指标 API 订阅、工业质量与产线日报文件包交付、供应链协同查询沙箱、零售门店经营分析 API / 报告订阅、商圈/门店选址查询服务。  
   依赖：ENV-040; DB-032; CORE-024  
   交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
@@ -3281,17 +3282,17 @@
   验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
   阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
   技术参考：../业务流程/业务流程图-V1-完整版.md:L349（4.4.3 沙箱 / 模板查询类交付） | ../页面说明书/页面说明书-V1-完整版.md:L685（7.7 查询运行与结果记录页） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略）
-- **TEST-027** [AGENT][P1][W3][yes] 建立通知链路 smoke test，验证支付成功、交付完成、验收通过、争议升级至少四类事件会通过 `notification.requested -> dtp.notification.dispatch -> notification-worker` 触发 `mock-log` 通知并留下审计记录。  
+- **TEST-027** [AGENT][P1][W3][limited] 建立通知链路 smoke test，验证支付成功、交付完成、验收通过、争议升级至少四类事件会通过 `notification.requested -> dtp.notification.dispatch -> notification-worker` 触发 `mock-log` 通知并留下审计记录。
   依赖：NOTIF-004; NOTIF-005; NOTIF-006; NOTIF-009  
-  交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**  
-  完成定义：测试脚本可在本地或 CI 运行；断言明确；失败可定位；结果纳入验收清单。  
-  验收：测试在本地和 CI 至少一处可重复通过，并产生可读结果。  
-  阻塞风险：没有自动化验证会让并行开发后难以回归收敛。  
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
-- **TEST-028** [AGENT][P0][W3][limited] 建立 canonical smoke / contract checker，强制校验正式 topic、正式接口、正式 consumer group、OpenAPI 示例与验收矩阵，不再允许只测旧 topic、骨架接口或局部 outbox 行。  
+  交付：docs/05-test-cases/**; fixtures/**; .github/workflows/**
+  完成定义：当前执行源已登记通知 smoke 的目标场景、正式事件链与后续 `notification-cases.md` 承接，不再将通知 smoke 视为已跑通。
+  验收：当前阶段以 `docs/05-test-cases/README.md`、runbook 与 TODO 已明确 smoke 义务和后续落盘项为准；进入 `NOTIF` 代码实现批次后再以本地 / CI 可重复通过的通知 smoke 结果验收。
+  阻塞风险：没有自动化验证会让并行开发后难以回归收敛。
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../04-runbooks/notification-worker.md:L12（当前批次边界） | ../05-test-cases/README.md:L24（通知验收清单尚未落盘） | V1-Core-TODO与预留清单.md:L65（NOTIF OpenAPI 与测试义务） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+- **TEST-028** [AGENT][P0][W3][limited] 建立 canonical smoke / contract checker，强制校验正式 topic、正式接口、正式 consumer group、OpenAPI 示例与验收矩阵，不再允许只测旧 topic、骨架接口或局部 outbox 行；全量 topic existence smoke 不得再被局部静态 topology checker 替代。
   依赖：TEST-005; TEST-016; AUD-028; SEARCHREC-017; NOTIF-014  
   交付：scripts/**; docs/05-test-cases/**; .github/workflows/**  
-  完成定义：本地与 CI 的 smoke / contract checker 已对准正式接口、canonical topic、consumer group、OpenAPI 示例与验收矩阵；不再允许只检查旧 topic、骨架路由或局部 outbox 行。  
-  验收：测试在本地和 CI 至少一处可重复通过，并能证明错误 topic、旧命名、占位鉴权或骨架接口会被显式拦截。  
+  完成定义：本地与 CI 的 smoke / contract checker 已对准正式接口、canonical topic、consumer group、OpenAPI 示例与验收矩阵；不再允许只检查旧 topic、骨架路由或局部 outbox 行；宿主机与容器内 Kafka 地址边界能被显式校验；`check-topic-topology.sh` 与 `smoke-local.sh` 的职责边界已在 runbook 与测试说明中冻结。
+  验收：测试在本地和 CI 至少一处可重复通过，并能证明错误 topic、旧命名、占位鉴权、骨架接口、宿主机误用 `127.0.0.1:9092` 或把局部 topology checker 误当全量 canonical checker 的用法会被显式拦截。
   阻塞风险：错误正反馈会让 topic、OpenAPI、通知和 SEARCHREC 漂移在“测试通过”的掩护下继续扩散。  
-  技术参考：../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L18（分阶段验收标准） | docs/05-test-cases/README.md:L7（测试样例批次边界） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）
+  技术参考：../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L18（分阶段验收标准） | ../05-test-cases/README.md:L7（测试样例公共前置条件） | ../04-runbooks/port-matrix.md:L15（Kafka 外部端口矩阵） | ../04-runbooks/local-startup.md:L39（宿主机 Kafka 地址） | 问题修复任务/A01-Kafka-Topic-口径统一.md:L1（Kafka topic 口径统一） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险）

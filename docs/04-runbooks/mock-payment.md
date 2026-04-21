@@ -1,5 +1,16 @@
 # Mock Payment Provider 使用说明（ENV-021）
 
+## 启动前提
+
+- `mock-payment-provider` 不属于默认 `core` 主线。
+- 本地手工联调前，请先执行以下任一命令：
+  - `make up-mocks`
+  - `make up-demo`
+- `make up-local` 仅启动 `core`，不会自动带起 Mock Payment Provider。
+- 启动后建议先执行：
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh mocks`
+  - `./scripts/check-mock-payment.sh`
+
 ## 健康检查
 
 - 管理接口：`GET http://127.0.0.1:8089/__admin`

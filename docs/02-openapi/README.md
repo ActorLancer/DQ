@@ -3,6 +3,7 @@
 用于收敛 OpenAPI 归档、接口分组说明和契约校验输出。
 
 当前实现阶段的 OpenAPI 设计参考以 `packages/openapi/*.yaml` 为准。
+`packages/openapi/README.md` 负责说明当前子域成熟度与实现期使用方式。
 本目录只保留实现校验后的归档副本或归档占位，不作为当前实现期权威源。
 
 约束：

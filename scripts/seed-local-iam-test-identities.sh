@@ -5,6 +5,14 @@ set -euo pipefail
 # Usage:
 #   DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab ./scripts/seed-local-iam-test-identities.sh
 
+ENV_FILE="${ENV_FILE:-infra/docker/.env.local}"
+if [[ -z "${DATABASE_URL:-}" && -f "${ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  set +a
+fi
+
 DATABASE_URL="${DATABASE_URL:-postgres://datab:datab_local_pass@127.0.0.1:5432/datab}"
 PSQL="${PSQL_BIN:-psql}"
 

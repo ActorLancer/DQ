@@ -133,16 +133,22 @@ CREATE TABLE IF NOT EXISTS chain.credential_status_history (
 CREATE INDEX IF NOT EXISTS idx_reward_record_task_id ON billing.reward_record(task_id);
 CREATE INDEX IF NOT EXISTS idx_reward_record_beneficiary ON billing.reward_record(beneficiary_type, beneficiary_id);
 
+DROP TRIGGER IF EXISTS trg_profit_share_rule_updated_at ON billing.profit_share_rule;
 CREATE TRIGGER trg_profit_share_rule_updated_at BEFORE UPDATE ON billing.profit_share_rule
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+DROP TRIGGER IF EXISTS trg_reward_pool_updated_at ON billing.reward_pool;
 CREATE TRIGGER trg_reward_pool_updated_at BEFORE UPDATE ON billing.reward_pool
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+DROP TRIGGER IF EXISTS trg_reward_record_updated_at ON billing.reward_record;
 CREATE TRIGGER trg_reward_record_updated_at BEFORE UPDATE ON billing.reward_record
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+DROP TRIGGER IF EXISTS trg_sub_merchant_binding_updated_at ON payment.sub_merchant_binding;
 CREATE TRIGGER trg_sub_merchant_binding_updated_at BEFORE UPDATE ON payment.sub_merchant_binding
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+DROP TRIGGER IF EXISTS trg_split_instruction_updated_at ON payment.split_instruction;
 CREATE TRIGGER trg_split_instruction_updated_at BEFORE UPDATE ON payment.split_instruction
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
+DROP TRIGGER IF EXISTS trg_recurring_charge_plan_updated_at ON payment.recurring_charge_plan;
 CREATE TRIGGER trg_recurring_charge_plan_updated_at BEFORE UPDATE ON payment.recurring_charge_plan
 FOR EACH ROW EXECUTE FUNCTION common.tg_set_updated_at();
 -- Trust-boundary baseline sync: V2 trust-boundary impacts are carried by ml and permission models; profitshare/publicchain schema stays structurally compatible.

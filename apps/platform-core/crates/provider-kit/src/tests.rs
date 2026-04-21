@@ -1,6 +1,49 @@
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use std::time::Duration;
+
+    async fn mock_payment_live_ready() -> bool {
+        let mode = std::env::var("MOCK_PAYMENT_ADAPTER_MODE")
+            .unwrap_or_else(|_| "stub".to_string())
+            .to_ascii_lowercase();
+        if mode != "live" {
+            eprintln!(
+                "skip live_mock_payment_adapter_hits_three_mock_paths: \
+                 MOCK_PAYMENT_ADAPTER_MODE is not set to live"
+            );
+            return false;
+        }
+
+        let base_url = std::env::var("MOCK_PAYMENT_BASE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8089".to_string());
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .expect("build mock payment health client");
+        match client
+            .get(format!("{}/health/ready", base_url.trim_end_matches('/')))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => true,
+            Ok(resp) => {
+                eprintln!(
+                    "skip live_mock_payment_adapter_hits_three_mock_paths: \
+                     mock payment readiness probe returned status {}",
+                    resp.status()
+                );
+                false
+            }
+            Err(err) => {
+                eprintln!(
+                    "skip live_mock_payment_adapter_hits_three_mock_paths: \
+                     mock payment provider is not reachable: {err}"
+                );
+                false
+            }
+        }
+    }
 
     #[tokio::test]
     async fn providers_have_mock_and_real_entrypoints() {
@@ -139,6 +182,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires local mock-payment container and MOCK_PAYMENT_ADAPTER_MODE=live"]
     async fn live_mock_payment_adapter_hits_three_mock_paths() {
+        if !mock_payment_live_ready().await {
+            return;
+        }
+
         let provider = build_payment_provider(ProviderBackend::Mock);
         let success = provider
             .simulate_webhook("pay-live-1", MockPaymentScenario::Success)

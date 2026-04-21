@@ -9,6 +9,11 @@ EVENT_MODEL_DOC="docs/开发准备/事件模型与Topic清单正式版.md"
 KAFKA_RUNBOOK="docs/04-runbooks/kafka-topics.md"
 ROUTE_SEED="docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql"
 
+# Scope:
+# - static alignment for dedicated notification / fabric / audit-anchor single-entry topology
+# - critical route-policy seed coverage for frozen extension events
+# This script does not replace the full smoke-local topic existence check.
+
 fail() {
   echo "[fail] $*" >&2
   exit 1
@@ -29,15 +34,16 @@ check_topic_field() {
   local jq_expr="$2"
   local expected="$3"
   local actual
+  jq -e --arg topic "${topic}" '.topics[] | select(.name == $topic)' "${TOPIC_CATALOG}" >/dev/null \
+    || fail "topic not found in catalog: ${topic}"
   actual="$(jq -r --arg topic "${topic}" ".topics[] | select(.name == \$topic) | ${jq_expr}" "${TOPIC_CATALOG}")"
-  [[ -n "${actual}" ]] || fail "topic not found in catalog: ${topic}"
   [[ "${actual}" == "${expected}" ]] || fail "catalog mismatch for ${topic}: expected '${expected}', got '${actual}'"
 }
 
 check_topic_json() {
   check_topic_field "dtp.outbox.domain-events" ".producer" "outbox-publisher"
-  check_topic_field "dtp.outbox.domain-events" ".consumers | join(\",\")" "notification-worker,fabric-adapter"
-  check_topic_field "dtp.outbox.domain-events" ".consumer_groups | join(\",\")" "cg-notification-worker,cg-fabric-adapter"
+  check_topic_field "dtp.outbox.domain-events" ".consumers | join(\",\")" ""
+  check_topic_field "dtp.outbox.domain-events" ".consumer_groups | join(\",\")" ""
   check_topic_field "dtp.notification.dispatch" ".consumers | join(\",\")" "notification-worker"
   check_topic_field "dtp.notification.dispatch" ".consumer_groups | join(\",\")" "cg-notification-worker"
   check_topic_field "dtp.fabric.requests" ".consumers | join(\",\")" "fabric-adapter"
@@ -51,8 +57,10 @@ check_topic_json() {
 }
 
 check_docs() {
-  rg -q '\| `dtp\.outbox\.domain-events` \| `outbox-publisher` \| `notification-worker` / `fabric-adapter` \| `cg-notification-worker` / `cg-fabric-adapter` \|' "${EVENT_MODEL_DOC}" \
+  rg -q '\| `dtp\.outbox\.domain-events` \| `outbox-publisher` \| `-` \| `-` \|' "${EVENT_MODEL_DOC}" \
     || fail "event model doc is missing canonical outbox topology row"
+  rg -q '\| `dtp\.outbox\.domain-events` \| `outbox-publisher` \| `-` \| `-` \|' "${KAFKA_RUNBOOK}" \
+    || fail "kafka runbook is missing canonical outbox topology row"
   rg -q '\| `dtp\.fabric\.callbacks` \| `fabric-event-listener` \| `platform-core\.consistency` \| `cg-platform-core-consistency` \|' "${EVENT_MODEL_DOC}" \
     || fail "event model doc is missing canonical fabric callback topology row"
   rg -q '\| `dtp\.notification\.dispatch` \| `platform-core\.integration` \| `notification-worker` \| `cg-notification-worker` \|' "${KAFKA_RUNBOOK}" \
@@ -73,4 +81,4 @@ check_route_seed() {
 check_topic_json
 check_docs
 check_route_seed
-ok "topic topology catalog, docs, and route-policy seeds are aligned"
+ok "dedicated notification/fabric topic topology, docs, and route-policy seeds are aligned"

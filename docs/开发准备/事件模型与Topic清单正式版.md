@@ -187,7 +187,7 @@
 
 | Topic | 生产者 | 消费者 | 本地默认消费组 | 用途 |
 |---|---|---|---|---|
-| `dtp.outbox.domain-events` | `outbox-publisher` | `notification-worker` / `fabric-adapter` | `cg-notification-worker` / `cg-fabric-adapter` | 主领域事件分发 |
+| `dtp.outbox.domain-events` | `outbox-publisher` | `-` | `-` | 通用主领域事件流 |
 | `dtp.search.sync` | `outbox-publisher` | `search-indexer` | `cg-search-indexer` | 搜索投影同步 |
 | `dtp.recommend.behavior` | `platform-core.recommendation` | `recommendation-aggregator` | `cg-recommendation-aggregator` | 推荐行为回流 |
 | `dtp.notification.dispatch` | `platform-core.integration` | `notification-worker` | `cg-notification-worker` | 通知分发 |
@@ -200,9 +200,10 @@
 
 ## 5.2 补充说明
 
-- `dtp.outbox.domain-events` 是主分发流，不是最终消费者业务落库的唯一依据。
+- `dtp.outbox.domain-events` 是通用主领域事件流，不是最终消费者业务落库的唯一依据。
+- 通知与 Fabric 的 `V1` 正式消费入口是专用 topic：`notification-worker` 只消费 `dtp.notification.dispatch`；`fabric-adapter` 只消费 `dtp.audit.anchor` / `dtp.fabric.requests`，不直接作为 `dtp.outbox.domain-events` 的正式 consumer。
 - `dtp.outbox.domain-events` 的正式写入来源是应用层 canonical outbox writer，不再允许数据库触发器自动派生 topic 后直接落主链路。
-- `ops.event_route_policy` 是 `dtp.outbox.domain-events` 及其下游分发规则的唯一运行时 authority；topic / key / ordering 变更必须先更新该表，再更新实现与 runbook。
+- `ops.event_route_policy` 是 `V1` canonical outbox 路由的唯一运行时 authority；`target_topic` 可以是 `dtp.outbox.domain-events` 或专用下游 topic，topic / key / ordering 变更必须先更新该表，再更新实现与 runbook。
 - `infra/kafka/topics.v1.json` 是 producer / consumer / consumer group 的机器可读 canonical source；冻结文档、compose、脚本与迁移 seed 必须与其同步。
 - 搜索和推荐可以使用自己的下游 topic，但不得绕过主事件版本规范。
 - `dtp.dead-letter` 是统一死信流，具体失败原因放在 payload 内字段，不再额外为每域创建独立 DLQ 主题。

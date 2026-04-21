@@ -6,6 +6,7 @@
 - 对应事件：`notification.requested`
 - 正式消费 topic：`dtp.notification.dispatch`
 - 本地默认 consumer group：`cg-notification-worker`
+- 不直接消费：`dtp.outbox.domain-events`
 - `V1` 实接渠道：`mock-log`
 - `email` / `webhook`：仅保留 provider 边界，不作为 `V1` 必须实接项
 
@@ -23,6 +24,7 @@
 
 - 主来源：`platform-core.integration`
 - 冻结链路：`notification.requested -> dtp.notification.dispatch -> notification-worker`
+- `dtp.outbox.domain-events` 仅保留为通用主领域事件流，不作为 `notification-worker` 的正式消费入口
 - topic 定义权威源：`infra/kafka/topics.v1.json`
 - topic 初始化脚本：`infra/kafka/init-topics.sh`
 
@@ -35,8 +37,9 @@
 3. 校验 topic 已存在：
    - `dtp.notification.dispatch`
    - `dtp.dead-letter`
-4. 校验拓扑冻结未漂移：
+4. 校验通知 / Fabric 相关关键拓扑未漂移：
    - `./scripts/check-topic-topology.sh`
+   - 该脚本只覆盖关键静态 topology / route seed；若要验证全量 canonical topics 是否真实存在，需额外执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
 
 ## V1 渠道与模板边界
 

@@ -1,5 +1,11 @@
 # A15 SEARCHREC Consumer 幂等与 DLQ 闭环缺口
 
+## 0. 当前状态
+
+- 本文当前角色：`SEARCHREC` consumer 幂等、双层 DLQ 与 reprocess 闭环的治理说明。
+- 当前正式口径、任务承接和 runbook / test-case 方向已经冻结；真实代码闭环仍由 `AUD-008 / AUD-010 / SEARCHREC-020 / AUD-026 / SEARCHREC-015 / SEARCHREC-017` 承接。
+- 第 `2` 节与第 `4` 节保留问题发现时的历史起点，当前实现状态应以 worker 代码、task、runbook 与测试矩阵为准。
+
 ## 1. 任务定位
 
 - 问题编号：`A15`
@@ -8,11 +14,11 @@
 - 关联任务：`AUD-008`、`AUD-010`、`AUD-026`、`SEARCHREC-001`、`SEARCHREC-010`、`SEARCHREC-015`、`SEARCHREC-017`、`SEARCHREC-020`
 - 处理方式：先把 SEARCHREC consumer 的正式失败处理口径冻结到统一文档与任务清单，再在实现批次中补齐幂等、双层 DLQ、reprocess 与测试闭环
 
-## 2. 问题描述
+## 2. 历史问题起点（归档）
 
-当前仓库中的两个 SEARCHREC Kafka consumer 已经存在基础消费逻辑，但失败处理口径并没有收缩到正式冻结要求，导致“处理失败后仍提交 offset”“只有部分幂等、没有双层 DLQ、没有统一重处理”的不完整状态。
+问题发现时，仓库中的两个 SEARCHREC Kafka consumer 已经存在基础消费逻辑，但失败处理口径并没有收缩到正式冻结要求，导致“处理失败后仍提交 offset”“只有部分幂等、没有双层 DLQ、没有统一重处理”的不完整状态。
 
-当前已确认的典型现象包括：
+问题发现时已确认的典型现象包括：
 
 1. `search-indexer` 在 `handle_kafka_message` 出错后仍会继续 `commit_message`
 2. `search-indexer` 还没有正式接入 `ops.consumer_idempotency_record`
@@ -39,9 +45,9 @@
 6. `AUD-010` 的 `POST /api/v1/ops/dead-letters/{id}/reprocess` 必须能覆盖 SEARCHREC consumer 失败事件，并支持 `dry-run + step-up`
 7. 测试不能只断言 API / outbox 行存在，必须覆盖 worker 侧副作用、失败路径、DLQ 路径与 reprocess 路径
 
-## 4. 已知证据
+## 4. 历史问题证据（归档）
 
-已核对的典型证据包括但不限于：
+问题处理前已核对的典型证据包括但不限于：
 
 - [双层权威模型与链上链下一致性设计.md](/home/luna/Documents/DataB/docs/原始PRD/双层权威模型与链上链下一致性设计.md)
   - 已冻结 consumer / DLQ / replay 的正式语义

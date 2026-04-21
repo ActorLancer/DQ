@@ -41,6 +41,21 @@ wait_http_ok() {
 }
 
 smoke_db_migratable() {
+  if [[ -n "${DATABASE_URL:-}" ]]; then
+    psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 <<'SQL' >/dev/null
+BEGIN;
+CREATE TABLE IF NOT EXISTS smoke_migration_probe (
+  id BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE smoke_migration_probe ADD COLUMN IF NOT EXISTS note TEXT;
+DROP TABLE smoke_migration_probe;
+COMMIT;
+SQL
+    ok "database migration probe passed"
+    return 0
+  fi
+
   local db_host="${POSTGRES_HOST:-127.0.0.1}"
   local db_port="${POSTGRES_PORT:-5432}"
   local db_name="${POSTGRES_DB:-datab}"
@@ -62,8 +77,8 @@ SQL
 }
 
 smoke_minio_buckets() {
-  local access_key="${MINIO_ROOT_USER:-datab}"
-  local secret_key="${MINIO_ROOT_PASSWORD:-datab_local_pass}"
+  local access_key="${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-datab}}"
+  local secret_key="${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-datab_local_pass}}"
   local host_value="${MINIO_ENDPOINT/http:\/\//http://${access_key}:${secret_key}@}"
   host_value="${host_value/https:\/\//https://${access_key}:${secret_key}@}"
 
