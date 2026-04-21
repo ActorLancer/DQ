@@ -1,3 +1,4 @@
+use crate::modules::billing::domain::BillingEvent;
 use crate::modules::billing::repo::billing_event_repository::{
     RecordBillingEventRequest, record_billing_event_in_tx,
 };
@@ -20,7 +21,7 @@ pub async fn ensure_provisional_dispute_hold_in_tx(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Option<BillingEvent>, (StatusCode, Json<ErrorResponse>)> {
     let outstanding = load_provisional_hold_balance(client, order_id)
         .await
         .map_err(billing_adjustment_db_error)?;
@@ -36,7 +37,7 @@ pub async fn ensure_provisional_dispute_hold_in_tx(
             "adjustment_effect": "freeze_receivable",
             "origin_action": origin_action,
         });
-        let _ = record_billing_event_in_tx(
+        let (event, _) = record_billing_event_in_tx(
             client,
             &RecordBillingEventRequest {
                 order_id: order_id.to_string(),
@@ -55,8 +56,9 @@ pub async fn ensure_provisional_dispute_hold_in_tx(
             trace_id,
         )
         .await?;
+        return Ok(Some(event));
     }
-    Ok(())
+    Ok(None)
 }
 
 pub async fn release_provisional_dispute_hold_in_tx(
@@ -67,7 +69,7 @@ pub async fn release_provisional_dispute_hold_in_tx(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Option<BillingEvent>, (StatusCode, Json<ErrorResponse>)> {
     thaw_settlement_records_for_resolution(client, order_id, resolution_action)
         .await
         .map_err(billing_adjustment_db_error)?;
@@ -76,7 +78,7 @@ pub async fn release_provisional_dispute_hold_in_tx(
         .await
         .map_err(billing_adjustment_db_error)?;
     if !has_positive_balance(&outstanding) {
-        return Ok(());
+        return Ok(None);
     }
 
     let metadata = json!({
@@ -90,7 +92,7 @@ pub async fn release_provisional_dispute_hold_in_tx(
         "resolution_action": resolution_action,
         "resolution_ref_id": resolution_ref_id,
     });
-    let _ = record_billing_event_in_tx(
+    let (event, _) = record_billing_event_in_tx(
         client,
         &RecordBillingEventRequest {
             order_id: order_id.to_string(),
@@ -109,7 +111,7 @@ pub async fn release_provisional_dispute_hold_in_tx(
         trace_id,
     )
     .await?;
-    Ok(())
+    Ok(Some(event))
 }
 
 async fn load_adjustment_amount(

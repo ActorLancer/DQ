@@ -30,3 +30,4 @@ version,up_sql,down_sql
 077,docs/数据库设计/V1/upgrade/077_notification_delivery_completed_pending_acceptance_templates.sql,docs/数据库设计/V1/downgrade/077_notification_delivery_completed_pending_acceptance_templates.sql
 078,docs/数据库设计/V1/upgrade/078_notification_acceptance_resolution_templates.sql,docs/数据库设计/V1/downgrade/078_notification_acceptance_resolution_templates.sql
 079,docs/数据库设计/V1/upgrade/079_acceptance_event_route_policy.sql,docs/数据库设计/V1/downgrade/079_acceptance_event_route_policy.sql
+080,docs/数据库设计/V1/upgrade/080_notification_dispute_settlement_templates.sql,docs/数据库设计/V1/downgrade/080_notification_dispute_settlement_templates.sql

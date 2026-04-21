@@ -58,6 +58,14 @@
   - 验收链路 source-event 固定为 `trade.acceptance_record / acceptance.passed|acceptance.rejected`
   - 退款 / 赔付链路 source-event 固定为 `billing.billing_event / billing.event.recorded`
   - 动作入口固定落到订单详情、争议提交或账单退款页；`ops` 正文允许带 `acceptance_record_id / provider_* / liability_type / resolution_ref_*` 联查字段，`buyer/seller` 正文不得透传这些内部字段
+- `NOTIF-007` 起，争议 / 结算冻结 / 恢复结算链路的正式模板分工固定为：
+  - 争议升级：buyer / seller / ops 统一接收 `dispute.escalated / NOTIFY_DISPUTE_ESCALATED_V1`
+  - 结算冻结：buyer / seller / ops 统一接收 `settlement.frozen / NOTIFY_SETTLEMENT_FROZEN_V1`
+  - 恢复结算：buyer / seller / ops 统一接收 `settlement.resumed / NOTIFY_SETTLEMENT_RESUMED_V1`
+  - `dispute.escalated` source-event 固定为 `support.dispute_case / dispute.created`
+  - `settlement.frozen` source-event 固定为真实冻结账单事实 `billing.billing_event / billing.event.recorded`，对应 `event_source=settlement_dispute_hold`
+  - `settlement.resumed` source-event 固定为真实释放账单事实 `billing.billing_event / billing.event.recorded`，对应 `event_source=settlement_dispute_release`，不再把 `support.dispute_case / dispute.resolved` 当完成证据
+  - buyer / seller 正文只允许展示订单、案件、状态与处理入口；`freeze_ticket_id / legal_hold_id / governance_action_count / resolution_ref_* / liability_type` 仅允许进入 ops payload
 - `POST /internal/notifications/send` 手工注入通知事件到 Kafka
 - `POST /internal/notifications/templates/preview` 预览模板渲染结果，返回解析后的语言、版本、schema 与 fallback 使用情况
 - 文件模板目录：`apps/notification-worker/templates/`

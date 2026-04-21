@@ -182,6 +182,73 @@ mod tests {
             Some("frozen")
         );
 
+        let notification_rows = client
+            .query(
+                "SELECT payload
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND target_topic = 'dtp.notification.dispatch'
+                 ORDER BY created_at ASC, outbox_event_id ASC",
+                &[&request_id],
+            )
+            .await
+            .expect("query notif007 outbox");
+        assert_eq!(
+            notification_rows.len(),
+            6,
+            "create dispute case should emit dispute and settlement freeze notifications"
+        );
+        let notification_payloads = notification_rows
+            .iter()
+            .map(|row| row.get::<_, Value>(0))
+            .collect::<Vec<_>>();
+        let buyer_dispute = find_payload(&notification_payloads, "dispute.escalated", "buyer");
+        assert_eq!(
+            buyer_dispute["payload"]["source_event"]["aggregate_type"].as_str(),
+            Some("support.dispute_case")
+        );
+        assert_eq!(
+            buyer_dispute["payload"]["source_event"]["event_type"].as_str(),
+            Some("dispute.created")
+        );
+        assert_eq!(
+            buyer_dispute["payload"]["variables"]["action_href"].as_str(),
+            Some(format!("/support/cases/new?order_id={}", seed.order_id).as_str())
+        );
+        assert!(
+            buyer_dispute["payload"]["variables"]
+                .get("freeze_ticket_id")
+                .is_none(),
+            "buyer dispute payload must not expose freeze ticket"
+        );
+        let ops_frozen = find_payload(&notification_payloads, "settlement.frozen", "ops");
+        assert_eq!(
+            ops_frozen["payload"]["source_event"]["aggregate_type"].as_str(),
+            Some("billing.billing_event")
+        );
+        assert_eq!(
+            ops_frozen["payload"]["source_event"]["event_type"].as_str(),
+            Some("billing.event.recorded")
+        );
+        assert_eq!(
+            ops_frozen["payload"]["variables"]["action_href"].as_str(),
+            Some(format!("/ops/risk?order_id={}&case_id={}", seed.order_id, case_id).as_str())
+        );
+        assert_eq!(
+            ops_frozen["payload"]["variables"]["show_ops_context"].as_bool(),
+            Some(true)
+        );
+        assert!(
+            ops_frozen["payload"]["variables"]["freeze_ticket_id"]
+                .as_str()
+                .is_some()
+        );
+        assert!(
+            ops_frozen["payload"]["variables"]["legal_hold_id"]
+                .as_str()
+                .is_some()
+        );
+
         let audit_row = client
             .query_one(
                 "SELECT
@@ -198,7 +265,7 @@ mod tests {
         assert_eq!(audit_row.get::<_, i64>(2), 1);
         assert_eq!(audit_row.get::<_, i64>(3), 1);
 
-        cleanup(&client, &seed, &case_id).await;
+        cleanup(&client, &seed, &case_id, &request_id).await;
     }
 
     async fn create_case(app: &Router, seed: &SeedGraph, request_id: &str) -> Value {
@@ -499,7 +566,26 @@ mod tests {
             .get(0)
     }
 
-    async fn cleanup(client: &Client, seed: &SeedGraph, case_id: &str) {
+    fn find_payload<'a>(
+        payloads: &'a [Value],
+        notification_code: &str,
+        audience_scope: &str,
+    ) -> &'a Value {
+        payloads
+            .iter()
+            .find(|payload| {
+                payload["payload"]["notification_code"].as_str() == Some(notification_code)
+                    && payload["payload"]["audience_scope"].as_str() == Some(audience_scope)
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing payload for notification_code={} audience_scope={}",
+                    notification_code, audience_scope
+                )
+            })
+    }
+
+    async fn cleanup(client: &Client, seed: &SeedGraph, case_id: &str, request_id: &str) {
         let _ = client
             .execute(
                 "DELETE FROM audit.legal_hold WHERE hold_scope_type = 'order' AND hold_scope_id = $1::text::uuid",
@@ -520,8 +606,11 @@ mod tests {
             .await;
         let _ = client
             .execute(
-                "DELETE FROM ops.outbox_event WHERE aggregate_id = $1::text::uuid OR ordering_key = $2",
-                &[&case_id, &seed.order_id],
+                "DELETE FROM ops.outbox_event
+                 WHERE request_id = $1
+                    OR aggregate_id = $2::text::uuid
+                    OR ordering_key = $3",
+                &[&request_id, &case_id, &seed.order_id],
             )
             .await;
         let _ = client

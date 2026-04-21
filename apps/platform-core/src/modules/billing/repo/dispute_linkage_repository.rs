@@ -13,6 +13,8 @@ pub struct DisputeOpenLinkageResult {
     pub legal_hold_id: String,
     pub settlement_freeze_count: i64,
     pub governance_action_count: i64,
+    pub settlement_hold_event_id: Option<String>,
+    pub settlement_hold_occurred_at: Option<String>,
     pub order_delivery_status: String,
     pub order_acceptance_status: String,
     pub order_settlement_status: String,
@@ -91,7 +93,7 @@ pub async fn apply_dispute_open_linkage(
         .await
         .map_err(map_db_error)?;
 
-    ensure_provisional_dispute_hold_in_tx(
+    let settlement_hold_event = ensure_provisional_dispute_hold_in_tx(
         client,
         order_id,
         reason_code,
@@ -146,6 +148,12 @@ pub async fn apply_dispute_open_linkage(
         legal_hold_id,
         settlement_freeze_count,
         governance_action_count,
+        settlement_hold_event_id: settlement_hold_event
+            .as_ref()
+            .map(|event| event.billing_event_id.clone()),
+        settlement_hold_occurred_at: settlement_hold_event
+            .as_ref()
+            .map(|event| event.occurred_at.clone()),
         order_delivery_status,
         order_acceptance_status,
         order_settlement_status,

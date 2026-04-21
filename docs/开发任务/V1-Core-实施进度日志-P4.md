@@ -524,3 +524,101 @@
 - 备注：
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
   - 本批中途发现本地 Redis CLI 需要使用显式 `-a datab_redis_pass -n 2` 才能回查短状态，但 worker 自身 Redis 配置与运行态重试闭环正常；该差异已体现在 runbook 的手工联调步骤中。
+### BATCH-206（计划中）
+- 任务：`NOTIF-007` 争议升级 / 监管冻结 / 恢复结算通知模板与发送逻辑
+- 状态：计划中
+- 说明：当前批次基于 `BIL-013 / BIL-014` 已冻结的 `support.dispute_case / dispute.created|resolved` 与账单冻结 / 解冻事实，补齐 `dispute.escalated / settlement.frozen / settlement.resumed` 三类通知的模板、发送逻辑与最小披露策略。重点保证 buyer / seller / ops 的角色隔离，不把争议证据、裁决明细或风控联查字段直接泄露给业务用户，同时把冻结 / 恢复结算的审计轨迹和动作入口统一收口到正式通知链路。
+- 追溯：本批优先复用既有 `notification-contract + ops.notification_template + notification-worker` 模型，以及 `support.dispute_case` canonical outbox 与 `billing.adjustment.provisional_hold/release` 事实；若冻结 / 恢复结算的通知 source-event 或 route-policy 口径不足，再在不破坏 `NOTIF-002 / BIL-013 / BIL-014` 冻结边界的前提下增量补齐。
+### BATCH-206（待审批）
+- 任务：`NOTIF-007` 争议升级 / 监管冻结 / 恢复结算通知模板与发送逻辑
+- 状态：待审批
+- 当前任务编号：`NOTIF-007`
+- 前置依赖核对结果：`NOTIF-002` 已冻结 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式协议；`BIL-013`、`BIL-014` 已完成争议开案 / 联查主链；`BIL-025` 已提供真实冻结与释放结算事实。本批不新发明 topic / consumer / scene，仅在既有冻结链路上补三类通知闭环。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批完成标准是 `dispute.escalated / settlement.frozen / settlement.resumed` 三类通知模板、发送逻辑、角色隔离与审计留痕。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：核对争议开案、冻结、退款 / 赔付 / 手工放款释放冻结的真实业务顺序。
+  - `docs/原始PRD/审计、证据链与回放设计.md`、`docs/原始PRD/交易链监控、公平性与信任安全设计.md`：核对争议、法务保全、冻结治理动作与审计 / 监管联查边界。
+  - `docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：确认正式通知入口仍是 `notification.requested -> dtp.notification.dispatch`，不得把 `dtp.outbox.domain-events` 当正式消费入口。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 PostgreSQL / Kafka / Redis / Keycloak / 观测栈的正式边界与本地联调方式。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认通知 route authority、topic 拓扑与异步写链口径。
+  - `apps/platform-core/src/modules/billing/repo/dispute_repository.rs`、`dispute_linkage_repository.rs`、`billing_adjustment_repository.rs`、`refund_repository.rs`、`compensation_repository.rs`、`payout_repository.rs`：核对真实争议开案、冻结记录、释放事实与账单处理动作点。
+  - `apps/platform-core/src/modules/billing/tests/bil013_dispute_case_db.rs`、`bil014_dispute_linkage_db.rs`、`bil025_billing_adjustment_freeze_db.rs`、`apps/platform-core/src/modules/integration/tests/notification_contract_db.rs`：复核现有 DB smoke 与通知协议样例，只把已实现部分作为参考，不直接视为完成证明。
+- 实现要点：
+  - 新增 `080_notification_dispute_settlement_templates.sql` / downgrade，把 `NOTIFY_DISPUTE_ESCALATED_V1`、`NOTIFY_SETTLEMENT_FROZEN_V1`、`NOTIFY_SETTLEMENT_RESUMED_V1` 升级到 `version_no=2`，并归档旧版模板；三套模板统一采用 `mock-log + zh-CN + active`，并把最小披露、ops 扩展字段与 fallback 文案固化到 PostgreSQL 权威模板表。
+  - `platform-core.integration` 新增 `queue_dispute_lifecycle_notifications` 与 `queue_settlement_resume_notifications`：
+    - 争议开案时基于 `support.dispute_case / dispute.created` 真实写入 buyer / seller / ops 三条 `dispute.escalated`
+    - 若同事务内真实记录了 `billing.billing_event / billing.event.recorded` 且 `event_source=settlement_dispute_hold`，则再写 buyer / seller / ops 三条 `settlement.frozen`
+    - 只有在真实释放冻结事实出现时，才写 buyer / seller / ops 三条 `settlement.resumed`
+  - `billing_adjustment_repository` 的 `ensure_provisional_dispute_hold_in_tx` 与 `release_provisional_dispute_hold_in_tx` 改为返回真实 `BillingEvent`，避免再用“争议已结案”替代“结算已释放”；本批按人工确认结论，把 `settlement.resumed` 正式绑定到 `billing.billing_event / billing.event.recorded` 且 `event_source=settlement_dispute_release`。
+  - `dispute_linkage_repository`、`dispute_repository`、`refund_repository`、`compensation_repository`、`payout_repository` 在真实动作点把 hold / release 事件 ID、发生时间与 case / order 关联信息带入通知桥接层，确保通知语义与主状态一致。
+  - buyer / seller / ops 的动作入口与字段边界冻结为：
+    - `dispute.escalated` buyer：`/support/cases/new?order_id=:orderId`
+    - `dispute.escalated` seller：`/trade/orders/:orderId`
+    - `dispute.escalated` ops、`settlement.frozen` ops：`/ops/risk?order_id=:orderId&case_id=:caseId`
+    - `settlement.frozen` buyer / seller：`/billing?order_id=:orderId`
+    - `settlement.resumed` buyer / seller：`/billing/refunds?order_id=:orderId&case_id=:caseId`
+    - `settlement.resumed` ops：`/ops/audit/trace?order_id=:orderId&case_id=:caseId`
+  - buyer / seller payload 仅保留订单、商品、状态、原因与动作入口；ops payload 才允许附带 `freeze_ticket_id / legal_hold_id / governance_action_count / settlement_freeze_count / hold_billing_event_id / resolution_action / resolution_ref_id / liability_type`。
+  - 新增 `notif007_dispute_settlement_db.rs`，并扩展 `bil014_dispute_linkage_db.rs`、`bil025_billing_adjustment_freeze_db.rs`、`notification_contract_db.rs`，把 source-event、模板版本、角色隔离、动作入口、重复入队抑制与恢复结算不再错误绑定 `support.dispute_case / dispute.resolved` 全部落到真实 DB smoke。
+  - 更新 `apps/notification-worker/README.md` 与 `docs/04-runbooks/notification-worker.md`，补齐 `NOTIF-007` 的 scene、source-event、动作链接、重试 / 去重 / 观测链联调口径。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo check -p notification-worker`
+  5. `cargo test -p notification-worker`
+  6. `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/migrate-reset.sh`
+  7. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif007_dispute_settlement_notifications_db_smoke -- --nocapture`
+  8. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil014_dispute_linkage_db_smoke -- --nocapture`
+  9. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil025_billing_adjustment_freeze_db_smoke -- --nocapture`
+  10. `./scripts/check-topic-topology.sh`
+  11. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  12. `./scripts/check-query-compile.sh`
+  13. `curl http://127.0.0.1:8097/health/live`、`/health/ready`、`/health/deps`
+  14. `POST /internal/notifications/templates/preview` 预览：
+      - `dispute.escalated / buyer`
+      - `settlement.frozen / ops`
+      - `settlement.resumed / ops`
+  15. `POST /internal/notifications/send` 手工注入：
+      - `dispute.escalated / buyer`，随后同一 `event_id` 再投一次验证去重
+      - `settlement.frozen / ops`
+      - `settlement.resumed / ops`，使用 `simulate_failures=1 + backoff_ms=4000` 验证 Redis 重试队列与审计链
+  16. 用 `psql`、`redis-cli`、`curl` 回查 `ops.consumer_idempotency_record`、`ops.system_log`、`ops.trace_index`、`audit.audit_event`、worker `/metrics`、Prometheus API、Alertmanager API、Grafana `/api/health`、Loki `/ready`、Tempo `/metrics`。
+  17. 清理本批非 append-only 测试数据：删除 `ops.consumer_idempotency_record`、`ops.trace_index` 与 Redis 短状态 / 重试载荷；`audit.audit_event` 与 `ops.system_log` 按 append-only 保留。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`migrate-reset.sh`、`notif007_dispute_settlement_notifications_db_smoke`、`bil014_dispute_linkage_db_smoke`、`bil025_billing_adjustment_freeze_db_smoke`、`./scripts/check-topic-topology.sh`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过。
+  - `notif007_dispute_settlement_notifications_db_smoke` 在真实 PostgreSQL 中验证：三套模板 active version 均为 `2`，buyer / seller / ops 的 payload 字段按披露边界分离，且 `settlement.resumed` 的 source-event 已固定为 `billing.billing_event / billing.event.recorded`。
+  - `bil014_dispute_linkage_db_smoke` 真实验证争议开案流程会写出 6 条通知 outbox：buyer `dispute.escalated` 仍来自 `support.dispute_case / dispute.created`，ops `settlement.frozen` 来自 `billing.billing_event / billing.event.recorded`，并能回查到 `freeze_ticket_id / legal_hold_id` 只出现在 ops payload。
+  - `bil025_billing_adjustment_freeze_db_smoke` 真实验证手工放款释放冻结后会写出 3 条 `settlement.resumed` 通知；buyer 只看到账单入口，ops payload 包含 `resolution_action=manual_payout_execute`，不再把 `dispute.resolved` 当恢复结算完成事实。
+  - 模板 preview 命中结果：
+    - `dispute.escalated / buyer` 命中 `NOTIFY_DISPUTE_ESCALATED_V1 version=2`，正文不含 `freeze_ticket=`、`legal_hold=`、`resolution=`
+    - `settlement.frozen / ops` 命中 `NOTIFY_SETTLEMENT_FROZEN_V1 version=2`，正文包含 `freeze_ticket=`、`legal_hold=`
+    - `settlement.resumed / ops` 命中 `NOTIFY_SETTLEMENT_RESUMED_V1 version=2`，正文包含 `freeze_ticket=`、`legal_hold=`、`resolution=manual_payout_execute/...`
+  - worker 运行态健康检查通过：`/health/live=ok`、`/health/deps` 返回 DB / Redis / Kafka / Keycloak 全部 reachable。
+  - 手工发送验证通过：
+    - `dispute.escalated / buyer` 首次投递后 `ops.consumer_idempotency_record=processed:1`；同一 `event_id` 再投一次后，worker `/metrics` 与 Prometheus 中 `notification_worker_events_total{result="duplicate"}` 增长，数据库未新增第二次处理记录。
+    - `settlement.frozen / ops` 写入 `ops.system_log=notification sent via mock-log`，模板编码为 `NOTIFY_SETTLEMENT_FROZEN_V1`，`ops.trace_index.root_span_name=notification.dispatch`。
+    - `settlement.resumed / ops` 首次失败后 Redis `datab:v1:notification:retry-queue` 深度为 `1`、短状态为 `retrying`；重试后队列回到 `0`、短状态变为 `processed`，数据库同时写入：
+      - `ops.system_log`: `notification send failed and was queued for retry` -> `notification sent via mock-log`
+      - `ops.trace_index`: `notification.retrying` -> `notification.dispatch`
+      - `audit.audit_event`: `notification.dispatch.retry_scheduled` -> `notification.dispatch.sent`
+  - 观测链回查通过：
+    - worker `/metrics`、Prometheus API 中 `notification_worker_events_total`、`notification_worker_send_total`、`notification_worker_retry_queue_depth` 均可见更新
+    - Prometheus rules 中存在 `NotificationRetryQueueBacklog`
+    - Alertmanager `/api/v2/status` 返回 `ready`
+    - Grafana `/api/health` 返回 `database=ok`
+    - Loki `/ready` 返回 `ready`
+    - Tempo `/metrics` 可访问
+  - 临时测试数据清理结果：本批手工样例对应的 `ops.consumer_idempotency_record`、`ops.trace_index` 与 Redis 短状态 / 重试载荷已删除；`audit.audit_event` 与 `ops.system_log` 按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-007`
+  - `业务流程图-V1-完整版.md`：争议开案 / 冻结 / 释放冻结顺序
+  - `审计、证据链与回放设计.md`、`交易链监控、公平性与信任安全设计.md`：审计、法务保全、治理动作与联查边界
+  - `事件模型与Topic清单正式版.md`、`topics.v1.json`、`072/074` SQL：正式 topic、route authority 与 source-event 边界
+  - `A10-NOTIF-通知链路与命名边界缺口.md`：通知正式入口、scene catalog 与命名边界
+- 覆盖的任务清单条目：`NOTIF-007`
+- 未覆盖项：无。更广义的渠道抽象、统一重放入口、通知联查 OpenAPI / 测试清单仍按顺序留给 `NOTIF-008 ~ NOTIF-014`。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+  - 本批中途发现 `risk.governance_action_log` smoke 建数错误使用了不存在的 `payload` 列，已按正式 schema 修正为 `action_payload`，不影响冻结业务口径。

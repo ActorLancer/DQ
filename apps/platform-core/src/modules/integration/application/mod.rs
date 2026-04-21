@@ -2118,6 +2118,1122 @@ fn parse_billing_resolution_scene(scene: &str) -> Result<NotificationScene, Erro
     }
 }
 
+pub struct DisputeLifecycleNotificationDispatchInput<'a> {
+    pub order_id: &'a str,
+    pub case_id: &'a str,
+    pub dispute_occurred_at: Option<&'a str>,
+    pub settlement_hold_event_id: Option<&'a str>,
+    pub settlement_hold_occurred_at: Option<&'a str>,
+    pub request_id: Option<&'a str>,
+    pub trace_id: Option<&'a str>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DisputeLifecycleNotificationDispatchResult {
+    pub inserted_count: usize,
+    pub replayed_count: usize,
+    pub idempotency_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct DisputeLifecycleNotificationContext {
+    order_id: String,
+    product_id: String,
+    product_title: String,
+    sku_code: String,
+    sku_type: String,
+    order_amount: String,
+    currency_code: String,
+    order_status: String,
+    payment_status: String,
+    delivery_status: String,
+    acceptance_status: String,
+    settlement_status: String,
+    dispute_status: String,
+    buyer_org_id: String,
+    buyer_org_name: String,
+    seller_org_id: String,
+    seller_org_name: String,
+    case_id: String,
+    reason_code: String,
+    case_status: String,
+    freeze_ticket_id: Option<String>,
+    legal_hold_id: Option<String>,
+    governance_action_count: i64,
+    settlement_freeze_count: i64,
+}
+
+#[derive(Debug, Clone)]
+struct DisputeLifecycleNotificationDispatch {
+    scene: NotificationScene,
+    audience: NotificationAudience,
+    recipient: NotificationRecipient,
+    source_event: NotificationSourceEvent,
+    variables: Value,
+    metadata: Value,
+    subject_refs: Vec<NotificationSubjectRef>,
+    links: Vec<NotificationActionLink>,
+}
+
+pub async fn queue_dispute_lifecycle_notifications(
+    client: &(impl GenericClient + Sync),
+    input: DisputeLifecycleNotificationDispatchInput<'_>,
+) -> Result<DisputeLifecycleNotificationDispatchResult, Error> {
+    let context =
+        load_dispute_lifecycle_notification_context(client, input.order_id, input.case_id).await?;
+    let buyer_recipient = load_org_recipient(
+        client,
+        &context.buyer_org_id,
+        &context.buyer_org_name,
+        &["buyer_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let seller_recipient = load_org_recipient(
+        client,
+        &context.seller_org_id,
+        &context.seller_org_name,
+        &["seller_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let ops_recipient = load_ops_recipient(client).await?;
+
+    let dispute_source_event = NotificationSourceEvent {
+        aggregate_type: "support.dispute_case".to_string(),
+        aggregate_id: input.case_id.to_string(),
+        event_type: "dispute.created".to_string(),
+        event_id: None,
+        target_topic: Some("dtp.outbox.domain-events".to_string()),
+        occurred_at: input.dispute_occurred_at.map(str::to_string),
+    };
+
+    let mut dispatches = vec![
+        DisputeLifecycleNotificationDispatch::buyer_dispute(
+            &context,
+            &buyer_recipient,
+            &dispute_source_event,
+        ),
+        DisputeLifecycleNotificationDispatch::seller_dispute(
+            &context,
+            &seller_recipient,
+            &dispute_source_event,
+        ),
+        DisputeLifecycleNotificationDispatch::ops_dispute(
+            &context,
+            &ops_recipient,
+            &dispute_source_event,
+        ),
+    ];
+
+    if let Some(settlement_hold_event_id) = input
+        .settlement_hold_event_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let settlement_source_event = NotificationSourceEvent {
+            aggregate_type: "billing.billing_event".to_string(),
+            aggregate_id: settlement_hold_event_id.to_string(),
+            event_type: "billing.event.recorded".to_string(),
+            event_id: None,
+            target_topic: Some("dtp.outbox.domain-events".to_string()),
+            occurred_at: input.settlement_hold_occurred_at.map(str::to_string),
+        };
+        dispatches.extend([
+            DisputeLifecycleNotificationDispatch::buyer_settlement_frozen(
+                &context,
+                &buyer_recipient,
+                &settlement_source_event,
+            ),
+            DisputeLifecycleNotificationDispatch::seller_settlement_frozen(
+                &context,
+                &seller_recipient,
+                &settlement_source_event,
+            ),
+            DisputeLifecycleNotificationDispatch::ops_settlement_frozen(
+                &context,
+                &ops_recipient,
+                &settlement_source_event,
+            ),
+        ]);
+    }
+
+    let mut result = DisputeLifecycleNotificationDispatchResult::default();
+    for dispatch in dispatches {
+        let aggregate_id = dispatch.source_event.aggregate_id.clone();
+        let (payload, idempotency_key) = prepare_notification_request(dispatch.build_input());
+        let inserted = queue_notification_request(
+            client,
+            QueueNotificationRequest {
+                aggregate_id: &aggregate_id,
+                payload: &payload,
+                idempotency_key: &idempotency_key,
+                request_id: input.request_id,
+                trace_id: input.trace_id,
+            },
+        )
+        .await?;
+        if inserted {
+            result.inserted_count += 1;
+        } else {
+            result.replayed_count += 1;
+        }
+        result.idempotency_keys.push(idempotency_key);
+    }
+
+    Ok(result)
+}
+
+impl DisputeLifecycleNotificationDispatch {
+    fn buyer_dispute(
+        context: &DisputeLifecycleNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = dispute_create_href(&context.order_id);
+        Self {
+            scene: NotificationScene::DisputeEscalated,
+            audience: NotificationAudience::Buyer,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "争议已受理，结算将暂缓处理",
+                "headline": format!(
+                    "订单 {} 已进入争议处理流程，请前往争议页查看受理状态并补充材料。",
+                    context.order_id
+                ),
+                "action_summary": "进入争议提交页查看当前案件状态，必要时继续补充说明或证据。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "show_ops_context": false,
+                "action_label": "查看争议处理页",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "dispute_escalated_buyer_visible",
+                "recipient_scope": "buyer_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "case_status": context.case_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+            }),
+            subject_refs: context.dispute_subject_refs(),
+            links: dispute_case_links(&context.order_id),
+        }
+    }
+
+    fn seller_dispute(
+        context: &DisputeLifecycleNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = order_detail_href(&context.order_id);
+        Self {
+            scene: NotificationScene::DisputeEscalated,
+            audience: NotificationAudience::Seller,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "订单进入争议处理，请准备后续材料",
+                "headline": format!(
+                    "订单 {} 已被提交争议，请先在订单详情核对原因并准备处理材料。",
+                    context.order_id
+                ),
+                "action_summary": "先查看订单详情确认争议原因与当前状态，后续如需补充材料再进入争议页。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "show_ops_context": false,
+                "action_label": "查看订单详情",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "dispute_escalated_seller_visible",
+                "recipient_scope": "seller_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "case_status": context.case_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+            }),
+            subject_refs: context.dispute_subject_refs(),
+            links: seller_dispute_links(&context.order_id),
+        }
+    }
+
+    fn ops_dispute(
+        context: &DisputeLifecycleNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = risk_console_href(&context.order_id, Some(&context.case_id));
+        Self {
+            scene: NotificationScene::DisputeEscalated,
+            audience: NotificationAudience::Ops,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "争议升级（运营联查）",
+                "headline": format!(
+                    "订单 {} 已进入争议处理，请核对冻结、保全和治理动作是否齐备。",
+                    context.order_id
+                ),
+                "action_summary": "进入风控工作台和审计联查页确认冻结票据、legal hold 与治理动作都已落盘。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "freeze_ticket_id": context.freeze_ticket_id,
+                "legal_hold_id": context.legal_hold_id,
+                "governance_action_count": context.governance_action_count,
+                "settlement_freeze_count": context.settlement_freeze_count,
+                "show_ops_context": true,
+                "action_label": "查看风控工作台",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "dispute_escalated_ops_visible",
+                "recipient_scope": "ops_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "case_status": context.case_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "freeze_ticket_id": context.freeze_ticket_id,
+                "legal_hold_id": context.legal_hold_id,
+                "governance_action_count": context.governance_action_count,
+                "settlement_freeze_count": context.settlement_freeze_count,
+            }),
+            subject_refs: context.dispute_subject_refs(),
+            links: ops_governance_links(&context.order_id, Some(&context.case_id)),
+        }
+    }
+
+    fn buyer_settlement_frozen(
+        context: &DisputeLifecycleNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = billing_center_href(&context.order_id);
+        Self {
+            scene: NotificationScene::SettlementFrozen,
+            audience: NotificationAudience::Buyer,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "结算已冻结，等待争议处理结果",
+                "headline": format!(
+                    "订单 {} 的待结算金额已被冻结，请关注争议处理进度。",
+                    context.order_id
+                ),
+                "action_summary": "进入账单中心查看当前冻结状态，必要时继续在争议页补充材料。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "show_ops_context": false,
+                "action_label": "查看账单中心",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "settlement_frozen_buyer_visible",
+                "recipient_scope": "buyer_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "case_status": context.case_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+            }),
+            subject_refs: context.settlement_subject_refs(source_event),
+            links: settlement_party_links(&context.order_id, Some(&context.case_id)),
+        }
+    }
+
+    fn seller_settlement_frozen(
+        context: &DisputeLifecycleNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = billing_center_href(&context.order_id);
+        Self {
+            scene: NotificationScene::SettlementFrozen,
+            audience: NotificationAudience::Seller,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "结算已冻结，请关注争议处理",
+                "headline": format!(
+                    "订单 {} 的结算已被冻结，请在账单中心关注冻结与后续处理结果。",
+                    context.order_id
+                ),
+                "action_summary": "进入账单中心确认冻结状态，并准备在争议处理过程中配合补充材料。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "show_ops_context": false,
+                "action_label": "查看账单中心",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "settlement_frozen_seller_visible",
+                "recipient_scope": "seller_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "case_status": context.case_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+            }),
+            subject_refs: context.settlement_subject_refs(source_event),
+            links: settlement_party_links(&context.order_id, Some(&context.case_id)),
+        }
+    }
+
+    fn ops_settlement_frozen(
+        context: &DisputeLifecycleNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = risk_console_href(&context.order_id, Some(&context.case_id));
+        Self {
+            scene: NotificationScene::SettlementFrozen,
+            audience: NotificationAudience::Ops,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "结算已冻结（运营联查）",
+                "headline": format!(
+                    "订单 {} 已落冻结账单事实，请联查冻结票据、保全状态与治理动作。",
+                    context.order_id
+                ),
+                "action_summary": "进入风控工作台和审计联查页核对冻结事实、治理动作和保全过程。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "freeze_ticket_id": context.freeze_ticket_id,
+                "legal_hold_id": context.legal_hold_id,
+                "governance_action_count": context.governance_action_count,
+                "settlement_freeze_count": context.settlement_freeze_count,
+                "hold_billing_event_id": source_event.aggregate_id,
+                "show_ops_context": true,
+                "action_label": "查看风控工作台",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "settlement_frozen_ops_visible",
+                "recipient_scope": "ops_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "case_status": context.case_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "freeze_ticket_id": context.freeze_ticket_id,
+                "legal_hold_id": context.legal_hold_id,
+                "governance_action_count": context.governance_action_count,
+                "settlement_freeze_count": context.settlement_freeze_count,
+                "hold_billing_event_id": source_event.aggregate_id,
+            }),
+            subject_refs: context.settlement_subject_refs(source_event),
+            links: ops_governance_links(&context.order_id, Some(&context.case_id)),
+        }
+    }
+
+    fn build_input(self) -> BuildNotificationRequestInput {
+        BuildNotificationRequestInput {
+            scene: self.scene,
+            audience: self.audience,
+            recipient: self.recipient,
+            source_event: self.source_event,
+            variables: self.variables,
+            metadata: self.metadata,
+            retry_policy: None,
+            subject_refs: self.subject_refs,
+            links: self.links,
+            template_code: None,
+            channel: None,
+        }
+    }
+}
+
+impl DisputeLifecycleNotificationContext {
+    fn dispute_subject_refs(&self) -> Vec<NotificationSubjectRef> {
+        vec![
+            NotificationSubjectRef {
+                ref_type: "order".to_string(),
+                ref_id: self.order_id.clone(),
+            },
+            NotificationSubjectRef {
+                ref_type: "product".to_string(),
+                ref_id: self.product_id.clone(),
+            },
+            NotificationSubjectRef {
+                ref_type: "dispute_case".to_string(),
+                ref_id: self.case_id.clone(),
+            },
+        ]
+    }
+
+    fn settlement_subject_refs(
+        &self,
+        source_event: &NotificationSourceEvent,
+    ) -> Vec<NotificationSubjectRef> {
+        let mut refs = self.dispute_subject_refs();
+        refs.push(NotificationSubjectRef {
+            ref_type: "billing_event".to_string(),
+            ref_id: source_event.aggregate_id.clone(),
+        });
+        refs
+    }
+}
+
+async fn load_dispute_lifecycle_notification_context(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    case_id: &str,
+) -> Result<DisputeLifecycleNotificationContext, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               o.order_id::text,
+               o.product_id::text,
+               p.title,
+               COALESCE(sku.sku_code, ''),
+               COALESCE(sku.sku_type, ''),
+               o.amount::text,
+               o.currency_code,
+               o.status,
+               o.payment_status,
+               o.delivery_status,
+               o.acceptance_status,
+               o.settlement_status,
+               o.dispute_status,
+               buyer.org_id::text,
+               buyer.org_name,
+               seller.org_id::text,
+               seller.org_name,
+               dc.case_id::text,
+               dc.reason_code,
+               dc.status,
+               (
+                 SELECT freeze_ticket_id::text
+                 FROM risk.freeze_ticket
+                 WHERE ref_type = 'order'
+                   AND ref_id = o.order_id
+                 ORDER BY created_at DESC, freeze_ticket_id DESC
+                 LIMIT 1
+               ),
+               (
+                 SELECT legal_hold_id::text
+                 FROM audit.legal_hold
+                 WHERE hold_scope_type = 'order'
+                   AND hold_scope_id = o.order_id
+                 ORDER BY created_at DESC, legal_hold_id DESC
+                 LIMIT 1
+               ),
+               (
+                 SELECT COUNT(*)::bigint
+                 FROM risk.governance_action_log g
+                 JOIN risk.freeze_ticket f ON f.freeze_ticket_id = g.freeze_ticket_id
+                 WHERE f.ref_type = 'order'
+                   AND f.ref_id = o.order_id
+               ),
+               (
+                 SELECT COUNT(*)::bigint
+                 FROM billing.settlement_record sr
+                 WHERE sr.order_id = o.order_id
+                   AND sr.settlement_status = 'frozen'
+               )
+             FROM support.dispute_case dc
+             JOIN trade.order_main o ON o.order_id = dc.order_id
+             JOIN catalog.product p ON p.product_id = o.product_id
+             JOIN catalog.product_sku sku ON sku.sku_id = o.sku_id
+             JOIN core.organization buyer ON buyer.org_id = o.buyer_org_id
+             JOIN core.organization seller ON seller.org_id = o.seller_org_id
+             WHERE dc.case_id = $1::text::uuid
+               AND o.order_id = $2::text::uuid",
+            &[&case_id, &order_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Err(Error::Bind(format!(
+            "missing dispute notification context for order={order_id} case={case_id}"
+        )));
+    };
+
+    Ok(DisputeLifecycleNotificationContext {
+        order_id: row.get(0),
+        product_id: row.get(1),
+        product_title: row.get(2),
+        sku_code: row.get(3),
+        sku_type: row.get(4),
+        order_amount: row.get(5),
+        currency_code: row.get(6),
+        order_status: row.get(7),
+        payment_status: row.get(8),
+        delivery_status: row.get(9),
+        acceptance_status: row.get(10),
+        settlement_status: row.get(11),
+        dispute_status: row.get(12),
+        buyer_org_id: row.get(13),
+        buyer_org_name: row.get(14),
+        seller_org_id: row.get(15),
+        seller_org_name: row.get(16),
+        case_id: row.get(17),
+        reason_code: row.get(18),
+        case_status: row.get(19),
+        freeze_ticket_id: row.get(20),
+        legal_hold_id: row.get(21),
+        governance_action_count: row.get(22),
+        settlement_freeze_count: row.get(23),
+    })
+}
+
+pub struct SettlementResumeNotificationDispatchInput<'a> {
+    pub order_id: &'a str,
+    pub billing_event_id: &'a str,
+    pub occurred_at: Option<&'a str>,
+    pub request_id: Option<&'a str>,
+    pub trace_id: Option<&'a str>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct SettlementResumeNotificationDispatchResult {
+    pub inserted_count: usize,
+    pub replayed_count: usize,
+    pub idempotency_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SettlementResumeNotificationContext {
+    order_id: String,
+    product_id: String,
+    product_title: String,
+    sku_code: String,
+    sku_type: String,
+    order_amount: String,
+    currency_code: String,
+    order_status: String,
+    payment_status: String,
+    delivery_status: String,
+    acceptance_status: String,
+    settlement_status: String,
+    dispute_status: String,
+    buyer_org_id: String,
+    buyer_org_name: String,
+    seller_org_id: String,
+    seller_org_name: String,
+    release_amount: String,
+    release_currency_code: String,
+    billing_event_source: String,
+    case_id: Option<String>,
+    reason_code: Option<String>,
+    decision_code: Option<String>,
+    penalty_code: Option<String>,
+    liability_type: Option<String>,
+    resolution_action: Option<String>,
+    resolution_ref_id: Option<String>,
+    freeze_ticket_id: Option<String>,
+    legal_hold_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SettlementResumeNotificationDispatch {
+    scene: NotificationScene,
+    audience: NotificationAudience,
+    recipient: NotificationRecipient,
+    source_event: NotificationSourceEvent,
+    variables: Value,
+    metadata: Value,
+    subject_refs: Vec<NotificationSubjectRef>,
+    links: Vec<NotificationActionLink>,
+}
+
+pub async fn queue_settlement_resume_notifications(
+    client: &(impl GenericClient + Sync),
+    input: SettlementResumeNotificationDispatchInput<'_>,
+) -> Result<SettlementResumeNotificationDispatchResult, Error> {
+    let context =
+        load_settlement_resume_notification_context(client, input.order_id, input.billing_event_id)
+            .await?;
+    let buyer_recipient = load_org_recipient(
+        client,
+        &context.buyer_org_id,
+        &context.buyer_org_name,
+        &["buyer_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let seller_recipient = load_org_recipient(
+        client,
+        &context.seller_org_id,
+        &context.seller_org_name,
+        &["seller_operator", "tenant_admin", "tenant_operator"],
+    )
+    .await?;
+    let ops_recipient = load_ops_recipient(client).await?;
+    let source_event = NotificationSourceEvent {
+        aggregate_type: "billing.billing_event".to_string(),
+        aggregate_id: input.billing_event_id.to_string(),
+        event_type: "billing.event.recorded".to_string(),
+        event_id: None,
+        target_topic: Some("dtp.outbox.domain-events".to_string()),
+        occurred_at: input.occurred_at.map(str::to_string),
+    };
+    let dispatches = vec![
+        SettlementResumeNotificationDispatch::buyer(&context, &buyer_recipient, &source_event),
+        SettlementResumeNotificationDispatch::seller(&context, &seller_recipient, &source_event),
+        SettlementResumeNotificationDispatch::ops(&context, &ops_recipient, &source_event),
+    ];
+
+    let mut result = SettlementResumeNotificationDispatchResult::default();
+    for dispatch in dispatches {
+        let aggregate_id = dispatch.source_event.aggregate_id.clone();
+        let (payload, idempotency_key) = prepare_notification_request(dispatch.build_input());
+        let inserted = queue_notification_request(
+            client,
+            QueueNotificationRequest {
+                aggregate_id: &aggregate_id,
+                payload: &payload,
+                idempotency_key: &idempotency_key,
+                request_id: input.request_id,
+                trace_id: input.trace_id,
+            },
+        )
+        .await?;
+        if inserted {
+            result.inserted_count += 1;
+        } else {
+            result.replayed_count += 1;
+        }
+        result.idempotency_keys.push(idempotency_key);
+    }
+
+    Ok(result)
+}
+
+impl SettlementResumeNotificationDispatch {
+    fn buyer(
+        context: &SettlementResumeNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = settlement_resume_href(&context.order_id, context.case_id.as_deref());
+        Self {
+            scene: NotificationScene::SettlementResumed,
+            audience: NotificationAudience::Buyer,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "结算已恢复处理",
+                "headline": format!(
+                    "订单 {} 的争议冻结已解除，可回到账单页查看后续结算或退款处理。",
+                    context.order_id
+                ),
+                "action_summary": "进入账单页查看恢复后的结算状态，并关注后续退款、赔付或放款结果。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "release_amount": context.release_amount,
+                "release_currency_code": context.release_currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "decision_code": context.decision_code,
+                "show_ops_context": false,
+                "action_label": "查看账单页",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "settlement_resumed_buyer_visible",
+                "recipient_scope": "buyer_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "decision_code": context.decision_code,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "billing_event_source": context.billing_event_source,
+            }),
+            subject_refs: context.subject_refs(source_event),
+            links: settlement_party_links(&context.order_id, context.case_id.as_deref()),
+        }
+    }
+
+    fn seller(
+        context: &SettlementResumeNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = settlement_resume_href(&context.order_id, context.case_id.as_deref());
+        Self {
+            scene: NotificationScene::SettlementResumed,
+            audience: NotificationAudience::Seller,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "结算已恢复，请继续关注处理结果",
+                "headline": format!(
+                    "订单 {} 的冻结结算已解除，请回到账单页确认后续结算或退款结果。",
+                    context.order_id
+                ),
+                "action_summary": "进入账单页查看恢复后的结算状态和案件处理结果，准备配合后续执行。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "release_amount": context.release_amount,
+                "release_currency_code": context.release_currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "decision_code": context.decision_code,
+                "show_ops_context": false,
+                "action_label": "查看账单页",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "settlement_resumed_seller_visible",
+                "recipient_scope": "seller_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "decision_code": context.decision_code,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "billing_event_source": context.billing_event_source,
+            }),
+            subject_refs: context.subject_refs(source_event),
+            links: settlement_party_links(&context.order_id, context.case_id.as_deref()),
+        }
+    }
+
+    fn ops(
+        context: &SettlementResumeNotificationContext,
+        recipient: &NotificationRecipient,
+        source_event: &NotificationSourceEvent,
+    ) -> Self {
+        let action_href = audit_trace_href(&context.order_id, context.case_id.as_deref());
+        Self {
+            scene: NotificationScene::SettlementResumed,
+            audience: NotificationAudience::Ops,
+            recipient: recipient.clone(),
+            source_event: source_event.clone(),
+            variables: json!({
+                "subject": "恢复结算（运营联查）",
+                "headline": format!(
+                    "订单 {} 已写入恢复结算事实，请联查释放事件和后续处理结果。",
+                    context.order_id
+                ),
+                "action_summary": "进入审计联查页核对释放账单事件，并在账单页确认后续执行是否按预期推进。".to_string(),
+                "order_id": context.order_id,
+                "product_title": context.product_title,
+                "buyer_org_name": context.buyer_org_name,
+                "seller_org_name": context.seller_org_name,
+                "order_amount": context.order_amount,
+                "currency_code": context.currency_code,
+                "release_amount": context.release_amount,
+                "release_currency_code": context.release_currency_code,
+                "payment_status": context.payment_status,
+                "delivery_status": context.delivery_status,
+                "acceptance_status": context.acceptance_status,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "decision_code": context.decision_code,
+                "penalty_code": context.penalty_code,
+                "liability_type": context.liability_type,
+                "resolution_action": context.resolution_action,
+                "resolution_ref_id": context.resolution_ref_id,
+                "freeze_ticket_id": context.freeze_ticket_id,
+                "legal_hold_id": context.legal_hold_id,
+                "billing_event_source": context.billing_event_source,
+                "show_ops_context": true,
+                "action_label": "查看审计联查页",
+                "action_href": action_href,
+            }),
+            metadata: json!({
+                "task_id": "NOTIF-007",
+                "transition_code": "settlement_resumed_ops_visible",
+                "recipient_scope": "ops_visible",
+                "order_status": context.order_status,
+                "sku_code": context.sku_code,
+                "sku_type": context.sku_type,
+                "case_id": context.case_id,
+                "reason_code": context.reason_code,
+                "decision_code": context.decision_code,
+                "penalty_code": context.penalty_code,
+                "liability_type": context.liability_type,
+                "settlement_status": context.settlement_status,
+                "dispute_status": context.dispute_status,
+                "resolution_action": context.resolution_action,
+                "resolution_ref_id": context.resolution_ref_id,
+                "freeze_ticket_id": context.freeze_ticket_id,
+                "legal_hold_id": context.legal_hold_id,
+                "billing_event_source": context.billing_event_source,
+            }),
+            subject_refs: context.subject_refs(source_event),
+            links: settlement_resume_ops_links(&context.order_id, context.case_id.as_deref()),
+        }
+    }
+
+    fn build_input(self) -> BuildNotificationRequestInput {
+        BuildNotificationRequestInput {
+            scene: self.scene,
+            audience: self.audience,
+            recipient: self.recipient,
+            source_event: self.source_event,
+            variables: self.variables,
+            metadata: self.metadata,
+            retry_policy: None,
+            subject_refs: self.subject_refs,
+            links: self.links,
+            template_code: None,
+            channel: None,
+        }
+    }
+}
+
+impl SettlementResumeNotificationContext {
+    fn subject_refs(&self, source_event: &NotificationSourceEvent) -> Vec<NotificationSubjectRef> {
+        let mut refs = vec![
+            NotificationSubjectRef {
+                ref_type: "order".to_string(),
+                ref_id: self.order_id.clone(),
+            },
+            NotificationSubjectRef {
+                ref_type: "product".to_string(),
+                ref_id: self.product_id.clone(),
+            },
+            NotificationSubjectRef {
+                ref_type: "billing_event".to_string(),
+                ref_id: source_event.aggregate_id.clone(),
+            },
+        ];
+        if let Some(case_id) = self.case_id.as_ref() {
+            refs.push(NotificationSubjectRef {
+                ref_type: "dispute_case".to_string(),
+                ref_id: case_id.clone(),
+            });
+        }
+        refs
+    }
+}
+
+async fn load_settlement_resume_notification_context(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    billing_event_id: &str,
+) -> Result<SettlementResumeNotificationContext, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               o.order_id::text,
+               o.product_id::text,
+               p.title,
+               COALESCE(sku.sku_code, ''),
+               COALESCE(sku.sku_type, ''),
+               o.amount::text,
+               o.currency_code,
+               o.status,
+               o.payment_status,
+               o.delivery_status,
+               o.acceptance_status,
+               o.settlement_status,
+               o.dispute_status,
+               buyer.org_id::text,
+               buyer.org_name,
+               seller.org_id::text,
+               seller.org_name,
+               be.amount::text,
+               be.currency_code,
+               be.event_source,
+               COALESCE(be.metadata, '{}'::jsonb),
+               dc.case_id::text,
+               dc.reason_code,
+               dc.decision_code,
+               dc.penalty_code,
+               dr.liability_type,
+               (
+                 SELECT freeze_ticket_id::text
+                 FROM risk.freeze_ticket
+                 WHERE ref_type = 'order'
+                   AND ref_id = o.order_id
+                 ORDER BY created_at DESC, freeze_ticket_id DESC
+                 LIMIT 1
+               ),
+               (
+                 SELECT legal_hold_id::text
+                 FROM audit.legal_hold
+                 WHERE hold_scope_type = 'order'
+                   AND hold_scope_id = o.order_id
+                 ORDER BY created_at DESC, legal_hold_id DESC
+                 LIMIT 1
+               )
+             FROM billing.billing_event be
+             JOIN trade.order_main o ON o.order_id = be.order_id
+             JOIN catalog.product p ON p.product_id = o.product_id
+             JOIN catalog.product_sku sku ON sku.sku_id = o.sku_id
+             JOIN core.organization buyer ON buyer.org_id = o.buyer_org_id
+             JOIN core.organization seller ON seller.org_id = o.seller_org_id
+             LEFT JOIN LATERAL (
+               SELECT case_id, reason_code, decision_code, penalty_code
+               FROM support.dispute_case
+               WHERE order_id = o.order_id
+               ORDER BY COALESCE(resolved_at, updated_at) DESC, updated_at DESC, case_id DESC
+               LIMIT 1
+             ) dc ON TRUE
+             LEFT JOIN LATERAL (
+               SELECT liability_type
+               FROM support.decision_record
+               WHERE case_id = dc.case_id
+               ORDER BY decided_at DESC, decision_id DESC
+               LIMIT 1
+             ) dr ON TRUE
+             WHERE be.billing_event_id = $1::text::uuid
+               AND o.order_id = $2::text::uuid",
+            &[&billing_event_id, &order_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Err(Error::Bind(format!(
+            "missing settlement resume notification context for order={order_id} billing_event={billing_event_id}"
+        )));
+    };
+    let metadata: Value = row.get(20);
+
+    Ok(SettlementResumeNotificationContext {
+        order_id: row.get(0),
+        product_id: row.get(1),
+        product_title: row.get(2),
+        sku_code: row.get(3),
+        sku_type: row.get(4),
+        order_amount: row.get(5),
+        currency_code: row.get(6),
+        order_status: row.get(7),
+        payment_status: row.get(8),
+        delivery_status: row.get(9),
+        acceptance_status: row.get(10),
+        settlement_status: row.get(11),
+        dispute_status: row.get(12),
+        buyer_org_id: row.get(13),
+        buyer_org_name: row.get(14),
+        seller_org_id: row.get(15),
+        seller_org_name: row.get(16),
+        release_amount: row.get(17),
+        release_currency_code: row.get(18),
+        billing_event_source: row.get(19),
+        case_id: row.get(21),
+        reason_code: row.get(22),
+        decision_code: row.get(23),
+        penalty_code: row.get(24),
+        liability_type: row.get(25),
+        resolution_action: json_text(&metadata, "resolution_action"),
+        resolution_ref_id: json_text(&metadata, "resolution_ref_id"),
+        freeze_ticket_id: row.get(26),
+        legal_hold_id: row.get(27),
+    })
+}
+
 fn json_text(value: &Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -2144,6 +3260,106 @@ fn billing_resolution_links(order_id: &str, case_id: Option<&str>) -> Vec<Notifi
         NotificationActionLink {
             link_code: "dispute_create".to_string(),
             href: dispute_create_href(order_id),
+        },
+    ]
+}
+
+fn dispute_case_links(order_id: &str) -> Vec<NotificationActionLink> {
+    vec![
+        NotificationActionLink {
+            link_code: "dispute_create".to_string(),
+            href: dispute_create_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "order_detail".to_string(),
+            href: order_detail_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "billing_center".to_string(),
+            href: billing_center_href(order_id),
+        },
+    ]
+}
+
+fn seller_dispute_links(order_id: &str) -> Vec<NotificationActionLink> {
+    vec![
+        NotificationActionLink {
+            link_code: "order_detail".to_string(),
+            href: order_detail_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "dispute_create".to_string(),
+            href: dispute_create_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "billing_center".to_string(),
+            href: billing_center_href(order_id),
+        },
+    ]
+}
+
+fn settlement_party_links(order_id: &str, case_id: Option<&str>) -> Vec<NotificationActionLink> {
+    vec![
+        NotificationActionLink {
+            link_code: "billing_resolution".to_string(),
+            href: settlement_resume_href(order_id, case_id),
+        },
+        NotificationActionLink {
+            link_code: "billing_center".to_string(),
+            href: billing_center_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "order_detail".to_string(),
+            href: order_detail_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "dispute_create".to_string(),
+            href: dispute_create_href(order_id),
+        },
+    ]
+}
+
+fn ops_governance_links(order_id: &str, case_id: Option<&str>) -> Vec<NotificationActionLink> {
+    vec![
+        NotificationActionLink {
+            link_code: "risk_console".to_string(),
+            href: risk_console_href(order_id, case_id),
+        },
+        NotificationActionLink {
+            link_code: "audit_trace".to_string(),
+            href: audit_trace_href(order_id, case_id),
+        },
+        NotificationActionLink {
+            link_code: "billing_center".to_string(),
+            href: billing_center_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "order_detail".to_string(),
+            href: order_detail_href(order_id),
+        },
+    ]
+}
+
+fn settlement_resume_ops_links(
+    order_id: &str,
+    case_id: Option<&str>,
+) -> Vec<NotificationActionLink> {
+    vec![
+        NotificationActionLink {
+            link_code: "audit_trace".to_string(),
+            href: audit_trace_href(order_id, case_id),
+        },
+        NotificationActionLink {
+            link_code: "billing_resolution".to_string(),
+            href: settlement_resume_href(order_id, case_id),
+        },
+        NotificationActionLink {
+            link_code: "billing_center".to_string(),
+            href: billing_center_href(order_id),
+        },
+        NotificationActionLink {
+            link_code: "risk_console".to_string(),
+            href: risk_console_href(order_id, case_id),
         },
     ]
 }
@@ -2286,8 +3502,30 @@ fn billing_resolution_href(order_id: &str, case_id: Option<&str>) -> String {
     }
 }
 
+fn settlement_resume_href(order_id: &str, case_id: Option<&str>) -> String {
+    billing_resolution_href(order_id, case_id)
+}
+
 fn dispute_create_href(order_id: &str) -> String {
     format!("/support/cases/new?order_id={order_id}")
+}
+
+fn risk_console_href(order_id: &str, case_id: Option<&str>) -> String {
+    match case_id {
+        Some(case_id) if !case_id.trim().is_empty() => {
+            format!("/ops/risk?order_id={order_id}&case_id={case_id}")
+        }
+        _ => format!("/ops/risk?order_id={order_id}"),
+    }
+}
+
+fn audit_trace_href(order_id: &str, case_id: Option<&str>) -> String {
+    match case_id {
+        Some(case_id) if !case_id.trim().is_empty() => {
+            format!("/ops/audit/trace?order_id={order_id}&case_id={case_id}")
+        }
+        _ => format!("/ops/audit/trace?order_id={order_id}"),
+    }
 }
 
 async fn load_org_recipient(

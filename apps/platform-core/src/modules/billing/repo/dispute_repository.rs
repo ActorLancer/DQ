@@ -5,6 +5,9 @@ use crate::modules::billing::models::{
 };
 use crate::modules::billing::repo::dispute_linkage_repository::apply_dispute_open_linkage;
 use crate::modules::delivery::repo::invalidate_delivery_cutoff_download_ticket_caches;
+use crate::modules::integration::application::{
+    DisputeLifecycleNotificationDispatchInput, queue_dispute_lifecycle_notifications,
+};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
 use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
@@ -168,6 +171,20 @@ pub async fn create_dispute_case(
         trace_id,
     )
     .await?;
+    let _ = queue_dispute_lifecycle_notifications(
+        &tx,
+        DisputeLifecycleNotificationDispatchInput {
+            order_id: &payload.order_id,
+            case_id: &dispute_case.case_id,
+            dispute_occurred_at: Some(&dispute_case.opened_at),
+            settlement_hold_event_id: linkage.settlement_hold_event_id.as_deref(),
+            settlement_hold_occurred_at: linkage.settlement_hold_occurred_at.as_deref(),
+            request_id,
+            trace_id,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
 
     dispute_case.evidence_count = 0;
     tx.commit().await.map_err(map_db_error)?;

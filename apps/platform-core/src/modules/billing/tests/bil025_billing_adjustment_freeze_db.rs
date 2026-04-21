@@ -258,6 +258,71 @@ mod tests {
             Some("billing_manual_payout_succeeded")
         );
 
+        let notification_rows = client
+            .query(
+                "SELECT payload
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND target_topic = 'dtp.notification.dispatch'
+                 ORDER BY created_at ASC, outbox_event_id ASC",
+                &[&payout_request_id],
+            )
+            .await
+            .expect("query settlement resumed notifications");
+        assert_eq!(
+            notification_rows.len(),
+            3,
+            "manual payout release should emit settlement.resumed for buyer/seller/ops"
+        );
+        let notification_payloads = notification_rows
+            .iter()
+            .map(|row| row.get::<_, Value>(0))
+            .collect::<Vec<_>>();
+        let buyer_resumed = find_payload(&notification_payloads, "settlement.resumed", "buyer");
+        assert_eq!(
+            buyer_resumed["payload"]["source_event"]["aggregate_type"].as_str(),
+            Some("billing.billing_event")
+        );
+        assert_eq!(
+            buyer_resumed["payload"]["source_event"]["event_type"].as_str(),
+            Some("billing.event.recorded")
+        );
+        assert_eq!(
+            buyer_resumed["payload"]["variables"]["action_href"].as_str(),
+            Some(
+                format!(
+                    "/billing/refunds?order_id={}&case_id={}",
+                    seed.order_id, case_id
+                )
+                .as_str()
+            )
+        );
+        assert!(
+            buyer_resumed["payload"]["variables"]
+                .get("resolution_ref_id")
+                .is_none(),
+            "buyer payload must not expose internal resolution ref id"
+        );
+        let ops_resumed = find_payload(&notification_payloads, "settlement.resumed", "ops");
+        assert_eq!(
+            ops_resumed["payload"]["variables"]["action_href"].as_str(),
+            Some(
+                format!(
+                    "/ops/audit/trace?order_id={}&case_id={}",
+                    seed.order_id, case_id
+                )
+                .as_str()
+            )
+        );
+        assert_eq!(
+            ops_resumed["payload"]["variables"]["resolution_action"].as_str(),
+            Some("manual_payout_execute")
+        );
+        assert_eq!(
+            ops_resumed["payload"]["variables"]["show_ops_context"].as_bool(),
+            Some(true)
+        );
+
         let detail = get_billing_order(
             &app,
             &seed.order_id,
@@ -286,7 +351,13 @@ mod tests {
         assert_eq!(audit_row.get::<_, i64>(2), 1);
         assert_eq!(audit_row.get::<_, i64>(3), 1);
 
-        cleanup_manual_adjustment_seed(&client, &seed, &case_id).await;
+        cleanup_manual_adjustment_seed(
+            &client,
+            &seed,
+            &case_id,
+            &[&create_request_id, &resolve_request_id, &payout_request_id],
+        )
+        .await;
     }
 
     async fn reject_order(
@@ -976,11 +1047,35 @@ mod tests {
             .await;
     }
 
+    fn find_payload<'a>(
+        payloads: &'a [Value],
+        notification_code: &str,
+        audience_scope: &str,
+    ) -> &'a Value {
+        payloads
+            .iter()
+            .find(|payload| {
+                payload["payload"]["notification_code"].as_str() == Some(notification_code)
+                    && payload["payload"]["audience_scope"].as_str() == Some(audience_scope)
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing payload for notification_code={} audience_scope={}",
+                    notification_code, audience_scope
+                )
+            })
+    }
+
     async fn cleanup_manual_adjustment_seed(
         client: &Client,
         seed: &ManualAdjustmentSeed,
         case_id: &str,
+        request_ids: &[&str],
     ) {
+        let request_ids = request_ids
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect::<Vec<_>>();
         let _ = client
             .execute(
                 "DELETE FROM audit.legal_hold WHERE hold_scope_type = 'order' AND hold_scope_id = $1::text::uuid",
@@ -1007,8 +1102,11 @@ mod tests {
             .await;
         let _ = client
             .execute(
-                "DELETE FROM ops.outbox_event WHERE aggregate_id = $1::text::uuid OR ordering_key = $2",
-                &[&case_id, &seed.order_id],
+                "DELETE FROM ops.outbox_event
+                 WHERE request_id = ANY($1::text[])
+                    OR aggregate_id = $2::text::uuid
+                    OR ordering_key = $3",
+                &[&request_ids, &case_id, &seed.order_id],
             )
             .await;
         let _ = client

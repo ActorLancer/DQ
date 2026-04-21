@@ -98,9 +98,9 @@ async fn seed_requests(client: &Client) -> Result<SeedState, Error> {
         }];
         let audience = match scene {
             NotificationScene::PendingDelivery => NotificationAudience::Seller,
-            NotificationScene::DisputeEscalated
-            | NotificationScene::SettlementFrozen
-            | NotificationScene::SettlementResumed => NotificationAudience::Ops,
+            NotificationScene::DisputeEscalated => NotificationAudience::Buyer,
+            NotificationScene::SettlementFrozen => NotificationAudience::Seller,
+            NotificationScene::SettlementResumed => NotificationAudience::Ops,
             _ => NotificationAudience::Buyer,
         };
         let recipient = NotificationRecipient {
@@ -189,10 +189,10 @@ fn source_event_for_scene(scene: NotificationScene, aggregate_id: &str) -> Notif
         NotificationScene::PendingAcceptance => ("trade.order_main", "order.state_changed"),
         NotificationScene::AcceptancePassed => ("trade.acceptance_record", "acceptance.passed"),
         NotificationScene::AcceptanceRejected => ("trade.acceptance_record", "acceptance.rejected"),
-        NotificationScene::DisputeEscalated | NotificationScene::SettlementFrozen => {
-            ("support.dispute_case", "dispute.created")
+        NotificationScene::DisputeEscalated => ("support.dispute_case", "dispute.created"),
+        NotificationScene::SettlementFrozen | NotificationScene::SettlementResumed => {
+            ("billing.billing_event", "billing.event.recorded")
         }
-        NotificationScene::SettlementResumed => ("support.dispute_case", "dispute.resolved"),
     };
     NotificationSourceEvent {
         aggregate_type: aggregate_type.to_string(),

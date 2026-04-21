@@ -3,7 +3,8 @@ use crate::modules::billing::models::{CreateRefundRequest, RefundExecutionView};
 use crate::modules::billing::repo::billing_adjustment_repository::release_provisional_dispute_hold_in_tx;
 use crate::modules::billing::repo::settlement_aggregate_repository::recompute_settlement_for_order;
 use crate::modules::integration::application::{
-    BillingResolutionNotificationDispatchInput, queue_billing_resolution_notifications,
+    BillingResolutionNotificationDispatchInput, SettlementResumeNotificationDispatchInput,
+    queue_billing_resolution_notifications, queue_settlement_resume_notifications,
 };
 use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 use axum::Json;
@@ -208,7 +209,7 @@ pub async fn execute_refund(
         .map_err(map_db_error)?;
     let refund_id: String = row.get(0);
 
-    release_provisional_dispute_hold_in_tx(
+    let settlement_resume_event = release_provisional_dispute_hold_in_tx(
         &tx,
         &payload.order_id,
         "refund_execute",
@@ -312,6 +313,20 @@ pub async fn execute_refund(
     )
     .await
     .map_err(map_db_error)?;
+    if let Some(settlement_resume_event) = settlement_resume_event.as_ref() {
+        let _ = queue_settlement_resume_notifications(
+            &tx,
+            SettlementResumeNotificationDispatchInput {
+                order_id: &payload.order_id,
+                billing_event_id: &settlement_resume_event.billing_event_id,
+                occurred_at: Some(&settlement_resume_event.occurred_at),
+                request_id,
+                trace_id,
+            },
+        )
+        .await
+        .map_err(map_db_error)?;
+    }
 
     write_audit_event(
         &tx,

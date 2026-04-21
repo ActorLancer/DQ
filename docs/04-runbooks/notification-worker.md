@@ -134,6 +134,11 @@
   - `trade.acceptance_record / acceptance.passed`
   - `trade.acceptance_record / acceptance.rejected`
   已进入 `ops.event_route_policy`，用于把验收链 canonical outbox 正式桥接到通知链路
+- `080_notification_dispute_settlement_templates.sql` 起：
+  - `NOTIFY_DISPUTE_ESCALATED_V1` version `2` 作为争议升级正式模板
+  - `NOTIFY_SETTLEMENT_FROZEN_V1` version `2` 作为结算冻结正式模板
+  - `NOTIFY_SETTLEMENT_RESUMED_V1` version `2` 作为恢复结算正式模板
+  - version `1` 已归档，仅保留回退审计用途
 - file 模板目录 `apps/notification-worker/templates/` 仅保留为 local fallback，不再作为正式模板权威源
 - 不允许把内部风控、审计敏感字段直接透传到业务用户通知正文
 
@@ -260,6 +265,50 @@
   - `ops.notification_template` 中 `NOTIFY_ACCEPTANCE_PASSED_V1 / NOTIFY_ACCEPTANCE_REJECTED_V1 / NOTIFY_REFUND_COMPLETED_V1 / NOTIFY_COMPENSATION_COMPLETED_V1` 的 active version 是否为 `2`
   - `ops.event_route_policy` 是否存在 `trade.acceptance_record / acceptance.passed|acceptance.rejected -> notification.requested -> dtp.notification.dispatch`
   - `ops` 正文是否包含 `acceptance_record_id / provider_* / liability_type / resolution_ref_*`，而 `buyer/seller` 正文不包含这些联查字段
+- 争议 / 冻结 / 恢复链路优先补查：
+  - `ops.notification_template` 中 `NOTIFY_DISPUTE_ESCALATED_V1 / NOTIFY_SETTLEMENT_FROZEN_V1 / NOTIFY_SETTLEMENT_RESUMED_V1` 的 active version 是否为 `2`
+  - `dispute.escalated` 是否仍以 `support.dispute_case / dispute.created` 为 source-event
+  - `settlement.frozen` 与 `settlement.resumed` 是否都以 `billing.billing_event / billing.event.recorded` 为 source-event，且分别对应 `settlement_dispute_hold / settlement_dispute_release`
+  - buyer / seller payload 是否不包含 `freeze_ticket_id / legal_hold_id / governance_action_count / resolution_ref_id / liability_type`
+  - ops payload 是否包含 `freeze_ticket_id / legal_hold_id / governance_action_count / resolution_action / resolution_ref_id`
+
+## NOTIF-007 争议 / 结算冻结 / 恢复结算链路联调
+
+- producer 入口与 source-event 冻结为：
+  - 争议升级：`support.dispute_case / dispute.created`
+  - 结算冻结：`billing.billing_event / billing.event.recorded`，且 `event_source=settlement_dispute_hold`
+  - 恢复结算：`billing.billing_event / billing.event.recorded`，且 `event_source=settlement_dispute_release`
+- action 链接冻结为：
+  - 争议升级 buyer：`/support/cases/new?order_id=:orderId`
+  - 争议升级 seller：`/trade/orders/:orderId`
+  - 争议升级 ops：`/ops/risk?order_id=:orderId&case_id=:caseId`
+  - 结算冻结 buyer / seller：`/billing?order_id=:orderId`
+  - 结算冻结 ops：`/ops/risk?order_id=:orderId&case_id=:caseId`
+  - 恢复结算 buyer / seller：`/billing/refunds?order_id=:orderId&case_id=:caseId`
+  - 恢复结算 ops：`/ops/audit/trace?order_id=:orderId&case_id=:caseId`
+- 运行态验证建议至少覆盖三条样例：
+  - `dispute.escalated / buyer / NOTIFY_DISPUTE_ESCALATED_V1`
+  - `settlement.frozen / ops / NOTIFY_SETTLEMENT_FROZEN_V1`
+  - `settlement.resumed / ops / NOTIFY_SETTLEMENT_RESUMED_V1`
+- 手工验证步骤：
+  1. `POST /internal/notifications/templates/preview`，确认三套模板都命中 version `2`，并区分 buyer / seller / ops 的最小披露字段。
+  2. 通过真实开案流程触发 `support.dispute_case / dispute.created`，回查：
+     - `ops.outbox_event.target_topic='dtp.notification.dispatch'` 中出现 `dispute.escalated` 与 `settlement.frozen`
+     - `settlement.frozen` 对应 `source_event.aggregate_type='billing.billing_event'`
+     - buyer / seller payload 中不含 `freeze_ticket_id / legal_hold_id`
+     - ops payload 中包含 `freeze_ticket_id / legal_hold_id / governance_action_count`
+  3. 通过真实退款、赔付或手工放款释放冻结后，回查：
+     - `settlement.resumed` 对应 `source_event.aggregate_type='billing.billing_event'`
+     - `ops.outbox_event.payload #>> '{payload,source_event,event_type}' = 'billing.event.recorded'`
+     - 不再把 `support.dispute_case / dispute.resolved` 当恢复结算的 source-event
+  4. `POST /internal/notifications/send` 注入 `settlement.resumed` 样例并使用 `simulate_failures=1`，确认：
+     - Redis `datab:v1:notification:retry-queue` 深度先为 `1`，最终回到 `0`
+     - `audit.audit_event` 先写 `notification.dispatch.retry_scheduled`，随后写 `notification.dispatch.sent`
+     - `/metrics` 与 Prometheus 中 `notification_worker_events_total`、`notification_worker_send_total` 更新
+  5. `GET http://127.0.0.1:9093/api/v2/status` 与 Grafana `Platform Overview` dashboard，确认 Alertmanager / Grafana 运行态仍可联查。
+- 业务数据清理要求：
+  - 清理本次手工样例产生的 Redis 短状态、`ops.consumer_idempotency_record`、`ops.trace_index`、`ops.alert_event`、`ops.dead_letter_event`
+  - `audit.audit_event` 与 `ops.system_log` 按 append-only 保留
 
 ## 常见问题
 
