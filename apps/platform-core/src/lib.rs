@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tracing::info;
 
 mod app;
-mod modules;
+pub mod modules;
 mod shared;
 
 #[derive(Clone)]

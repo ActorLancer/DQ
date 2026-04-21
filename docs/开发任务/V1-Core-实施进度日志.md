@@ -11,7 +11,7 @@
 
 ## 当前活动分卷
 
-- `docs/开发任务/V1-Core-实施进度日志-P4.md`
+- `docs/开发任务/V1-Core-实施进度日志-P5.md`
 
 ## 历史分卷
 
@@ -23,6 +23,8 @@
   - Billing 阶段收尾与 NOTIF 前的续写分卷
 - `docs/开发任务/V1-Core-实施进度日志-P4.md`
   - NOTIF 阶段起始分卷
+- `docs/开发任务/V1-Core-实施进度日志-P5.md`
+  - AUD 阶段起始分卷
 
 ## Agent 读写规则
 

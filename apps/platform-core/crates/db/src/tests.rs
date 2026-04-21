@@ -156,18 +156,14 @@ mod tests {
                 operation: "create".to_string(),
                 payload_json: "{}".to_string(),
             }],
-            audit_events: vec![AuditEvent {
-                action: "order.create".to_string(),
-                object_type: "order".to_string(),
-                object_id: "ord-1".to_string(),
-                result: "success".to_string(),
-                context: AuditContext {
-                    request_id: "req-1".to_string(),
-                    actor_id: "user-1".to_string(),
-                    tenant_id: "tenant-1".to_string(),
-                },
-                evidence: vec![],
-            }],
+            audit_events: vec![AuditEvent::business(
+                "trade",
+                "order",
+                Some("ord-1".to_string()),
+                "order.create",
+                "success",
+                AuditContext::minimal("req-1", "trace-1", "user-1", "tenant-1"),
+            )],
             outbox_events: vec![EventEnvelope {
                 event_id: "evt-1".to_string(),
                 topic: "trade.order.created".to_string(),

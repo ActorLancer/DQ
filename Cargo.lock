@@ -102,6 +102,7 @@ dependencies = [
  "async-trait",
  "kernel",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
