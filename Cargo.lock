@@ -1958,6 +1958,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "notification-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "notification-worker"
 version = "0.1.0"
 dependencies = [
@@ -1968,6 +1976,7 @@ dependencies = [
  "handlebars",
  "http 0.1.0",
  "kernel",
+ "notification-contract",
  "prometheus",
  "rdkafka",
  "redis",
@@ -2314,6 +2323,7 @@ dependencies = [
  "db",
  "http 0.1.0",
  "kernel",
+ "notification-contract",
  "outbox-kit",
  "provider-kit",
  "rdkafka",

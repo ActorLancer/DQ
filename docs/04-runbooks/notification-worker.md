@@ -28,6 +28,38 @@
 - topic 定义权威源：`infra/kafka/topics.v1.json`
 - topic 初始化脚本：`infra/kafka/init-topics.sh`
 
+## 事件协议
+
+- `platform-core.integration` 使用共享 `notification-contract` 生成 `notification.requested` payload，并统一写入 `notification.dispatch_request / dtp.notification.dispatch`。
+- 当前冻结的 `notification_code` 仅允许：
+  - `order.created`
+  - `payment.succeeded`
+  - `payment.failed`
+  - `order.pending_delivery`
+  - `delivery.completed`
+  - `order.pending_acceptance`
+  - `acceptance.passed`
+  - `acceptance.rejected`
+  - `dispute.escalated`
+  - `refund.completed`
+  - `compensation.completed`
+  - `settlement.frozen`
+  - `settlement.resumed`
+- payload 最小字段：
+  - `notification_code`
+  - `template_code`
+  - `channel`
+  - `audience_scope`
+  - `recipient`
+  - `source_event`
+  - `variables`
+  - `metadata`
+  - `retry_policy`
+  - `subject_refs`
+  - `links`
+- 幂等键统一由 `notification_code + audience_scope + source_event.aggregate_type + source_event.aggregate_id + source_event.event_type + recipient(id/address)` 生成。
+- 后续 `NOTIF-004 ~ NOTIF-007` 只允许在这个 scene catalog 上补模板与业务触发逻辑，不允许再发明新的旁路 notification code。
+
 ## 本地启动
 
 1. 启动基础设施：
@@ -50,6 +82,7 @@
    - `GET http://127.0.0.1:8097/metrics`
 6. 手工注入一条 `notification.requested` 事件：
    - `POST http://127.0.0.1:8097/internal/notifications/send`
+   - 建议显式传入 `notification_code`、`audience_scope`、`source_event`、`subject_refs`、`links`
 
 ## V1 渠道与模板边界
 

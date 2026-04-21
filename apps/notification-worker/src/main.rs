@@ -1051,7 +1051,7 @@ async fn send_notification_handler(
     State(state): State<Arc<WorkerState>>,
     Json(request): Json<SendNotificationRequest>,
 ) -> Result<Json<ApiResponse<SendNotificationResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let envelope = request.into_envelope();
+    let envelope = request.into_envelope().map_err(internal_error)?;
     publish_envelope(&state, &envelope)
         .await
         .map_err(internal_error)?;

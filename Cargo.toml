@@ -11,6 +11,7 @@ members = [
   "apps/platform-core/crates/audit-kit",
   "apps/platform-core/crates/outbox-kit",
   "apps/platform-core/crates/provider-kit",
+  "apps/platform-core/crates/notification-contract",
   "apps/notification-worker",
   "workers/search-indexer",
   "workers/recommendation-aggregator",

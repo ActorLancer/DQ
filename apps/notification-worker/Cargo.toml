@@ -13,6 +13,7 @@ db = { path = "../platform-core/crates/db" }
 handlebars = "6"
 http = { path = "../platform-core/crates/http" }
 kernel = { path = "../platform-core/crates/kernel" }
+notification-contract = { path = "../platform-core/crates/notification-contract" }
 prometheus = "0.13"
 rdkafka = { version = "0.36", features = ["cmake-build", "tokio"] }
 redis = { version = "0.27", features = ["tokio-comp"] }

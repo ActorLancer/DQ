@@ -16,6 +16,7 @@ config = { path = "crates/config" }
 db = { path = "crates/db" }
 http = { path = "crates/http" }
 kernel = { path = "crates/kernel" }
+notification-contract = { path = "crates/notification-contract" }
 outbox-kit = { path = "crates/outbox-kit" }
 provider-kit = { path = "crates/provider-kit" }
 rdkafka = { version = "0.36", features = ["cmake-build", "tokio"] }

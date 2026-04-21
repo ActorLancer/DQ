@@ -77,6 +77,14 @@ fn load_template_from_path(path: &Path) -> Result<NotificationTemplate, String> 
 
 fn build_render_context(envelope: &NotificationEnvelope, payload: &NotificationPayload) -> Value {
     json!({
+        "notification": {
+            "notification_code": payload.notification_code,
+            "template_code": payload.template_code,
+            "channel": payload.channel,
+            "audience_scope": payload.audience_scope,
+            "subject_refs": payload.subject_refs,
+            "links": payload.links,
+        },
         "event": {
             "event_id": envelope.event_id,
             "event_type": envelope.event_type,
@@ -87,6 +95,7 @@ fn build_render_context(envelope: &NotificationEnvelope, payload: &NotificationP
             "producer_service": envelope.producer_service,
             "occurred_at": envelope.occurred_at,
         },
+        "source_event": payload.source_event,
         "recipient": {
             "kind": payload.recipient.kind,
             "id": payload.recipient.id,
@@ -109,9 +118,10 @@ mod tests {
         let store = TemplateStore::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates"));
         let envelope = SendNotificationRequest {
             event_id: None,
-            aggregate_type: None,
             aggregate_id: Some("e8d5c8c5-71cb-45f6-96f2-717e59a3e8c0".to_string()),
-            template_code: "NOTIFY_GENERIC_V1".to_string(),
+            notification_code: Some("delivery.completed".to_string()),
+            audience_scope: Some("buyer".to_string()),
+            template_code: Some("NOTIFY_GENERIC_V1".to_string()),
             channel: Some("mock-log".to_string()),
             recipient: NotificationRecipient {
                 kind: "user".to_string(),
@@ -124,13 +134,17 @@ mod tests {
                 "message": "Order is waiting for delivery"
             })),
             metadata: None,
+            source_event: None,
+            subject_refs: None,
+            links: None,
             idempotency_key: None,
             request_id: Some("req-1".to_string()),
             trace_id: Some("trace-1".to_string()),
             retry_policy: None,
             simulate_failures: None,
         }
-        .into_envelope();
+        .into_envelope()
+        .expect("request should convert into envelope");
 
         let rendered = store
             .render(&envelope, &envelope.payload)
