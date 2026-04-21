@@ -21,5 +21,5 @@
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
 - `search-rec-cases.md`：Search/Recommendation 子域的搜索同步、搜索 API、推荐召回、行为回流、重建、别名切换与缓存失效验收清单。
-- `notification-cases.md`：当前尚未落盘；进入 `NOTIF` 代码实现批次后必须补齐 `mock-log`、幂等、重试、DLQ、人工补发与审计联查验收清单。
+- `notification-cases.md`：通知链路验收清单，覆盖 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log`、幂等、重试、DLQ、人工补发与审计联查。
 - `audit-consistency-cases.md`：当前尚未落盘；进入 `AUD / consistency / integration / NOTIF` 代码实现批次后必须补齐。

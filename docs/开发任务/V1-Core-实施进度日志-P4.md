@@ -1204,3 +1204,124 @@
 - 备注：
   - 本批手工 API 验证结束后，已主动停止本地常驻 `notification-worker`，避免影响后续 task 的 smoke / live test。
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+### BATCH-213（计划中）
+- 任务：`NOTIF-014` 通知验收清单与测试样例文档
+- 状态：计划中
+- 说明：当前 `docs/05-test-cases/notification-cases.md` 尚未落盘，`docs/05-test-cases/README.md` 与 `TODO-NOTIF-CONTRACT-001` 仍把它登记为 `NOTIF` 阶段剩余 gap。本批将补齐通知验收矩阵，覆盖：
+  - 正式链路 `notification.requested -> dtp.notification.dispatch -> notification-worker`
+  - 正式渠道边界 `mock-log`，以及 `email / webhook` 仅保留边界、不作为 `V1` 完成证据
+  - 支付成功、交付完成、验收通过 / 拒收、争议升级、结算冻结 / 恢复
+  - 重复去重、失败重试、DLQ、人工补发 / replay、审计联查
+- 追溯：本批只补通知测试基线、README / runbook 引用与 TODO 收口，不越界修改 `AUD` 或通用 consistency 的其他验收矩阵。
+### BATCH-213（待审批）
+- 任务：`NOTIF-014` 通知验收清单与测试样例文档
+- 状态：待审批
+- 依赖核对：
+  - `NOTIF-009` 已完成：通知 dead letter replay 入口、step-up 校验与 lineage 留痕已冻结。
+  - `NOTIF-010` 已完成：通知审计联查接口、查询过滤字段与结构化发送记录已冻结。
+  - `NOTIF-013` 已完成：通知控制面 OpenAPI / 示例已归档，可作为本批测试样例文档的正式接口口径。
+- 重新阅读：
+  - `docs/开发任务/v1-core-开发任务清单.csv`
+  - `docs/开发任务/v1-core-开发任务清单.md`
+  - `docs/开发准备/服务清单与服务边界正式版.md`
+  - `docs/开发准备/事件模型与Topic清单正式版.md`
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`
+  - `docs/开发准备/配置项与密钥管理清单.md`
+  - `docs/开发准备/技术选型正式版.md`
+  - `docs/开发准备/平台总体架构设计草案.md`
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`
+  - `docs/开发准备/测试用例矩阵正式版.md`
+  - `docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`
+  - `docs/04-runbooks/kafka-topics.md`
+  - `docs/04-runbooks/notification-worker.md`
+  - `docs/00-context/async-chain-write.md`
+  - `infra/kafka/topics.v1.json`
+  - `docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`
+  - `docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`
+  - `docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`
+  - `docs/开发任务/问题修复任务/A11-测试与Smoke口径误报风险.md`
+  - `apps/notification-worker/**`
+  - `apps/platform-core/src/modules/integration/**`
+  - `packages/openapi/**`
+  - `docs/02-openapi/**`
+  - `docs/05-test-cases/**`
+  - `scripts/**`
+  - `infra/**`
+- 实现内容：
+  - `docs/05-test-cases/notification-cases.md`
+    - 新增通知验收基线文档，冻结正式进程名、正式链路、`mock-log` 渠道边界、审计联查入口与人工补发入口。
+    - 增加 cross-cut 验收清单，显式登记 `mock-log`、幂等、重试、DLQ、人工补发 / replay、审计联查的最低回查要求。
+    - 增加场景矩阵，覆盖支付成功、交付完成、验收通过 / 拒收、争议升级、结算冻结 / 恢复、重复去重、失败重试、DLQ、人工补发、审计联查，并把证据指向真实测试或 runbook。
+    - 增加推荐 smoke 路径与 SQL / Redis / Kafka 回查模板；手工联调后修正文档中的 `audit/search` 示例，补齐运行时必需的 `reason` 与 `step_up_ticket` 字段。
+  - `docs/05-test-cases/README.md`
+    - 将 `notification-cases.md` 从“尚未落盘”更新为正式验收清单描述，避免继续误报为缺失。
+  - `docs/04-runbooks/notification-worker.md`
+    - 将 `NOTIF-014` 的承接关系从“待补”改为“已补”，并明确正式通知验收应优先组合使用 runbook 与 `notification-cases.md`。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+    - 将既有 `TODO-NOTIF-CONTRACT-001` 关闭，说明通知验收矩阵、README 与 runbook 引用已在本批补齐。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo check -p notification-worker`
+  5. `cargo test -p notification-worker`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `./scripts/check-topic-topology.sh`
+  9. `NOTIF_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core notif -- --nocapture`
+  10. `NOTIF_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 cargo test -p notification-worker notif012_notification_worker_live_smoke -- --nocapture`
+  11. 启动本地 `notification-worker`：
+      `APP_PORT=8097 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 TOPIC_NOTIFICATION_DISPATCH=dtp.notification.dispatch TOPIC_DEAD_LETTER_EVENTS=dtp.dead-letter cargo run -p notification-worker`
+  12. 手工控制面验证：
+      - `POST /internal/notifications/send` 发布一条 `payment.succeeded` 正式消息
+      - `POST /internal/notifications/audit/search` 使用 `event_id + aggregate_type=notification.dispatch_request + event_type=notification.requested + target_topic=dtp.notification.dispatch + reason + step_up_ticket`
+      - `psql` 回查 `ops.system_log`、`audit.audit_event`、`ops.consumer_idempotency_record`、`ops.trace_index`
+      - `redis-cli` 回查并清理 `datab:v1:notification:state:<event_id>` / `retry-payload`
+      - `curl` 回查 `notification-worker` metrics、Prometheus、Alertmanager、Grafana、Loki、Tempo 健康入口
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过；仅有仓库既存 `unused_*` warning，无新增失败。
+  - `./scripts/check-topic-topology.sh` 返回 `[ok] dedicated notification/fabric topic topology, docs, route-policy seeds, and runtime DB routes are aligned`，确认正式通知 topic、文档、seed 与运行态 DB route 一致。
+  - `NOTIF_DB_SMOKE=1 cargo test -p platform-core notif -- --nocapture` 通过，显式覆盖：
+    - `notif002_notification_contract_db_smoke`
+    - `notif004_payment_success_notifications_db_smoke`
+    - `notif005_delivery_completion_notifications_db_smoke`
+    - `notif006_acceptance_outcome_notifications_db_smoke`
+    - `notif006_billing_resolution_notifications_db_smoke`
+    - `notif007_dispute_settlement_notifications_db_smoke`
+  - `NOTIF_WORKER_DB_SMOKE=1 cargo test -p notification-worker notif012_notification_worker_live_smoke -- --nocapture` 通过，证明正式进程 `notification-worker` 会真实消费 `dtp.notification.dispatch`，并留下 `mock-log`、幂等、重试、DLQ、PostgreSQL / Redis / audit / metrics 留痕。
+  - 手工控制面联调通过：
+    - 手工样例 `event_id=f3358450-473c-4a6c-949f-7e24b54b9b7c`
+    - `POST /internal/notifications/send` 成功写入并被 worker 处理；stdout 日志可见 `notification-worker mock-log delivered`
+    - `POST /internal/notifications/audit/search` 返回：
+      - `filters=notification.dispatch_request|notification.requested|dtp.notification.dispatch`
+      - `record=notification.dispatch_request|notification.requested|dtp.notification.dispatch|processed|mock-log`
+    - `ops.system_log` 回查命中：
+      - `notification.dispatch_request|notification.requested|dtp.notification.dispatch|notification sent via mock-log`
+    - `audit.audit_event` 回查命中：
+      - `notification.dispatch.lookup|notification.dispatch_request|notification.requested|dtp.notification.dispatch|1`
+      - `notification.dispatch.sent|notification.dispatch_request|notification.requested|dtp.notification.dispatch`
+    - `ops.consumer_idempotency_record` 回查命中：
+      - `notification-worker|processed`
+    - `ops.trace_index` 对手工样例回查计数为 `1`；验证后删除并回查为 `0`
+    - Redis 短状态回查命中：
+      - `{"attempt":1,"details":{"channel":"mock-log","template_code":"NOTIFY_PAYMENT_SUCCEEDED_V1"},"status":"processed",...}`
+      - 清理后 `DEL=1`
+    - 观测入口回查通过：
+      - `notification_worker_events_total{result="processed"} 1`
+      - `notification_worker_send_total{channel="mock-log",result="success"} 1`
+      - Prometheus 查询 `notification_worker_events_total` 返回 `job="notification-worker"`
+      - `Alertmanager / Grafana / Loki / Tempo` 健康入口均返回可用状态
+  - 手工联调过程中发现 `audit/search` 请求体运行时要求 `reason + step_up_ticket`；文档已按实际运行口径同步补齐，不再保留错误示例。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-014`
+  - `测试用例矩阵正式版.md`：通知链路验收基线与 outbox / DLQ / replay 通用要求
+  - `事件模型与Topic清单正式版.md`、`一致性与事件接口协议正式版.md`：`notification.requested / dtp.notification.dispatch / dtp.dead-letter / replay` 正式口径
+  - `docs/04-runbooks/notification-worker.md`：正式进程名、正式链路、`mock-log` 边界、联查与 replay 路径
+  - `A10`、`A11`：通知命名边界与 smoke 误报风险收敛要求
+- 覆盖的任务清单条目：`NOTIF-014`
+- 未覆盖项：无。`NOTIF` 阶段执行源中的剩余任务已全部完成。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；既有 `TODO-NOTIF-CONTRACT-001` 已在本批关闭。
+- 备注：
+  - 手工控制面验证结束后，已主动停止本地常驻 `notification-worker`，避免影响后续批次或人工排障。
+  - `audit.audit_event` 与 `ops.system_log` 按 append-only 要求保留；`ops.consumer_idempotency_record`、`ops.trace_index` 与 Redis 临时短状态已按测试数据清理。
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。

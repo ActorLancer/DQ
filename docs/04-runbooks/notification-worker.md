@@ -20,7 +20,7 @@
 - 当前文档必须与真实运行态一致：topic、consumer group、模板版本、联查入口、replay 入口、审计与观测链路都要能实际回查。
 - 当前文档不替代后续承接项：
   - `NOTIF-013`：已将通知联查 / 模板预览 / 手工注入 / 人工补发 OpenAPI 归档同步到 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml`
-  - `NOTIF-014`：`docs/05-test-cases/notification-cases.md`
+  - `NOTIF-014`：已将运行态验收矩阵补齐到 `docs/05-test-cases/notification-cases.md`
 
 ## 运行前核对
 
@@ -435,7 +435,7 @@ order by template_code, version_no;
 ## 当前承接关系
 
 - `NOTIF-013` 已把当前 runbook 中已经冻结的模板预览 / 手工注入 / 联查 / replay 入口补齐到 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml`，并明确 `aggregate_type / event_type / target_topic` 过滤口径对应正式通知 envelope。
-- `NOTIF-014` 会把当前 runbook 中的运行态验证路径补成 `docs/05-test-cases/notification-cases.md`，覆盖：
+- `NOTIF-014` 已把当前 runbook 中的运行态验证路径补成 `docs/05-test-cases/notification-cases.md`，覆盖：
   - 支付成功
   - 交付完成
   - 验收通过 / 拒收
@@ -446,3 +446,4 @@ order by template_code, version_no;
   - DLQ
   - 人工补发
 - 当前阶段若需临时人工排障，应以本 runbook + `apps/notification-worker/README.md` + `docs/04-runbooks/kafka-topics.md` 为准，不得再引入新的旁路 topic、旧进程名或 README 占位口径。
+- 当前阶段若需执行正式通知验收，应优先组合使用本 runbook 与 `docs/05-test-cases/notification-cases.md`，而不是自造临时 smoke 步骤。
