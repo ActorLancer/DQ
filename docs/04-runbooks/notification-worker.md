@@ -98,6 +98,11 @@
 6. 手工注入一条 `notification.requested` 事件：
    - `POST http://127.0.0.1:8097/internal/notifications/send`
    - 建议显式传入 `notification_code`、`audience_scope`、`source_event`、`subject_refs`、`links`
+7. 手工 replay dead letter：
+   - `POST http://127.0.0.1:8097/internal/notifications/dead-letters/{dead_letter_event_id}/replay`
+   - 请求默认 `dry_run=true`
+   - 必须显式传入 `reason` 与 `step_up_ticket`
+   - `dry_run=false` 时会重新发布 replay envelope 到 `dtp.notification.dispatch`
 
 ## V1 渠道与模板边界
 
@@ -219,9 +224,18 @@
      - `ops.dead_letter_event.target_topic=dtp.dead-letter`
      - `ops.alert_event.alert_type=notification_dead_letter`
      - `audit.audit_event` 写入 `notification.dispatch.dead_lettered`
-  6. `GET 'http://127.0.0.1:9090/api/v1/query?query=up{job="notification-worker"}'`
+     - `dtp.dead-letter` 中可消费到对应 `dead_letter_event_id / event_id / failure_stage=notification.send`
+  6. 对上一步产生的 `dead_letter_event_id` 调用 replay 入口：
+     - 先 `POST /internal/notifications/dead-letters/{id}/replay`，请求 `{"dry_run":true,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}`
+     - 再 `POST /internal/notifications/dead-letters/{id}/replay`，请求 `{"dry_run":false,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}`
+     - 回查：
+       - 原 `ops.dead_letter_event.reprocess_status` 先变为 `reprocess_requested`
+       - replay 事件重新写入 `dtp.notification.dispatch`
+       - replay 成功后原 `ops.dead_letter_event.reprocess_status=reprocessed`
+       - `audit.audit_event` 追加 `notification.dispatch.reprocess.requested`
+  7. `GET 'http://127.0.0.1:9090/api/v1/query?query=up{job="notification-worker"}'`
      与 `notification_worker_events_total`、`notification_worker_send_total`、`notification_worker_retry_queue_depth`，确认 Prometheus 已抓到当前 worker 指标。
-  7. `GET http://127.0.0.1:9093/api/v2/status` 与 Grafana `Platform Overview` dashboard，确认 Alertmanager / Grafana 运行态可联查；Prometheus rules 中应存在 `NotificationRetryQueueBacklog`。
+  8. `GET http://127.0.0.1:9093/api/v2/status` 与 Grafana `Platform Overview` dashboard，确认 Alertmanager / Grafana 运行态可联查；Prometheus rules 中应存在 `NotificationRetryQueueBacklog`。
 - 业务数据清理要求：
   - 清理本次手工样例产生的 Redis 短状态、`ops.consumer_idempotency_record`、`ops.trace_index`、`ops.alert_event`、`ops.dead_letter_event`
   - `audit.audit_event` 与 `ops.system_log` 按 append-only 保留
@@ -254,6 +268,14 @@
 - 同一幂等键事件必须只发送一次
 - 失败消息进入重试流程；超过阈值转入 `dtp.dead-letter`
 - 人工重放必须保留审计轨迹并可按事件 ID 回查
+- 双层 DLQ 必须同时可见：
+  - PostgreSQL：`ops.dead_letter_event`
+  - Kafka：`dtp.dead-letter`
+- replay 入口冻结为 `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
+  - 默认 `dry_run=true`
+  - 必须显式提供 `reason`
+  - 必须显式提供 `step_up_ticket`
+  - `dry_run=false` 时会生成新的 replay envelope，并在 metadata 中补 `replayed_from_dead_letter_id / replay_reason / replay_step_up_ticket`
 - 相关 `ops.event_route_policy` 缺失或漂移时，先检查 `notification.dispatch_request / notification.requested -> dtp.notification.dispatch`
 
 ## 联查建议

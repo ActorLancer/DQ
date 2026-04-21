@@ -708,3 +708,103 @@
 - 备注：
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
   - 本批运行态验证中 `ops.system_log` 的正式排序列为 `created_at`，已按真实 schema 回查适配器落库证据，不影响冻结业务口径。
+### BATCH-208（计划中）
+- 任务：`NOTIF-009` 通知幂等、重试、DLQ 与人工重放入口
+- 状态：计划中
+- 说明：当前 worker 已具备 `event_id` 幂等、Redis 重试队列、`ops.dead_letter_event` / `ops.alert_event` / `audit.audit_event` 写入，但尚缺“统一 `dtp.dead-letter` topic 真实发布”和“人工重放入口”这两项正式运行态能力。本批将补齐双层 DLQ（Kafka + PostgreSQL）与最小 replay 入口，要求 replay 不绕过主库状态、默认 `dry_run`、保留审计轨迹，并继续沿 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式链路执行。
+- 追溯：本批优先复用既有 `SendNotificationRequest / NotificationEnvelope`、`ops.consumer_idempotency_record`、Redis retry queue、`ops.dead_letter_event`、Prometheus 指标与 worker 内部 HTTP 控制面；不提前把 `NOTIF-010` 的联查查询接口或 `NOTIF-013` 的正式 OpenAPI 归档混入实现，但会把后续控制面所需的 replay / DLQ 口径先冻结在代码与 runbook 中。
+### BATCH-208（待审批）
+- 任务：`NOTIF-009` 通知幂等、重试、DLQ 与人工重放入口
+- 状态：待审批
+- 当前任务编号：`NOTIF-009`
+- 前置依赖核对结果：`NOTIF-008` 已完成并提供渠道注册表与 `mock-log` 正式运行口径；`ENV-010` 已通过 `topics.v1.json`、`072/074` route seed 与 `./scripts/check-topic-topology.sh` 运行态校验确认 `dtp.notification.dispatch` / `dtp.dead-letter` 正式 topic 存在且 DB route authority 一致。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认本批 DoD 是 worker 级别的幂等、重试、DLQ、人工重放入口、审计联查与 runbook 冻结，不是控制面查询接口。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 PostgreSQL 是通知正式记录权威源之一，Kafka 是总线，Redis 是重试/短状态辅助域，`notification-worker` 为外围进程，不能反向定义主业务状态。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：核对正式链路 `notification.requested -> dtp.notification.dispatch -> notification-worker` 与双层 DLQ 目标 `dtp.dead-letter`。
+  - `apps/notification-worker/**`、`apps/platform-core/src/modules/integration/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/05-test-cases/**`、`scripts/**`、`infra/**`：确认现有实现可复用 DB 幂等、Redis retry queue、内部 HTTP 面与运行脚本，但原先缺少 Kafka DLQ 发布、manual replay 入口和 offset / retry 细节修正，不能视为已完成。
+  - `../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`../原始PRD/审计、证据链与回放设计.md`、`../原始PRD/日志、可观测性与告警设计.md`、`docs/开发任务/问题修复任务/A01-Kafka-Topic-口径统一.md`、`docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`：冻结 dead-letter、reprocess、审计动作、日志字段与 topic 命名边界。
+- 实现要点：
+  - `NotificationWorkerConfig` 新增 `dead_letter_topic`，运行态从 `TOPIC_DEAD_LETTER_EVENTS` / `DEAD_LETTER_TOPIC` 读取，默认 `dtp.dead-letter`。
+  - Worker HTTP 面新增 `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`，请求默认 `dry_run=true`，必须显式提供 `reason` 与 `step_up_ticket`，`dry_run=false` 时通过 Kafka 重新发布 replay envelope 到 `dtp.notification.dispatch`。
+  - Kafka 消费循环改为“仅在处理成功时提交 offset”；失败时不提前提交，避免消息在真实处理失败后被错误确认。
+  - Redis retry loop 改为在重试 envelope 处理异常时恢复 ZSET 队列条目，避免“取出后异常丢失”。
+  - Dead-letter 路径补齐双层 DLQ：同一失败事件会同时写入 `ops.dead_letter_event`、`ops.alert_event`、`audit.audit_event`，并额外发布一条 Kafka 隔离消息到 `dtp.dead-letter`；`ops.consumer_idempotency_record.result_code` 统一落为 `dead_lettered`。
+  - `ops.dead_letter_event` 改为按 `outbox_event_id + failure_stage=notification.send` 幂等 upsert，`ops.alert_event` 改为按 `fingerprint + alert_type` 幂等插入，避免重复重试时多次膨胀。
+  - Manual replay 保留原始 `aggregate_id / idempotency_key / source_event`，但生成新的 `event_id / request_id / trace_id`，并在 metadata 中补 `replayed_from_dead_letter_id`、`replayed_from_event_id`、`replay_reason`、`replay_step_up_ticket`、`replay_requested_at`、`replay_request_id`。
+  - replay dry-run 会真实渲染模板并写 `ops.system_log`、`ops.trace_index`、`audit.audit_event`；actual replay 则先把原 dead-letter 标记为 `reprocess_requested`，成功重新消费后再回写 `reprocessed`，失败则改为 `reprocess_failed`。
+  - 为保证 local 模式下 replay 可验证成功路径，replay 构造时会剥离内部故障注入字段 `simulate_failures`；这不会改变正式业务 payload，只避免手工重放继承测试故障开关。
+  - 更新 `apps/notification-worker/README.md` 与 `docs/04-runbooks/notification-worker.md`，写明双层 DLQ、replay 入口、请求字段、审计口径、Kafka / PostgreSQL 回查方式。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo check -p notification-worker`
+  5. `cargo test -p notification-worker`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `./scripts/check-topic-topology.sh`
+  9. 启动最新 `notification-worker`：
+     `APP_PORT=8097 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 TOPIC_DEAD_LETTER_EVENTS=dtp.dead-letter cargo run -p notification-worker`
+  10. `curl http://127.0.0.1:8097/health/deps`
+  11. 通过 `POST /internal/notifications/send` 发送一条 `payment.succeeded` 完整变量样例，两次投递同一 `event_id` / `idempotency_key`，用 `psql` 回查 `ops.consumer_idempotency_record`、`ops.system_log`、`audit.audit_event`，验证重复事件只发送一次。
+  12. 通过 `POST /internal/notifications/send` 发送强制失败样例，回查：
+      - `ops.consumer_idempotency_record.result_code=dead_lettered`
+      - `ops.dead_letter_event.target_topic=dtp.dead-letter`
+      - `ops.alert_event.alert_type=notification_dead_letter`
+      - `audit.audit_event.action_name=notification.dispatch.dead_lettered`
+      - `docker exec datab-kafka ... kafka-console-consumer.sh --topic dtp.dead-letter --from-beginning` 中可直接读到对应隔离消息
+  13. 再发送长 backoff 失败样例，使用 `redis-cli` 与 `/metrics` 回查 Redis ZSET、retry payload、短状态和 `notification_worker_retry_queue_depth`，确认 Redis 真正承载重试辅助状态。
+  14. 对 dead-letter 样例执行 `POST /internal/notifications/dead-letters/{id}/replay`：
+      - `dry_run=true`：验证模板渲染预览、`ops.system_log`、`audit.audit_event`
+      - `dry_run=false`：验证原 dead-letter 状态 `not_reprocessed -> reprocess_requested -> reprocessed`，新 replay event 成功走回 `dtp.notification.dispatch -> notification-worker`
+  15. 观测栈回查：
+      - `curl /metrics` 验证 worker 指标
+      - `curl http://127.0.0.1:9090/api/v1/query?...` 验证 Prometheus 已抓取 `notification-worker`
+      - `curl http://127.0.0.1:9093/api/v2/status` / `/api/v2/alerts` 验证 Alertmanager 链路可用
+      - `curl http://127.0.0.1:3000/api/health`、`http://127.0.0.1:3100/ready`、`http://127.0.0.1:3200/metrics` 验证 Grafana / Loki / Tempo 可用
+  16. 清理本批插入的业务测试数据：删除 `ops.consumer_idempotency_record`、`ops.dead_letter_event`、`ops.alert_event`、`ops.trace_index` 与 Redis 状态/重试键；`audit.audit_event`、`ops.system_log`、Kafka dead-letter 留痕按 append-only / 运行证据口径保留。
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-topic-topology.sh` 全部通过。
+  - `/health/deps` 返回 DB / Redis / Kafka / Keycloak 全部 `reachable=true`，worker 运行参数中已显示正式 topic=`dtp.notification.dispatch`、dead_letter_topic=`dtp.dead-letter`、active_channels=`["mock-log"]`。
+  - 成功 + 去重验证通过：
+    - 相同 `event_id=d8a4842a-34fe-4009-b6f9-849a3800d2a0` 连续投递 2 次后，`ops.system_log` 中 `notification sent via mock-log` 仅 1 条
+    - `ops.consumer_idempotency_record` 为 `processed|1`
+    - `audit.audit_event` 中 `notification.dispatch.sent` 计数为 `1`
+  - 失败 + 双层 DLQ 验证通过：
+    - `event_id=5ef14ea8-f775-4269-b92f-eb3c58dbf6b2` 强制失败 3 次后，`ops.consumer_idempotency_record=dead_lettered|3`
+    - `ops.dead_letter_event` 记录为 `dead_letter_event_id=2fffbb77-3d94-4d89-a215-dcd6de8cc04e`、`target_topic=dtp.dead-letter`、`reprocess_status=not_reprocessed`
+    - `ops.alert_event` 中可回查 `fingerprint=notification-worker:5ef14ea8-f775-4269-b92f-eb3c58dbf6b2`、`alert_type=notification_dead_letter`
+    - `audit.audit_event` 中 `notification.dispatch.dead_lettered` 计数为 `1`
+    - Kafka `dtp.dead-letter` 真实回查到包含 `dead_letter_event_id`、`event_id`、`failure_stage=notification.send`、原始 `payload` 的隔离消息
+  - Redis 重试链路验证通过：
+    - `event_id=105a6fc7-bc45-4ef4-b625-ae2910484048` 在 `backoff_ms=10000` 窗口内，`redis-cli` 回查 `datab:v1:notification:retry-queue` 深度为 `1`
+    - `retry-payload` key 存在，短状态为 `status=retrying`
+    - `/metrics` 返回 `notification_worker_retry_queue_depth 1`，重试结束后自动回落到 `0`
+  - Manual replay 验证通过：
+    - `POST /internal/notifications/dead-letters/268e7657-efb5-4b5c-a4c4-e171abd78a85/replay` 的 `dry_run=true` 返回 `status=dry_run_ready`，并写入 `notification dead letter replay dry-run prepared` 与 `notification.dispatch.reprocess.dry_run`
+    - 同一 dead-letter 的 `dry_run=false` 返回 `replay_event_id=9362db01-9aa5-4785-b6bd-530895a97c89`、`status=reprocess_requested`
+    - 原 dead-letter 状态最终回查为 `reprocessed`
+    - 新 replay event 的 `ops.consumer_idempotency_record=processed|1`，`ops.system_log` 中包含 `notification dead letter replay requested` 和后续 `notification sent via mock-log`
+  - 观测栈回查通过：
+    - worker `/metrics` 暴露 `notification_worker_events_total{result="processed|retrying|dead_lettered"}`、`notification_worker_send_total{channel="mock-log",result="success|failed"}`、`notification_worker_retry_queue_depth`
+    - Prometheus `/api/v1/targets` 显示 `job=notification-worker` 抓取 `host.docker.internal:8097/metrics` 状态 `up`
+    - Prometheus `/api/v1/query` 已回查到 `notification_worker_events_total` 与 `notification_worker_send_total`
+    - Alertmanager `/api/v2/status` 返回 `cluster.status=ready`，`/api/v2/alerts` 可见活跃告警链路
+    - Grafana `/api/health` 返回 `database=ok`
+    - Loki `/ready=200` 且 `/metrics` 可见 `loki_build_info`
+    - Tempo `/metrics=200` 且可见 `tempo_build_info`
+  - 测试数据清理结果：本批插入的 `ops.consumer_idempotency_record`、`ops.dead_letter_event`、`ops.alert_event`、`ops.trace_index` 与 Redis `datab:v1:notification:*` 键已清理完成；`audit.audit_event`、`ops.system_log` 与 Kafka dead-letter 留痕按 append-only 规则保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-009`
+  - `12-API 设计、事件模型与消息总线.md`：通知事件、DLQ 与 replay 仍走正式 Kafka 链路
+  - `审计、证据链与回放设计.md`：replay 默认 dry-run、step-up、审计动作、原始 dead-letter 状态变更
+  - `日志、可观测性与告警设计.md`：通知 dead-letter / replay 的日志字段、指标与告警
+  - `A01-Kafka-Topic-口径统一.md`、`A10-NOTIF-通知链路与命名边界缺口.md`：`dtp.notification.dispatch` / `dtp.dead-letter` / `notification-worker` 正式命名边界
+  - `kafka-topics.md`、`notification-worker.md`、`topics.v1.json`、`072/074` SQL：正式 topic、consumer、route policy 与运行态回查
+- 覆盖的任务清单条目：`NOTIF-009`
+- 未覆盖项：无。联查查询能力、正式 OpenAPI 归档与完整通知测试样例仍按顺序留给 `NOTIF-010 ~ NOTIF-014`。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 本批无需变更。
+- 备注：
+  - 本批运行态联调中，manual replay 成功路径通过剥离内部故障注入字段 `simulate_failures` 验证；该字段仅用于 local 故障注入，不属于正式通知业务语义。
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。

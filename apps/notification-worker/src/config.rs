@@ -10,6 +10,7 @@ pub struct NotificationWorkerConfig {
     pub redis_namespace: String,
     pub kafka_brokers: String,
     pub topic: String,
+    pub dead_letter_topic: String,
     pub consumer_group: String,
     pub template_dir: PathBuf,
     pub retry_poll_interval_ms: u64,
@@ -46,6 +47,9 @@ impl NotificationWorkerConfig {
                 .unwrap_or_else(|_| "127.0.0.1:9094".to_string()),
             topic: std::env::var("NOTIFICATION_TOPIC")
                 .unwrap_or_else(|_| "dtp.notification.dispatch".to_string()),
+            dead_letter_topic: std::env::var("TOPIC_DEAD_LETTER_EVENTS")
+                .or_else(|_| std::env::var("DEAD_LETTER_TOPIC"))
+                .unwrap_or_else(|_| "dtp.dead-letter".to_string()),
             consumer_group: std::env::var("NOTIFICATION_WORKER_CONSUMER_GROUP")
                 .unwrap_or_else(|_| "cg-notification-worker".to_string()),
             template_dir: std::env::var("NOTIFICATION_TEMPLATE_DIR")

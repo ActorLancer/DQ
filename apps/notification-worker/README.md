@@ -70,9 +70,13 @@
   - buyer / seller 正文只允许展示订单、案件、状态与处理入口；`freeze_ticket_id / legal_hold_id / governance_action_count / resolution_ref_* / liability_type` 仅允许进入 ops payload
 - `POST /internal/notifications/send` 手工注入通知事件到 Kafka
 - `POST /internal/notifications/templates/preview` 预览模板渲染结果，返回解析后的语言、版本、schema 与 fallback 使用情况
+- `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay` 提供最小人工重放入口：
+  - 请求默认 `dry_run=true`
+  - 必须显式提供 `reason` 与 `step_up_ticket`
+  - `dry_run=false` 时会把新 replay envelope 重新发布到 `dtp.notification.dispatch`
 - 文件模板目录：`apps/notification-worker/templates/`
 - Redis 短期状态与重试队列
-- PostgreSQL 发送/审计/死信/trace 镜像
+- PostgreSQL 发送/审计/死信/trace 镜像，以及 `dtp.dead-letter` Kafka 双层 DLQ
 - 健康检查与指标端点：`/health/live`、`/health/ready`、`/health/deps`、`/metrics`
 
 发送适配器口径：
@@ -87,6 +91,15 @@
   - `provider_mode`
   - `transport_status`
   - `backend_message_id`
+- 重试耗尽后，worker 会同时：
+  - 写入 `ops.dead_letter_event`
+  - 写入 `ops.alert_event`
+  - 发布一条隔离消息到 `dtp.dead-letter`
+- replay 请求会保留原始 `idempotency_key / aggregate_id / source_event`，但会生成新的 `event_id / request_id / trace_id`，并在 metadata 中补：
+  - `replayed_from_dead_letter_id`
+  - `replayed_from_event_id`
+  - `replay_reason`
+  - `replay_step_up_ticket`
 - 若手工请求显式指定 `channel=email|webhook`，local 模式会按“边界已预留但未启用”拒绝，不会绕过 `V1` 冻结口径偷偷切外部 provider
 
 本地启动：
@@ -96,5 +109,6 @@ APP_PORT=8097 \
 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
 REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 \
 KAFKA_BROKERS=127.0.0.1:9094 \
+TOPIC_DEAD_LETTER_EVENTS=dtp.dead-letter \
 cargo run -p notification-worker
 ```
