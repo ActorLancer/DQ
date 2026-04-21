@@ -1083,3 +1083,124 @@
 - 备注：
   - 为避免 live smoke 与常驻进程争用同一 consumer group，本批执行前已停止本地常驻 `notification-worker`；任务收尾后尚未恢复常驻进程。
   - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。
+### BATCH-212（计划中）
+- 任务：`NOTIF-013` 通知联查与控制面 OpenAPI 归档/示例
+- 状态：计划中
+- 说明：当前 `packages/openapi/ops.yaml` 仍是最小健康检查骨架，`docs/02-openapi/ops.yaml` 尚未落盘；这与 `NOTIF-010/011/012` 已落地的通知模板预览、手工注入、审计联查、DLQ replay 与 live smoke 运行态不一致。本批将把 `ops.yaml` 补齐为通知控制面正式归档，至少覆盖：
+  - `POST /internal/notifications/templates/preview`
+  - `POST /internal/notifications/send`
+  - `POST /internal/notifications/audit/search`
+  - `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
+  - 请求/响应示例中的发送记录、模板版本、渠道结果、重试/DLQ、人工补发与 step-up / 审计字段
+  - `event_type / target_topic / aggregate_type` 过滤口径，并与 `notification.requested -> dtp.notification.dispatch -> notification-worker` 正式链路一致
+- 追溯：本批优先收口通知控制面契约、联查过滤能力与归档副本，不提前越界补 `AUD` 领域的完整 `audit.yaml`，也不提前补 `NOTIF-014` 的测试样例文档。
+### BATCH-212（待审批）
+- 任务：`NOTIF-013` 通知联查与控制面 OpenAPI 归档/示例
+- 状态：待审批
+- 依赖核对：
+  - `NOTIF-010` 已完成：通知审计联查接口、结构化发送记录、审计与 runbook 查询路径已冻结。
+  - `AUD-003`、`AUD-025` 作为前序基线输入已提供 `audit.audit_event` 事件模型、通知相关审计字段与实现期 OpenAPI 归档约束；当前批次在此基础上承接 `ops.yaml` 的通知控制面契约。
+- 重新阅读：
+  - `docs/开发任务/v1-core-开发任务清单.csv`
+  - `docs/开发任务/v1-core-开发任务清单.md`
+  - `docs/开发准备/服务清单与服务边界正式版.md`
+  - `docs/开发准备/事件模型与Topic清单正式版.md`
+  - `docs/开发准备/本地开发环境与中间件部署清单.md`
+  - `docs/开发准备/配置项与密钥管理清单.md`
+  - `docs/开发准备/技术选型正式版.md`
+  - `docs/开发准备/平台总体架构设计草案.md`
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`
+  - `docs/原始PRD/审计、证据链与回放设计.md`
+  - `docs/原始PRD/日志、可观测性与告警设计.md`
+  - `docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`
+  - `docs/02-openapi/README.md`
+  - `docs/04-runbooks/kafka-topics.md`
+  - `docs/04-runbooks/notification-worker.md`
+  - `docs/00-context/async-chain-write.md`
+  - `infra/kafka/topics.v1.json`
+  - `docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`
+  - `docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`
+  - `docs/开发任务/问题修复任务/A10-NOTIF-通知链路与命名边界缺口.md`
+  - `docs/开发任务/问题修复任务/A11-测试与Smoke口径误报风险.md`
+  - `apps/notification-worker/**`
+  - `apps/platform-core/src/modules/integration/**`
+  - `packages/openapi/**`
+  - `docs/02-openapi/**`
+  - `docs/05-test-cases/**`
+  - `scripts/**`
+  - `infra/**`
+- 实现内容：
+  - `apps/notification-worker/src/main.rs`
+    - 为 `POST /internal/notifications/audit/search` 增加 `aggregate_type / event_type / target_topic` 三个正式 envelope 过滤字段，并把这些字段纳入请求归一化、必填校验、查询 SQL、审计元数据与响应 `filters`。
+    - 通知联查记录新增 `aggregate_type / event_type / target_topic` 回显字段，并在 `notification_lookup_metadata` 中固定写入正式通知链 `notification.dispatch_request / notification.requested / dtp.notification.dispatch`，保证手工注入与正式业务链都能按同一口径联查。
+    - 对历史日志缺少路由字段的记录增加 outbox / dead-letter 回填合并逻辑，避免旧样例在新增契约字段下返回空值。
+    - 新增两个单元测试：过滤字段归一化、通知 lookup metadata 的正式路由字段写入。
+  - `packages/openapi/ops.yaml`
+    - 从最小健康检查骨架升级为通知控制面正式契约，归档 `templates/preview`、`send`、`audit/search`、`dead-letters/{id}/replay` 四个入口。
+    - 补齐请求/响应 schema、示例 payload、发送记录 / 模板版本 / 渠道结果 / 重试 / DLQ / replay / `step_up_ticket` 字段，并把 `aggregate_type / event_type / target_topic` 过滤口径明确绑定到正式通知 envelope，而不是 `source_event`。
+  - `docs/02-openapi/ops.yaml`
+    - 新增归档副本，与 `packages/openapi/ops.yaml` 保持同步。
+  - `scripts/check-openapi-schema.sh`
+    - 将通知控制面四个路径纳入 `ops.yaml` 契约检查。
+    - 增加 `aggregate_type / event_type / target_topic / step_up_ticket / dtp.notification.dispatch` 关键字段检查。
+    - 强制 `docs/02-openapi/ops.yaml` 与 `packages/openapi/ops.yaml` 保持同步，消除“实现期权威源与归档副本漂移”的误报风险。
+  - `docs/04-runbooks/notification-worker.md`、`packages/openapi/README.md`、`docs/02-openapi/README.md`
+    - 同步更新 `NOTIF-013` 承接状态，明确 OpenAPI 已归档，runbook 的 `aggregate_type / event_type / target_topic` 过滤解释与归档契约一致。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`
+    - 未新增 TODO，但将既有 `TODO-NOTIF-CONTRACT-001` 从 `NOTIF-013; NOTIF-014` 缩窄为仅剩 `NOTIF-014`，避免 OpenAPI 已完成后仍被误登记为未完成 gap。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p notification-worker`
+  3. `cargo test -p notification-worker`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `./scripts/check-openapi-schema.sh`
+  9. 启动本地 `notification-worker`：
+     `APP_PORT=8097 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/2 KAFKA_BROKERS=127.0.0.1:9094 TOPIC_NOTIFICATION_DISPATCH=dtp.notification.dispatch TOPIC_DEAD_LETTER_EVENTS=dtp.dead-letter cargo run -p notification-worker`
+  10. 手工 API 验证：
+      - `POST /internal/notifications/send` 注入一条 `payment.succeeded` 正式消息
+      - `POST /internal/notifications/audit/search` 同时使用 `order_id + event_id + aggregate_type=notification.dispatch_request + event_type=notification.requested + target_topic=dtp.notification.dispatch`
+      - `psql` 回查 `audit.audit_event` 最新 `notification.dispatch.lookup` 元数据
+      - `psql` 回查 `ops.system_log.structured_payload` 路由字段
+      - `psql` 回查 `ops.consumer_idempotency_record.result_code`
+      - `redis-cli` 回查并清理短状态键
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 全部通过。
+  - `./scripts/check-openapi-schema.sh` 返回 `[ok]`，确认：
+    - `packages/openapi/ops.yaml` 已包含四个通知控制面路径
+    - `aggregate_type / event_type / target_topic / step_up_ticket` 字段已进入强校验
+    - `docs/02-openapi/ops.yaml` 与实现期权威源完全同步
+  - 手工 API 验证通过：
+    - `POST /internal/notifications/send` 返回 `event_type=notification.requested`、`topic=dtp.notification.dispatch`
+    - `POST /internal/notifications/audit/search` 返回：
+      - `filters.aggregate_type=notification.dispatch_request`
+      - `filters.event_type=notification.requested`
+      - `filters.target_topic=dtp.notification.dispatch`
+      - `records[0].aggregate_type=notification.dispatch_request`
+      - `records[0].event_type=notification.requested`
+      - `records[0].target_topic=dtp.notification.dispatch`
+      - `records[0].current_status=processed`
+      - `records[0].channel=mock-log`
+    - 数据库回查通过：
+      - `audit.audit_event.action_name=notification.dispatch.lookup` 的最新元数据包含 `aggregate_type / event_type / target_topic / result_count=1`
+      - `ops.system_log.structured_payload` 对应事件包含 `aggregate_type / event_type / target_topic`
+      - `ops.consumer_idempotency_record.result_code=processed`
+    - Redis 短状态在验证后已清理：
+      - `ops.consumer_idempotency_record` 对当前手工样例 `event_id=5e25119a-001f-4137-b94c-b09f0052e8b1` 计数为 `0`
+      - `ops.trace_index` 对该样例计数为 `0`
+      - Redis `datab:v1:notification:state:5e25119a-001f-4137-b94c-b09f0052e8b1` 回查为空
+    - `audit.audit_event` 与 `ops.system_log` 按 append-only 要求保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`NOTIF-013`
+  - `审计、证据链与回放设计.md`：通知相关审计动作、step-up 留痕
+  - `日志、可观测性与告警设计.md`：结构化日志字段与通知观测字段
+  - `事件模型与Topic清单正式版.md`、`一致性与事件接口协议正式版.md`：`notification.requested / notification.dispatch_request / dtp.notification.dispatch` 与 `dead letter / reprocess` 正式口径
+  - `docs/02-openapi/README.md`、`A10`、`A11`：实现期 OpenAPI 归档、通知命名边界与误报风险收敛要求
+- 覆盖的任务清单条目：`NOTIF-013`
+- 未覆盖项：无。`NOTIF-014` 的 `docs/05-test-cases/notification-cases.md` 仍按顺序待后续 task 承接。
+- 新增 TODO / 预留项：无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；仅将既有 `TODO-NOTIF-CONTRACT-001` 收敛为 `NOTIF-014` 剩余义务。
+- 备注：
+  - 本批手工 API 验证结束后，已主动停止本地常驻 `notification-worker`，避免影响后续 task 的 smoke / live test。
+  - `V1-Core-人工审批记录.md` 仍由你手工维护；本批未写入。

@@ -16,7 +16,7 @@
 - `search.yaml`：Search/Ops Search 子域当前实现期设计参考；实现校验通过后再同步归档到 `docs/02-openapi/search.yaml`。
 - `recommendation.yaml`：Recommendation/Ops Recommendation 子域当前实现期设计参考。
 - `audit.yaml`：当前仍属 `AUD / integration` 实现前占位；进入对应代码实现批次后必须补齐。
-- `ops.yaml`：当前仅保留最小健康与内部端点；进入 `AUD / consistency / NOTIF` 实现批次后必须补齐正式控制面接口。
+- `ops.yaml`：当前已归档健康检查、内部开发端点，以及 `NOTIF-013` 承接的通知模板预览 / 手工注入 / 审计联查 / dead letter replay 契约；更广义的 `AUD / consistency` 正式控制面接口仍待后续批次补齐。
 
 通知、Fabric 及相关联查/重试/DLQ 的契约补齐，不代表会新建独立 `packages/openapi/notification.yaml` 或 `fabric.yaml`；现阶段统一由 `audit.yaml`、`ops.yaml` 及 `docs/02-openapi/README.md` 中的阶段约束承接。
 

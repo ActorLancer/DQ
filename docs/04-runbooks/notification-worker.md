@@ -19,7 +19,7 @@
 - 当前 runbook 是 `NOTIF-011` 的正式交付物，目标是把已实现的通知链路整理成可执行手册，而不是替代运行时实现本身。
 - 当前文档必须与真实运行态一致：topic、consumer group、模板版本、联查入口、replay 入口、审计与观测链路都要能实际回查。
 - 当前文档不替代后续承接项：
-  - `NOTIF-013`：`packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml` 中的通知联查 / 人工补发 OpenAPI 归档
+  - `NOTIF-013`：已将通知联查 / 模板预览 / 手工注入 / 人工补发 OpenAPI 归档同步到 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml`
   - `NOTIF-014`：`docs/05-test-cases/notification-cases.md`
 
 ## 运行前核对
@@ -259,9 +259,14 @@ order by template_code, version_no;
 
 - 入口：`POST /internal/notifications/audit/search`
 - 必须提供：
-  - 至少一个主过滤条件：`order_id / case_id / template_code / notification_code / event_id`
+  - 至少一个主过滤条件：`order_id / case_id / aggregate_type / event_type / target_topic / template_code / notification_code / event_id`
   - `reason`
   - `step_up_ticket`
+- `aggregate_type / event_type / target_topic` 针对正式通知 envelope / canonical outbox 路由，即：
+  - `aggregate_type=notification.dispatch_request`
+  - `event_type=notification.requested`
+  - `target_topic=dtp.notification.dispatch`
+- 它们不是 `source_event.aggregate_type / source_event.event_type / source_event.target_topic` 的别名。
 - 最小请求示例：
 
 ```json
@@ -429,7 +434,7 @@ order by template_code, version_no;
 
 ## 当前承接关系
 
-- `NOTIF-013` 会把当前 runbook 中已经冻结的联查 / replay 入口补齐到 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml`。
+- `NOTIF-013` 已把当前 runbook 中已经冻结的模板预览 / 手工注入 / 联查 / replay 入口补齐到 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml`，并明确 `aggregate_type / event_type / target_topic` 过滤口径对应正式通知 envelope。
 - `NOTIF-014` 会把当前 runbook 中的运行态验证路径补成 `docs/05-test-cases/notification-cases.md`，覆盖：
   - 支付成功
   - 交付完成

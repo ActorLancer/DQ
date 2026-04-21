@@ -38,12 +38,39 @@ done
 
 # V1 skeleton drift guard for currently implemented internal/ops endpoints.
 ops_file="$OPENAPI_DIR/ops.yaml"
-for path in "/health/live" "/health/ready" "/health/deps" "/internal/runtime" "/internal/dev/trace-links" "/internal/dev/overview"; do
+for path in \
+  "/health/live" \
+  "/health/ready" \
+  "/health/deps" \
+  "/internal/runtime" \
+  "/internal/dev/trace-links" \
+  "/internal/dev/overview" \
+  "/internal/notifications/templates/preview" \
+  "/internal/notifications/send" \
+  "/internal/notifications/audit/search" \
+  "/internal/notifications/dead-letters/{dead_letter_event_id}/replay"; do
   grep -q "$path" "$ops_file" || {
     echo "[error] $ops_file missing path: $path" >&2
     exit 1
   }
 done
+
+for token in "aggregate_type" "event_type" "target_topic" "step_up_ticket" "dtp.notification.dispatch"; do
+  grep -q "$token" "$ops_file" || {
+    echo "[error] $ops_file missing notification contract token: $token" >&2
+    exit 1
+  }
+done
+
+docs_ops_file="docs/02-openapi/ops.yaml"
+if [[ ! -f "$docs_ops_file" ]]; then
+  echo "[error] missing archive copy: $docs_ops_file" >&2
+  exit 1
+fi
+cmp -s "$ops_file" "$docs_ops_file" || {
+  echo "[error] $docs_ops_file is not synced with $ops_file" >&2
+  exit 1
+}
 
 search_file="$OPENAPI_DIR/search.yaml"
 for path in \

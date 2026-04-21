@@ -36,6 +36,7 @@ use crate::event::{
 use crate::template::{RenderedNotification, TemplateStore};
 
 const SERVICE_NAME: &str = "notification-worker";
+const NOTIFICATION_DISPATCH_TOPIC: &str = "dtp.notification.dispatch";
 
 #[derive(Clone)]
 struct WorkerState {
@@ -1270,6 +1271,9 @@ async fn write_notification_lookup_audit_event(
                 &json!({
                     "order_id": request.order_id,
                     "case_id": request.case_id,
+                    "aggregate_type": request.aggregate_type,
+                    "event_type": request.event_type,
+                    "target_topic": request.target_topic,
                     "template_code": request.template_code,
                     "notification_code": request.notification_code,
                     "event_id": request.event_id,
@@ -1352,9 +1356,39 @@ async fn load_notification_audit_event_ids(
                               AND subject_ref->>'ref_id' = $6
                       )
                     )
+                AND (
+                      $7::text IS NULL
+                      OR structured_payload->>'aggregate_type' = $7
+                      OR EXISTS (
+                           SELECT 1
+                             FROM ops.outbox_event outbox_event
+                            WHERE outbox_event.payload->>'event_id' = ops.system_log.object_id::text
+                              AND outbox_event.aggregate_type = $7
+                      )
+                    )
+                AND (
+                      $8::text IS NULL
+                      OR structured_payload->>'event_type' = $8
+                      OR EXISTS (
+                           SELECT 1
+                             FROM ops.outbox_event outbox_event
+                            WHERE outbox_event.payload->>'event_id' = ops.system_log.object_id::text
+                              AND outbox_event.event_type = $8
+                      )
+                    )
+                AND (
+                      $9::text IS NULL
+                      OR structured_payload->>'target_topic' = $9
+                      OR EXISTS (
+                           SELECT 1
+                             FROM ops.outbox_event outbox_event
+                            WHERE outbox_event.payload->>'event_id' = ops.system_log.object_id::text
+                              AND outbox_event.target_topic = $9
+                      )
+                    )
               GROUP BY object_id
               ORDER BY MAX(created_at) DESC
-              LIMIT $7",
+              LIMIT $10",
             &[
                 &SERVICE_NAME,
                 &request.event_id,
@@ -1362,6 +1396,9 @@ async fn load_notification_audit_event_ids(
                 &request.notification_code,
                 &request.order_id,
                 &request.case_id,
+                &request.aggregate_type,
+                &request.event_type,
+                &request.target_topic,
                 &limit,
             ],
         )
@@ -1404,9 +1441,13 @@ async fn load_notification_audit_record(
         .map(|row| row.get::<_, Value>(4))
         .find(|payload| payload["notification_code"].is_string())
         .unwrap_or_else(|| json!({}));
-    if !base_payload["notification_code"].is_string() {
+    if !base_payload["notification_code"].is_string()
+        || !base_payload["aggregate_type"].is_string()
+        || !base_payload["event_type"].is_string()
+        || !base_payload["target_topic"].is_string()
+    {
         if let Some(payload) = load_notification_lookup_payload(client, event_id).await? {
-            base_payload = payload;
+            base_payload = merge_json_objects(payload, base_payload);
         }
     }
     let request_id = log_rows
@@ -1529,6 +1570,18 @@ async fn load_notification_audit_record(
     Ok(NotificationAuditLookupRecord {
         event_id: event_id.to_string(),
         aggregate_id: base_payload["aggregate_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        aggregate_type: base_payload["aggregate_type"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        event_type: base_payload["event_type"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        target_topic: base_payload["target_topic"]
             .as_str()
             .unwrap_or_default()
             .to_string(),
@@ -1725,6 +1778,12 @@ struct NotificationAuditLookupRequest {
     #[serde(default)]
     case_id: Option<String>,
     #[serde(default)]
+    aggregate_type: Option<String>,
+    #[serde(default)]
+    event_type: Option<String>,
+    #[serde(default)]
+    target_topic: Option<String>,
+    #[serde(default)]
     template_code: Option<String>,
     #[serde(default)]
     notification_code: Option<String>,
@@ -1753,6 +1812,9 @@ struct NotificationAuditLookupResponse {
 struct NotificationAuditLookupFilters {
     order_id: Option<String>,
     case_id: Option<String>,
+    aggregate_type: Option<String>,
+    event_type: Option<String>,
+    target_topic: Option<String>,
     template_code: Option<String>,
     notification_code: Option<String>,
     event_id: Option<String>,
@@ -1763,6 +1825,9 @@ struct NotificationAuditLookupFilters {
 struct NotificationAuditLookupRecord {
     event_id: String,
     aggregate_id: String,
+    aggregate_type: String,
+    event_type: String,
+    target_topic: String,
     request_id: String,
     trace_id: String,
     notification_code: String,
@@ -2116,6 +2181,9 @@ async fn notification_audit_search_handler(
         filters: NotificationAuditLookupFilters {
             order_id: request.order_id,
             case_id: request.case_id,
+            aggregate_type: request.aggregate_type,
+            event_type: request.event_type,
+            target_topic: request.target_topic,
             template_code: request.template_code,
             notification_code: request.notification_code,
             event_id: request.event_id,
@@ -2199,6 +2267,21 @@ fn validate_lookup_request(
             .filter(|value| !value.trim().is_empty())
             .is_none()
         && request
+            .aggregate_type
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .is_none()
+        && request
+            .event_type
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .is_none()
+        && request
+            .target_topic
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .is_none()
+        && request
             .template_code
             .as_deref()
             .filter(|value| !value.trim().is_empty())
@@ -2215,7 +2298,7 @@ fn validate_lookup_request(
             .is_none()
     {
         return Err(bad_request_error(
-            "at least one of order_id, case_id, template_code, notification_code, or event_id is required",
+            "at least one of order_id, case_id, aggregate_type, event_type, target_topic, template_code, notification_code, or event_id is required",
         ));
     }
     Ok(())
@@ -2227,6 +2310,9 @@ fn normalize_lookup_request(
     NotificationAuditLookupRequest {
         order_id: normalize_filter_value(request.order_id),
         case_id: normalize_filter_value(request.case_id),
+        aggregate_type: normalize_filter_value(request.aggregate_type),
+        event_type: normalize_filter_value(request.event_type),
+        target_topic: normalize_filter_value(request.target_topic),
         template_code: normalize_filter_value(request.template_code),
         notification_code: normalize_filter_value(request.notification_code),
         event_id: normalize_filter_value(request.event_id),
@@ -2256,7 +2342,10 @@ fn lookup_limit(limit: Option<i64>) -> i64 {
 fn notification_lookup_metadata(envelope: &NotificationEnvelope) -> Value {
     json!({
         "event_id": envelope.event_id,
+        "event_type": envelope.event_type,
+        "aggregate_type": envelope.aggregate_type,
         "aggregate_id": envelope.aggregate_id,
+        "target_topic": NOTIFICATION_DISPATCH_TOPIC,
         "request_id": envelope.request_id,
         "trace_id": envelope.effective_trace_id(),
         "idempotency_key": envelope.idempotency_key,
@@ -2807,6 +2896,87 @@ mod tests {
         assert_eq!(resolve_kafka_target(""), None);
     }
 
+    #[test]
+    fn normalize_lookup_request_trims_canonical_event_filters() {
+        let normalized = normalize_lookup_request(NotificationAuditLookupRequest {
+            order_id: Some(" ".to_string()),
+            case_id: None,
+            aggregate_type: Some(" notification.dispatch_request ".to_string()),
+            event_type: Some(" notification.requested ".to_string()),
+            target_topic: Some(" dtp.notification.dispatch ".to_string()),
+            template_code: None,
+            notification_code: None,
+            event_id: None,
+            limit: Some(99),
+            reason: " trace lookup ".to_string(),
+            step_up_ticket: " step-up-local-1 ".to_string(),
+            request_id: Some(" req-1 ".to_string()),
+            trace_id: Some(" trace-1 ".to_string()),
+        });
+
+        assert_eq!(
+            normalized.aggregate_type.as_deref(),
+            Some("notification.dispatch_request")
+        );
+        assert_eq!(
+            normalized.event_type.as_deref(),
+            Some("notification.requested")
+        );
+        assert_eq!(
+            normalized.target_topic.as_deref(),
+            Some("dtp.notification.dispatch")
+        );
+        assert_eq!(normalized.reason, "trace lookup");
+        assert_eq!(normalized.step_up_ticket, "step-up-local-1");
+        assert_eq!(normalized.request_id.as_deref(), Some("req-1"));
+        assert_eq!(normalized.trace_id.as_deref(), Some("trace-1"));
+        assert!(normalized.order_id.is_none());
+    }
+
+    #[test]
+    fn notification_lookup_metadata_includes_canonical_route_fields() {
+        let envelope = SendNotificationRequest {
+            event_id: Some("11111111-1111-1111-1111-111111111111".to_string()),
+            aggregate_id: Some("22222222-2222-2222-2222-222222222222".to_string()),
+            notification_code: Some("payment.succeeded".to_string()),
+            audience_scope: Some("buyer".to_string()),
+            template_code: None,
+            channel: None,
+            recipient: NotificationRecipient {
+                kind: "user".to_string(),
+                address: "buyer@example.test".to_string(),
+                id: None,
+                display_name: Some("Buyer".to_string()),
+            },
+            variables: None,
+            metadata: None,
+            source_event: None,
+            subject_refs: None,
+            links: None,
+            idempotency_key: None,
+            request_id: Some("req-metadata".to_string()),
+            trace_id: Some("trace-metadata".to_string()),
+            retry_policy: None,
+            simulate_failures: None,
+        }
+        .into_envelope()
+        .expect("request should build envelope");
+
+        let metadata = notification_lookup_metadata(&envelope);
+        assert_eq!(
+            metadata["aggregate_type"].as_str(),
+            Some("notification.dispatch_request")
+        );
+        assert_eq!(
+            metadata["event_type"].as_str(),
+            Some("notification.requested")
+        );
+        assert_eq!(
+            metadata["target_topic"].as_str(),
+            Some(NOTIFICATION_DISPATCH_TOPIC)
+        );
+    }
+
     fn sample_dead_letter_target() -> DeadLetterReplayTarget {
         let envelope = SendNotificationRequest {
             event_id: Some("11111111-1111-1111-1111-111111111111".to_string()),
@@ -2925,6 +3095,9 @@ mod tests {
         let no_filter = NotificationAuditLookupRequest {
             order_id: None,
             case_id: None,
+            aggregate_type: None,
+            event_type: None,
+            target_topic: None,
             template_code: None,
             notification_code: None,
             event_id: None,
@@ -2939,6 +3112,9 @@ mod tests {
         let invalid_reason = NotificationAuditLookupRequest {
             order_id: Some("order-1".to_string()),
             case_id: None,
+            aggregate_type: None,
+            event_type: None,
+            target_topic: None,
             template_code: None,
             notification_code: None,
             event_id: None,
@@ -2953,6 +3129,9 @@ mod tests {
         let invalid_step_up = NotificationAuditLookupRequest {
             order_id: Some("order-1".to_string()),
             case_id: None,
+            aggregate_type: None,
+            event_type: None,
+            target_topic: None,
             template_code: None,
             notification_code: None,
             event_id: None,
