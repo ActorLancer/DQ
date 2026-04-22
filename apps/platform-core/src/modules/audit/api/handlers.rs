@@ -15,9 +15,11 @@ use crate::modules::audit::domain::{
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
     AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OpsConsistencyBusinessStateView,
-    OpsConsistencyExternalFactStateView, OpsConsistencyProofStateView, OpsConsistencyView,
-    OpsDeadLetterPageView, OpsDeadLetterQuery, OpsDeadLetterReprocessRequest,
-    OpsDeadLetterReprocessView, OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
+    OpsConsistencyExternalFactStateView, OpsConsistencyProofStateView,
+    OpsConsistencyReconcileRequest, OpsConsistencyReconcileView,
+    OpsConsistencyRepairRecommendationView, OpsConsistencyView, OpsDeadLetterPageView,
+    OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
+    OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
 };
 use crate::modules::audit::dto::{
     AnchorBatchView, ChainProjectionGapView, DeadLetterEventView, EvidenceManifestView,
@@ -36,10 +38,13 @@ const REPLAY_STEP_UP_ACTION: &str = "audit.replay.execute";
 const LEGAL_HOLD_STEP_UP_ACTION: &str = "audit.legal_hold.manage";
 const ANCHOR_STEP_UP_ACTION: &str = "audit.anchor.manage";
 const DEAD_LETTER_REPROCESS_STEP_UP_ACTION: &str = "ops.dead_letter.reprocess";
+const CONSISTENCY_RECONCILE_STEP_UP_ACTION: &str = "ops.consistency.reconcile";
+const CONSISTENCY_RECONCILE_TARGET_TOPIC: &str = "dtp.consistency.reconcile";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
 const DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_DRY_RUN_ONLY";
 const DEAD_LETTER_REPROCESS_NOT_SUPPORTED_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_NOT_SUPPORTED";
 const DEAD_LETTER_REPROCESS_STATE_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_STATE_CONFLICT";
+const CONSISTENCY_RECONCILE_DRY_RUN_ONLY_ERROR: &str = "AUDIT_CONSISTENCY_RECONCILE_DRY_RUN_ONLY";
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
 
@@ -516,6 +521,248 @@ pub(in crate::modules::audit) async fn get_ops_consistency(
             .map(DeadLetterEventView::from)
             .collect(),
         recent_audit_traces,
+    }))
+}
+
+pub(in crate::modules::audit) async fn reconcile_ops_consistency(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<OpsConsistencyReconcileRequest>,
+) -> Result<Json<ApiResponse<OpsConsistencyReconcileView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    let normalized_ref_type = normalize_consistency_ref_type(&payload.ref_type, &request_id)?;
+    validate_uuid(&payload.ref_id, "ref_id", &request_id)?;
+    let mode = normalize_consistency_reconcile_mode(payload.mode.as_deref(), &request_id)?;
+    let reason = normalize_consistency_reconcile_reason(&payload.reason, &request_id)?;
+    let dry_run = payload.dry_run.unwrap_or(true);
+    require_permission(
+        &headers,
+        AuditPermission::OpsConsistencyReconcile,
+        "ops consistency reconcile",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "ops consistency reconcile")?;
+    if !dry_run {
+        return Err(consistency_reconcile_dry_run_only(&request_id));
+    }
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_consistency_reconcile(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        normalized_ref_type.as_str(),
+        payload.ref_id.as_str(),
+    )
+    .await?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+
+    let subject = repo::load_consistency_subject(
+        &client,
+        normalized_ref_type.as_str(),
+        payload.ref_id.as_str(),
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        not_found(
+            &request_id,
+            format!(
+                "consistency subject not found: ref_type={} ref_id={}",
+                normalized_ref_type, payload.ref_id
+            ),
+        )
+    })?;
+    let ref_type_candidates = consistency_ref_type_candidates(normalized_ref_type.as_str());
+    let aggregate_type_candidates =
+        consistency_aggregate_type_candidates(normalized_ref_type.as_str());
+    let recent_outbox_events = repo::search_recent_outbox_events_for_aggregates(
+        &client,
+        &aggregate_type_candidates,
+        subject.ref_id.as_str(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_dead_letters = repo::search_recent_dead_letters_for_aggregates(
+        &client,
+        &aggregate_type_candidates,
+        subject.ref_id.as_str(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_receipts = repo::search_recent_external_fact_receipts_for_refs(
+        &client,
+        &ref_type_candidates,
+        subject.ref_id.as_str(),
+        subject.order_id.as_deref(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_projection_gaps = repo::search_recent_chain_projection_gaps_for_aggregates(
+        &client,
+        &aggregate_type_candidates,
+        subject.ref_id.as_str(),
+        subject.order_id.as_deref(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let projection_gap_status_breakdown =
+        repo::count_chain_projection_gaps_by_status_for_aggregates(
+            &client,
+            &aggregate_type_candidates,
+            subject.ref_id.as_str(),
+            subject.order_id.as_deref(),
+        )
+        .await
+        .map_err(map_db_error)?;
+    let recent_chain_anchors = repo::search_recent_chain_anchors_for_refs(
+        &client,
+        &ref_type_candidates,
+        subject.ref_id.as_str(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    let subject_snapshot = build_consistency_reconcile_subject_snapshot(
+        &subject,
+        recent_chain_anchors.first(),
+        recent_receipts.items.first(),
+        recent_projection_gaps.items.first(),
+        recent_outbox_events.len() as i64,
+        recent_dead_letters.len() as i64,
+        recent_receipts.total,
+        projection_gap_status_breakdown.clone(),
+    );
+    let recommendations = build_consistency_reconcile_recommendations(
+        mode.as_str(),
+        &subject,
+        &recent_projection_gaps.items,
+        &recent_outbox_events,
+        &recent_dead_letters,
+        recent_receipts.items.first(),
+        recent_chain_anchors.first(),
+    );
+    let recommendation_count = recommendations.len() as i64;
+    let recommendation_preview = summarize_consistency_recommendations(&recommendations);
+    let related_gap_ids: Vec<String> = recent_projection_gaps
+        .items
+        .iter()
+        .filter_map(|gap| gap.chain_projection_gap_id.clone())
+        .collect();
+    let related_projection_gaps: Vec<ChainProjectionGapView> = recent_projection_gaps
+        .items
+        .iter()
+        .map(ChainProjectionGapView::from)
+        .collect();
+    let reconcile_plan = build_consistency_reconcile_plan(
+        subject_snapshot.clone(),
+        mode.as_str(),
+        reason.as_str(),
+        dry_run,
+        &recommendations,
+        &related_projection_gaps,
+        projection_gap_status_breakdown.clone(),
+    );
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let audit_event = build_consistency_reconcile_audit_event(
+        &headers,
+        request_id.as_str(),
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        normalized_ref_type.as_str(),
+        subject.ref_id.as_str(),
+        reason.as_str(),
+        mode.as_str(),
+        dry_run,
+        subject_snapshot.clone(),
+        reconcile_plan.clone(),
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+
+    let access_audit_id = repo::record_access_audit(
+        &tx,
+        &AccessAuditInsert {
+            accessor_user_id: Some(actor_user_id.clone()),
+            accessor_role_key: Some(current_role(&headers)),
+            access_mode: "reconcile".to_string(),
+            target_type: "consistency_reconcile".to_string(),
+            target_id: Some(subject.ref_id.clone()),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: step_up.challenge_id.clone(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            metadata: json!({
+                "endpoint": "POST /api/v1/ops/consistency/reconcile",
+                "ref_type": normalized_ref_type,
+                "ref_id": subject.ref_id,
+                "mode": mode,
+                "reason": reason,
+                "dry_run": dry_run,
+                "reconcile_target_topic": CONSISTENCY_RECONCILE_TARGET_TOPIC,
+                "recommendation_count": recommendation_count,
+                "recommendations": recommendation_preview,
+                "related_projection_gap_ids": related_gap_ids,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text:
+                "ops consistency reconcile prepared: POST /api/v1/ops/consistency/reconcile"
+                    .to_string(),
+            structured_payload: json!({
+                "module": "ops",
+                "endpoint": "POST /api/v1/ops/consistency/reconcile",
+                "access_audit_id": access_audit_id,
+                "ref_type": normalized_ref_type,
+                "ref_id": subject.ref_id,
+                "mode": mode,
+                "dry_run": dry_run,
+                "reconcile_target_topic": CONSISTENCY_RECONCILE_TARGET_TOPIC,
+                "recommendation_count": recommendation_count,
+                "recommendations": recommendation_preview,
+                "related_projection_gap_ids": related_gap_ids,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(OpsConsistencyReconcileView {
+        ref_type: subject.ref_type.clone(),
+        ref_id: subject.ref_id.clone(),
+        mode,
+        dry_run,
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+        status: "dry_run_ready".to_string(),
+        reconcile_target_topic: CONSISTENCY_RECONCILE_TARGET_TOPIC.to_string(),
+        recommendation_count,
+        subject_snapshot,
+        projection_gap_status_breakdown,
+        related_projection_gaps,
+        recommendations,
     }))
 }
 
@@ -2118,6 +2365,7 @@ enum AuditPermission {
     OpsOutboxRead,
     OpsDeadLetterRead,
     OpsConsistencyRead,
+    OpsConsistencyReconcile,
     OpsDeadLetterReprocess,
     PackageExport,
     ReplayExecute,
@@ -2163,6 +2411,14 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
                 | "audit_admin"
         ),
         AuditPermission::OpsConsistencyRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_audit_security"
+                | "consistency_operator"
+                | "node_ops_admin"
+                | "audit_admin"
+        ),
+        AuditPermission::OpsConsistencyReconcile => matches!(
             role,
             "platform_admin"
                 | "platform_audit_security"
@@ -2446,6 +2702,28 @@ async fn require_step_up_for_dead_letter_reprocess(
         Some("dead_letter_event"),
         Some(dead_letter_event_id),
         "ops dead letter reprocess",
+    )
+    .await
+}
+
+async fn require_step_up_for_consistency_reconcile(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    ref_type: &str,
+    ref_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        CONSISTENCY_RECONCILE_STEP_UP_ACTION,
+        None,
+        Some(ref_type),
+        Some(ref_id),
+        "ops consistency reconcile",
     )
     .await
 }
@@ -4260,6 +4538,58 @@ fn build_dead_letter_reprocess_audit_event(
     event
 }
 
+fn build_consistency_reconcile_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: String,
+    actor_user_id: &str,
+    ref_type: &str,
+    ref_id: &str,
+    reason: &str,
+    mode: &str,
+    dry_run: bool,
+    subject_snapshot: Value,
+    reconcile_plan: Value,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> AuditEvent {
+    let mut event = AuditEvent::business(
+        "ops",
+        ref_type,
+        Some(ref_id.to_string()),
+        "ops.consistency.reconcile.dry_run",
+        "dry_run_completed",
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id,
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "reason": reason,
+                "mode": mode,
+                "dry_run": dry_run,
+                "step_up_token_present": step_up_token_present,
+                "current_role": current_role(headers),
+                "reconcile_target_topic": CONSISTENCY_RECONCILE_TARGET_TOPIC,
+                "subject_snapshot": subject_snapshot,
+                "reconcile_plan": reconcile_plan,
+            }),
+        },
+    );
+    event.sensitivity_level = "high".to_string();
+    event
+}
+
 fn state_client(state: &AppState) -> Result<db::Client, (StatusCode, Json<ErrorResponse>)> {
     state.db.client().map_err(map_db_error)
 }
@@ -4395,6 +4725,37 @@ fn normalize_consistency_ref_type(
     Ok(normalized.to_string())
 }
 
+fn normalize_consistency_reconcile_mode(
+    raw: Option<&str>,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let mode = raw
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("projection_gap");
+    match mode {
+        "projection_gap" | "full" => Ok(mode.to_string()),
+        other => Err(bad_request(
+            request_id,
+            format!("mode must be one of: projection_gap, full; got `{other}`"),
+        )),
+    }
+}
+
+fn normalize_consistency_reconcile_reason(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let reason = raw.trim();
+    if reason.is_empty() {
+        return Err(bad_request(
+            request_id,
+            "reason is required for ops consistency reconcile",
+        ));
+    }
+    Ok(reason.to_string())
+}
+
 fn normalize_anchor_retry_reason(
     raw: &str,
     request_id: &str,
@@ -4511,6 +4872,260 @@ fn count_open_projection_gaps(counts: Option<&serde_json::Map<String, Value>>) -
         .sum()
 }
 
+fn build_consistency_reconcile_subject_snapshot(
+    subject: &repo::ConsistencySubjectRecord,
+    latest_chain_anchor: Option<&repo::ChainAnchorRecord>,
+    latest_receipt: Option<&repo::ExternalFactReceiptRecord>,
+    latest_projection_gap: Option<&repo::ChainProjectionGapRecord>,
+    recent_outbox_total: i64,
+    recent_dead_letter_total: i64,
+    recent_receipt_total: i64,
+    projection_gap_status_breakdown: Value,
+) -> Value {
+    json!({
+        "ref_type": subject.ref_type,
+        "ref_id": subject.ref_id,
+        "order_id": subject.order_id,
+        "business_status": subject.business_status,
+        "authority_model": subject.authority_model,
+        "business_state_version": subject.business_state_version,
+        "proof_commit_state": subject.proof_commit_state,
+        "proof_commit_policy": subject.proof_commit_policy,
+        "external_fact_status": subject.external_fact_status,
+        "reconcile_status": subject.reconcile_status,
+        "last_reconciled_at": subject.last_reconciled_at,
+        "business_snapshot": subject.snapshot,
+        "latest_chain_anchor": latest_chain_anchor.map(build_consistency_chain_anchor_view),
+        "latest_receipt_id": latest_receipt.and_then(|receipt| receipt.external_fact_receipt_id.clone()),
+        "latest_projection_gap_id": latest_projection_gap.and_then(|gap| gap.chain_projection_gap_id.clone()),
+        "recent_outbox_total": recent_outbox_total,
+        "recent_dead_letter_total": recent_dead_letter_total,
+        "recent_receipt_total": recent_receipt_total,
+        "projection_gap_status_breakdown": projection_gap_status_breakdown,
+    })
+}
+
+fn build_consistency_reconcile_recommendations(
+    mode: &str,
+    subject: &repo::ConsistencySubjectRecord,
+    projection_gaps: &[repo::ChainProjectionGapRecord],
+    recent_outbox_events: &[repo::OutboxEventRecord],
+    recent_dead_letters: &[repo::DeadLetterEventRecord],
+    latest_receipt: Option<&repo::ExternalFactReceiptRecord>,
+    latest_chain_anchor: Option<&repo::ChainAnchorRecord>,
+) -> Vec<OpsConsistencyRepairRecommendationView> {
+    let open_gaps: Vec<&repo::ChainProjectionGapRecord> = projection_gaps
+        .iter()
+        .filter(|gap| gap.gap_status != "resolved")
+        .collect();
+    let mut recommendations = Vec::new();
+
+    for gap in &open_gaps {
+        let (code, recommended_action, priority) = match gap.gap_type.as_str() {
+            "missing_callback" => (
+                "reconcile_missing_callback",
+                "review fabric callback lineage and prepare reconcile worker preview",
+                "high",
+            ),
+            "anchor_missing" => (
+                "reconcile_missing_anchor",
+                "review anchor submission lineage and prepare anchor-side projection repair",
+                "high",
+            ),
+            "tx_hash_mismatch" | "digest_mismatch" => (
+                "review_chain_anchor_mismatch",
+                "compare expected chain digest / tx hash before queueing reconcile execution",
+                "high",
+            ),
+            _ => (
+                "reconcile_projection_gap",
+                "prepare consistency reconcile preview for the recorded projection gap",
+                "medium",
+            ),
+        };
+        recommendations.push(OpsConsistencyRepairRecommendationView {
+            code: code.to_string(),
+            summary: format!(
+                "projection gap `{}` remains `{}` for {} {}",
+                gap.gap_type, gap.gap_status, subject.ref_type, subject.ref_id
+            ),
+            priority: priority.to_string(),
+            recommended_action: recommended_action.to_string(),
+            target_topic: Some(CONSISTENCY_RECONCILE_TARGET_TOPIC.to_string()),
+            related_gap_id: gap.chain_projection_gap_id.clone(),
+            metadata: json!({
+                "aggregate_type": gap.aggregate_type,
+                "aggregate_id": gap.aggregate_id,
+                "order_id": gap.order_id,
+                "chain_id": gap.chain_id,
+                "source_event_type": gap.source_event_type,
+                "expected_tx_id": gap.expected_tx_id,
+                "projected_tx_hash": gap.projected_tx_hash,
+                "outbox_event_id": gap.outbox_event_id,
+                "anchor_id": gap.anchor_id,
+                "proof_commit_state": subject.proof_commit_state,
+                "external_fact_status": subject.external_fact_status,
+                "reconcile_status": subject.reconcile_status,
+            }),
+        });
+    }
+
+    if mode == "full" {
+        if subject.proof_commit_state != "anchored" && subject.proof_commit_state != "committed" {
+            recommendations.push(OpsConsistencyRepairRecommendationView {
+                code: "review_proof_commit_state".to_string(),
+                summary: format!(
+                    "proof commit state is `{}` for {} {}",
+                    subject.proof_commit_state, subject.ref_type, subject.ref_id
+                ),
+                priority: if open_gaps.is_empty() {
+                    "medium".to_string()
+                } else {
+                    "high".to_string()
+                },
+                recommended_action:
+                    "check latest outbox publish / chain anchor lineage before reconcile execution"
+                        .to_string(),
+                target_topic: Some(CONSISTENCY_RECONCILE_TARGET_TOPIC.to_string()),
+                related_gap_id: open_gaps
+                    .first()
+                    .and_then(|gap| gap.chain_projection_gap_id.clone()),
+                metadata: json!({
+                    "latest_outbox_event_id": recent_outbox_events
+                        .first()
+                        .and_then(|event| event.outbox_event_id.clone()),
+                    "latest_chain_anchor_id": latest_chain_anchor
+                        .and_then(|anchor| anchor.chain_anchor_id.clone()),
+                    "proof_commit_policy": subject.proof_commit_policy,
+                }),
+            });
+        }
+
+        if subject.external_fact_status != "confirmed" && subject.external_fact_status != "matched"
+        {
+            recommendations.push(OpsConsistencyRepairRecommendationView {
+                code: "review_external_fact_state".to_string(),
+                summary: format!(
+                    "external fact status is `{}` for {} {}",
+                    subject.external_fact_status, subject.ref_type, subject.ref_id
+                ),
+                priority: "medium".to_string(),
+                recommended_action:
+                    "verify latest external fact receipt and keep dry-run reconcile evidence"
+                        .to_string(),
+                target_topic: Some(CONSISTENCY_RECONCILE_TARGET_TOPIC.to_string()),
+                related_gap_id: open_gaps
+                    .first()
+                    .and_then(|gap| gap.chain_projection_gap_id.clone()),
+                metadata: json!({
+                    "latest_receipt_id": latest_receipt
+                        .and_then(|receipt| receipt.external_fact_receipt_id.clone()),
+                    "latest_receipt_status": latest_receipt.map(|receipt| receipt.receipt_status.clone()),
+                    "receipt_provider_type": latest_receipt.map(|receipt| receipt.provider_type.clone()),
+                }),
+            });
+        }
+
+        if !recent_dead_letters.is_empty() {
+            recommendations.push(OpsConsistencyRepairRecommendationView {
+                code: "review_dead_letter_lineage".to_string(),
+                summary: format!(
+                    "{} recent dead letter record(s) still reference {} {}",
+                    recent_dead_letters.len(),
+                    subject.ref_type,
+                    subject.ref_id
+                ),
+                priority: "high".to_string(),
+                recommended_action:
+                    "inspect dead letter lineage before any execution-mode reconcile is introduced"
+                        .to_string(),
+                target_topic: Some(CONSISTENCY_RECONCILE_TARGET_TOPIC.to_string()),
+                related_gap_id: open_gaps
+                    .first()
+                    .and_then(|gap| gap.chain_projection_gap_id.clone()),
+                metadata: json!({
+                    "latest_dead_letter_id": recent_dead_letters
+                        .first()
+                        .and_then(|dead_letter| dead_letter.dead_letter_event_id.clone()),
+                    "latest_dead_letter_stage": recent_dead_letters
+                        .first()
+                        .and_then(|dead_letter| dead_letter.failure_stage.clone()),
+                    "latest_dead_letter_topic": recent_dead_letters
+                        .first()
+                        .and_then(|dead_letter| dead_letter.target_topic.clone()),
+                }),
+            });
+        }
+    }
+
+    if recommendations.is_empty() {
+        recommendations.push(OpsConsistencyRepairRecommendationView {
+            code: "monitor_only".to_string(),
+            summary: format!(
+                "no open projection gap requires reconcile preview for {} {}",
+                subject.ref_type, subject.ref_id
+            ),
+            priority: "low".to_string(),
+            recommended_action:
+                "keep monitoring dual-authority mirror fields until execution-mode reconcile is implemented"
+                    .to_string(),
+            target_topic: None,
+            related_gap_id: None,
+            metadata: json!({
+                "proof_commit_state": subject.proof_commit_state,
+                "external_fact_status": subject.external_fact_status,
+                "reconcile_status": subject.reconcile_status,
+            }),
+        });
+    }
+
+    recommendations
+}
+
+fn summarize_consistency_recommendations(
+    recommendations: &[OpsConsistencyRepairRecommendationView],
+) -> Value {
+    Value::Array(
+        recommendations
+            .iter()
+            .map(|recommendation| {
+                json!({
+                    "code": recommendation.code,
+                    "priority": recommendation.priority,
+                    "related_gap_id": recommendation.related_gap_id,
+                    "target_topic": recommendation.target_topic,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn build_consistency_reconcile_plan(
+    subject_snapshot: Value,
+    mode: &str,
+    reason: &str,
+    dry_run: bool,
+    recommendations: &[OpsConsistencyRepairRecommendationView],
+    related_projection_gaps: &[ChainProjectionGapView],
+    projection_gap_status_breakdown: Value,
+) -> Value {
+    json!({
+        "mode": mode,
+        "reason": reason,
+        "dry_run": dry_run,
+        "reconcile_target_topic": CONSISTENCY_RECONCILE_TARGET_TOPIC,
+        "subject_snapshot": subject_snapshot,
+        "projection_gap_status_breakdown": projection_gap_status_breakdown,
+        "related_projection_gaps": related_projection_gaps,
+        "recommendations": recommendations,
+        "v1_constraints": {
+            "dry_run_only": true,
+            "formal_persistent_object": "ops.chain_projection_gap",
+            "execution_worker_pending_tasks": ["AUD-013+", "AUD-021"],
+        },
+    })
+}
+
 fn normalize_replay_ref_type(
     raw: &str,
     request_id: &str,
@@ -4618,6 +5233,14 @@ fn dead_letter_reprocess_dry_run_only(request_id: &str) -> (StatusCode, Json<Err
         request_id,
         DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR,
         "V1 dead letter reprocess currently supports dry_run=true only",
+    )
+}
+
+fn consistency_reconcile_dry_run_only(request_id: &str) -> (StatusCode, Json<ErrorResponse>) {
+    conflict_error(
+        request_id,
+        CONSISTENCY_RECONCILE_DRY_RUN_ONLY_ERROR,
+        "V1 ops consistency reconcile currently supports dry_run=true only",
     )
 }
 

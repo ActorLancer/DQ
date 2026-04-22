@@ -699,3 +699,85 @@
   - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
   - 手工联调产生的 `ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record / ops.external_fact_receipt / ops.chain_projection_gap / chain.chain_anchor / trade.order_main / catalog.*` 业务测试数据已清理。
   - 手工联调中尝试删除 `core.user_account / core.organization` 时，因 `audit.access_audit` 与 `audit.audit_event` 的 append-only trigger 阻止 `ON DELETE SET NULL` 更新而失败；这与既有 `AUD-004 ~ AUD-010` 的留痕对象策略一致，因此保留该最小主体样本，不通过强删破坏审计引用关系。
+### BATCH-225（计划中）
+- 任务：`AUD-012` 一致性修复 dry-run 控制面
+- 状态：计划中
+- 说明：在 `AUD-011` 已补齐只读一致性联查后，当前批次继续落地 `POST /api/v1/ops/consistency/reconcile`。按你刚确认的冻结口径，本批不会引入 `reconcile_job` 表，也不会把 `ops.chain_projection_gap` 宣传成其同义词；实现边界收束为 `ops.chain_projection_gap` 持久化对象上的高风险控制面动作，要求 `dry_run + step-up + 审计 + 修复建议输出`，并明确真正执行型 worker / Go Fabric 交互仍留给 `AUD-013+` 与后续 consistency / projection-gap 任务。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-012`，完成后再进入 `AUD-013`。
+### BATCH-225（待审批）
+- 任务：`AUD-012` 一致性修复 dry-run 控制面
+- 状态：待审批
+- 当前任务编号：`AUD-012`
+- 前置依赖核对结果：`AUD-008` 已交付 `ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record / ops.external_fact_receipt / ops.chain_projection_gap` 查询基座并修正文案漂移；`AUD-009` 已交付 `outbox-publisher` 正式 worker 与双层 DLQ 基线；`AUD-010` 已交付 dead letter dry-run 重处理控制面；`AUD-011` 已交付只读一致性联查接口。按任务顺序，真正执行型 reconcile worker、Fabric request/callback、Go 适配器与 listener 仍留待 `AUD-013+`，本批不越级实现。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-012` DoD 为 `POST /api/v1/ops/consistency/reconcile`，`V1` 先支持 `dry_run + 记录修复建议`，实现不得与 OpenAPI 漂移。
+  - `docs/原始PRD/双层权威模型与链上链下一致性设计.md`、`docs/原始PRD/链上链下技术架构与能力边界稿.md`、`docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`、`docs/领域模型/全量领域模型与对象关系说明.md`：确认 `reconcile` 在 `V1` 是高风险控制面动作，不单列正式 `reconcile_job` 表，持久化查询对象由 `ops.chain_projection_gap` 承接，返回面要能反映双层权威状态、projection gap 与修复建议。
+  - `docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`：确认 `AUD-008` 的残留命名已收敛为正式 `ops.external_fact_receipt / ops.chain_projection_gap`，`consistency/reconcile` 仍由 `AUD-012` 承接，`projection-gaps` 公共接口留给 `AUD-021`。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL` 是运行态和一致性镜像主权威、`Kafka` 是总线非真相源、`Redis` 是辅助状态、`Fabric` 是证明层而非主业务状态机、观测域不能替代审计域。
+  - `docs/原始PRD/审计、证据链与回放设计.md`、`docs/原始PRD/日志、可观测性与告警设计.md`、`docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认本批只返回 `dtp.consistency.reconcile` 目标建议，不提前生成新的 outbox 事件，也不抢跑 Go/Fabric 真实执行链路。
+  - `apps/platform-core/src/modules/audit/**`、`apps/platform-core/src/modules/order/**`、`apps/platform-core/src/modules/delivery/**`、`apps/platform-core/src/modules/billing/**`、`services/fabric-adapter/**`、`services/fabric-event-listener/**`、`services/fabric-ca-admin/**`、`workers/outbox-publisher/**`：确认现有 Rust 侧已具备 `AUD-011` 一致性读取基座，Fabric 相关 Go 服务目录仍是后续任务的正式实现范围，而不是本批的完成证据。
+- 实现要点：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `POST /api/v1/ops/consistency/reconcile`，要求 `x-request-id`、正式 `OpsConsistencyReconcile` 权限、`x-user-id`、verified `x-step-up-challenge-id` 绑定当前 actor / `ref_type` / `ref_id` / `target_action=ops.consistency.reconcile`；`V1` 强制 `dry_run=true`，`dry_run=false` 返回 `409 AUDIT_CONSISTENCY_RECONCILE_DRY_RUN_ONLY`。
+  - `apps/platform-core/src/modules/audit/domain/mod.rs`：新增 `OpsConsistencyReconcileRequest / OpsConsistencyRepairRecommendationView / OpsConsistencyReconcileView` 正式 DTO，返回 `subject_snapshot / projection_gap_status_breakdown / related_projection_gaps / recommendations / reconcile_target_topic`。
+  - 复用 `AUD-011` 仓储查询基座，联查 `trade.order_main` dual-authority 字段、最近 `ops.outbox_event / ops.dead_letter_event / ops.external_fact_receipt / ops.chain_projection_gap / chain.chain_anchor`，生成修复建议；建议对象仍锚定正式 `ops.chain_projection_gap`，不引入 `reconcile_job`。
+  - 本批显式不做的事情：
+    - 不新增 `reconcile_job` 表
+    - 不把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 同义词
+    - 不写新的 `dtp.consistency.reconcile` outbox 事件
+    - 不改写 `ops.chain_projection_gap.gap_status / resolution_summary`
+    - 不提前实现 Go/Fabric request / callback / CA / listener 执行链路
+  - 审计与运行留痕：
+    - `audit.audit_event(action_name='ops.consistency.reconcile.dry_run')`
+    - `audit.access_audit(access_mode='reconcile', target_type='consistency_reconcile')`
+    - `ops.system_log(message_text='ops consistency reconcile prepared: POST /api/v1/ops/consistency/reconcile')`
+  - 契约与文档：
+    - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml` 新增 `POST /api/v1/ops/consistency/reconcile`
+    - `docs/04-runbooks/audit-consistency-reconcile.md` 新增宿主机调用、SQL 回查、排障与“无执行副作用”说明
+    - `docs/05-test-cases/audit-consistency-cases.md` 新增 `AUD-CASE-019`
+    - `docs/04-runbooks/README.md`、`docs/05-test-cases/README.md` 同步索引更新
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core rejects_ops_consistency_reconcile_without_permission -- --nocapture`
+  4. `cargo test -p platform-core ops_consistency_reconcile_requires_step_up -- --nocapture`
+  5. `cargo test -p platform-core ops_consistency_reconcile_enforces_dry_run_only -- --nocapture`
+  6. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_consistency_reconcile_db_smoke -- --nocapture`
+  7. `cargo test -p platform-core`
+  8. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  9. `./scripts/check-query-compile.sh`
+  10. `./scripts/check-openapi-schema.sh`
+  11. `./scripts/check-topic-topology.sh`
+  12. 真实运行态联调：`cargo run -p platform-core-bin` + `curl POST /api/v1/ops/consistency/reconcile` + `psql` 回查
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - 三条路由专项测试 `rejects_ops_consistency_reconcile_without_permission`、`ops_consistency_reconcile_requires_step_up`、`ops_consistency_reconcile_enforces_dry_run_only` 均通过。
+  - `AUD_DB_SMOKE=1 ... cargo test -p platform-core audit_consistency_reconcile_db_smoke -- --nocapture` 通过，真实插入 `trade.order_main + ops.outbox_event + ops.dead_letter_event + ops.external_fact_receipt + chain.chain_anchor + ops.chain_projection_gap + iam.step_up_challenge`，并回查 `audit.audit_event + audit.access_audit + ops.system_log + 无 reconcile outbox + projection gap 未变更`。
+  - `cargo test -p platform-core` 通过：`289 passed; 0 failed`。
+  - `DATABASE_URL=... cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存；随后 `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+  - `./scripts/check-topic-topology.sh` 通过，确认本批未破坏 canonical topic / route authority。
+  - 真实运行态联调通过：
+    - `cargo run -p platform-core-bin` 启动后，`curl POST /api/v1/ops/consistency/reconcile` 返回 `200`
+    - 响应中 `status=dry_run_ready`、`step_up_bound=true`、`reconcile_target_topic=dtp.consistency.reconcile`、`recommendation_count=4`
+    - `psql` 回查确认 `audit.audit_event|1|manual consistency reconcile preview|full`
+    - `psql` 回查确认 `audit.access_audit(access_mode='reconcile', target_type='consistency_reconcile', step_up_challenge_id=<manual challenge>)`
+    - `psql` 回查确认 `ops.system_log` 存在对应 `prepared` 记录
+    - `psql` 回查确认 `ops.outbox_event(request_id=<manual request_id>, target_topic='dtp.consistency.reconcile') = 0`
+    - `psql` 回查确认 `ops.chain_projection_gap.gap_status='open'` 且原 `resolution_summary.seed` 保持不变
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-012`
+  - `双层权威模型与链上链下一致性设计.md`：`reconcile` 控制面与双层权威边界
+  - `一致性与事件接口协议正式版.md`：`POST /api/v1/ops/consistency/reconcile`
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：`AUD-008 / AUD-012` 的正式对象命名与控制面边界
+- 覆盖的任务清单条目：`AUD-012`
+- 未覆盖项：
+  - `GET /api/v1/ops/projection-gaps`、`POST /api/v1/ops/projection-gaps/{id}/resolve` 公共接口，留待 `AUD-021`
+  - 真正执行型 `dtp.consistency.reconcile` publish / consumer / callback / reconcile worker，留待后续 `AUD` 批次
+  - Go/Fabric request / callback / CA / listener / chaincode 正式链路，留待 `AUD-013+`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛到包含 `AUD-012` 的最新状态。
+- 备注：
+  - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+  - 手工联调产生的 `ops.outbox_event / ops.dead_letter_event / ops.external_fact_receipt / ops.chain_projection_gap / chain.chain_anchor / trade.order_main / catalog.*` 业务测试数据已清理。
+  - 尝试继续删除手工联调使用的 `core.organization / core.user_account / iam.step_up_challenge` 时，数据库因 `audit.access_audit` append-only trigger 拒绝 `ON DELETE SET NULL` 更新；该最小主体样本因此保留，以免通过强删破坏正式审计引用关系。

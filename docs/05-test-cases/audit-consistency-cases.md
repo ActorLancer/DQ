@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -13,6 +13,7 @@
 - dead letter 查询：`GET /api/v1/ops/dead-letters`
 - dead letter dry-run 重处理：`POST /api/v1/ops/dead-letters/{id}/reprocess`
 - 一致性联查：`GET /api/v1/ops/consistency/{refType}/{refId}`
+- 一致性修复 dry-run：`POST /api/v1/ops/consistency/reconcile`
 - outbox publisher：`ops.outbox_event -> workers/outbox-publisher -> Kafka / ops.outbox_publish_attempt / ops.dead_letter_event`
 
 后续 Fabric callback、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
@@ -33,6 +34,9 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 
 AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core audit_consistency_lookup_db_smoke -- --nocapture
+
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_consistency_reconcile_db_smoke -- --nocapture
 ```
 
 ## 验收矩阵
@@ -57,6 +61,7 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-016` | outbox publisher 失败隔离 | 写入一条 `ops.outbox_event(status=pending,target_topic=dtp.missing.topic,max_retries=1)`，运行同一 smoke | 事件进入 `ops.dead_letter_event(failure_stage='outbox.publish')`，并向 Kafka `dtp.dead-letter` 发布隔离消息；原 outbox 行变为 `dead_lettered` | `ops.dead_letter_event`、Kafka `dtp.dead-letter`、`ops.outbox_publish_attempt(result_code='dead_lettered')`、`audit.audit_event`、`ops.system_log` |
 | `AUD-CASE-017` | SEARCHREC dead letter dry-run 重处理 | `POST /api/v1/ops/dead-letters/{id}/reprocess` + verified `x-step-up-challenge-id` + `{"reason":"...","dry_run":true}` | 仅允许 `reprocess_status=not_reprocessed` 的 SEARCHREC consumer dead letter；返回 `dry_run_ready` 预演计划，不改变 `ops.dead_letter_event.reprocess_status`，并写入 `audit.audit_event(action_name='ops.dead_letter.reprocess.dry_run')`、`audit.access_audit(access_mode='reprocess')`、`ops.system_log` | API 响应、`ops.dead_letter_event`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-018` | 一致性联查 | `GET /api/v1/ops/consistency/order/{order_id}` | 返回业务状态、proof/anchor 状态、外部事实状态，以及最近 `ops.outbox_event / ops.dead_letter_event / audit.audit_event`；查询动作写入 `audit.access_audit(target_type='consistency_query')` 与 `ops.system_log` | API 响应、`trade.order_main`、`chain.chain_anchor`、`ops.chain_projection_gap`、`ops.external_fact_receipt`、`ops.outbox_event`、`ops.dead_letter_event`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-019` | 一致性修复 dry-run | `POST /api/v1/ops/consistency/reconcile` + verified `x-step-up-challenge-id` + `{"ref_type":"order","ref_id":"...","mode":"full","dry_run":true,"reason":"..."}` | 不新增 `reconcile_job` 表、不改写 `ops.chain_projection_gap`，只返回修复建议并写入 `audit.audit_event(action_name='ops.consistency.reconcile.dry_run')`、`audit.access_audit(access_mode='reconcile', target_type='consistency_reconcile')`、`ops.system_log`；同时不得写出 `dtp.consistency.reconcile` 新 outbox 事件 | API 响应、`ops.chain_projection_gap` 仍为原状态、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event(request_id=...)` |
 
 补充说明：
 
@@ -107,6 +112,85 @@ FROM ops.system_log
 WHERE request_id = 'req-aud011-manual'
   AND message_text = 'ops lookup executed: GET /api/v1/ops/consistency/{refType}/{refId}';
 ```
+
+## `AUD-012` 手工一致性修复 dry-run 验证
+
+1. 启动服务：
+
+```bash
+set -a
+source infra/docker/.env.local
+set +a
+
+APP_PORT=18080 \
+KAFKA_BROKERS=127.0.0.1:9094 \
+KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
+cargo run -p platform-core-bin
+```
+
+2. 触发 live smoke 或自行准备一笔带 `ops.chain_projection_gap` 的对象：
+
+```bash
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_consistency_reconcile_db_smoke -- --nocapture
+```
+
+3. 发起 dry-run 修复预演：
+
+```bash
+curl -sS -X POST "http://127.0.0.1:18080/api/v1/ops/consistency/reconcile" \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud012-manual' \
+  -H 'x-trace-id: trace-aud012-manual' \
+  -H 'x-step-up-challenge-id: <reconcile_step_up_id>' \
+  -d '{
+    "ref_type": "order",
+    "ref_id": "<order_id>",
+    "mode": "full",
+    "dry_run": true,
+    "reason": "manual consistency reconcile preview"
+  }'
+```
+
+4. 回查 dry-run 留痕与“无执行副作用”：
+
+```sql
+SELECT action_name, result_code, metadata ->> 'mode'
+FROM audit.audit_event
+WHERE request_id = 'req-aud012-manual'
+  AND action_name = 'ops.consistency.reconcile.dry_run';
+
+SELECT access_mode, target_type, target_id::text
+FROM audit.access_audit
+WHERE request_id = 'req-aud012-manual';
+
+SELECT message_text, structured_payload
+FROM ops.system_log
+WHERE request_id = 'req-aud012-manual'
+  AND message_text = 'ops consistency reconcile prepared: POST /api/v1/ops/consistency/reconcile';
+
+SELECT gap_status, resolution_summary
+FROM ops.chain_projection_gap
+WHERE aggregate_type = 'order'
+  AND aggregate_id = '<order_id>'::uuid
+ORDER BY created_at DESC, chain_projection_gap_id DESC
+LIMIT 5;
+
+SELECT count(*) AS reconcile_preview_outbox_count
+FROM ops.outbox_event
+WHERE request_id = 'req-aud012-manual'
+  AND target_topic = 'dtp.consistency.reconcile';
+```
+
+5. 预期：
+
+- 返回 `dry_run_ready`
+- `recommendations` 非空，且推荐目标 topic 为 `dtp.consistency.reconcile`
+- `ops.chain_projection_gap` 仍保持原 `gap_status / resolution_summary`
+- 当前请求不会写出新的 `dtp.consistency.reconcile` outbox 事件
+- `audit.audit_event + audit.access_audit + ops.system_log` 三层留痕齐备
 
 ## `AUD-005` 手工回放验证
 

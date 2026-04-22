@@ -397,3 +397,39 @@ pub struct OpsConsistencyView {
     pub recent_dead_letters: Vec<DeadLetterEventView>,
     pub recent_audit_traces: Vec<AuditTraceView>,
 }
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct OpsConsistencyReconcileRequest {
+    pub ref_type: String,
+    pub ref_id: String,
+    pub mode: Option<String>,
+    pub dry_run: Option<bool>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsConsistencyRepairRecommendationView {
+    pub code: String,
+    pub summary: String,
+    pub priority: String,
+    pub recommended_action: String,
+    pub target_topic: Option<String>,
+    pub related_gap_id: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsConsistencyReconcileView {
+    pub ref_type: String,
+    pub ref_id: String,
+    pub mode: String,
+    pub dry_run: bool,
+    pub step_up_bound: bool,
+    pub status: String,
+    pub reconcile_target_topic: String,
+    pub recommendation_count: i64,
+    pub subject_snapshot: serde_json::Value,
+    pub projection_gap_status_breakdown: serde_json::Value,
+    pub related_projection_gaps: Vec<ChainProjectionGapView>,
+    pub recommendations: Vec<OpsConsistencyRepairRecommendationView>,
+}

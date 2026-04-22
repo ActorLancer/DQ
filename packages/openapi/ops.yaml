@@ -942,6 +942,107 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/consistency/reconcile:
+    post:
+      summary: dry-run preview for dual-authority consistency reconcile
+      tags: [AuditOps]
+      description: |
+        Performs the formal `V1` control-plane preview for consistency repair. The
+        endpoint does not introduce a `reconcile_job` table and does not mutate
+        `ops.chain_projection_gap`; instead it requires step-up, records a high-risk
+        audit trail, and returns repair recommendations grounded on the persisted
+        `ops.chain_projection_gap` view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpsConsistencyReconcileRequest"
+            example:
+              ref_type: order
+              ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+              mode: full
+              dry_run: true
+              reason: preview consistency repair
+      responses:
+        "200":
+          description: dry-run reconcile preview ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsConsistencyReconcileResponse"
+              example:
+                success: true
+                data:
+                  ref_type: order
+                  ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                  mode: full
+                  dry_run: true
+                  step_up_bound: true
+                  status: dry_run_ready
+                  reconcile_target_topic: dtp.consistency.reconcile
+                  recommendation_count: 3
+                  subject_snapshot:
+                    business_status: buyer_locked
+                    authority_model: dual_layer
+                    proof_commit_state: pending_anchor
+                    external_fact_status: pending_receipt
+                    reconcile_status: pending_check
+                    recent_outbox_total: 1
+                    recent_dead_letter_total: 1
+                  projection_gap_status_breakdown:
+                    open: 1
+                  related_projection_gaps:
+                    - chain_projection_gap_id: 27ab93df-f0f1-4d43-84e6-40c77625cf86
+                      aggregate_type: order
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      chain_id: fabric-local
+                      source_event_type: fabric.proof_submit_requested
+                      gap_type: missing_callback
+                      gap_status: open
+                  recommendations:
+                    - code: reconcile_missing_callback
+                      summary: projection gap `missing_callback` remains `open` for order 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      priority: high
+                      recommended_action: review fabric callback lineage and prepare reconcile worker preview
+                      target_topic: dtp.consistency.reconcile
+                      related_gap_id: 27ab93df-f0f1-4d43-84e6-40c77625cf86
+                      metadata:
+                        chain_id: fabric-local
+                        proof_commit_state: pending_anchor
+                    - code: review_external_fact_state
+                      summary: external fact status is `pending_receipt` for order 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      priority: medium
+                      recommended_action: verify latest external fact receipt and keep dry-run reconcile evidence
+                      target_topic: dtp.consistency.reconcile
+                      related_gap_id: 27ab93df-f0f1-4d43-84e6-40c77625cf86
+                      metadata:
+                        latest_receipt_status: received
+        "400":
+          description: invalid payload or step-up binding mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or verified step-up missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: consistency subject not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: dry_run=false is not supported in V1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     ApiResponseString:
@@ -1034,6 +1135,15 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsConsistencyResponse"
+    ApiResponseOpsConsistencyReconcileResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsConsistencyReconcileResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -1602,6 +1712,115 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OpsAuditTraceRecord"
+    OpsConsistencyReconcileRequest:
+      type: object
+      required:
+        - ref_type
+        - ref_id
+        - reason
+      properties:
+        ref_type:
+          type: string
+          enum:
+            - order
+            - contract
+            - digital_contract
+            - delivery
+            - delivery_record
+            - settlement
+            - settlement_record
+            - payment
+            - payment_intent
+            - refund
+            - refund_intent
+            - payout
+            - payout_instruction
+        ref_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum: [projection_gap, full]
+          default: projection_gap
+        dry_run:
+          type: boolean
+          default: true
+        reason:
+          type: string
+    OpsConsistencyRepairRecommendation:
+      type: object
+      required:
+        - code
+        - summary
+        - priority
+        - recommended_action
+        - metadata
+      properties:
+        code:
+          type: string
+        summary:
+          type: string
+        priority:
+          type: string
+        recommended_action:
+          type: string
+        target_topic:
+          type: string
+          nullable: true
+        related_gap_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+    OpsConsistencyReconcileResponse:
+      type: object
+      required:
+        - ref_type
+        - ref_id
+        - mode
+        - dry_run
+        - step_up_bound
+        - status
+        - reconcile_target_topic
+        - recommendation_count
+        - subject_snapshot
+        - projection_gap_status_breakdown
+        - related_projection_gaps
+        - recommendations
+      properties:
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum: [projection_gap, full]
+        dry_run:
+          type: boolean
+        step_up_bound:
+          type: boolean
+        status:
+          type: string
+          enum: [dry_run_ready]
+        reconcile_target_topic:
+          type: string
+        recommendation_count:
+          type: integer
+          format: int64
+        subject_snapshot:
+          $ref: "#/components/schemas/JsonObject"
+        projection_gap_status_breakdown:
+          $ref: "#/components/schemas/JsonObject"
+        related_projection_gaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChainProjectionGapRecord"
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpsConsistencyRepairRecommendation"
     OpsConsistencyBusinessState:
       type: object
       required:
