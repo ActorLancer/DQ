@@ -214,6 +214,36 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
+
+    #[tokio::test]
+    async fn rejects_anchor_batch_lookup_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/audit/anchor-batches")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud007-read-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn anchor_batch_retry_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/anchor-batches/10000000-0000-0000-0000-000000000007/retry")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud007-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"reason":"retry missing step-up"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -248,6 +278,8 @@ async fn audit_trace_api_db_smoke() {
     let legal_hold_request_id = format!("req-aud006-hold-{suffix}");
     let legal_hold_conflict_request_id = format!("req-aud006-hold-conflict-{suffix}");
     let legal_hold_release_request_id = format!("req-aud006-hold-release-{suffix}");
+    let anchor_list_request_id = format!("req-aud007-list-{suffix}");
+    let anchor_retry_request_id = format!("req-aud007-retry-{suffix}");
     let trace_id = format!("trace-aud003-{suffix}");
 
     write_trade_audit_event(
@@ -1187,6 +1219,244 @@ async fn audit_trace_api_db_smoke() {
         .get(0);
     assert_eq!(legal_hold_release_log_count, 1);
 
+    let (anchor_batch_id, _chain_anchor_id) =
+        seed_failed_anchor_batch(&client, &audit_user_id, &suffix)
+            .await
+            .expect("seed failed anchor batch");
+    let anchor_list_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/audit/anchor-batches?anchor_status=failed&batch_scope=audit_event&chain_id=fabric-local")
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &anchor_list_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("anchor batch list request"),
+        )
+        .await
+        .expect("call anchor batch list");
+    let anchor_list_status = anchor_list_resp.status();
+    let anchor_list_body = to_bytes(anchor_list_resp.into_body(), usize::MAX)
+        .await
+        .expect("read anchor batch list body");
+    assert_eq!(
+        anchor_list_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&anchor_list_body)
+    );
+    let anchor_list_json: Value =
+        serde_json::from_slice(&anchor_list_body).expect("decode anchor batch list");
+    assert_eq!(anchor_list_json["data"]["total"].as_i64(), Some(1));
+    assert_eq!(
+        anchor_list_json["data"]["items"][0]["anchor_batch_id"].as_str(),
+        Some(anchor_batch_id.as_str())
+    );
+    assert_eq!(
+        anchor_list_json["data"]["items"][0]["anchor_status"].as_str(),
+        Some("failed")
+    );
+    assert_eq!(
+        anchor_list_json["data"]["items"][0]["tx_hash"].as_str(),
+        Some("0xaud007failedanchor")
+    );
+
+    let anchor_retry_challenge_id = seed_verified_step_up_challenge(
+        &client,
+        &audit_user_id,
+        "audit.anchor.manage",
+        "anchor_batch",
+        Some(anchor_batch_id.as_str()),
+        "aud007",
+    )
+    .await
+    .expect("seed verified anchor retry challenge");
+
+    let anchor_retry_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/audit/anchor-batches/{anchor_batch_id}/retry"
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &anchor_retry_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &anchor_retry_challenge_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "reason": "retry failed batch after fabric gateway timeout",
+                        "metadata": {
+                            "trigger": "integration_test",
+                            "ticket_id": "AUD-007-smoke",
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("anchor batch retry request"),
+        )
+        .await
+        .expect("call anchor batch retry");
+    let anchor_retry_status = anchor_retry_resp.status();
+    let anchor_retry_body = to_bytes(anchor_retry_resp.into_body(), usize::MAX)
+        .await
+        .expect("read anchor batch retry body");
+    assert_eq!(
+        anchor_retry_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&anchor_retry_body)
+    );
+    let anchor_retry_json: Value =
+        serde_json::from_slice(&anchor_retry_body).expect("decode anchor batch retry");
+    assert_eq!(
+        anchor_retry_json["data"]["anchor_batch"]["anchor_batch_id"].as_str(),
+        Some(anchor_batch_id.as_str())
+    );
+    assert_eq!(
+        anchor_retry_json["data"]["anchor_batch"]["anchor_status"].as_str(),
+        Some("retry_requested")
+    );
+    assert_eq!(
+        anchor_retry_json["data"]["step_up_bound"].as_bool(),
+        Some(true)
+    );
+
+    let anchor_batch_row = client
+        .query_one(
+            "SELECT status,
+                    metadata ->> 'previous_status',
+                    metadata -> 'retry_request' ->> 'reason',
+                    metadata -> 'retry_request' ->> 'request_id',
+                    metadata -> 'retry_request' -> 'request_metadata' ->> 'trigger'
+             FROM audit.anchor_batch
+             WHERE anchor_batch_id = $1::text::uuid",
+            &[&anchor_batch_id],
+        )
+        .await
+        .expect("query anchor batch row");
+    assert_eq!(anchor_batch_row.get::<_, String>(0), "retry_requested");
+    assert_eq!(
+        anchor_batch_row.get::<_, Option<String>>(1).as_deref(),
+        Some("failed")
+    );
+    assert_eq!(
+        anchor_batch_row.get::<_, Option<String>>(2).as_deref(),
+        Some("retry failed batch after fabric gateway timeout")
+    );
+    assert_eq!(
+        anchor_batch_row.get::<_, Option<String>>(3).as_deref(),
+        Some(anchor_retry_request_id.as_str())
+    );
+    assert_eq!(
+        anchor_batch_row.get::<_, Option<String>>(4).as_deref(),
+        Some("integration_test")
+    );
+
+    let anchor_outbox_row = client
+        .query_one(
+            "SELECT target_topic,
+                    event_type,
+                    aggregate_type,
+                    aggregate_id::text,
+                    payload ->> 'anchor_status',
+                    payload ->> 'previous_anchor_status',
+                    payload ->> 'retry_reason',
+                    status
+             FROM ops.outbox_event
+             WHERE request_id = $1
+             ORDER BY created_at DESC, outbox_event_id DESC
+             LIMIT 1",
+            &[&anchor_retry_request_id],
+        )
+        .await
+        .expect("query anchor retry outbox row");
+    assert_eq!(anchor_outbox_row.get::<_, String>(0), "dtp.audit.anchor");
+    assert_eq!(
+        anchor_outbox_row.get::<_, String>(1),
+        "audit.anchor_requested"
+    );
+    assert_eq!(anchor_outbox_row.get::<_, String>(2), "audit.anchor_batch");
+    assert_eq!(anchor_outbox_row.get::<_, String>(3), anchor_batch_id);
+    assert_eq!(
+        anchor_outbox_row.get::<_, Option<String>>(4).as_deref(),
+        Some("retry_requested")
+    );
+    assert_eq!(
+        anchor_outbox_row.get::<_, Option<String>>(5).as_deref(),
+        Some("failed")
+    );
+    assert_eq!(
+        anchor_outbox_row.get::<_, Option<String>>(6).as_deref(),
+        Some("retry failed batch after fabric gateway timeout")
+    );
+    assert_eq!(anchor_outbox_row.get::<_, String>(7), "pending");
+
+    let anchor_audit_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = 'audit.anchor.retry'
+               AND ref_type = 'anchor_batch'
+               AND ref_id = $2::text::uuid",
+            &[&anchor_retry_request_id, &anchor_batch_id],
+        )
+        .await
+        .expect("count anchor retry audit event")
+        .get(0);
+    assert_eq!(anchor_audit_count, 1);
+
+    let anchor_access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND target_type = ANY($2::text[])
+               AND access_mode = ANY($3::text[])",
+            &[
+                &vec![
+                    anchor_list_request_id.clone(),
+                    anchor_retry_request_id.clone(),
+                ],
+                &vec!["anchor_batch_query".to_string(), "anchor_batch".to_string()],
+                &vec!["masked".to_string(), "retry".to_string()],
+            ],
+        )
+        .await
+        .expect("count anchor access audit")
+        .get(0);
+    assert_eq!(anchor_access_count, 2);
+
+    let anchor_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = ANY($2::text[])",
+            &[
+                &vec![
+                    anchor_list_request_id.clone(),
+                    anchor_retry_request_id.clone(),
+                ],
+                &vec![
+                "audit lookup executed: GET /api/v1/audit/anchor-batches".to_string(),
+                "audit anchor batch retry requested: POST /api/v1/audit/anchor-batches/{id}/retry"
+                    .to_string(),
+            ],
+            ],
+        )
+        .await
+        .expect("count anchor logs")
+        .get(0);
+    assert_eq!(anchor_log_count, 2);
+
     let _ = client
         .execute(
             "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
@@ -1209,6 +1479,12 @@ async fn audit_trace_api_db_smoke() {
         .execute(
             "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
             &[&legal_hold_release_challenge_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&anchor_retry_challenge_id],
         )
         .await;
     let _ = client
@@ -1262,6 +1538,95 @@ async fn seed_verified_step_up_challenge(
         )
         .await
         .map(|row| row.get(0))
+}
+
+async fn seed_failed_anchor_batch(
+    client: &Client,
+    user_id: &str,
+    suffix: &str,
+) -> Result<(String, String), Error> {
+    let anchor_batch_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await?
+        .get(0);
+    let chain_anchor_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await?
+        .get(0);
+
+    client
+        .execute(
+            "INSERT INTO chain.chain_anchor (
+               chain_anchor_id,
+               chain_id,
+               anchor_type,
+               ref_type,
+               ref_id,
+               digest,
+               tx_hash,
+               status,
+               authority_model,
+               reconcile_status,
+               created_at
+             ) VALUES (
+               $1::text::uuid,
+               'fabric-local',
+               'audit_batch',
+               'anchor_batch',
+               $2::text::uuid,
+               $3,
+               '0xaud007failedanchor',
+               'failed',
+               'dual_authority',
+               'pending',
+               now()
+             )",
+            &[
+                &chain_anchor_id,
+                &anchor_batch_id,
+                &format!("aud007-digest-{suffix}"),
+            ],
+        )
+        .await?;
+
+    client
+        .execute(
+            "INSERT INTO audit.anchor_batch (
+               anchor_batch_id,
+               batch_scope,
+               chain_id,
+               record_count,
+               batch_root,
+               window_started_at,
+               window_ended_at,
+               status,
+               chain_anchor_id,
+               created_by,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'audit_event',
+               'fabric-local',
+               2,
+               $2,
+               now() - interval '5 minutes',
+               now() - interval '1 minute',
+               'failed',
+               $3::text::uuid,
+               $4::text::uuid,
+               jsonb_build_object('seed', $5)
+             )",
+            &[
+                &anchor_batch_id,
+                &format!("aud007-batch-root-{suffix}"),
+                &chain_anchor_id,
+                &user_id,
+                &suffix,
+            ],
+        )
+        .await?;
+
+    Ok((anchor_batch_id, chain_anchor_id))
 }
 
 async fn seed_user(client: &Client, org_id: &str, suffix: &str) -> Result<String, Error> {

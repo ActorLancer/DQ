@@ -255,6 +255,89 @@ paths:
           description: legal hold not found
         "409":
           description: legal hold is no longer active; duplicate create still uses `AUDIT_LEGAL_HOLD_ACTIVE`
+  /api/v1/audit/anchor-batches:
+    get:
+      summary: search audit anchor batches
+      description: >
+        Returns one masked page of `audit.anchor_batch` rows joined with
+        `chain.chain_anchor` so operators can inspect `anchor_status`, `tx_hash`,
+        and recent reconcile metadata without leaving the audit control plane.
+        Filters currently support `anchor_status`, `batch_scope`, and `chain_id`.
+        Every lookup is mirrored into `audit.access_audit` and `ops.system_log`.
+      parameters:
+        - name: anchor_status
+          in: query
+          schema:
+            type: string
+        - name: batch_scope
+          in: query
+          schema:
+            type: string
+        - name: chain_id
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: anchor batch page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditAnchorBatchPageResponse"
+        "400":
+          description: bad request
+        "403":
+          description: forbidden
+  /api/v1/audit/anchor-batches/{id}/retry:
+    post:
+      summary: retry one failed audit anchor batch
+      description: >
+        High-risk control-plane action. Only `status=failed` batches can be retried.
+        Successful requests transition the batch to `retry_requested`, append one
+        `audit.audit_event`, one `audit.access_audit`, one `ops.system_log`, and
+        enqueue the canonical outbox event
+        `audit.anchor_requested -> dtp.audit.anchor` for downstream Fabric handling.
+        The action requires `audit.anchor.manage` together with a verified
+        `x-step-up-token` or `x-step-up-challenge-id`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditAnchorBatchRetryRequest"
+      responses:
+        "200":
+          description: anchor batch retry accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditAnchorBatchRetryResponse"
+        "400":
+          description: bad request
+        "403":
+          description: forbidden
+        "404":
+          description: anchor batch not found
+        "409":
+          description: batch is not retryable (`AUDIT_ANCHOR_BATCH_NOT_RETRYABLE`)
 components:
   schemas:
     AuditTrace:
@@ -733,3 +816,110 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/AuditLegalHoldActionView"
+    AnchorBatch:
+      type: object
+      required:
+        - anchor_batch_id
+        - batch_scope
+        - record_count
+        - batch_root
+        - chain_id
+        - anchor_status
+      properties:
+        anchor_batch_id:
+          type: string
+          format: uuid
+        batch_scope:
+          type: string
+        record_count:
+          type: integer
+        batch_root:
+          type: string
+        chain_id:
+          type: string
+        anchor_status:
+          type: string
+        tx_hash:
+          type: string
+        anchored_at:
+          type: string
+          format: date-time
+        window_started_at:
+          type: string
+          format: date-time
+        window_ended_at:
+          type: string
+          format: date-time
+        chain_anchor_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    AuditAnchorBatchPage:
+      type: object
+      required:
+        - total
+        - page
+        - page_size
+        - items
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnchorBatch"
+    AuditAnchorBatchPageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AuditAnchorBatchPage"
+    AuditAnchorBatchRetryRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AuditAnchorBatchRetryView:
+      type: object
+      required:
+        - anchor_batch
+        - step_up_bound
+      properties:
+        anchor_batch:
+          $ref: "#/components/schemas/AnchorBatch"
+        step_up_bound:
+          type: boolean
+    AuditAnchorBatchRetryResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AuditAnchorBatchRetryView"

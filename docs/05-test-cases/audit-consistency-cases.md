@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -8,8 +8,9 @@
 - 回放任务 dry-run：`POST /api/v1/audit/replay-jobs`
 - 回放任务联查：`GET /api/v1/audit/replay-jobs/{id}`
 - legal hold 创建 / 释放：`POST /api/v1/audit/legal-holds`、`POST /api/v1/audit/legal-holds/{id}/release`
+- anchor batch 查看 / 重试：`GET /api/v1/audit/anchor-batches`、`POST /api/v1/audit/anchor-batches/{id}/retry`
 
-后续 `legal hold`、anchor / Fabric、dead letter reprocess、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
+后续 Fabric callback、dead letter reprocess、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
 ## 前置条件
 
@@ -37,6 +38,8 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-008` | legal hold 创建 | `POST /api/v1/audit/legal-holds` + `x-step-up-challenge-id` | 写入 `audit.legal_hold`，并产生 `audit.audit_event(action_name='audit.legal_hold.create')`；当前 hold 状态以 `audit.legal_hold` 为权威源，历史 evidence/package 行保持 append-only | API 响应、`audit.legal_hold`、`audit.audit_event`、`ops.system_log` |
 | `AUD-CASE-009` | legal hold 重复创建冲突 | 对同一 active scope 再次创建 | 返回 `409` 且错误码 `AUDIT_LEGAL_HOLD_ACTIVE` | HTTP 响应、错误码、无新增 hold |
 | `AUD-CASE-010` | legal hold 释放 | `POST /api/v1/audit/legal-holds/{id}/release` | `status=released`、`approved_by / released_at` 落库，并产生 `audit.audit_event(action_name='audit.legal_hold.release')`；当前 hold 状态回到 `audit.legal_hold` 权威视图中的 `none` | API 响应、`audit.legal_hold`、`audit.audit_event`、`ops.system_log` |
+| `AUD-CASE-011` | anchor batch 查看 | `GET /api/v1/audit/anchor-batches?anchor_status=failed&batch_scope=audit_event&chain_id=fabric-local` | 返回 `audit.anchor_batch + chain.chain_anchor` 联查视图，可看到 `anchor_batch_id / batch_scope / record_count / batch_root / chain_id / tx_hash / anchor_status / anchored_at` | API 响应、`audit.access_audit(access_mode='masked')`、`ops.system_log` |
+| `AUD-CASE-012` | failed batch retry | `POST /api/v1/audit/anchor-batches/{id}/retry` + verified `x-step-up-challenge-id` | 仅允许 `status=failed`；成功后 `audit.anchor_batch.status=retry_requested`，并写出 canonical outbox `audit.anchor_requested -> dtp.audit.anchor` | API 响应、`audit.anchor_batch`、`ops.outbox_event(target_topic='dtp.audit.anchor')`、`audit.audit_event(action_name='audit.anchor.retry')`、`audit.access_audit(access_mode='retry')`、`ops.system_log` |
 
 ## `AUD-005` 手工回放验证
 
@@ -388,15 +391,132 @@ WHERE hold_scope_type = 'order'
 - 若上述活跃 hold 计数在释放后重新查询，应返回 `0`
 - 历史 `audit.evidence_item / audit.evidence_package` 行保持 append-only，不作为当前 hold 状态权威源
 
+## `AUD-007` 手工锚定批次验证
+
+1. 查询 failed anchor batches：
+
+```bash
+curl -sS 'http://127.0.0.1:18080/api/v1/audit/anchor-batches?anchor_status=failed&batch_scope=audit_event&chain_id=fabric-local' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <audit_user_id>' \
+  -H 'x-request-id: req-aud007-manual-list' \
+  -H 'x-trace-id: trace-aud007-manual-list'
+```
+
+预期：
+
+- 至少返回 1 条 failed batch
+- `items[0]` 中可见 `tx_hash / anchor_status / chain_id`
+
+2. 为 retry 准备 step-up challenge：
+
+```sql
+INSERT INTO iam.step_up_challenge (
+  user_id,
+  challenge_type,
+  target_action,
+  target_ref_type,
+  target_ref_id,
+  challenge_status,
+  expires_at,
+  completed_at,
+  metadata
+) VALUES (
+  '<audit_user_id>'::uuid,
+  'mock_otp',
+  'audit.anchor.manage',
+  'anchor_batch',
+  '<anchor_batch_id>'::uuid,
+  'verified',
+  now() + interval '10 minutes',
+  now(),
+  jsonb_build_object('seed', 'aud007-manual-retry')
+)
+RETURNING step_up_challenge_id::text;
+```
+
+3. 触发 retry：
+
+```bash
+curl -sS -X POST http://127.0.0.1:18080/api/v1/audit/anchor-batches/<anchor_batch_id>/retry \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <audit_user_id>' \
+  -H 'x-request-id: req-aud007-manual-retry' \
+  -H 'x-trace-id: trace-aud007-manual-retry' \
+  -H 'x-step-up-challenge-id: <retry_challenge_id>' \
+  -d '{
+    "reason": "retry failed batch after gateway timeout",
+    "metadata": {
+      "ticket_id": "AUD-OPS-007"
+    }
+  }'
+```
+
+4. 回查 batch 与 outbox：
+
+```sql
+SELECT
+  status,
+  metadata ->> 'previous_status',
+  metadata -> 'retry_request' ->> 'reason'
+FROM audit.anchor_batch
+WHERE anchor_batch_id = '<anchor_batch_id>'::uuid;
+
+SELECT
+  target_topic,
+  event_type,
+  aggregate_type,
+  payload ->> 'anchor_status',
+  payload ->> 'previous_anchor_status'
+FROM ops.outbox_event
+WHERE request_id = 'req-aud007-manual-retry'
+ORDER BY created_at DESC, outbox_event_id DESC
+LIMIT 1;
+```
+
+预期：
+
+- `audit.anchor_batch.status='retry_requested'`
+- `metadata.previous_status='failed'`
+- `ops.outbox_event.target_topic='dtp.audit.anchor'`
+- `event_type='audit.anchor_requested'`
+- `payload.anchor_status='retry_requested'`
+
+5. 回查审计与系统日志：
+
+```sql
+SELECT COUNT(*)::bigint
+FROM audit.audit_event
+WHERE request_id = 'req-aud007-manual-retry'
+  AND action_name = 'audit.anchor.retry';
+
+SELECT COUNT(*)::bigint
+FROM audit.access_audit
+WHERE request_id IN ('req-aud007-manual-list', 'req-aud007-manual-retry');
+
+SELECT message_text
+FROM ops.system_log
+WHERE request_id IN ('req-aud007-manual-list', 'req-aud007-manual-retry')
+ORDER BY created_at;
+```
+
+预期：
+
+- `audit.audit_event` 至少 1 条
+- `audit.access_audit` 覆盖 list + retry
+- `ops.system_log` 含 list 与 retry 两条记录
+
 ## 清理约束
 
 - 业务测试数据可清理：`trade.order_main` 及本手工步骤创建的临时 `core.organization / catalog.*` scope 图数据
 - 与高风险动作审计链绑定的 `core.user_account / iam.step_up_challenge` 在当前运行态不做强删；删除它们会触发 FK 尝试回写 append-only `audit.audit_event`
-- 审计数据不清理：`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`audit.replay_job`、`audit.replay_result`、`audit.legal_hold`、MinIO replay report 及相关 evidence snapshot 按 append-only 或审计保留规则保留
+- 审计数据不清理：`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`audit.replay_job`、`audit.replay_result`、`audit.legal_hold`、`audit.anchor_batch`、MinIO replay report 及相关 evidence snapshot 按 append-only 或审计保留规则保留
+- `ops.outbox_event` 若为本次手工 retry 临时产生的待发布记录，只允许按唯一 `request_id` 精确删除；不得宽泛清库
 
 ## 当前未覆盖项
 
-- `AUD-007+` anchor / Fabric request / callback / reconcile
+- `AUD-008+` Fabric request / callback / reconcile
 - `AUD-010+` dead letter reprocess / consistency repair / OpenSearch ops
 
 进入对应批次后，必须在本文件继续追加，不得把本文件视为 `AUD` 全阶段完成证明。

@@ -1,11 +1,11 @@
 use audit_kit::{
-    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, LegalHold,
-    ReplayJob, ReplayResult,
+    AnchorBatch, AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage,
+    LegalHold, ReplayJob, ReplayResult,
 };
 use db::{Error, GenericClient, Row};
 use serde_json::{Map, Value};
 
-use crate::modules::audit::domain::AuditTraceQuery;
+use crate::modules::audit::domain::{AnchorBatchQuery, AuditTraceQuery};
 use crate::modules::audit::dto::AuditTraceView;
 
 pub const INSERT_AUDIT_EVENT_SQL: &str = r#"
@@ -590,6 +590,12 @@ pub struct ReplayJobDetail {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AnchorBatchPage {
+    pub total: i64,
+    pub items: Vec<AnchorBatch>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SystemLogInsert {
     pub service_name: String,
     pub log_level: String,
@@ -908,6 +914,125 @@ pub async fn release_legal_hold(
     Ok(row.map(|row| parse_legal_hold_row(&row)))
 }
 
+pub async fn load_anchor_batch(
+    client: &(impl GenericClient + Sync),
+    anchor_batch_id: &str,
+) -> Result<Option<AnchorBatch>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               ab.anchor_batch_id::text,
+               ab.batch_scope,
+               ab.chain_id,
+               ab.record_count,
+               ab.batch_root,
+               to_char(ab.window_started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ab.window_ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ab.status,
+               ab.chain_anchor_id::text,
+               ab.created_by::text,
+               to_char(ab.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ab.anchored_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ab.metadata,
+               to_char(ab.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ca.tx_hash,
+               ca.status,
+               ca.authority_model,
+               ca.reconcile_status,
+               to_char(ca.last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.anchor_batch ab
+             LEFT JOIN chain.chain_anchor ca
+               ON ca.chain_anchor_id = ab.chain_anchor_id
+             WHERE ab.anchor_batch_id = $1::text::uuid",
+            &[&anchor_batch_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_anchor_batch_row(&row)))
+}
+
+pub async fn search_anchor_batches(
+    client: &(impl GenericClient + Sync),
+    query: &AnchorBatchQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<AnchorBatchPage, Error> {
+    let rows = client
+        .query(
+            "SELECT
+               ab.anchor_batch_id::text,
+               ab.batch_scope,
+               ab.chain_id,
+               ab.record_count,
+               ab.batch_root,
+               to_char(ab.window_started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ab.window_ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ab.status,
+               ab.chain_anchor_id::text,
+               ab.created_by::text,
+               to_char(ab.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ab.anchored_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ab.metadata,
+               to_char(ab.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ca.tx_hash,
+               ca.status,
+               ca.authority_model,
+               ca.reconcile_status,
+               to_char(ca.last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.anchor_batch ab
+             LEFT JOIN chain.chain_anchor ca
+               ON ca.chain_anchor_id = ab.chain_anchor_id
+             WHERE ($1::text IS NULL OR ab.status = $1)
+               AND ($2::text IS NULL OR ab.batch_scope = $2)
+               AND ($3::text IS NULL OR ab.chain_id = $3)
+             ORDER BY ab.created_at DESC, ab.anchor_batch_id DESC
+             LIMIT $4
+             OFFSET $5",
+            &[
+                &query.anchor_status,
+                &query.batch_scope,
+                &query.chain_id,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+    let total = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.anchor_batch ab
+             WHERE ($1::text IS NULL OR ab.status = $1)
+               AND ($2::text IS NULL OR ab.batch_scope = $2)
+               AND ($3::text IS NULL OR ab.chain_id = $3)",
+            &[&query.anchor_status, &query.batch_scope, &query.chain_id],
+        )
+        .await?
+        .get(0);
+    Ok(AnchorBatchPage {
+        total,
+        items: rows.iter().map(parse_anchor_batch_row).collect(),
+    })
+}
+
+pub async fn mark_anchor_batch_retry_requested(
+    client: &(impl GenericClient + Sync),
+    anchor_batch_id: &str,
+    metadata_patch: &Value,
+    retried_at: &str,
+) -> Result<bool, Error> {
+    let updated = client
+        .execute(
+            "UPDATE audit.anchor_batch
+             SET status = 'retry_requested',
+                 metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+                 updated_at = COALESCE($3::timestamptz, now())
+             WHERE anchor_batch_id = $1::text::uuid
+               AND status = 'failed'",
+            &[&anchor_batch_id, metadata_patch, &retried_at],
+        )
+        .await?;
+    Ok(updated > 0)
+}
+
 pub async fn load_replay_job_detail(
     client: &(impl GenericClient + Sync),
     replay_job_id: &str,
@@ -1221,6 +1346,54 @@ fn parse_legal_hold_row(row: &Row) -> LegalHold {
         released_at: row.get(10),
         updated_at: row.get(11),
         metadata: row.get(12),
+    }
+}
+
+fn parse_anchor_batch_row(row: &Row) -> AnchorBatch {
+    let mut metadata = metadata_object(row.get(12));
+    if let Some(tx_hash) = row.get::<_, Option<String>>(14) {
+        metadata.insert("tx_hash".to_string(), Value::String(tx_hash));
+    }
+    if let Some(chain_anchor_status) = row.get::<_, Option<String>>(15) {
+        metadata.insert(
+            "chain_anchor_status".to_string(),
+            Value::String(chain_anchor_status),
+        );
+    }
+    if let Some(authority_model) = row.get::<_, Option<String>>(16) {
+        metadata.insert(
+            "authority_model".to_string(),
+            Value::String(authority_model),
+        );
+    }
+    if let Some(reconcile_status) = row.get::<_, Option<String>>(17) {
+        metadata.insert(
+            "reconcile_status".to_string(),
+            Value::String(reconcile_status),
+        );
+    }
+    if let Some(last_reconciled_at) = row.get::<_, Option<String>>(18) {
+        metadata.insert(
+            "last_reconciled_at".to_string(),
+            Value::String(last_reconciled_at),
+        );
+    }
+
+    AnchorBatch {
+        anchor_batch_id: row.get(0),
+        batch_scope: row.get(1),
+        chain_id: row.get(2),
+        record_count: row.get(3),
+        batch_root: row.get(4),
+        window_started_at: row.get(5),
+        window_ended_at: row.get(6),
+        status: row.get(7),
+        chain_anchor_id: row.get(8),
+        created_by: row.get(9),
+        created_at: row.get(10),
+        anchored_at: row.get(11),
+        metadata: Value::Object(metadata),
+        updated_at: row.get(13),
     }
 }
 

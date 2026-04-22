@@ -11,15 +11,18 @@ use sha2::{Digest, Sha256};
 use crate::AppState;
 use crate::modules::audit::application::{EvidenceWriteCommand, record_evidence_snapshot};
 use crate::modules::audit::domain::{
+    AnchorBatchPageView, AnchorBatchQuery, AuditAnchorBatchRetryRequest, AuditAnchorBatchRetryView,
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
     AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OrderAuditQuery, OrderAuditView,
 };
 use crate::modules::audit::dto::{
-    EvidenceManifestView, EvidencePackageView, LegalHoldView, ReplayJobView, ReplayResultView,
+    AnchorBatchView, EvidenceManifestView, EvidencePackageView, LegalHoldView, ReplayJobView,
+    ReplayResultView,
 };
 use crate::modules::audit::repo::{self, AccessAuditInsert, OrderAuditScope, SystemLogInsert};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
+use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 
 const EXPORT_BUCKET_ENV: &str = "BUCKET_EVIDENCE_PACKAGES";
 const DEFAULT_EXPORT_BUCKET: &str = "evidence-packages";
@@ -27,8 +30,10 @@ const EXPORT_STEP_UP_ACTION: &str = "audit.package.export";
 const EXPORT_STEP_UP_ACTION_COMPAT: &str = "audit.evidence.export";
 const REPLAY_STEP_UP_ACTION: &str = "audit.replay.execute";
 const LEGAL_HOLD_STEP_UP_ACTION: &str = "audit.legal_hold.manage";
+const ANCHOR_STEP_UP_ACTION: &str = "audit.anchor.manage";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
+const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
 
 pub(in crate::modules::audit) async fn get_order_audit_traces(
     State(state): State<AppState>,
@@ -1071,6 +1076,267 @@ pub(in crate::modules::audit) async fn release_audit_legal_hold(
     }))
 }
 
+pub(in crate::modules::audit) async fn get_audit_anchor_batches(
+    State(state): State<AppState>,
+    Query(query): Query<AnchorBatchQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<AnchorBatchPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(
+        &headers,
+        AuditPermission::AnchorRead,
+        "audit anchor batch read",
+    )?;
+
+    let normalized_query = AnchorBatchQuery {
+        anchor_status: normalize_optional_anchor_filter(
+            query.anchor_status.as_deref(),
+            "anchor_status",
+            &request_id,
+        )?,
+        batch_scope: normalize_optional_anchor_filter(
+            query.batch_scope.as_deref(),
+            "batch_scope",
+            &request_id,
+        )?,
+        chain_id: normalize_optional_anchor_filter(
+            query.chain_id.as_deref(),
+            "chain_id",
+            &request_id,
+        )?,
+        page: query.page,
+        page_size: query.page_size,
+    };
+
+    let client = state_client(&state)?;
+    let pagination = normalized_query.pagination();
+    let page = repo::search_anchor_batches(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_lookup_side_effects(
+        &client,
+        &headers,
+        "anchor_batch_query",
+        None,
+        "GET /api/v1/audit/anchor-batches",
+        json!({
+            "anchor_status": normalized_query.anchor_status,
+            "batch_scope": normalized_query.batch_scope,
+            "chain_id": normalized_query.chain_id,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(AnchorBatchPageView {
+        total: page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: page.items.iter().map(AnchorBatchView::from).collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn retry_audit_anchor_batch(
+    State(state): State<AppState>,
+    Path(anchor_batch_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<AuditAnchorBatchRetryRequest>,
+) -> Result<Json<ApiResponse<AuditAnchorBatchRetryView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&anchor_batch_id, "anchor_batch_id", &request_id)?;
+    let reason = normalize_anchor_retry_reason(&payload.reason, &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::AnchorManage,
+        "audit anchor batch retry",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "audit anchor batch retry")?;
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_anchor_retry(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        anchor_batch_id.as_str(),
+    )
+    .await?;
+    let existing_batch = repo::load_anchor_batch(&client, &anchor_batch_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("audit anchor batch not found: {anchor_batch_id}"),
+            )
+        })?;
+    if existing_batch.status != "failed" {
+        return Err(conflict_error(
+            &request_id,
+            ANCHOR_BATCH_NOT_RETRYABLE_ERROR,
+            format!(
+                "audit anchor batch is not retryable from status `{}`",
+                existing_batch.status
+            ),
+        ));
+    }
+
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let retried_at = current_utc_timestamp(&client).await?;
+    let retry_metadata = build_anchor_retry_metadata(
+        &headers,
+        &request_id,
+        trace_id.as_str(),
+        retried_at.as_str(),
+        reason.as_str(),
+        &existing_batch,
+        payload.metadata,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let updated = repo::mark_anchor_batch_retry_requested(
+        &tx,
+        anchor_batch_id.as_str(),
+        &retry_metadata,
+        retried_at.as_str(),
+    )
+    .await
+    .map_err(map_db_error)?;
+    if !updated {
+        return Err(conflict_error(
+            &request_id,
+            ANCHOR_BATCH_NOT_RETRYABLE_ERROR,
+            format!("audit anchor batch is no longer retryable: {anchor_batch_id}"),
+        ));
+    }
+
+    let refreshed_batch = repo::load_anchor_batch(&tx, &anchor_batch_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("audit anchor batch not found after retry update: {anchor_batch_id}"),
+            )
+        })?;
+
+    write_canonical_outbox_event(
+        &tx,
+        CanonicalOutboxWrite {
+            aggregate_type: "audit.anchor_batch",
+            aggregate_id: anchor_batch_id.as_str(),
+            event_type: "audit.anchor_requested",
+            producer_service: "platform-core.audit",
+            request_id: Some(request_id.as_str()),
+            trace_id: Some(trace_id.as_str()),
+            idempotency_key: None,
+            occurred_at: Some(retried_at.as_str()),
+            business_payload: &build_anchor_retry_outbox_payload(
+                &existing_batch,
+                &refreshed_batch,
+                reason.as_str(),
+                actor_user_id.as_str(),
+                request_id.as_str(),
+                trace_id.as_str(),
+                step_up.challenge_id.clone(),
+                step_up.token_present,
+            ),
+            deduplicate_by_idempotency_key: false,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    let audit_event = build_anchor_retry_audit_event(
+        &headers,
+        &request_id,
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        anchor_batch_id.as_str(),
+        existing_batch.status.as_str(),
+        refreshed_batch.status.as_str(),
+        reason.as_str(),
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+        refreshed_batch.clone(),
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+
+    let access_audit_id = repo::record_access_audit(
+        &tx,
+        &AccessAuditInsert {
+            accessor_user_id: Some(actor_user_id.clone()),
+            accessor_role_key: Some(current_role(&headers)),
+            access_mode: "retry".to_string(),
+            target_type: "anchor_batch".to_string(),
+            target_id: Some(anchor_batch_id.clone()),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: step_up.challenge_id.clone(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            metadata: json!({
+                "endpoint": "POST /api/v1/audit/anchor-batches/{id}/retry",
+                "reason": reason,
+                "previous_status": existing_batch.status,
+                "anchor_status": refreshed_batch.status,
+                "batch_scope": refreshed_batch.batch_scope,
+                "chain_id": refreshed_batch.chain_id,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text:
+                "audit anchor batch retry requested: POST /api/v1/audit/anchor-batches/{id}/retry"
+                    .to_string(),
+            structured_payload: json!({
+                "module": "audit",
+                "endpoint": "POST /api/v1/audit/anchor-batches/{id}/retry",
+                "anchor_batch_id": anchor_batch_id,
+                "access_audit_id": access_audit_id,
+                "previous_status": existing_batch.status,
+                "anchor_status": refreshed_batch.status,
+                "chain_id": refreshed_batch.chain_id,
+                "batch_scope": refreshed_batch.batch_scope,
+                "step_up_challenge_id": step_up.challenge_id,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(AuditAnchorBatchRetryView {
+        anchor_batch: AnchorBatchView::from(&refreshed_batch),
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+    }))
+}
+
 #[derive(Debug, Clone)]
 struct StepUpBinding {
     challenge_id: Option<String>,
@@ -1340,6 +1606,8 @@ enum AuditPermission {
     ReplayExecute,
     ReplayRead,
     LegalHoldManage,
+    AnchorRead,
+    AnchorManage,
 }
 
 fn is_allowed(role: &str, permission: AuditPermission) -> bool {
@@ -1368,7 +1636,9 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
         ),
         AuditPermission::ReplayExecute
         | AuditPermission::ReplayRead
-        | AuditPermission::LegalHoldManage => matches!(
+        | AuditPermission::LegalHoldManage
+        | AuditPermission::AnchorRead
+        | AuditPermission::AnchorManage => matches!(
             role,
             "platform_admin" | "platform_auditor" | "platform_audit_security" | "audit_admin"
         ),
@@ -1586,6 +1856,27 @@ async fn require_step_up_for_legal_hold_release(
         Some("legal_hold"),
         Some(legal_hold_id),
         "audit legal hold release",
+    )
+    .await
+}
+
+async fn require_step_up_for_anchor_retry(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    anchor_batch_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        ANCHOR_STEP_UP_ACTION,
+        None,
+        Some("anchor_batch"),
+        Some(anchor_batch_id),
+        "audit anchor batch retry",
     )
     .await
 }
@@ -2587,6 +2878,136 @@ fn build_legal_hold_audit_event(
     event
 }
 
+fn build_anchor_retry_metadata(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: &str,
+    retried_at: &str,
+    reason: &str,
+    batch: &crate::modules::audit::domain::AnchorBatch,
+    request_metadata: Value,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> Value {
+    json!({
+        "retry_requested_at": retried_at,
+        "retry_requested_by": {
+            "user_id": header(headers, "x-user-id"),
+            "role": current_role(headers),
+            "tenant_id": header(headers, "x-tenant-id"),
+        },
+        "retry_request": {
+            "endpoint": "POST /api/v1/audit/anchor-batches/{id}/retry",
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "reason": reason,
+            "step_up_challenge_id": step_up_challenge_id,
+            "step_up_token_present": step_up_token_present,
+            "request_metadata": request_metadata,
+        },
+        "previous_status": batch.status,
+        "last_tx_hash": batch.metadata.get("tx_hash").and_then(Value::as_str),
+        "last_authority_model": batch.metadata.get("authority_model").and_then(Value::as_str),
+        "last_reconcile_status": batch.metadata.get("reconcile_status").and_then(Value::as_str),
+    })
+}
+
+fn anchor_batch_snapshot(batch: &crate::modules::audit::domain::AnchorBatch) -> Value {
+    json!({
+        "anchor_batch_id": batch.anchor_batch_id,
+        "batch_scope": batch.batch_scope,
+        "chain_id": batch.chain_id,
+        "record_count": batch.record_count,
+        "batch_root": batch.batch_root,
+        "anchor_status": batch.status,
+        "tx_hash": batch.metadata.get("tx_hash").and_then(Value::as_str),
+        "anchored_at": batch.anchored_at,
+        "chain_anchor_id": batch.chain_anchor_id,
+        "window_started_at": batch.window_started_at,
+        "window_ended_at": batch.window_ended_at,
+        "authority_model": batch.metadata.get("authority_model").and_then(Value::as_str),
+        "reconcile_status": batch.metadata.get("reconcile_status").and_then(Value::as_str),
+        "last_reconciled_at": batch.metadata.get("last_reconciled_at").and_then(Value::as_str),
+    })
+}
+
+fn build_anchor_retry_outbox_payload(
+    previous_batch: &crate::modules::audit::domain::AnchorBatch,
+    batch: &crate::modules::audit::domain::AnchorBatch,
+    reason: &str,
+    actor_user_id: &str,
+    request_id: &str,
+    trace_id: &str,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> Value {
+    json!({
+        "anchor_batch_id": batch.anchor_batch_id,
+        "batch_scope": batch.batch_scope,
+        "chain_id": batch.chain_id,
+        "record_count": batch.record_count,
+        "batch_root": batch.batch_root,
+        "anchor_status": batch.status,
+        "previous_anchor_status": previous_batch.status,
+        "chain_anchor_id": batch.chain_anchor_id,
+        "tx_hash": batch.metadata.get("tx_hash").and_then(Value::as_str),
+        "requested_by": actor_user_id,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "retry_reason": reason,
+        "step_up_challenge_id": step_up_challenge_id,
+        "step_up_token_present": step_up_token_present,
+        "source": "audit.anchor.retry",
+    })
+}
+
+fn build_anchor_retry_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: String,
+    actor_user_id: &str,
+    anchor_batch_id: &str,
+    previous_status: &str,
+    new_status: &str,
+    reason: &str,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+    batch: crate::modules::audit::domain::AnchorBatch,
+) -> AuditEvent {
+    let mut event = AuditEvent::business(
+        "audit",
+        "anchor_batch",
+        Some(anchor_batch_id.to_string()),
+        "audit.anchor.retry",
+        "accepted",
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id,
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "reason": reason,
+                "previous_status": previous_status,
+                "anchor_status": new_status,
+                "step_up_token_present": step_up_token_present,
+                "anchor_batch": anchor_batch_snapshot(&batch),
+            }),
+        },
+    );
+    event.sensitivity_level = "high".to_string();
+    event
+}
+
 fn build_export_payload(
     export_id: &str,
     package_type: &str,
@@ -3180,6 +3601,37 @@ fn normalize_reason(
         ));
     }
     Ok(reason.to_string())
+}
+
+fn normalize_anchor_retry_reason(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let reason = raw.trim();
+    if reason.is_empty() {
+        return Err(bad_request(
+            request_id,
+            "reason is required for audit anchor batch retry",
+        ));
+    }
+    Ok(reason.to_string())
+}
+
+fn normalize_optional_anchor_filter(
+    raw: Option<&str>,
+    field_name: &str,
+    request_id: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(value) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if value.len() > 128 {
+        return Err(bad_request(
+            request_id,
+            format!("{field_name} must be shorter than 129 characters"),
+        ));
+    }
+    Ok(Some(value.to_string()))
 }
 
 fn normalize_replay_ref_type(

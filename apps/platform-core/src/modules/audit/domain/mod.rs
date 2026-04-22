@@ -140,3 +140,42 @@ pub struct AuditLegalHoldActionView {
     pub legal_hold: LegalHoldView,
     pub step_up_bound: bool,
 }
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct AnchorBatchQuery {
+    pub anchor_status: Option<String>,
+    pub batch_scope: Option<String>,
+    pub chain_id: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl AnchorBatchQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AnchorBatchPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<crate::modules::audit::dto::AnchorBatchView>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct AuditAnchorBatchRetryRequest {
+    pub reason: String,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuditAnchorBatchRetryView {
+    pub anchor_batch: crate::modules::audit::dto::AnchorBatchView,
+    pub step_up_bound: bool,
+}

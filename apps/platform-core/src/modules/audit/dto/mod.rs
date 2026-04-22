@@ -1,6 +1,6 @@
 use audit_kit::{
-    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, LegalHold,
-    ReplayJob, ReplayResult,
+    AnchorBatch, AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage,
+    LegalHold, ReplayJob, ReplayResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -216,6 +216,51 @@ impl From<&ReplayJob> for ReplayJobView {
             finished_at: job.finished_at.clone(),
             updated_at: job.updated_at.clone(),
             options: job.options_json.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AnchorBatchView {
+    pub anchor_batch_id: Option<String>,
+    pub batch_scope: String,
+    pub record_count: i32,
+    pub batch_root: String,
+    pub chain_id: String,
+    pub anchor_status: String,
+    pub tx_hash: Option<String>,
+    pub anchored_at: Option<String>,
+    pub window_started_at: Option<String>,
+    pub window_ended_at: Option<String>,
+    pub chain_anchor_id: Option<String>,
+    pub created_by: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+impl From<&AnchorBatch> for AnchorBatchView {
+    fn from(batch: &AnchorBatch) -> Self {
+        Self {
+            anchor_batch_id: batch.anchor_batch_id.clone(),
+            batch_scope: batch.batch_scope.clone(),
+            record_count: batch.record_count,
+            batch_root: batch.batch_root.clone(),
+            chain_id: batch.chain_id.clone(),
+            anchor_status: batch.status.clone(),
+            tx_hash: batch
+                .metadata
+                .get("tx_hash")
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string),
+            anchored_at: batch.anchored_at.clone(),
+            window_started_at: batch.window_started_at.clone(),
+            window_ended_at: batch.window_ended_at.clone(),
+            chain_anchor_id: batch.chain_anchor_id.clone(),
+            created_by: batch.created_by.clone(),
+            created_at: batch.created_at.clone(),
+            updated_at: batch.updated_at.clone(),
+            metadata: batch.metadata.clone(),
         }
     }
 }

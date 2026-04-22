@@ -283,6 +283,67 @@
 - 备注：
   - 本批没有发现需要人工确认的 `CSV / Markdown / technical_reference` 冲突，不触发暂停条件。
   - `AUD-006` 本地完成后，下一批按顺序进入 `AUD-007`。
+### BATCH-220（计划中）
+- 任务：AUD-007 AnchorBatch 模型与查看 / 重试接口
+- 状态：计划中
+- 说明：在 `AUD-003 ~ AUD-006` 已补齐审计联查、证据包导出、replay dry-run 与 legal hold 控制面的基础上，本批继续补齐 `GET /api/v1/audit/anchor-batches` 与 `POST /api/v1/audit/anchor-batches/{id}/retry`。实现将复用统一 `AnchorBatch` authority model，并以 `audit.anchor_batch + audit.anchor_item + chain.chain_anchor` 为正式读取源；retry 动作将作为高风险控制面，要求真实经过 `audit.anchor.manage` 权限与 step-up，落正式 `audit.audit_event / audit.access_audit / ops.system_log`，并按 canonical route 写出 `audit.anchor_requested -> dtp.audit.anchor` 的 outbox 事件，不能自创旁路 topic 或直接把 `dtp.outbox.domain-events` 当正式入口。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-007`，完成后再进入 `AUD-008`。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-007`
+  - `技术选型正式版.md`：`Fabric / PostgreSQL / Kafka / MinIO / Redis / Keycloak / OpenSearch / 观测栈` 的职责边界
+  - `链上链下技术架构与能力边界稿.md`：链下主状态机 + Fabric 证明层边界，链失败不能反向定义主业务状态
+  - `审计、证据链与回放设计.md`：`AnchorBatch / AnchorItem`、审计批次根与 `audit.anchor_requested`
+  - `审计、证据链与回放接口协议正式版.md`：`AnchorBatch` 核心字段、`GET /api/v1/audit/anchor-batches`、`POST /api/v1/audit/anchor-batches/{id}/retry`
+  - `全量领域模型与对象关系说明.md`：`AnchorBatch 1 -> N AnchorItem` 与链上摘要聚合边界
+  - `055_audit_hardening.sql`、`074_event_topology_route_extensions.sql`、`kafka-topics.md`、`fabric-local.md`：`audit.anchor_batch / audit.anchor_requested -> dtp.audit.anchor -> fabric-adapter` 的正式 schema / route / topic 口径
+- 预定实现要点：
+  - `apps/platform-core/src/modules/audit/domain/**`：补齐 `AnchorBatch` 查询参数、分页视图与 retry 请求/响应 DTO。
+  - `apps/platform-core/src/modules/audit/repo/**`：新增 `audit.anchor_batch` 列表查询、`chain.chain_anchor` 联查、failed batch 读取与 retry 元数据更新。
+  - `apps/platform-core/src/modules/audit/api/**`：新增 anchor batch read/manage 权限、router、handler、step-up 绑定、错误码与审计留痕。
+  - retry 动作仅允许对 `status=failed` 的 batch 发起；成功受理后写 canonical outbox 事件，目标 topic 必须命中 `dtp.audit.anchor`。
+  - `packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`、`docs/04-runbooks/**`、`docs/05-test-cases/**`：同步补齐契约、手工 `curl`、DB / outbox 回查与清理约束。
+- 备注：
+  - 当前没有发现必须暂停的文档冲突；`AnchorBatch` 的字段口径可通过 `audit.anchor_batch` 与 `chain.chain_anchor` 联合映射出 `anchor_status / tx_hash / anchored_at`。
+### BATCH-220（待审批）
+- 任务：`AUD-007` AnchorBatch 模型与查看 / 重试接口
+- 状态：待审批
+- 当前任务编号：`AUD-007`
+- 前置依赖核对结果：`CORE-007`、`CORE-008`、`DB-008`、`ENV-022` 已满足；`AUD-003 ~ AUD-006` 已补齐 audit query / export / replay / legal hold 控制面，`055_audit_hardening.sql` 已提供 `audit.anchor_batch / audit.anchor_item`，`074_event_topology_route_extensions.sql` 与 `scripts/check-topic-topology.sh` 已冻结并校验 `audit.anchor_batch / audit.anchor_requested -> dtp.audit.anchor` 运行态 route seed。
+- 已阅读证据（文件+要点）：
+  - `v1-core-开发任务清单.csv / .md`：确认 `AUD-007` DoD 为 `GET /api/v1/audit/anchor-batches`、`POST /api/v1/audit/anchor-batches/{id}/retry` 的接口、DTO、权限、审计、错误码、最小测试与 OpenAPI 对齐。
+  - `技术选型正式版.md`、`链上链下技术架构与能力边界稿.md`、`审计、证据链与回放设计.md`、`审计、证据链与回放接口协议正式版.md`、`全量领域模型与对象关系说明.md`：确认 `AnchorBatch / AnchorItem` 是正式 authority model，`Fabric` 只是证明层，retry 只能回写 proof / request 状态，不能反向定义主业务状态。
+  - `事件模型与Topic清单正式版.md`、`kafka-topics.md`、`fabric-local.md`、`074_event_topology_route_extensions.sql`：确认正式事件为 `audit.anchor_requested`，目标 topic 为 `dtp.audit.anchor`，不能走 `dtp.outbox.domain-events` 旁路。
+  - `apps/platform-core/src/modules/audit/**`、`packages/openapi/**`、`docs/04-runbooks/**`、`docs/05-test-cases/**`：确认现有实现只覆盖 `AUD-003 ~ AUD-006`；anchor batch 查询 / retry、runbook 与验收矩阵仍待当前批次落地。
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/domain/mod.rs`：新增 `AnchorBatchQuery`、`AnchorBatchPageView`、`AuditAnchorBatchRetryRequest`、`AuditAnchorBatchRetryView`。
+  - `apps/platform-core/src/modules/audit/dto/mod.rs`：新增 `AnchorBatchView`，统一把 `audit.anchor_batch + chain.chain_anchor` 映射为 API 视图，补齐 `tx_hash / anchor_status / anchored_at / window_* / metadata`。
+  - `apps/platform-core/src/modules/audit/repo/mod.rs`：新增 anchor batch 列表读取、单批次读取、`failed -> retry_requested` 原子更新，并把 `chain.chain_anchor` 的 `tx_hash / authority_model / reconcile_status / last_reconciled_at` 注入统一 metadata。
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `GET /api/v1/audit/anchor-batches` 与 `POST /api/v1/audit/anchor-batches/{id}/retry`，补齐 `audit.anchor.read / audit.anchor.manage` 权限、step-up challenge 绑定、`AUDIT_ANCHOR_BATCH_NOT_RETRYABLE` 冲突控制、`audit.audit_event / audit.access_audit / ops.system_log` 留痕，以及 canonical outbox `audit.anchor_requested -> dtp.audit.anchor` 写入。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增 route-level 权限 / step-up 测试，并扩展 live smoke 到 anchor batch list + retry + DB / outbox / audit / access / system_log 真实回查。
+  - `packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`：补齐 anchor batch 查询 / retry 路径与 schema，并同步归档成熟度说明。
+  - `docs/04-runbooks/audit-anchor-batches.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：补齐手工 `curl`、step-up challenge、SQL / outbox 回查、清理约束与验收矩阵。
+- 真实验证：
+  1. `cargo check -p platform-core`
+  2. `cargo test -p platform-core modules::audit::tests::api_db::route_tests -- --nocapture`
+  3. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core modules::audit::tests::api_db::audit_trace_api_db_smoke -- --nocapture`
+  4. live smoke 已真实验证：
+     - `GET /api/v1/audit/anchor-batches` 返回 failed batch，回查 `audit.access_audit + ops.system_log`
+     - `POST /api/v1/audit/anchor-batches/{id}/retry` 仅在 `status=failed` 时受理
+     - `audit.anchor_batch.status` 更新为 `retry_requested`
+     - `ops.outbox_event.target_topic='dtp.audit.anchor'`
+     - `event_type='audit.anchor_requested'`
+     - `audit.audit_event.action_name='audit.anchor.retry'`
+     - `audit.access_audit(access_mode='retry')`
+     - `ops.system_log` 留痕齐全
+- TODO / 预留清单更新：
+  - 无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项。
+  - 已更新 `TODO-AUD-OPENAPI-001`、`TODO-AUD-TEST-001`，把 `AUD-007` 的 anchor batch 契约、runbook 与验收矩阵纳入追踪现状。
+- 清理与保留：
+  - live smoke 产生的 `audit.anchor_batch / audit.audit_event / audit.access_audit / ops.system_log` 按审计 append-only 保留。
+  - 与高风险动作绑定的 `core.user_account / iam.step_up_challenge` 未做强删，保持与既有 `AUD-004~006` 相同的审计保留策略。
+- 结论：
+  - `AUD-007` 已按冻结口径完成并通过真实验证。
+  - 下一批应严格顺序进入 `AUD-008`，继续补齐 Fabric request / callback / reconcile 主链，不得把当前 control-plane 完成态误报为 Fabric 全链路已完成。
 ### BATCH-218（计划中）
 - 任务：AUD-005 审计回放任务接口
 - 状态：计划中

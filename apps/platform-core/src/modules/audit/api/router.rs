@@ -32,4 +32,12 @@ pub fn router() -> Router<AppState> {
             "/api/v1/audit/legal-holds/{id}/release",
             post(handlers::release_audit_legal_hold),
         )
+        .route(
+            "/api/v1/audit/anchor-batches",
+            get(handlers::get_audit_anchor_batches),
+        )
+        .route(
+            "/api/v1/audit/anchor-batches/{id}/retry",
+            post(handlers::retry_audit_anchor_batch),
+        )
 }
