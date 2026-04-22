@@ -328,3 +328,48 @@
   - 无。`SEARCHREC-008` 要求的推荐位、候选来源、排序 profile、曝光/点击事件基础模型与正式契约已落地，并通过 PostgreSQL / OpenSearch / route policy / behavior aggregate 的真实验证闭环收口。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+### BATCH-255（计划中）
+- 任务：`SEARCHREC-009` 实现推荐结果接口 `GET /api/v1/recommendations`
+- 状态：计划中
+- 说明：按 `SEARCHREC-009` 冻结口径复核后，当前 `GET /api/v1/recommendations` 已有最小运行时，但仍缺少正式查询参数校验、读接口审计/日志留痕，以及与搜索同口径的错误码分层；读权限当前还停留在 `x-role` 占位，不满足 SEARCHREC 阶段对前台读接口真实鉴权的要求。本批仅围绕 `GET /api/v1/recommendations` 收口，不提前修改 `track/exposure`、`track/click` 和 `ops/recommendation/*` 写接口。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，当前只处理推荐结果读取接口的契约、权限、审计与最小验证，不提前合并 `SEARCHREC-010` 至 `SEARCHREC-012` 的行为写接口和运维接口整改。
+### BATCH-255（待审批）
+- 任务：`SEARCHREC-009` 实现推荐结果接口 `GET /api/v1/recommendations`
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-009`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-008` 已形成搜索主链、推荐基础模型、canonical behavior route policy 与 OpenSearch/Redis 运行时基线，本批在此基线上把推荐结果读取接口收口为正式 Bearer 鉴权、查询校验、审计留痕与 PostgreSQL 最终放行闭环。
+- 完成情况：
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`、`service.rs`：`GET /api/v1/recommendations` 改为正式 `Authorization: Bearer <access_token>` 解析，不再依赖 `x-role` 占位；新增 `portal.recommendation.read` 角色匹配、`placement_code / subject_scope / subject_org_id / subject_user_id / context_entity_scope / context_entity_id / limit` 参数校验、`RECOMMENDATION_QUERY_INVALID / RECOMMENDATION_BACKEND_UNAVAILABLE / RECOMMENDATION_RESULT_UNAVAILABLE` 错误码分层，以及 `audit.access_audit(target_type='recommendation_result') + ops.system_log` 读侧留痕。接口继续通过 `repo::serve_recommendation -> OpenSearch recall -> PostgreSQL final validation` 返回结果，不直接信任 OpenSearch 文档。
+  - `apps/platform-core/src/modules/recommendation/tests/mod.rs`、`recommendation_api_db.rs`：新增路由测试，覆盖缺失 Bearer、缺少 `portal.recommendation.read`、非法查询参数三条失败用例；新增 `recommendation_get_api_db_smoke`，真实验证 `product_detail_bundle` 推荐位在带上下文请求下会落 `recommend.recommendation_request / recommendation_result / recommendation_result_item`，并回查 `audit.access_audit`、`ops.system_log`、`request_id / trace_id` 和 PostgreSQL 结果状态；既有 `recommendation_api_full_runtime_db_smoke` 同步切到 Bearer GET，确认 009 不破坏后续曝光/点击/ops 测试。
+  - `packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`：把 `GET /api/v1/recommendations` 契约更新为正式 Bearer 鉴权接口，补齐 `subject_scope` 枚举、UUID 参数格式、`limit` 边界和 `400/401/403/404/502` 错误响应，避免继续停留在“只有路径无正式鉴权约束”的骨架描述。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：补齐 `GET /api/v1/recommendations` 的正式验证口径，明确 Bearer 鉴权、`portal.recommendation.read`、`audit.access_audit(target_type='recommendation_result')`、`ops.system_log(message_text='recommendation lookup executed: GET /api/v1/recommendations')` 以及 PostgreSQL 最终放行回查要求。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core recommendation_read -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core recommendation_get_api_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 手工服务级验证：
+    - 以 `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`、`KAFKA_BROKERS=127.0.0.1:9094`、`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 启动 `cargo run -p platform-core`
+    - 使用真实 `Authorization: Bearer <JWT>` 发送 `curl -i "http://127.0.0.1:8080/api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id=<org_id>&limit=3"`
+    - `psql` 回查 `audit.access_audit`、`ops.system_log` 与 `recommend.recommendation_result`
+- 验证结果：
+  - 路由测试通过：真实拒绝无 Bearer、无 `portal.recommendation.read` 和非法 `subject_scope` 请求，确认 009 没有继续沿用 `x-role` 旁路。
+  - `recommendation_get_api_db_smoke` 通过：`product_detail_bundle` 推荐位在上下文商品约束下真实返回 bundle 候选，并落 `recommendation_request / recommendation_result / recommendation_result_item`；同一 `request_id` 能在 `audit.access_audit` 中查到 `target_type='recommendation_result' + permission_code='portal.recommendation.read' + endpoint='GET /api/v1/recommendations'`，在 `ops.system_log` 中查到 `recommendation lookup executed: GET /api/v1/recommendations`。
+  - `recommendation_api_full_runtime_db_smoke` 通过：确认把 GET 接口切到 Bearer 鉴权后，不影响曝光/点击行为写入、canonical outbox 与 ops 配置读取/修改链路。
+  - `cargo test -p platform-core` 全量通过（`335 passed`，`1 ignored`）；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，离线 query cache 保持最新。
+  - 手工 `curl` 联调通过：实际服务以宿主机 Kafka 地址 `127.0.0.1:9094` 成功启动；`GET /api/v1/recommendations` 返回 `200`、`recommendation_request_id`、`recommendation_result_id`、`placement_code=home_featured` 和真实推荐项；随后 `psql` 回查确认 `audit.access_audit(request_id='curl-rec-009-1', target_type='recommendation_result')`、`ops.system_log(message_text='recommendation lookup executed: GET /api/v1/recommendations')` 和 `recommend.recommendation_result(returned_count=3, result_status='served')` 一致。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-009`
+  - `商品推荐与个性化发现设计.md`：推荐查询主链、OpenSearch 召回、PostgreSQL 最终放行与推荐缓存边界
+  - `商品推荐与个性化发现接口协议正式版.md`：`GET /api/v1/recommendations` 查询参数、权限与响应契约
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐结果接口必须以 PostgreSQL 为最终放行源，不能直接信任 OpenSearch 命中
+  - `recommendation-runtime.md`、`search-rec-cases.md`：SEARCHREC 阶段推荐读取权限、审计与验证要求
+- 覆盖的任务清单条目：`SEARCHREC-009`
+- 未覆盖项：
+  - 无。`SEARCHREC-009` 要求的推荐结果读取接口、Bearer 权限链、查询校验、PostgreSQL 最终放行、读侧审计和服务级联调已同时覆盖代码、测试、OpenAPI、runbook 与真实回查。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

@@ -23,6 +23,9 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
 ## 推荐主链路
 
 1. `GET /api/v1/recommendations`
+   - Bearer 鉴权 + `portal.recommendation.read`
+   - `audit.access_audit(target_type='recommendation_result')`
+   - `ops.system_log(message_text='recommendation lookup executed: GET /api/v1/recommendations')`
 2. 读取 `recommend.placement_definition` / `recommend.ranking_profile`
 3. OpenSearch 多路召回 + PG cohort/bundle/similarity 补充
 4. PostgreSQL 最终业务校验
@@ -101,6 +104,7 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - `ops.outbox_event.target_topic` 必须为 `dtp.recommend.behavior`。
 - `ops.event_route_policy` 中 `recommend.behavior_event / recommend.behavior_recorded` 必须存在。
 - `recommend.placement_definition.default_ranking_profile_key` 必须能在 `recommend.ranking_profile.profile_key` 中解析到有效配置。
+- `GET /api/v1/recommendations` 后必须能在 `audit.access_audit` 中回查 `target_type='recommendation_result'`，并在 `ops.system_log` 中回查 `recommendation lookup executed: GET /api/v1/recommendations`。
 - `recommend.behavior_event` 写入 `recommendation_item_exposed / recommendation_item_clicked` 后，`recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity` 必须同步更新。
 - `search.index_sync_task` 会因推荐行为热度更新而出现新的 `queued` 任务。
 - Redis 推荐缓存前缀：`datab:v1:recommend:*`

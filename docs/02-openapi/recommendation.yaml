@@ -2,8 +2,30 @@ openapi: 3.1.0
 info:
   title: Recommendation API
   version: v1
+  description: >
+    `SEARCHREC-009` 已落地推荐读取主链路的正式契约。`GET /api/v1/recommendations`
+    必须要求 `Authorization: Bearer <access_token>`，执行 `OpenSearch recall +
+    PostgreSQL final validation`，并写入 `audit.access_audit` 与 `ops.system_log`。
+servers:
+  - url: http://127.0.0.1:8080
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+          nullable: true
     RecommendationItem:
       type: object
       required:
@@ -348,24 +370,30 @@ paths:
   /api/v1/recommendations:
     get:
       summary: multi-source recommendation with OpenSearch recall and PostgreSQL final validation
+      security:
+        - BearerAuth: []
       parameters:
         - name: placement_code
           in: query
           required: true
           schema:
             type: string
+            minLength: 1
         - name: subject_scope
           in: query
           schema:
             type: string
+            enum: [organization, user, anonymous]
         - name: subject_org_id
           in: query
           schema:
             type: string
+            format: uuid
         - name: subject_user_id
           in: query
           schema:
             type: string
+            format: uuid
         - name: anonymous_session_key
           in: query
           schema:
@@ -379,10 +407,14 @@ paths:
           in: query
           schema:
             type: string
+            format: uuid
         - name: limit
           in: query
           schema:
             type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
       responses:
         "200":
           description: recommendation result
@@ -396,6 +428,36 @@ paths:
                     type: boolean
                   data:
                     $ref: "#/components/schemas/RecommendationResponse"
+        "400":
+          description: invalid recommendation query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: caller lacks `portal.recommendation.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: placement/profile missing or no candidates available after PostgreSQL validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: OpenSearch or Redis backend unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/recommendations/track/exposure:
     post:
       summary: record recommendation panel and item exposure with idempotency

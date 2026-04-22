@@ -1,10 +1,15 @@
+use auth::{JwtParser, KeycloakClaimsJwtParser, MockJwtParser, SessionSubject, extract_bearer};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use http::ApiResponse;
-use kernel::{ErrorCode, ErrorResponse};
+use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
+use serde_json::{Value, json};
+use sqlx::types::Uuid;
 
 use crate::AppState;
+use crate::modules::audit::repo as audit_repo;
+use crate::modules::audit::repo::{AccessAuditInsert, SystemLogInsert};
 use crate::modules::recommendation::domain::{
     BehaviorTrackResponse, PatchPlacementRequest, PatchRecommendationRankingProfileRequest,
     PlacementView, RecommendationQuery, RecommendationRankingProfileView,
@@ -13,29 +18,69 @@ use crate::modules::recommendation::domain::{
 };
 use crate::modules::recommendation::repo;
 use crate::modules::recommendation::service::{
-    RecommendationPermission, is_allowed, needs_step_up,
+    RecommendationPermission, first_matching_role, is_allowed, is_allowed_roles, needs_step_up,
 };
+
+const RECOMMENDATION_QUERY_INVALID_ERROR: &str = "RECOMMENDATION_QUERY_INVALID";
+const RECOMMENDATION_BACKEND_UNAVAILABLE_ERROR: &str = "RECOMMENDATION_BACKEND_UNAVAILABLE";
+const RECOMMENDATION_RESULT_UNAVAILABLE_ERROR: &str = "RECOMMENDATION_RESULT_UNAVAILABLE";
 
 pub(in crate::modules::recommendation) async fn get_recommendations(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<RecommendationQuery>,
 ) -> Result<Json<ApiResponse<RecommendationResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
+    let request_id = request_id(&headers);
+    let trace_id = trace_id(&headers, Some(request_id.clone()));
+    let subject = require_read_permission(
         &headers,
         RecommendationPermission::PortalRead,
         "recommendation read",
+        &request_id,
     )?;
-    let client = state_client(&state)?;
+    validate_recommendation_query(&query, &request_id)?;
+
+    let client = state_client_with_request_id(&state, &request_id)?;
+    let accessor_role_key =
+        first_matching_role(&subject.roles, RecommendationPermission::PortalRead)
+            .unwrap_or_else(|| "unknown".to_string());
     let response = repo::serve_recommendation(
         &client,
         &query,
-        header(&headers, "x-request-id").as_deref(),
-        header(&headers, "x-trace-id").as_deref(),
-        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        Some(request_id.as_str()),
+        Some(trace_id.as_str()),
+        accessor_role_key.as_str(),
     )
     .await
-    .map_err(map_recommendation_error)?;
+    .map_err(|message| map_recommendation_read_error(&request_id, &message))?;
+
+    record_recommendation_lookup_side_effects(
+        &client,
+        &subject,
+        RecommendationPermission::PortalRead,
+        "recommendation_result",
+        Some(response.recommendation_result_id.clone()),
+        "GET /api/v1/recommendations",
+        json!({
+            "placement_code": query.placement_code,
+            "subject_scope": normalized_subject_scope(&query),
+            "subject_org_id": query.subject_org_id,
+            "subject_user_id": query.subject_user_id,
+            "anonymous_session_key": query.anonymous_session_key,
+            "context_entity_scope": query.context_entity_scope,
+            "context_entity_id": query.context_entity_id,
+            "limit": query.limit.unwrap_or(10).clamp(1, 20),
+            "cache_hit": response.cache_hit,
+            "item_count": response.items.len(),
+            "strategy_version": response.strategy_version,
+            "recommendation_request_id": response.recommendation_request_id,
+            "recommendation_result_id": response.recommendation_result_id,
+        }),
+        &request_id,
+        &trace_id,
+    )
+    .await?;
+
     Ok(ApiResponse::ok(response))
 }
 
@@ -44,7 +89,7 @@ pub(in crate::modules::recommendation) async fn post_track_exposure(
     headers: HeaderMap,
     Json(payload): Json<TrackExposureRequest>,
 ) -> Result<Json<ApiResponse<BehaviorTrackResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
+    require_placeholder_permission(
         &headers,
         RecommendationPermission::PortalRead,
         "recommendation exposure track",
@@ -73,7 +118,7 @@ pub(in crate::modules::recommendation) async fn post_track_click(
     headers: HeaderMap,
     Json(payload): Json<TrackClickRequest>,
 ) -> Result<Json<ApiResponse<BehaviorTrackResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
+    require_placeholder_permission(
         &headers,
         RecommendationPermission::PortalRead,
         "recommendation click track",
@@ -101,7 +146,7 @@ pub(in crate::modules::recommendation) async fn get_placements(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<ApiResponse<Vec<PlacementView>>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
+    require_placeholder_permission(
         &headers,
         RecommendationPermission::PlacementRead,
         "recommendation placement read",
@@ -119,7 +164,7 @@ pub(in crate::modules::recommendation) async fn patch_placement(
     Path(placement_code): Path<String>,
     Json(payload): Json<PatchPlacementRequest>,
 ) -> Result<Json<ApiResponse<PlacementView>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
+    require_placeholder_permission(
         &headers,
         RecommendationPermission::PlacementManage,
         "recommendation placement manage",
@@ -150,7 +195,7 @@ pub(in crate::modules::recommendation) async fn get_ranking_profiles(
     Json<ApiResponse<Vec<RecommendationRankingProfileView>>>,
     (StatusCode, Json<ErrorResponse>),
 > {
-    require_permission(
+    require_placeholder_permission(
         &headers,
         RecommendationPermission::RankingRead,
         "recommendation ranking profile read",
@@ -169,7 +214,7 @@ pub(in crate::modules::recommendation) async fn patch_ranking_profile(
     Json(payload): Json<PatchRecommendationRankingProfileRequest>,
 ) -> Result<Json<ApiResponse<RecommendationRankingProfileView>>, (StatusCode, Json<ErrorResponse>)>
 {
-    require_permission(
+    require_placeholder_permission(
         &headers,
         RecommendationPermission::RankingManage,
         "recommendation ranking profile manage",
@@ -198,7 +243,7 @@ pub(in crate::modules::recommendation) async fn post_rebuild(
     headers: HeaderMap,
     Json(payload): Json<RecommendationRebuildRequest>,
 ) -> Result<Json<ApiResponse<RecommendationRebuildResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(
+    require_placeholder_permission(
         &headers,
         RecommendationPermission::RebuildExecute,
         "recommendation rebuild execute",
@@ -233,7 +278,30 @@ fn require_write_controls(
     Ok(())
 }
 
-fn require_permission(
+fn require_read_permission(
+    headers: &HeaderMap,
+    permission: RecommendationPermission,
+    action: &str,
+    request_id: &str,
+) -> Result<SessionSubject, (StatusCode, Json<ErrorResponse>)> {
+    let subject = resolve_subject(headers, request_id)?;
+    if is_allowed_roles(&subject.roles, permission) {
+        return Ok(subject);
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            code: permission.forbidden_code().to_string(),
+            message: format!(
+                "{action} is forbidden for current roles; required permission `{}`",
+                permission.permission_code()
+            ),
+            request_id: Some(request_id.to_string()),
+        }),
+    ))
+}
+
+fn require_placeholder_permission(
     headers: &HeaderMap,
     permission: RecommendationPermission,
     action: &str,
@@ -253,6 +321,195 @@ fn require_permission(
             request_id: header(headers, "x-request-id"),
         }),
     ))
+}
+
+fn resolve_subject(
+    headers: &HeaderMap,
+    request_id: &str,
+) -> Result<SessionSubject, (StatusCode, Json<ErrorResponse>)> {
+    let token = extract_bearer(headers).ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: "Authorization: Bearer <access_token> is required".to_string(),
+                request_id: Some(request_id.to_string()),
+            }),
+        )
+    })?;
+    parser_from_env().parse_subject(&token).map_err(|err| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: err.to_string(),
+                request_id: Some(request_id.to_string()),
+            }),
+        )
+    })
+}
+
+fn validate_recommendation_query(
+    query: &RecommendationQuery,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if query.placement_code.trim().is_empty() {
+        return Err(recommendation_bad_request(
+            request_id,
+            "placement_code is required".to_string(),
+        ));
+    }
+
+    if let Some(limit) = query.limit {
+        if !(1..=20).contains(&limit) {
+            return Err(recommendation_bad_request(
+                request_id,
+                format!("limit must be between 1 and 20; got `{limit}`"),
+            ));
+        }
+    }
+
+    if let Some(subject_org_id) = query.subject_org_id.as_deref() {
+        validate_uuid(subject_org_id, "subject_org_id", request_id)?;
+    }
+    if let Some(subject_user_id) = query.subject_user_id.as_deref() {
+        validate_uuid(subject_user_id, "subject_user_id", request_id)?;
+    }
+
+    match normalized_subject_scope(query).as_str() {
+        "organization" => {
+            if query.subject_org_id.is_none() {
+                return Err(recommendation_bad_request(
+                    request_id,
+                    "subject_org_id is required when subject_scope=organization".to_string(),
+                ));
+            }
+        }
+        "user" => {
+            if query.subject_user_id.is_none() {
+                return Err(recommendation_bad_request(
+                    request_id,
+                    "subject_user_id is required when subject_scope=user".to_string(),
+                ));
+            }
+        }
+        "anonymous" => {
+            if query
+                .anonymous_session_key
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+            {
+                return Err(recommendation_bad_request(
+                    request_id,
+                    "anonymous_session_key cannot be empty".to_string(),
+                ));
+            }
+        }
+        other => {
+            return Err(recommendation_bad_request(
+                request_id,
+                format!(
+                    "subject_scope must be one of: organization, user, anonymous; got `{other}`"
+                ),
+            ));
+        }
+    }
+
+    match (
+        query.context_entity_scope.as_deref(),
+        query.context_entity_id.as_deref(),
+    ) {
+        (None, None) => {}
+        (Some(_), None) => {
+            return Err(recommendation_bad_request(
+                request_id,
+                "context_entity_id is required when context_entity_scope is provided".to_string(),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(recommendation_bad_request(
+                request_id,
+                "context_entity_scope is required when context_entity_id is provided".to_string(),
+            ));
+        }
+        (Some(scope), Some(entity_id)) => {
+            match scope.trim().to_ascii_lowercase().as_str() {
+                "product" | "seller" => {}
+                other => {
+                    return Err(recommendation_bad_request(
+                        request_id,
+                        format!(
+                            "context_entity_scope must be one of: product, seller; got `{other}`"
+                        ),
+                    ));
+                }
+            }
+            validate_uuid(entity_id, "context_entity_id", request_id)?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn record_recommendation_lookup_side_effects(
+    client: &db::Client,
+    subject: &SessionSubject,
+    permission: RecommendationPermission,
+    target_type: &str,
+    target_id: Option<String>,
+    endpoint: &str,
+    filters: Value,
+    request_id: &str,
+    trace_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let accessor_role_key = first_matching_role(&subject.roles, permission);
+    let access_audit_id = audit_repo::record_access_audit(
+        client,
+        &AccessAuditInsert {
+            accessor_user_id: Some(subject.user_id.clone()),
+            accessor_role_key: accessor_role_key.clone(),
+            access_mode: "masked".to_string(),
+            target_type: target_type.to_string(),
+            target_id,
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: None,
+            request_id: Some(request_id.to_string()),
+            trace_id: Some(trace_id.to_string()),
+            metadata: json!({
+                "endpoint": endpoint,
+                "permission_code": permission.permission_code(),
+                "tenant_id": subject.tenant_id,
+                "roles": subject.roles,
+                "filters": filters,
+            }),
+        },
+    )
+    .await
+    .map_err(|err| map_db_error_with_request_id(err, request_id))?;
+
+    audit_repo::record_system_log(
+        client,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.to_string()),
+            trace_id: Some(trace_id.to_string()),
+            message_text: format!("recommendation lookup executed: {endpoint}"),
+            structured_payload: json!({
+                "module": "recommendation",
+                "endpoint": endpoint,
+                "permission_code": permission.permission_code(),
+                "access_audit_id": access_audit_id,
+                "role": accessor_role_key,
+                "filters": filters,
+            }),
+        },
+    )
+    .await
+    .map_err(|err| map_db_error_with_request_id(err, request_id))?;
+
+    Ok(())
 }
 
 fn require_idempotency_key(
@@ -295,6 +552,76 @@ fn state_client(state: &AppState) -> Result<db::Client, (StatusCode, Json<ErrorR
     state.db.client().map_err(map_db_error)
 }
 
+fn state_client_with_request_id(
+    state: &AppState,
+    request_id: &str,
+) -> Result<db::Client, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .db
+        .client()
+        .map_err(|err| map_db_error_with_request_id(err, request_id))
+}
+
+fn parser_from_env() -> Box<dyn JwtParser> {
+    match std::env::var("IAM_JWT_PARSER")
+        .unwrap_or_else(|_| "keycloak_claims".to_string())
+        .as_str()
+    {
+        "mock" => Box::new(MockJwtParser),
+        _ => Box::new(KeycloakClaimsJwtParser),
+    }
+}
+
+fn normalized_subject_scope(query: &RecommendationQuery) -> String {
+    query.subject_scope.clone().unwrap_or_else(|| {
+        if query.subject_user_id.is_some() {
+            "user".to_string()
+        } else if query.subject_org_id.is_some() {
+            "organization".to_string()
+        } else {
+            "anonymous".to_string()
+        }
+    })
+}
+
+fn validate_uuid(
+    raw: &str,
+    field_name: &str,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    Uuid::parse_str(raw).map_err(|_| {
+        recommendation_bad_request(
+            request_id,
+            format!("{field_name} must be a valid uuid: {raw}"),
+        )
+    })?;
+    Ok(())
+}
+
+fn recommendation_bad_request(
+    request_id: &str,
+    message: String,
+) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            code: RECOMMENDATION_QUERY_INVALID_ERROR.to_string(),
+            message,
+            request_id: Some(request_id.to_string()),
+        }),
+    )
+}
+
+fn request_id(headers: &HeaderMap) -> String {
+    header(headers, "x-request-id").unwrap_or_else(|| new_external_readable_id("recommend"))
+}
+
+fn trace_id(headers: &HeaderMap, request_id: Option<String>) -> String {
+    header(headers, "x-trace-id").unwrap_or_else(|| {
+        request_id.unwrap_or_else(|| new_external_readable_id("recommend-trace"))
+    })
+}
+
 fn header(headers: &HeaderMap, key: &str) -> Option<String> {
     headers
         .get(key)
@@ -309,6 +636,20 @@ fn map_db_error(err: db::Error) -> (StatusCode, Json<ErrorResponse>) {
             code: ErrorCode::OpsInternal.as_str().to_string(),
             message: format!("database operation failed: {err}"),
             request_id: None,
+        }),
+    )
+}
+
+fn map_db_error_with_request_id(
+    err: db::Error,
+    request_id: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            code: ErrorCode::OpsInternal.as_str().to_string(),
+            message: format!("database operation failed: {err}"),
+            request_id: Some(request_id.to_string()),
         }),
     )
 }
@@ -333,6 +674,46 @@ fn map_recommendation_error(message: String) -> (StatusCode, Json<ErrorResponse>
             code: ErrorCode::OpsInternal.as_str().to_string(),
             message,
             request_id: None,
+        }),
+    )
+}
+
+fn map_recommendation_read_error(
+    request_id: &str,
+    message: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    let lower = message.to_ascii_lowercase();
+    let (status, code) = if lower.contains("required")
+        || lower.contains("valid uuid")
+        || lower.contains("must be")
+        || lower.contains("unsupported")
+    {
+        (StatusCode::BAD_REQUEST, RECOMMENDATION_QUERY_INVALID_ERROR)
+    } else if lower.contains("placement missing") || lower.contains("profile missing") {
+        (StatusCode::NOT_FOUND, RECOMMENDATION_QUERY_INVALID_ERROR)
+    } else if lower.contains("no recommendation candidates available") {
+        (
+            StatusCode::NOT_FOUND,
+            RECOMMENDATION_RESULT_UNAVAILABLE_ERROR,
+        )
+    } else if lower.contains("opensearch") || lower.contains("redis") {
+        (
+            StatusCode::BAD_GATEWAY,
+            RECOMMENDATION_BACKEND_UNAVAILABLE_ERROR,
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::OpsInternal.as_str(),
+        )
+    };
+
+    (
+        status,
+        Json(ErrorResponse {
+            code: code.to_string(),
+            message: message.to_string(),
+            request_id: Some(request_id.to_string()),
         }),
     )
 }

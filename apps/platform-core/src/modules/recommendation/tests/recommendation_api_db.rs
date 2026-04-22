@@ -1,3 +1,4 @@
+use super::authorization_header;
 use crate::modules::recommendation::api::router;
 use crate::modules::recommendation::domain::{
     RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES, RECOMMENDATION_BASELINE_PLACEMENTS,
@@ -20,6 +21,7 @@ struct SeedIds {
     asset_ids: Vec<String>,
     asset_version_ids: Vec<String>,
     product_ids: Vec<String>,
+    operator_user_id: String,
 }
 
 async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedIds, Error> {
@@ -160,12 +162,35 @@ async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedIds, Error> {
         )
         .await?;
 
+    let operator_user_id = seed_operator_user(client, &org_id, suffix).await?;
+
     Ok(SeedIds {
         org_id,
         asset_ids,
         asset_version_ids,
         product_ids,
+        operator_user_id,
     })
+}
+
+async fn seed_operator_user(client: &Client, org_id: &str, suffix: &str) -> Result<String, Error> {
+    client
+        .query_one(
+            "INSERT INTO core.user_account (
+               org_id, login_id, display_name, user_type, status, mfa_status, attrs
+             ) VALUES (
+               $1::text::uuid, $2, $3, 'person', 'active', 'verified', jsonb_build_object('seed', $4)
+             )
+             RETURNING user_id::text",
+            &[
+                &org_id,
+                &format!("recommend-ops-user-{suffix}"),
+                &format!("Recommendation Ops User {suffix}"),
+                &suffix,
+            ],
+        )
+        .await
+        .map(|row| row.get(0))
 }
 
 async fn cleanup_graph(client: &Client, ids: &SeedIds) {
@@ -240,6 +265,12 @@ async fn cleanup_graph(client: &Client, ids: &SeedIds) {
             )
             .await;
     }
+    let _ = client
+        .execute(
+            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+            &[&ids.operator_user_id],
+        )
+        .await;
     let _ = client
         .execute(
             "DELETE FROM core.organization WHERE org_id = $1::text::uuid",
@@ -365,6 +396,49 @@ async fn cleanup_opensearch_documents(ids: &SeedIds) {
         ))
         .send()
         .await;
+}
+
+async fn response_json(response: axum::response::Response) -> Result<Value, String> {
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .map_err(|err| format!("read response body failed: {err}"))?;
+    serde_json::from_slice(&body).map_err(|_err| {
+        format!(
+            "decode response body failed: status={status} body={}",
+            String::from_utf8_lossy(&body)
+        )
+    })
+}
+
+async fn count_access_audit(
+    client: &Client,
+    request_id: &str,
+    target_type: &str,
+) -> Result<i64, Error> {
+    client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = $1
+               AND target_type = $2",
+            &[&request_id, &target_type],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
+async fn count_system_logs(client: &Client, request_id: &str, message: &str) -> Result<i64, Error> {
+    client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = $1
+               AND message_text = $2",
+            &[&request_id, &message],
+        )
+        .await
+        .map(|row| row.get(0))
 }
 
 #[tokio::test]
@@ -672,6 +746,7 @@ async fn recommendation_api_full_runtime_db_smoke() {
     seed_opensearch_documents(&ids, &suffix)
         .await
         .expect("seed opensearch docs");
+    let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
 
     let app = crate::with_live_test_state(router()).await;
     let response = app
@@ -683,7 +758,7 @@ async fn recommendation_api_full_runtime_db_smoke() {
                     "/api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id={}&limit=3",
                     ids.org_id
                 ))
-                .header("x-role", "buyer_operator")
+                .header("authorization", &buyer_auth)
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -905,4 +980,209 @@ async fn recommendation_api_full_runtime_db_smoke() {
 
     cleanup_opensearch_documents(&ids).await;
     cleanup_graph(&client, &ids).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn recommendation_get_api_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis()
+        .to_string();
+    let ids = seed_graph(&client, &suffix)
+        .await
+        .expect("seed recommendation graph");
+    seed_opensearch_documents(&ids, &suffix)
+        .await
+        .expect("seed recommendation opensearch docs");
+
+    let app = crate::with_live_test_state(router()).await;
+    let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
+    let request_id = format!("req-recommend-get-{suffix}");
+    let trace_id = format!("trace-recommend-get-{suffix}");
+
+    let outcome: Result<(), String> = async {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/recommendations?placement_code=product_detail_bundle&subject_scope=organization&subject_org_id={}&context_entity_scope=product&context_entity_id={}&limit=3",
+                        ids.org_id,
+                        ids.product_ids[0]
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &request_id)
+                    .header("x-trace-id", &trace_id)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build recommendation get request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call recommendation get endpoint failed: {err}"))?;
+        let response_status = response.status();
+        let json_body = response_json(response).await?;
+        if response_status != StatusCode::OK {
+            return Err(format!(
+                "recommendation get unexpected status={response_status}: {json_body}"
+            ));
+        }
+        let data = &json_body["data"];
+        let items = data["items"]
+            .as_array()
+            .ok_or_else(|| format!("recommendation items missing: {json_body}"))?;
+        if items.is_empty() {
+            return Err(format!("recommendation items should not be empty: {json_body}"));
+        }
+        if !items.iter().any(|item| {
+            item["entity_id"].as_str() == Some(ids.product_ids[1].as_str())
+        }) {
+            return Err(format!(
+                "recommendation result missing seeded bundle target {}: {json_body}",
+                ids.product_ids[1]
+            ));
+        }
+
+        let recommendation_request_id = data["recommendation_request_id"]
+            .as_str()
+            .ok_or_else(|| format!("recommendation_request_id missing: {json_body}"))?;
+        let recommendation_result_id = data["recommendation_result_id"]
+            .as_str()
+            .ok_or_else(|| format!("recommendation_result_id missing: {json_body}"))?;
+
+        let request_row = client
+            .query_one(
+                "SELECT
+                   placement_code,
+                   subject_scope,
+                   subject_org_id::text,
+                   request_id,
+                   trace_id
+                 FROM recommend.recommendation_request
+                 WHERE recommendation_request_id = $1::text::uuid",
+                &[&recommendation_request_id],
+            )
+            .await
+            .map_err(|err| format!("load recommendation_request failed: {err}"))?;
+        if request_row.get::<_, String>(0) != "product_detail_bundle" {
+            return Err("recommendation_request placement_code mismatch".to_string());
+        }
+        if request_row.get::<_, String>(1) != "organization" {
+            return Err("recommendation_request subject_scope mismatch".to_string());
+        }
+        if request_row.get::<_, Option<String>>(2).as_deref() != Some(ids.org_id.as_str()) {
+            return Err("recommendation_request subject_org_id mismatch".to_string());
+        }
+        if request_row.get::<_, Option<String>>(3).as_deref() != Some(request_id.as_str()) {
+            return Err("recommendation_request request_id mismatch".to_string());
+        }
+        if request_row.get::<_, Option<String>>(4).as_deref() != Some(trace_id.as_str()) {
+            return Err("recommendation_request trace_id mismatch".to_string());
+        }
+
+        let result_row = client
+            .query_one(
+                "SELECT
+                   placement_code,
+                   returned_count,
+                   result_status
+                 FROM recommend.recommendation_result
+                 WHERE recommendation_result_id = $1::text::uuid",
+                &[&recommendation_result_id],
+            )
+            .await
+            .map_err(|err| format!("load recommendation_result failed: {err}"))?;
+        if result_row.get::<_, String>(0) != "product_detail_bundle" {
+            return Err("recommendation_result placement_code mismatch".to_string());
+        }
+        let returned_count: i32 = result_row.get(1);
+        if returned_count < 1 {
+            return Err("recommendation_result returned_count should be >= 1".to_string());
+        }
+        if result_row.get::<_, String>(2) != "served" {
+            return Err("recommendation_result status mismatch".to_string());
+        }
+
+        let result_item_count = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM recommend.recommendation_result_item
+                 WHERE recommendation_result_id = $1::text::uuid",
+                &[&recommendation_result_id],
+            )
+            .await
+            .map_err(|err| format!("count recommendation_result_item failed: {err}"))?
+            .get::<_, i64>(0);
+        if result_item_count < 1 {
+            return Err("recommendation_result_item rows missing".to_string());
+        }
+
+        if count_access_audit(&client, &request_id, "recommendation_result")
+            .await
+            .map_err(|err| format!("count recommendation access audit failed: {err}"))?
+            != 1
+        {
+            return Err("recommendation access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &request_id,
+            "recommendation lookup executed: GET /api/v1/recommendations",
+        )
+        .await
+        .map_err(|err| format!("count recommendation system log failed: {err}"))?
+            != 1
+        {
+            return Err("recommendation system log missing".to_string());
+        }
+
+        let audit_row = client
+            .query_one(
+                "SELECT
+                   metadata ->> 'endpoint',
+                   metadata ->> 'permission_code',
+                   metadata -> 'filters' ->> 'placement_code',
+                   metadata -> 'filters' ->> 'recommendation_result_id'
+                 FROM audit.access_audit
+                 WHERE request_id = $1
+                 ORDER BY created_at DESC
+                 LIMIT 1",
+                &[&request_id],
+            )
+            .await
+            .map_err(|err| format!("load recommendation access audit failed: {err}"))?;
+        if audit_row.get::<_, String>(0) != "GET /api/v1/recommendations" {
+            return Err("recommendation access audit endpoint mismatch".to_string());
+        }
+        if audit_row.get::<_, String>(1) != "portal.recommendation.read" {
+            return Err("recommendation access audit permission mismatch".to_string());
+        }
+        if audit_row.get::<_, Option<String>>(2).as_deref() != Some("product_detail_bundle") {
+            return Err("recommendation access audit placement_code mismatch".to_string());
+        }
+        if audit_row.get::<_, Option<String>>(3).as_deref() != Some(recommendation_result_id) {
+            return Err("recommendation access audit result id mismatch".to_string());
+        }
+
+        Ok(())
+    }
+    .await;
+
+    cleanup_opensearch_documents(&ids).await;
+    cleanup_graph(&client, &ids).await;
+
+    if let Err(message) = outcome {
+        panic!("{message}");
+    }
 }
