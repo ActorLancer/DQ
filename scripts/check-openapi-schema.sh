@@ -72,6 +72,26 @@ cmp -s "$ops_file" "$docs_ops_file" || {
   exit 1
 }
 
+audit_file="$OPENAPI_DIR/audit.yaml"
+for path in \
+  "/api/v1/audit/orders/{id}" \
+  "/api/v1/audit/traces"; do
+  grep -q "$path" "$audit_file" || {
+    echo "[error] $audit_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+docs_audit_file="docs/02-openapi/audit.yaml"
+if [[ ! -f "$docs_audit_file" ]]; then
+  echo "[error] missing archive copy: $docs_audit_file" >&2
+  exit 1
+fi
+cmp -s "$audit_file" "$docs_audit_file" || {
+  echo "[error] $docs_audit_file is not synced with $audit_file" >&2
+  exit 1
+}
+
 search_file="$OPENAPI_DIR/search.yaml"
 for path in \
   "/api/v1/catalog/search" \

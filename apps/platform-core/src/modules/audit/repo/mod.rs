@@ -1,5 +1,9 @@
 use audit_kit::{AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem};
+use db::{Error, GenericClient, Row};
 use serde_json::{Map, Value};
+
+use crate::modules::audit::domain::AuditTraceQuery;
+use crate::modules::audit::dto::AuditTraceView;
 
 pub const INSERT_AUDIT_EVENT_SQL: &str = r#"
 INSERT INTO audit.audit_event (
@@ -254,6 +258,46 @@ impl From<&EvidenceManifestItem> for EvidenceManifestItemInsert {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderAuditScope {
+    pub order_id: String,
+    pub buyer_org_id: String,
+    pub seller_org_id: String,
+    pub status: String,
+    pub payment_status: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuditTracePage {
+    pub total: i64,
+    pub items: Vec<AuditTraceView>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AccessAuditInsert {
+    pub accessor_user_id: Option<String>,
+    pub accessor_role_key: Option<String>,
+    pub access_mode: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub masked_view: bool,
+    pub breakglass_reason: Option<String>,
+    pub step_up_challenge_id: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SystemLogInsert {
+    pub service_name: String,
+    pub log_level: String,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub message_text: String,
+    pub structured_payload: Value,
+}
+
 impl From<&AuditEvent> for AuditEventInsert {
     fn from(event: &AuditEvent) -> Self {
         Self {
@@ -313,6 +357,197 @@ pub fn metadata_value(raw: Value) -> Value {
     Value::Object(metadata_object(raw))
 }
 
+pub async fn load_order_audit_scope(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+) -> Result<Option<OrderAuditScope>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               order_id::text,
+               buyer_org_id::text,
+               seller_org_id::text,
+               status,
+               payment_status
+             FROM trade.order_main
+             WHERE order_id = $1::text::uuid",
+            &[&order_id],
+        )
+        .await?;
+    Ok(row.map(|row| OrderAuditScope {
+        order_id: row.get(0),
+        buyer_org_id: row.get(1),
+        seller_org_id: row.get(2),
+        status: row.get(3),
+        payment_status: row.get(4),
+    }))
+}
+
+pub async fn search_audit_traces(
+    client: &(impl GenericClient + Sync),
+    query: &AuditTraceQuery,
+    page_size: i64,
+    offset: i64,
+) -> Result<AuditTracePage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE ($1::text IS NULL OR (ref_type = 'order' AND ref_id = $1::text::uuid))
+               AND ($2::text IS NULL OR ref_type = $2)
+               AND ($3::text IS NULL OR ref_id = $3::text::uuid)
+               AND ($4::text IS NULL OR request_id = $4)
+               AND ($5::text IS NULL OR trace_id = $5)
+               AND ($6::text IS NULL OR action_name = $6)
+               AND ($7::text IS NULL OR result_code = $7)",
+            &[
+                &query.order_id,
+                &query.ref_type,
+                &query.ref_id,
+                &query.request_id,
+                &query.trace_id,
+                &query.action_name,
+                &query.result_code,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               audit_id::text,
+               event_schema_version,
+               event_class,
+               domain_name,
+               ref_type,
+               ref_id::text,
+               actor_id::text,
+               actor_org_id::text,
+               action_name,
+               result_code,
+               error_code,
+               request_id,
+               trace_id,
+               tx_hash,
+               evidence_manifest_id::text,
+               event_hash,
+               to_char(event_time AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.audit_event
+             WHERE ($1::text IS NULL OR (ref_type = 'order' AND ref_id = $1::text::uuid))
+               AND ($2::text IS NULL OR ref_type = $2)
+               AND ($3::text IS NULL OR ref_id = $3::text::uuid)
+               AND ($4::text IS NULL OR request_id = $4)
+               AND ($5::text IS NULL OR trace_id = $5)
+               AND ($6::text IS NULL OR action_name = $6)
+               AND ($7::text IS NULL OR result_code = $7)
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT $8
+             OFFSET $9",
+            &[
+                &query.order_id,
+                &query.ref_type,
+                &query.ref_id,
+                &query.request_id,
+                &query.trace_id,
+                &query.action_name,
+                &query.result_code,
+                &page_size,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(AuditTracePage {
+        total,
+        items: rows.iter().map(parse_audit_trace_row).collect(),
+    })
+}
+
+pub async fn record_access_audit(
+    client: &(impl GenericClient + Sync),
+    access: &AccessAuditInsert,
+) -> Result<String, Error> {
+    let row = client
+        .query_one(
+            "INSERT INTO audit.access_audit (
+               accessor_user_id,
+               accessor_role_key,
+               access_mode,
+               target_type,
+               target_id,
+               masked_view,
+               breakglass_reason,
+               step_up_challenge_id,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2,
+               $3,
+               $4,
+               $5::text::uuid,
+               $6,
+               $7,
+               $8::text::uuid,
+               $9,
+               $10,
+               $11::jsonb
+             )
+             RETURNING access_audit_id::text",
+            &[
+                &access.accessor_user_id,
+                &access.accessor_role_key,
+                &access.access_mode,
+                &access.target_type,
+                &access.target_id,
+                &access.masked_view,
+                &access.breakglass_reason,
+                &access.step_up_challenge_id,
+                &access.request_id,
+                &access.trace_id,
+                &access.metadata,
+            ],
+        )
+        .await?;
+    Ok(row.get(0))
+}
+
+pub async fn record_system_log(
+    client: &(impl GenericClient + Sync),
+    log: &SystemLogInsert,
+) -> Result<(), Error> {
+    client
+        .execute(
+            "INSERT INTO ops.system_log (
+               service_name,
+               log_level,
+               request_id,
+               trace_id,
+               message_text,
+               structured_payload
+             ) VALUES (
+               $1,
+               $2,
+               $3,
+               $4,
+               $5,
+               $6::jsonb
+             )",
+            &[
+                &log.service_name,
+                &log.log_level,
+                &log.request_id,
+                &log.trace_id,
+                &log.message_text,
+                &log.structured_payload,
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
 fn storage_metadata(event: &AuditEvent) -> Value {
     let mut metadata = metadata_object(event.metadata.clone());
 
@@ -345,4 +580,27 @@ fn storage_metadata(event: &AuditEvent) -> Value {
     }
 
     Value::Object(metadata)
+}
+
+fn parse_audit_trace_row(row: &Row) -> AuditTraceView {
+    AuditTraceView {
+        audit_id: row.get(0),
+        event_schema_version: row.get(1),
+        event_class: row.get(2),
+        domain_name: row.get(3),
+        ref_type: row.get(4),
+        ref_id: row.get(5),
+        actor_id: row.get(6),
+        actor_org_id: row.get(7),
+        tenant_id: None,
+        action_name: row.get(8),
+        result_code: row.get(9),
+        error_code: row.get(10),
+        request_id: row.get(11),
+        trace_id: row.get(12),
+        tx_hash: row.get(13),
+        evidence_manifest_id: row.get(14),
+        event_hash: row.get(15),
+        occurred_at: row.get(16),
+    }
 }

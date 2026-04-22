@@ -23,5 +23,5 @@
 - `delivery.yaml`：Delivery/Storage/Query Execution 子域 V1 接口归档（与 `packages/openapi/delivery.yaml` 同步）。
 - `search.yaml`：Search/Ops Search 子域归档占位；当前实现期唯一设计参考为 `packages/openapi/search.yaml`，待实现校验通过后再同步归档。
 - `recommendation.yaml`：Recommendation/Ops Recommendation 子域 V1 接口归档（与 `packages/openapi/recommendation.yaml` 同步）。
-- `audit.yaml`：当前仍属实现前占位；进入 `AUD` / `integration` 代码实现批次后必须同步补齐。
+- `audit.yaml`：已补齐 `AUD-003` 的订单审计联查与全局 `audit trace` 查询契约；导出、回放、`legal hold`、锚定批次等高风险控制面仍待后续 `AUD` 批次继续补齐。
 - `ops.yaml`：当前已同步归档健康检查、内部开发端点，以及 `NOTIF-013` 承接的通知联查 / 模板预览 / 人工补发与重试-DLQ 相关契约与示例；更广义的 `AUD / consistency` 正式控制面接口仍待后续批次补齐。

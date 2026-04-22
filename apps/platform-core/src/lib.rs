@@ -449,6 +449,7 @@ pub async fn run() -> AppResult<()> {
 
     let router = build_router::<AppState>(cfg.clone())
         .route("/healthz", axum::routing::get(live_handler))
+        .merge(modules::audit::api::router())
         .merge(modules::billing::api::router())
         .merge(modules::catalog::api::router())
         .merge(modules::delivery::api::router())

@@ -1,3 +1,5 @@
+mod api_db;
+
 use crate::modules::audit::dto::{
     AuditTraceView, EvidenceItemView, EvidenceManifestItemView, EvidenceManifestView,
 };

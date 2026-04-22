@@ -126,3 +126,40 @@
 - 备注：
   - 本批没有发现 `CSV / Markdown / technical_reference / schema / 现有代码` 之间的冲突，不触发暂停条件。
   - 当前桥接策略明确把 `support.evidence_object` 定位为兼容历史读取的落点，正式 authority 已收口到 `audit.evidence_item / audit.evidence_manifest / audit.evidence_manifest_item`。
+### BATCH-216（计划中）
+- 任务：AUD-003 订单审计联查与全局 `audit trace` API
+- 状态：计划中
+- 说明：在 `AUD-001 / AUD-002` 已完成统一审计/证据 authority model 的基础上，当前批次补齐 `GET /api/v1/audit/orders/{id}` 与 `GET /api/v1/audit/traces` 两条正式读取控制面。实现将覆盖最小披露 DTO、`audit.trace.read` 角色与 tenant/order scope 校验、读取行为的 `audit.access_audit + ops.system_log` 留痕、主 router 挂载，以及 `packages/openapi/audit.yaml` 与 `docs/02-openapi/audit.yaml` 的同步落盘，并通过真实 API + DB smoke 验证“读接口不是空壳”。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-003`，完成后再进入 `AUD-004`。
+### BATCH-216（待审批）
+- 任务：AUD-003 订单审计联查与全局 `audit trace` API
+- 状态：待审批
+- 完成情况：
+  - 已新增 `apps/platform-core/src/modules/audit/api` 正式路由与 handler，挂载 `GET /api/v1/audit/orders/{id}`、`GET /api/v1/audit/traces` 到主应用 router，不再停留在 README / OpenAPI 草稿。
+  - 已补齐 `OrderAuditView / AuditTraceQuery / AuditTracePageView` 等读取 DTO，并在仓储层实现 `trade.order_main + audit.audit_event` 的 order scope 校验、按 `order_id / ref_type / ref_id / request_id / trace_id / action_name / result_code` 过滤查询，以及 `audit.access_audit + ops.system_log` 双留痕。
+  - 已落实正式权限口径：平台与监管只需 `audit.trace.read` 级读取权限；租户侧必须同时满足 `x-tenant-id` 与订单 buyer/seller scope 命中，避免通过全局 trace 查询越权读他租户订单。
+  - 已同步补齐 `packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`、OpenAPI README 与 `scripts/check-openapi-schema.sh`，把 `AUD-003` 的两条正式读取接口作为已实现契约归档，而不是继续留在占位状态。
+  - 已新增 `apps/platform-core/src/modules/audit/tests/api_db.rs`，覆盖缺失权限、缺失 `x-request-id`、平台读取、租户按订单范围读取、跨租户拒绝，以及真实 `audit.access_audit / ops.system_log` DB 回查。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core modules::audit -- --nocapture` 通过，新增 audit API 路由测试和 DB smoke 通过。
+  - `AUD_DB_SMOKE=1 cargo test -p platform-core` 通过：全量 `platform-core` 测试 `266 passed; 0 failed`，其中 `modules::audit::tests::api_db::audit_trace_api_db_smoke` 真实完成 `GET /api/v1/audit/orders/{id}` 与 `GET /api/v1/audit/traces` API 调用、订单级与全局 trace 查询、跨租户 `403` 拒绝，以及 `audit.access_audit / ops.system_log` 回查。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线查询缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过，确认 `packages/openapi/audit.yaml` 与 `docs/02-openapi/audit.yaml` 同步，且包含 `AUD-003` 两条正式路径。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-003`
+  - `审计、证据链与回放设计.md`：订单审计联查、全局 trace 检索与访问行为留痕
+  - `审计、证据链与回放接口协议正式版.md`：`/api/v1/audit/orders/{id}` 与 `/api/v1/audit/traces` 的 DTO / 权限 / 错误口径
+  - `全量领域模型与对象关系说明.md`：订单与审计对象聚合边界
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：审计查询控制面与 OpenAPI 归档缺口修复
+- 覆盖的任务清单条目：`AUD-003`
+- 未覆盖项：
+  - 证据包导出、理由强制、step-up 校验与 MinIO 导出对象写入，留待 `AUD-004`。
+  - legal hold、replay、dead letter reprocess 与一致性修复控制面，留待后续 `AUD` 批次。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 收敛为“`AUD-003` 已交付读接口，后续仅保留导出/回放/ops 控制面缺口”。
+- 备注：
+  - 本批没有发现 `CSV / Markdown / technical_reference / schema / 现有代码` 之间的冲突，不触发暂停条件。
+  - 读取行为的正式审计域为 `audit.access_audit`，普通运行日志仅作为 `ops.system_log` 观测辅助，不替代审计权威源。
