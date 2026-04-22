@@ -34,5 +34,7 @@ INSERT INTO authz.role_permission (role_key, permission_code) VALUES
 ('platform_risk_settlement','ops.external_fact.read'),
 ('platform_risk_settlement','ops.trade_monitor.read'),
 ('platform_risk_settlement','risk.fairness_incident.handle'),
-('platform_risk_settlement','risk.fairness_incident.read')
+('platform_risk_settlement','risk.fairness_incident.read'),
+('tenant_admin','ops.trade_monitor.read'),
+('tenant_audit_readonly','ops.trade_monitor.read')
 ON CONFLICT DO NOTHING;

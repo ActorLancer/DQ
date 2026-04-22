@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -18,6 +18,7 @@
 - fabric adapter 四类摘要 handler：`dtp.audit.anchor / dtp.fabric.requests -> services/fabric-adapter -> evidence_batch_root / order_summary / authorization_summary / acceptance_summary -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor`
 - fabric callback listener：`services/fabric-event-listener -> dtp.fabric.callbacks -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor / audit.anchor_batch`
 - fabric CA admin：`platform-core IAM API -> services/fabric-ca-admin -> iam.fabric_identity_binding / iam.certificate_record / iam.certificate_revocation_record / ops.external_fact_receipt / audit.audit_event / ops.system_log`
+- 交易链监控总览 / checkpoints：`GET /api/v1/ops/trade-monitor/orders/{orderId}`、`GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints`
 
 后续 `fabric-test-network / real Fabric CA / projection-gaps / reconcile` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
@@ -71,6 +72,8 @@ IAM_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-020` | Fabric adapter 四类摘要 request consume + receipt write-back | 启动 `./scripts/fabric-adapter-run.sh`，使用 `kcat` 向 `dtp.audit.anchor` 写入 `audit.anchor_requested`，向 `dtp.fabric.requests` 分别写入 `summary_type=order_summary / authorization_summary / acceptance_summary` 的 `fabric.proof_submit_requested` | `services/fabric-adapter` 真实消费两条正式 topic，但在 Go 侧显式分派到 `evidence_batch_root / order_summary / authorization_summary / acceptance_summary` 四类 handler，使用 Go mock provider 生成回执，并把 `submission_kind / contract_name / transaction_name` 写入 `ops.external_fact_receipt.metadata`、`receipt_payload`、`audit.audit_event(action_name='fabric.adapter.submit')`、`ops.system_log(message_text='fabric adapter accepted submit event')`；若 payload 提供 `chain_anchor_id`，则 `chain.chain_anchor.status=submitted` 且 `reconcile_status=pending_check` | Kafka topic 内容、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log`、`chain.chain_anchor`、`cg-fabric-adapter` consumer group |
 | `AUD-CASE-021` | Fabric callback listener consume + callback write-back | 启动 `./scripts/fabric-adapter-run.sh` 与 `./scripts/fabric-event-listener-run.sh`；先通过 `dtp.audit.anchor / dtp.fabric.requests` 生成 source receipt，再把其中一条 source receipt 标记 `mock_callback_status=failed` | `services/fabric-event-listener` 轮询已提交 source receipt，生成 `fabric.commit_confirmed / fabric.commit_failed`，发布到 `dtp.fabric.callbacks`，并把 `provider_code / provider_request_id / callback_event_id / event_version / provider_status / provider_occurred_at / payload_hash` 写回 `ops.external_fact_receipt.metadata`；同时写入 `audit.audit_event(action_name='fabric.event_listener.callback')`、`ops.system_log(message_text='fabric event listener published callback')`，成功链更新 `chain.chain_anchor.status='anchored'` 与 `audit.anchor_batch.status='anchored'`，失败链更新 `chain.chain_anchor.status='failed'` | Kafka `dtp.fabric.callbacks`、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log`、`chain.chain_anchor`、`audit.anchor_batch` |
 | `AUD-CASE-022` | Fabric CA admin 证书签发 / 吊销执行面 | 启动 `./scripts/fabric-ca-admin-run.sh`，通过 `platform-core` 先完成 step-up challenge，再调用 `POST /api/v1/iam/fabric-identities/{id}/issue` 与 `POST /api/v1/iam/certificates/{id}/revoke` | Rust `platform-core` 负责权限、step-up、公网错误码与 `audit.audit_event(actor_id=真实操作者)`；Go `services/fabric-ca-admin` 负责执行证书签发 / 吊销，真实更新 `iam.fabric_identity_binding / iam.certificate_record / iam.certificate_revocation_record`，并写入 `ops.external_fact_receipt(fact_type in ('certificate_issue_receipt','certificate_revocation_receipt'))`、`ops.system_log(message_text in ('fabric ca admin issued identity','fabric ca admin revoked certificate'))` | HTTP 响应、`iam.step_up_challenge`、`iam.fabric_identity_binding`、`iam.certificate_record`、`iam.certificate_revocation_record`、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log` |
+| `AUD-CASE-023` | 交易链监控总览 | `GET /api/v1/ops/trade-monitor/orders/{order_id}` | 返回订单维度 trade monitor 视图，包含最近 checkpoint / external fact / fairness incident / projection gap 摘要；平台与租户角色都必须通过正式权限与 order scope 校验；查询动作写入 `audit.access_audit + ops.system_log` | API 响应、`trade.order_main`、`ops.trade_lifecycle_checkpoint`、`ops.external_fact_receipt`、`risk.fairness_incident`、`ops.chain_projection_gap`、`chain.chain_anchor`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-024` | 生命周期检查点过滤查询 | `GET /api/v1/ops/trade-monitor/orders/{order_id}/checkpoints?checkpoint_status=pending&lifecycle_stage=delivery&page=1&page_size=20` | 返回过滤后的 `ops.trade_lifecycle_checkpoint` 分页结果；tenant 侧必须命中 buyer/seller order scope；查询动作写入 `audit.access_audit + ops.system_log` | API 响应、`ops.trade_lifecycle_checkpoint`、`audit.access_audit`、`ops.system_log` |
 
 补充说明：
 
@@ -201,6 +204,105 @@ WHERE request_id = 'req-aud012-manual'
 - `ops.chain_projection_gap` 仍保持原 `gap_status / resolution_summary`
 - 当前请求不会写出新的 `dtp.consistency.reconcile` outbox 事件
 - `audit.audit_event + audit.access_audit + ops.system_log` 三层留痕齐备
+
+## `AUD-018` 手工交易链监控验证
+
+1. 启动服务：
+
+```bash
+set -a
+source infra/docker/.env.local
+set +a
+
+APP_PORT=18080 \
+KAFKA_BROKERS=127.0.0.1:9094 \
+KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
+cargo run -p platform-core-bin
+```
+
+2. 先跑 live smoke，确认最小订单图、checkpoint、external fact、fairness incident、projection gap、chain anchor 与 API/审计联查都可用：
+
+```bash
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_trade_monitor_db_smoke -- --nocapture
+```
+
+3. 对现存订单执行总览查询：
+
+```bash
+curl -sS "http://127.0.0.1:18080/api/v1/ops/trade-monitor/orders/<order_id>" \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud018-manual-overview' \
+  -H 'x-trace-id: trace-aud018-manual'
+```
+
+4. 对同一订单执行 checkpoints 过滤查询：
+
+```bash
+curl -sS "http://127.0.0.1:18080/api/v1/ops/trade-monitor/orders/<order_id>/checkpoints?checkpoint_status=pending&lifecycle_stage=delivery&page=1&page_size=20" \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud018-manual-checkpoints' \
+  -H 'x-trace-id: trace-aud018-manual'
+```
+
+5. 回查读审计与系统日志：
+
+```sql
+SELECT access_mode, target_type, target_id::text
+FROM audit.access_audit
+WHERE request_id IN ('req-aud018-manual-overview', 'req-aud018-manual-checkpoints')
+ORDER BY created_at;
+
+SELECT message_text, structured_payload
+FROM ops.system_log
+WHERE request_id IN ('req-aud018-manual-overview', 'req-aud018-manual-checkpoints')
+ORDER BY created_at;
+```
+
+6. 回查正式对象：
+
+```sql
+SELECT status, proof_commit_state, external_fact_status, reconcile_status
+FROM trade.order_main
+WHERE order_id = '<order_id>'::uuid;
+
+SELECT checkpoint_code, lifecycle_stage, checkpoint_status
+FROM ops.trade_lifecycle_checkpoint
+WHERE order_id = '<order_id>'::uuid
+ORDER BY COALESCE(occurred_at, expected_by, created_at) DESC,
+         created_at DESC,
+         trade_lifecycle_checkpoint_id DESC
+LIMIT 10;
+
+SELECT fact_type, provider_type, receipt_status
+FROM ops.external_fact_receipt
+WHERE ref_type = 'order'
+  AND ref_id = '<order_id>'::uuid
+ORDER BY COALESCE(confirmed_at, received_at, occurred_at) DESC,
+         external_fact_receipt_id DESC
+LIMIT 10;
+
+SELECT incident_type, severity, lifecycle_stage, status
+FROM risk.fairness_incident
+WHERE order_id = '<order_id>'::uuid
+ORDER BY created_at DESC, fairness_incident_id DESC
+LIMIT 10;
+
+SELECT gap_type, gap_status, chain_id
+FROM ops.chain_projection_gap
+WHERE order_id = '<order_id>'::uuid
+ORDER BY created_at DESC, chain_projection_gap_id DESC
+LIMIT 10;
+```
+
+7. 预期：
+
+- overview 能看到最近 `checkpoint / external fact / fairness incident / projection gap`
+- checkpoints 过滤结果只返回命中的 `delivery + pending`
+- `audit.access_audit + ops.system_log` 至少各 2 条
+- trade monitor 读取的是正式 PostgreSQL authority，不依赖旁路 Kafka 消费结果
 
 ## `AUD-013 / AUD-014` 手工 fabric-adapter 验证
 

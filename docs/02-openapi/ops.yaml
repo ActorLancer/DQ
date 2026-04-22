@@ -1043,6 +1043,203 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/trade-monitor/orders/{orderId}:
+    get:
+      summary: query order trade monitor overview
+      tags: [AuditOps]
+      description: |
+        Returns the V1 order-level trade monitor overview assembled from
+        `trade.order_main`, `ops.trade_lifecycle_checkpoint`,
+        `ops.external_fact_receipt`, `risk.fairness_incident`,
+        `ops.chain_projection_gap`, and `chain.chain_anchor`. Tenant-scoped
+        roles are limited to buyer/seller order scope and every lookup is
+        mirrored into `audit.access_audit + ops.system_log`.
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: trade monitor overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseTradeMonitorOverviewResponse"
+              example:
+                success: true
+                data:
+                  order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                  request_id: req-aud018-overview
+                  trace_id: trace-aud018-overview
+                  business_state: buyer_locked
+                  current_checkpoint_code: delivery_prepared
+                  current_checkpoint_status: pending
+                  proof_commit_state: anchored
+                  external_fact_status: confirmed
+                  reconcile_status: pending_check
+                  open_fairness_incident_count: 1
+                  last_external_fact_at: "2026-04-22T10:06:00.000Z"
+                  last_chain_confirmed_at: "2026-04-22T10:07:00.000Z"
+                  last_observed_at: "2026-04-22T10:08:00.000Z"
+                  recent_checkpoints:
+                    - trade_lifecycle_checkpoint_id: 4f4e8cb1-3dfb-48ec-91f1-3db272951111
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      ref_domain: trade
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      checkpoint_code: delivery_prepared
+                      lifecycle_stage: delivery
+                      checkpoint_status: pending
+                  recent_external_facts:
+                    - external_fact_receipt_id: 991f69a0-ae84-4c5e-89f4-d764354e955d
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      ref_domain: payment
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      fact_type: payment_callback
+                      provider_type: mock_payment_provider
+                      receipt_status: confirmed
+                  recent_fairness_incidents:
+                    - fairness_incident_id: 0de23c6d-6dc9-49d6-bb13-c31182093210
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      incident_type: seller_delivery_delay
+                      severity: high
+                      lifecycle_stage: delivery
+                      fairness_incident_status: open
+                  recent_projection_gaps:
+                    - chain_projection_gap_id: 27ab93df-f0f1-4d43-84e6-40c77625cf86
+                      aggregate_type: order
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      chain_id: fabric-local
+                      gap_type: projection_lag
+                      gap_status: open
+        "400":
+          description: invalid orderId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or tenant order scope mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints:
+    get:
+      summary: query order lifecycle checkpoints
+      tags: [AuditOps]
+      description: |
+        Returns paginated rows from `ops.trade_lifecycle_checkpoint` for one order.
+        This is the formal V1 checkpoint query surface used by the trade monitor
+        detail page and keeps the same tenant+order scope restrictions as the
+        overview endpoint.
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: checkpoint_code
+          schema:
+            type: string
+        - in: query
+          name: checkpoint_status
+          schema:
+            type: string
+        - in: query
+          name: lifecycle_stage
+          schema:
+            type: string
+        - in: query
+          name: from
+          schema:
+            type: string
+        - in: query
+          name: to
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+      responses:
+        "200":
+          description: lifecycle checkpoint page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseTradeMonitorCheckpointPageResponse"
+              example:
+                success: true
+                data:
+                  order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - trade_lifecycle_checkpoint_id: 4f4e8cb1-3dfb-48ec-91f1-3db272951111
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      ref_domain: trade
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      checkpoint_code: delivery_prepared
+                      lifecycle_stage: delivery
+                      checkpoint_status: pending
+                      occurred_at: "2026-04-22T10:04:00.000Z"
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or tenant order scope mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     ApiResponseString:
@@ -1144,6 +1341,24 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsConsistencyReconcileResponse"
+    ApiResponseTradeMonitorOverviewResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/TradeMonitorOverviewResponse"
+    ApiResponseTradeMonitorCheckpointPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/TradeMonitorCheckpointPageResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -1821,6 +2036,89 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OpsConsistencyRepairRecommendation"
+    TradeMonitorOverviewResponse:
+      type: object
+      required:
+        - order_id
+        - request_id
+        - trace_id
+        - business_state
+        - current_checkpoint_code
+        - current_checkpoint_status
+        - proof_commit_state
+        - external_fact_status
+        - reconcile_status
+        - open_fairness_incident_count
+        - last_observed_at
+        - recent_checkpoints
+        - recent_external_facts
+        - recent_fairness_incidents
+        - recent_projection_gaps
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+        trace_id:
+          type: string
+        business_state:
+          type: string
+        current_checkpoint_code:
+          type: string
+        current_checkpoint_status:
+          type: string
+        proof_commit_state:
+          type: string
+        external_fact_status:
+          type: string
+        reconcile_status:
+          type: string
+        open_fairness_incident_count:
+          type: integer
+          format: int64
+        last_external_fact_at:
+          type: string
+          nullable: true
+        last_chain_confirmed_at:
+          type: string
+          nullable: true
+        last_observed_at:
+          type: string
+        recent_checkpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeLifecycleCheckpointRecord"
+        recent_external_facts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalFactReceiptRecord"
+        recent_fairness_incidents:
+          type: array
+          items:
+            $ref: "#/components/schemas/FairnessIncidentRecord"
+        recent_projection_gaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChainProjectionGapRecord"
+    TradeMonitorCheckpointPageResponse:
+      type: object
+      required: [order_id, total, page, page_size, items]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeLifecycleCheckpointRecord"
     OpsConsistencyBusinessState:
       type: object
       required:
@@ -2220,6 +2518,287 @@ components:
           nullable: true
         metadata:
           $ref: "#/components/schemas/JsonObject"
+          nullable: true
+    TradeLifecycleCheckpointRecord:
+      type: object
+      required:
+        - ref_domain
+        - ref_type
+        - ref_id
+        - checkpoint_code
+        - lifecycle_stage
+        - checkpoint_status
+        - source_type
+        - metadata
+      properties:
+        trade_lifecycle_checkpoint_id:
+          type: string
+          format: uuid
+          nullable: true
+        monitoring_policy_profile_id:
+          type: string
+          format: uuid
+          nullable: true
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        ref_domain:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        checkpoint_code:
+          type: string
+        lifecycle_stage:
+          type: string
+        checkpoint_status:
+          type: string
+        expected_by:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+          nullable: true
+        source_type:
+          type: string
+        source_ref_type:
+          type: string
+          nullable: true
+        source_ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        related_tx_hash:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    ExternalFactReceiptRecord:
+      type: object
+      required:
+        - fact_type
+        - provider_type
+        - receipt_status
+        - receipt_payload
+        - metadata
+      properties:
+        external_fact_receipt_id:
+          type: string
+          format: uuid
+          nullable: true
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        ref_domain:
+          type: string
+          nullable: true
+        ref_type:
+          type: string
+          nullable: true
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        fact_type:
+          type: string
+        provider_type:
+          type: string
+        provider_key:
+          type: string
+          nullable: true
+        provider_reference:
+          type: string
+          nullable: true
+        receipt_status:
+          type: string
+        receipt_payload:
+          $ref: "#/components/schemas/JsonObject"
+        receipt_hash:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+          nullable: true
+        received_at:
+          type: string
+          nullable: true
+        confirmed_at:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    FairnessIncidentRecord:
+      type: object
+      required:
+        - ref_type
+        - incident_type
+        - severity
+        - lifecycle_stage
+        - detected_by_type
+        - fairness_incident_status
+        - metadata
+      properties:
+        fairness_incident_id:
+          type: string
+          format: uuid
+          nullable: true
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        incident_type:
+          type: string
+        severity:
+          type: string
+        lifecycle_stage:
+          type: string
+        detected_by_type:
+          type: string
+        source_checkpoint_id:
+          type: string
+          format: uuid
+          nullable: true
+        source_receipt_id:
+          type: string
+          format: uuid
+          nullable: true
+        fairness_incident_status:
+          type: string
+        auto_action_code:
+          type: string
+          nullable: true
+        assigned_role_key:
+          type: string
+          nullable: true
+        assigned_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        resolution_summary:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+        closed_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    ChainProjectionGapRecord:
+      type: object
+      required:
+        - aggregate_type
+        - chain_id
+        - gap_type
+        - gap_status
+        - resolution_summary
+        - metadata
+      properties:
+        chain_projection_gap_id:
+          type: string
+          format: uuid
+          nullable: true
+        aggregate_type:
+          type: string
+        aggregate_id:
+          type: string
+          format: uuid
+          nullable: true
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        chain_id:
+          type: string
+        source_event_type:
+          type: string
+          nullable: true
+        expected_tx_id:
+          type: string
+          nullable: true
+        projected_tx_hash:
+          type: string
+          nullable: true
+        gap_type:
+          type: string
+        gap_status:
+          type: string
+        first_detected_at:
+          type: string
+          nullable: true
+        last_detected_at:
+          type: string
+          nullable: true
+        resolved_at:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        outbox_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        anchor_id:
+          type: string
+          format: uuid
+          nullable: true
+        resolution_summary:
+          $ref: "#/components/schemas/JsonObject"
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
           nullable: true
     NotificationRecipient:
       type: object

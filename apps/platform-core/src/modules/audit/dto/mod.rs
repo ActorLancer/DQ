@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::modules::audit::repo::{
     ChainProjectionGapRecord, ConsumerIdempotencyRecord, DeadLetterEventRecord,
-    ExternalFactReceiptRecord, OutboxEventRecord, OutboxPublishAttemptRecord,
+    ExternalFactReceiptRecord, FairnessIncidentRecord, OutboxEventRecord,
+    OutboxPublishAttemptRecord, TradeLifecycleCheckpointRecord,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -400,6 +401,55 @@ pub struct ChainProjectionGapView {
     pub updated_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TradeLifecycleCheckpointView {
+    pub trade_lifecycle_checkpoint_id: Option<String>,
+    pub monitoring_policy_profile_id: Option<String>,
+    pub order_id: Option<String>,
+    pub ref_domain: String,
+    pub ref_type: String,
+    pub ref_id: String,
+    pub checkpoint_code: String,
+    pub lifecycle_stage: String,
+    pub checkpoint_status: String,
+    pub expected_by: Option<String>,
+    pub occurred_at: Option<String>,
+    pub source_type: String,
+    pub source_ref_type: Option<String>,
+    pub source_ref_id: Option<String>,
+    pub related_tx_hash: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FairnessIncidentView {
+    pub fairness_incident_id: Option<String>,
+    pub order_id: Option<String>,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub incident_type: String,
+    pub severity: String,
+    pub lifecycle_stage: String,
+    pub detected_by_type: String,
+    pub source_checkpoint_id: Option<String>,
+    pub source_receipt_id: Option<String>,
+    pub fairness_incident_status: String,
+    pub auto_action_code: Option<String>,
+    pub assigned_role_key: Option<String>,
+    pub assigned_user_id: Option<String>,
+    pub resolution_summary: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: Option<String>,
+    pub closed_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
 impl From<&OutboxPublishAttemptRecord> for OutboxPublishAttemptView {
     fn from(attempt: &OutboxPublishAttemptRecord) -> Self {
         Self {
@@ -550,6 +600,61 @@ impl From<&ChainProjectionGapRecord> for ChainProjectionGapView {
             resolution_summary: record.resolution_summary.clone(),
             metadata: record.metadata.clone(),
             created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&TradeLifecycleCheckpointRecord> for TradeLifecycleCheckpointView {
+    fn from(record: &TradeLifecycleCheckpointRecord) -> Self {
+        Self {
+            trade_lifecycle_checkpoint_id: record.trade_lifecycle_checkpoint_id.clone(),
+            monitoring_policy_profile_id: record.monitoring_policy_profile_id.clone(),
+            order_id: record.order_id.clone(),
+            ref_domain: record.ref_domain.clone(),
+            ref_type: record.ref_type.clone(),
+            ref_id: record.ref_id.clone(),
+            checkpoint_code: record.checkpoint_code.clone(),
+            lifecycle_stage: record.lifecycle_stage.clone(),
+            checkpoint_status: record.checkpoint_status.clone(),
+            expected_by: record.expected_by.clone(),
+            occurred_at: record.occurred_at.clone(),
+            source_type: record.source_type.clone(),
+            source_ref_type: record.source_ref_type.clone(),
+            source_ref_id: record.source_ref_id.clone(),
+            related_tx_hash: record.related_tx_hash.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            metadata: record.metadata.clone(),
+            created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&FairnessIncidentRecord> for FairnessIncidentView {
+    fn from(record: &FairnessIncidentRecord) -> Self {
+        Self {
+            fairness_incident_id: record.fairness_incident_id.clone(),
+            order_id: record.order_id.clone(),
+            ref_type: record.ref_type.clone(),
+            ref_id: record.ref_id.clone(),
+            incident_type: record.incident_type.clone(),
+            severity: record.severity.clone(),
+            lifecycle_stage: record.lifecycle_stage.clone(),
+            detected_by_type: record.detected_by_type.clone(),
+            source_checkpoint_id: record.source_checkpoint_id.clone(),
+            source_receipt_id: record.source_receipt_id.clone(),
+            fairness_incident_status: record.fairness_incident_status.clone(),
+            auto_action_code: record.auto_action_code.clone(),
+            assigned_role_key: record.assigned_role_key.clone(),
+            assigned_user_id: record.assigned_user_id.clone(),
+            resolution_summary: record.resolution_summary.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            metadata: record.metadata.clone(),
+            created_at: record.created_at.clone(),
+            closed_at: record.closed_at.clone(),
             updated_at: record.updated_at.clone(),
         }
     }

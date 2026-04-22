@@ -54,6 +54,14 @@ pub fn router() -> Router<AppState> {
             post(handlers::reconcile_ops_consistency),
         )
         .route(
+            "/api/v1/ops/trade-monitor/orders/{orderId}",
+            get(handlers::get_ops_trade_monitor_overview),
+        )
+        .route(
+            "/api/v1/ops/trade-monitor/orders/{orderId}/checkpoints",
+            get(handlers::get_ops_trade_monitor_checkpoints),
+        )
+        .route(
             "/api/v1/ops/dead-letters/{id}/reprocess",
             post(handlers::reprocess_ops_dead_letter),
         )

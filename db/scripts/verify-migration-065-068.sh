@@ -79,6 +79,8 @@ required_role_permissions=(
   "platform_admin|ops.trade_monitor.manage"
   "platform_audit_security|ops.trade_monitor.read"
   "platform_risk_settlement|risk.fairness_incident.handle"
+  "tenant_admin|ops.trade_monitor.read"
+  "tenant_audit_readonly|ops.trade_monitor.read"
 )
 
 check_table() {

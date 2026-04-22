@@ -1220,3 +1220,77 @@
 - 备注：
   - 本批中途发现官方 `fabric-samples` 默认拉取 `main/latest`，会把 peer 拉到 `3.1.4` 并导致 Go 链码安装口径漂移；当前已通过仓库脚本固定到 pinned `2.5.15 / 1.5.17`，不再依赖机器偶然状态。
   - 本批未发现新的 `CSV / Markdown / technical_reference / topics / route-policy / Fabric 组件边界 / Go-Rust 分层` 冲突，不触发暂停条件。
+### BATCH-231（计划中）
+- 任务：AUD-018 交易链监控总览接口与 checkpoints 接口
+- 状态：计划中
+- 说明：按 `AUD-018` 冻结口径，实现 `GET /api/v1/ops/trade-monitor/orders/{orderId}` 与 `GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints`。本批以 `ops.trade_lifecycle_checkpoint`、`ops.external_fact_receipt`、`risk.fairness_incident`、`ops.chain_projection_gap` 和 `trade.order_main / chain.chain_anchor / audit.audit_event` 为正式读模型来源，返回订单维度总览、最近检查点/外部事实/公平性事件/链投影缺口摘要，并补齐 `ops.trade_monitor.read` 权限、tenant+order scope 校验、`audit.access_audit + ops.system_log` 查询留痕、OpenAPI、runbook 与测试矩阵。当前不扩展到 `external-facts / fairness-incidents / projection-gaps` 公共接口，这些分别留待 `AUD-019 ~ AUD-021`。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-018`，完成后再进入 `AUD-019`。
+### BATCH-231（待审批）
+- 任务：`AUD-018` 交易链监控总览接口与 checkpoints 接口
+- 状态：待审批
+- 当前任务编号：`AUD-018`
+- 前置依赖核对结果：`CORE-007`、`CORE-008`、`DB-008`、`ENV-022` 已作为前序基线完成；`AUD-017` 已于本地提交 `b022570` 完成，当前批次可继续在既有 Go/Fabric 写链基线上补齐交易链监控只读 control-plane。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-018` 的 DoD、验收与 `technical_reference`，要求 `GET /api/v1/ops/trade-monitor/orders/{orderId}`、`GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints` 的接口、DTO、权限、审计与最小测试齐备。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL / Kafka / Redis / Keycloak / OpenSearch / Fabric / 观测栈` 的职责边界，确认本批是 `platform-core` 只读聚合面，Fabric 真实交互继续由 Go 服务承担。
+  - `docs/原始PRD/交易链监控、公平性与信任安全设计.md`：提取六层交易链监控模型，确认总览必须同时暴露检查点、外部事实、公平性事件和链投影缺口摘要。
+  - `docs/数据库设计/接口协议/交易链监控与公平性接口协议正式版.md`：确认 `ops.trade_monitor.read`、两个接口路径及过滤字段口径。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认本接口读取的状态来自正式链上链下双层权威对象，而不是旁路 topic。
+  - `docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`：确认 trade-monitor 必须同步落正式 router、OpenAPI、runbook 与测试矩阵。
+  - `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`、`infra/docker/docker-compose.local.yml`：复核本批不新增 topic / route authority，不把 `dtp.outbox.domain-events` 当 trade-monitor 读源。
+  - `apps/platform-core/src/modules/audit/**`、`services/fabric-adapter/**`、`services/fabric-event-listener/**`、`services/fabric-ca-admin/**`、`workers/outbox-publisher/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/04-runbooks/**`、`docs/05-test-cases/**`、`infra/**`、`scripts/**`：确认现有 `AUD` 代码已具备 `ops.external_fact_receipt / ops.chain_projection_gap / consistency` 查询基础，但 trade-monitor 接口、OpenAPI、runbook 与矩阵尚未完整落地。
+- 实现要点：
+  - `apps/platform-core/src/modules/audit/domain/mod.rs`、`dto/mod.rs`：新增 `TradeMonitorCheckpointQuery`、`TradeMonitorOverviewView`、`TradeMonitorCheckpointPageView` 以及 `TradeLifecycleCheckpointView / FairnessIncidentView`，统一 trade-monitor 控制面的正式读 DTO。
+  - `apps/platform-core/src/modules/audit/repo/mod.rs`：新增 `TradeLifecycleCheckpointRecord / Page`、`FairnessIncidentRecord / Page`、`search_trade_lifecycle_checkpoints_by_order`、`search_recent_fairness_incidents_for_order`、`count_open_fairness_incidents_for_order`，把 `ops.trade_lifecycle_checkpoint` 与 `risk.fairness_incident` 纳入正式仓储查询能力。
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `GET /api/v1/ops/trade-monitor/orders/{orderId}` 与 `/checkpoints`，补齐 `ops.trade_monitor.read` 权限门面、`tenant_admin / tenant_audit_readonly` 的 `tenant + order scope` 校验，以及 `audit.access_audit + ops.system_log` 查询留痕。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增路由级权限 / `x-request-id` 测试与 `audit_trade_monitor_db_smoke`，真实写入 `trade.order_main / ops.trade_lifecycle_checkpoint / ops.external_fact_receipt / risk.fairness_incident / ops.chain_projection_gap / chain.chain_anchor` 并调用两条正式 API 做回查。
+  - `docs/数据库设计/V1/upgrade/068_trade_chain_monitoring_authz.sql`、`db/scripts/verify-migration-065-068.sh`：补齐 `tenant_admin / tenant_audit_readonly -> ops.trade_monitor.read` 的正式 role-permission seed 校验，避免 tenant scope 只能靠 handler 临时白名单。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`：同步补齐 trade-monitor 两条路径、schema、示例与成熟度说明。
+  - `docs/04-runbooks/audit-trade-monitor.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：补齐宿主机联调手册、验收矩阵与索引。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `./scripts/check-openapi-schema.sh`
+  7. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_trade_monitor_db_smoke -- --nocapture`
+  8. 真实宿主机联调：`APP_PORT=18080 cargo run -p platform-core-bin` + `curl GET /api/v1/ops/trade-monitor/orders/{orderId}` + `curl GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints` + `psql` 回查
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既存 `unused_*` warning，无新增编译失败。
+  - `cargo test -p platform-core` 通过：`296 passed; 0 failed`，新增 `audit_trade_monitor_db_smoke`、权限路由测试与既有 `AUD` smoke 全部通过。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线查询缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过，确认 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml` 同步且 schema 骨架完整。
+  - `AUD_DB_SMOKE=1 ... audit_trade_monitor_db_smoke` 通过：真实完成 `trade monitor overview / checkpoints` API 调用、tenant scope 校验、`audit.access_audit / ops.system_log` 回查与临时业务对象清理。
+  - 真实宿主机联调通过：手工写入一笔最小订单图与 `checkpoint / external fact / fairness incident / projection gap / chain anchor` 后，执行：
+    - `GET /api/v1/ops/trade-monitor/orders/7957152d-6e66-4a57-9826-ae78a72ca65d`
+    - `GET /api/v1/ops/trade-monitor/orders/7957152d-6e66-4a57-9826-ae78a72ca65d/checkpoints?checkpoint_status=pending&lifecycle_stage=delivery&page=1&page_size=20`
+    - `tenant_admin + x-tenant-id` 的同订单总览查询
+    并回查到：
+    - `audit.access_audit` 共 `3` 条，`target_type in ('trade_monitor_query','trade_checkpoint_query')`
+    - `ops.system_log` 共 `3` 条，对应 overview/checkpoints 两条正式路径
+    - `trade.order_main.status='buyer_locked'`
+    - `ops.trade_lifecycle_checkpoint` 命中 `delivery_prepared / pending`
+    - `ops.external_fact_receipt.receipt_status='confirmed'`
+    - `risk.fairness_incident.status='open'`
+    - `ops.chain_projection_gap.gap_status='open'`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-018`
+  - `交易链监控、公平性与信任安全设计.md`：六层交易链监控模型
+  - `交易链监控与公平性接口协议正式版.md`：trade-monitor 两条正式接口、`ops.trade_monitor.read` 与过滤口径
+  - `业务流程图-V1-完整版.md`：链上链下一致性与事件流读取边界
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：trade-monitor 契约 / runbook / 测试收口缺口
+  - `068_trade_chain_monitoring_authz.sql`：trade-monitor 权限与角色绑定
+- 覆盖的任务清单条目：`AUD-018`
+- 未覆盖项：
+  - `GET /api/v1/ops/external-facts`、`POST /confirm` 留待 `AUD-019`
+  - `GET /api/v1/ops/fairness-incidents`、`POST /handle` 留待 `AUD-020`
+  - `GET /api/v1/ops/projection-gaps`、`POST /resolve` 留待 `AUD-021`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 推进到包含 `AUD-018 trade-monitor` 的最新状态。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-018` 按冻结口径属于 `platform-core` 的只读聚合面。Fabric 的真实写链、Gateway、chaincode event listener 与 CA admin 仍保持 `AUD-013 ~ AUD-017` 已落地的 `Go` 分层，不回退到 Rust 直接交互。
+  - 手工清理时，尝试删除本次联调用于访问的 `core.user_account` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`，被 append-only guard 正常拒绝；因此本批按运行态边界只清理订单、商品和监控对象等临时业务数据，保留该用户及组织作为审计留痕依赖，不视为业务测试脏数据外泄。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。

@@ -409,6 +409,35 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::CONFLICT);
     }
+
+    #[tokio::test]
+    async fn rejects_trade_monitor_overview_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/trade-monitor/orders/10000000-0000-0000-0000-000000000018")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud018-trade-monitor-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn trade_monitor_checkpoints_requires_request_id() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri(
+                "/api/v1/ops/trade-monitor/orders/10000000-0000-0000-0000-000000000018/checkpoints",
+            )
+            .header("x-role", "platform_audit_security")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -3560,6 +3589,578 @@ async fn audit_consistency_reconcile_db_smoke() {
         .execute(
             "DELETE FROM ops.outbox_event WHERE outbox_event_id = $1::text::uuid",
             &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM chain.chain_anchor WHERE chain_anchor_id = $1::text::uuid",
+            &[&chain_anchor_id],
+        )
+        .await;
+    cleanup_business_rows(&client, &seed).await;
+}
+
+#[tokio::test]
+async fn audit_trade_monitor_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let seed = seed_order_graph(&client, &format!("aud018-{suffix}"))
+        .await
+        .expect("seed order graph");
+    let operator_user_id = seed_user(&client, &seed.buyer_org_id, &format!("aud018-{suffix}"))
+        .await
+        .expect("seed aud018 operator");
+    let app = crate::with_live_test_state(router()).await;
+    let overview_request_id = format!("req-aud018-overview-{suffix}");
+    let checkpoints_request_id = format!("req-aud018-checkpoints-{suffix}");
+    let tenant_overview_request_id = format!("req-aud018-tenant-overview-{suffix}");
+    let forbidden_request_id = format!("req-aud018-tenant-forbidden-{suffix}");
+    let trace_id = format!("trace-aud018-{suffix}");
+
+    client
+        .execute(
+            "UPDATE trade.order_main
+             SET authority_model = 'dual_layer',
+                 business_state_version = 11,
+                 proof_commit_state = 'anchored',
+                 proof_commit_policy = 'async_evidence',
+                 external_fact_status = 'confirmed',
+                 reconcile_status = 'pending_check',
+                 last_reconciled_at = now() - interval '2 minutes'
+             WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await
+        .expect("update aud018 order consistency fields");
+
+    let checkpoint_registered_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud018 registered checkpoint id")
+        .get(0);
+    let checkpoint_delivery_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud018 delivery checkpoint id")
+        .get(0);
+    let external_fact_receipt_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud018 receipt id")
+        .get(0);
+    let fairness_incident_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud018 fairness incident id")
+        .get(0);
+    let chain_projection_gap_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud018 projection gap id")
+        .get(0);
+    let chain_anchor_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud018 chain anchor id")
+        .get(0);
+
+    client
+        .execute(
+            "INSERT INTO ops.trade_lifecycle_checkpoint (
+               trade_lifecycle_checkpoint_id,
+               order_id,
+               ref_domain,
+               ref_type,
+               ref_id,
+               checkpoint_code,
+               lifecycle_stage,
+               checkpoint_status,
+               expected_by,
+               occurred_at,
+               source_type,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES
+             (
+               $1::text::uuid,
+               $2::text::uuid,
+               'trade',
+               'order',
+               $2::text::uuid,
+               'funds_locked',
+               'payment',
+               'completed',
+               now() - interval '20 minutes',
+               now() - interval '19 minutes',
+               'system',
+               $3,
+               $4,
+               jsonb_build_object('seed', $5, 'stage_rank', 1)
+             ),
+             (
+               $6::text::uuid,
+               $2::text::uuid,
+               'trade',
+               'order',
+               $2::text::uuid,
+               'delivery_prepared',
+               'delivery',
+               'pending',
+               now() + interval '10 minutes',
+               now() - interval '4 minutes',
+               'system',
+               $3,
+               $4,
+               jsonb_build_object('seed', $5, 'stage_rank', 2)
+             )",
+            &[
+                &checkpoint_registered_id,
+                &seed.order_id,
+                &overview_request_id,
+                &trace_id,
+                &suffix,
+                &checkpoint_delivery_id,
+            ],
+        )
+        .await
+        .expect("insert aud018 trade checkpoints");
+
+    client
+        .execute(
+            "INSERT INTO ops.external_fact_receipt (
+               external_fact_receipt_id,
+               order_id,
+               ref_domain,
+               ref_type,
+               ref_id,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               occurred_at,
+               received_at,
+               confirmed_at,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'payment',
+               'order',
+               $2::text::uuid,
+               'payment_callback',
+               'mock_payment_provider',
+               'mockpay',
+               $3,
+               'confirmed',
+               jsonb_build_object('seed', $4, 'provider_status', 'confirmed'),
+               $5,
+               now() - interval '6 minutes',
+               now() - interval '5 minutes',
+               now() - interval '4 minutes',
+               $6,
+               $7,
+               jsonb_build_object('seed', $4)
+             )",
+            &[
+                &external_fact_receipt_id,
+                &seed.order_id,
+                &format!("provider-ref-aud018-{suffix}"),
+                &suffix,
+                &format!("aud018-receipt-hash-{suffix}"),
+                &overview_request_id,
+                &trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud018 external receipt");
+
+    client
+        .execute(
+            "INSERT INTO chain.chain_anchor (
+               chain_anchor_id,
+               chain_id,
+               anchor_type,
+               ref_type,
+               ref_id,
+               digest,
+               tx_hash,
+               status,
+               anchored_at,
+               created_at,
+               authority_model,
+               reconcile_status,
+               last_reconciled_at
+             ) VALUES (
+               $1::text::uuid,
+               'fabric-local',
+               'order_proof',
+               'order',
+               $2::text::uuid,
+               $3,
+               '0xaud018anchor',
+               'anchored',
+               now() - interval '3 minutes',
+               now() - interval '3 minutes' - interval '5 seconds',
+               'proof_layer',
+               'matched',
+               now() - interval '2 minutes'
+             )",
+            &[
+                &chain_anchor_id,
+                &seed.order_id,
+                &format!("aud018-digest-{suffix}"),
+            ],
+        )
+        .await
+        .expect("insert aud018 chain anchor");
+
+    client
+        .execute(
+            "INSERT INTO risk.fairness_incident (
+               fairness_incident_id,
+               order_id,
+               ref_type,
+               ref_id,
+               incident_type,
+               severity,
+               lifecycle_stage,
+               detected_by_type,
+               source_checkpoint_id,
+               source_receipt_id,
+               status,
+               auto_action_code,
+               assigned_role_key,
+               resolution_summary,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'order',
+               $2::text::uuid,
+               'seller_delivery_delay',
+               'high',
+               'delivery',
+               'rule_engine',
+               $3::text::uuid,
+               $4::text::uuid,
+               'open',
+               'notify_ops',
+               'platform_risk_settlement',
+               'awaiting delivery callback',
+               $5,
+               $6,
+               jsonb_build_object('seed', $7, 'source', 'aud018-smoke')
+             )",
+            &[
+                &fairness_incident_id,
+                &seed.order_id,
+                &checkpoint_delivery_id,
+                &external_fact_receipt_id,
+                &overview_request_id,
+                &trace_id,
+                &suffix,
+            ],
+        )
+        .await
+        .expect("insert aud018 fairness incident");
+
+    client
+        .execute(
+            "INSERT INTO ops.chain_projection_gap (
+               chain_projection_gap_id,
+               aggregate_type,
+               aggregate_id,
+               order_id,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               first_detected_at,
+               last_detected_at,
+               request_id,
+               trace_id,
+               anchor_id,
+               resolution_summary,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'order',
+               $2::text::uuid,
+               $2::text::uuid,
+               'fabric-local',
+               'fabric.commit_confirmed',
+               $3,
+               '0xaud018anchor',
+               'projection_lag',
+               'open',
+               now() - interval '2 minutes',
+               now() - interval '1 minute',
+               $4,
+               $5,
+               $6::text::uuid,
+               jsonb_build_object('seed', $7, 'summary', 'callback already confirmed but order monitor still open'),
+               jsonb_build_object('seed', $7, 'source', 'aud018-smoke')
+             )",
+            &[
+                &chain_projection_gap_id,
+                &seed.order_id,
+                &format!("expected-tx-aud018-{suffix}"),
+                &overview_request_id,
+                &trace_id,
+                &chain_anchor_id,
+                &suffix,
+            ],
+        )
+        .await
+        .expect("insert aud018 projection gap");
+
+    let overview_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/trade-monitor/orders/{}",
+                    seed.order_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &overview_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("aud018 overview request"),
+        )
+        .await
+        .expect("call aud018 overview");
+    let overview_status = overview_response.status();
+    let overview_body = to_bytes(overview_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud018 overview body");
+    assert_eq!(
+        overview_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&overview_body)
+    );
+    let overview_json: Value =
+        serde_json::from_slice(&overview_body).expect("decode aud018 overview body");
+    assert_eq!(
+        overview_json["data"]["order_id"].as_str(),
+        Some(seed.order_id.as_str())
+    );
+    assert_eq!(
+        overview_json["data"]["current_checkpoint_code"].as_str(),
+        Some("delivery_prepared")
+    );
+    assert_eq!(
+        overview_json["data"]["current_checkpoint_status"].as_str(),
+        Some("pending")
+    );
+    assert_eq!(
+        overview_json["data"]["proof_commit_state"].as_str(),
+        Some("anchored")
+    );
+    assert_eq!(
+        overview_json["data"]["external_fact_status"].as_str(),
+        Some("confirmed")
+    );
+    assert_eq!(
+        overview_json["data"]["open_fairness_incident_count"].as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        overview_json["data"]["recent_checkpoints"][0]["trade_lifecycle_checkpoint_id"].as_str(),
+        Some(checkpoint_delivery_id.as_str())
+    );
+    assert_eq!(
+        overview_json["data"]["recent_external_facts"][0]["external_fact_receipt_id"].as_str(),
+        Some(external_fact_receipt_id.as_str())
+    );
+    assert_eq!(
+        overview_json["data"]["recent_fairness_incidents"][0]["fairness_incident_id"].as_str(),
+        Some(fairness_incident_id.as_str())
+    );
+    assert_eq!(
+        overview_json["data"]["recent_projection_gaps"][0]["chain_projection_gap_id"].as_str(),
+        Some(chain_projection_gap_id.as_str())
+    );
+
+    let checkpoints_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/trade-monitor/orders/{}/checkpoints?checkpoint_status=pending&lifecycle_stage=delivery&page=1&page_size=10",
+                    seed.order_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &checkpoints_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("aud018 checkpoints request"),
+        )
+        .await
+        .expect("call aud018 checkpoints");
+    let checkpoints_status = checkpoints_response.status();
+    let checkpoints_body = to_bytes(checkpoints_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud018 checkpoints body");
+    assert_eq!(
+        checkpoints_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&checkpoints_body)
+    );
+    let checkpoints_json: Value =
+        serde_json::from_slice(&checkpoints_body).expect("decode aud018 checkpoints body");
+    assert_eq!(checkpoints_json["data"]["total"].as_i64(), Some(1));
+    assert_eq!(
+        checkpoints_json["data"]["items"][0]["checkpoint_code"].as_str(),
+        Some("delivery_prepared")
+    );
+    assert_eq!(
+        checkpoints_json["data"]["items"][0]["checkpoint_status"].as_str(),
+        Some("pending")
+    );
+
+    let tenant_overview_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/trade-monitor/orders/{}",
+                    seed.order_id
+                ))
+                .header("x-role", "tenant_admin")
+                .header("x-tenant-id", &seed.buyer_org_id)
+                .header("x-request-id", &tenant_overview_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("aud018 tenant overview request"),
+        )
+        .await
+        .expect("call aud018 tenant overview");
+    assert_eq!(tenant_overview_response.status(), StatusCode::OK);
+
+    let forbidden_overview_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/trade-monitor/orders/{}",
+                    seed.order_id
+                ))
+                .header("x-role", "tenant_admin")
+                .header("x-tenant-id", "10000000-0000-0000-0000-00000000f018")
+                .header("x-request-id", &forbidden_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("aud018 forbidden tenant overview request"),
+        )
+        .await
+        .expect("call aud018 forbidden tenant overview");
+    assert_eq!(forbidden_overview_response.status(), StatusCode::FORBIDDEN);
+
+    let access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND target_type = ANY($2::text[])
+               AND access_mode = 'masked'",
+            &[
+                &vec![
+                    overview_request_id.clone(),
+                    checkpoints_request_id.clone(),
+                    tenant_overview_request_id.clone(),
+                ],
+                &vec![
+                    "trade_monitor_query".to_string(),
+                    "trade_checkpoint_query".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud018 access audit")
+        .get(0);
+    assert_eq!(access_count, 3);
+
+    let log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = ANY($2::text[])",
+            &[
+                &vec![
+                    overview_request_id.clone(),
+                    checkpoints_request_id.clone(),
+                    tenant_overview_request_id.clone(),
+                ],
+                &vec![
+                    "ops lookup executed: GET /api/v1/ops/trade-monitor/orders/{orderId}"
+                        .to_string(),
+                    "ops lookup executed: GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints"
+                        .to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud018 system log")
+        .get(0);
+    assert_eq!(log_count, 3);
+
+    let _ = client
+        .execute(
+            "DELETE FROM ops.trade_lifecycle_checkpoint WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM risk.fairness_incident WHERE fairness_incident_id = $1::text::uuid",
+            &[&fairness_incident_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.chain_projection_gap WHERE chain_projection_gap_id = $1::text::uuid",
+            &[&chain_projection_gap_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.external_fact_receipt WHERE external_fact_receipt_id = $1::text::uuid",
+            &[&external_fact_receipt_id],
         )
         .await;
     let _ = client

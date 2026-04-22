@@ -11,8 +11,8 @@ pub use audit_kit::{
 use crate::modules::audit::dto::AuditTraceView;
 use crate::modules::audit::dto::{
     ChainProjectionGapView, ConsumerIdempotencyRecordView, DeadLetterEventView,
-    EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView, LegalHoldView,
-    OutboxEventView, ReplayJobView, ReplayResultView,
+    EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView, FairnessIncidentView,
+    LegalHoldView, OutboxEventView, ReplayJobView, ReplayResultView, TradeLifecycleCheckpointView,
 };
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -432,4 +432,54 @@ pub struct OpsConsistencyReconcileView {
     pub projection_gap_status_breakdown: serde_json::Value,
     pub related_projection_gaps: Vec<ChainProjectionGapView>,
     pub recommendations: Vec<OpsConsistencyRepairRecommendationView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct TradeMonitorCheckpointQuery {
+    pub checkpoint_code: Option<String>,
+    pub checkpoint_status: Option<String>,
+    pub lifecycle_stage: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl TradeMonitorCheckpointQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TradeMonitorOverviewView {
+    pub order_id: String,
+    pub request_id: String,
+    pub trace_id: String,
+    pub business_state: String,
+    pub current_checkpoint_code: String,
+    pub current_checkpoint_status: String,
+    pub proof_commit_state: String,
+    pub external_fact_status: String,
+    pub reconcile_status: String,
+    pub open_fairness_incident_count: i64,
+    pub last_external_fact_at: Option<String>,
+    pub last_chain_confirmed_at: Option<String>,
+    pub last_observed_at: String,
+    pub recent_checkpoints: Vec<TradeLifecycleCheckpointView>,
+    pub recent_external_facts: Vec<ExternalFactReceiptView>,
+    pub recent_fairness_incidents: Vec<FairnessIncidentView>,
+    pub recent_projection_gaps: Vec<ChainProjectionGapView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TradeMonitorCheckpointPageView {
+    pub order_id: String,
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<TradeLifecycleCheckpointView>,
 }

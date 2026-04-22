@@ -20,11 +20,12 @@ use crate::modules::audit::domain::{
     OpsConsistencyRepairRecommendationView, OpsConsistencyView, OpsDeadLetterPageView,
     OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
     OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
+    TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery, TradeMonitorOverviewView,
 };
 use crate::modules::audit::dto::{
     AnchorBatchView, ChainProjectionGapView, DeadLetterEventView, EvidenceManifestView,
-    EvidencePackageView, ExternalFactReceiptView, LegalHoldView, OutboxEventView, ReplayJobView,
-    ReplayResultView,
+    EvidencePackageView, ExternalFactReceiptView, FairnessIncidentView, LegalHoldView,
+    OutboxEventView, ReplayJobView, ReplayResultView, TradeLifecycleCheckpointView,
 };
 use crate::modules::audit::repo::{self, AccessAuditInsert, OrderAuditScope, SystemLogInsert};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
@@ -521,6 +522,277 @@ pub(in crate::modules::audit) async fn get_ops_consistency(
             .map(DeadLetterEventView::from)
             .collect(),
         recent_audit_traces,
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_trade_monitor_overview(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<TradeMonitorOverviewView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&order_id, "orderId", &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsTradeMonitorRead,
+        "ops trade monitor read",
+    )?;
+
+    let client = state_client(&state)?;
+    let scope = repo::load_order_audit_scope(&client, &order_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("trade monitor target not found: {order_id}"),
+            )
+        })?;
+    ensure_order_scope(&headers, &scope, &request_id, "ops trade monitor read")?;
+
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let observed_at = current_utc_timestamp(&client).await?;
+    let subject = repo::load_consistency_subject(&client, "order", order_id.as_str())
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("trade monitor consistency subject not found: {order_id}"),
+            )
+        })?;
+    let checkpoints = repo::search_trade_lifecycle_checkpoints_by_order(
+        &client,
+        order_id.as_str(),
+        &TradeMonitorCheckpointQuery::default(),
+        5,
+        0,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let current_checkpoint = checkpoints.items.first();
+    let recent_external_facts = repo::search_recent_external_fact_receipts_for_refs(
+        &client,
+        &["order".to_string()],
+        order_id.as_str(),
+        Some(order_id.as_str()),
+        5,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_fairness_incidents =
+        repo::search_recent_fairness_incidents_for_order(&client, order_id.as_str(), 5)
+            .await
+            .map_err(map_db_error)?;
+    let open_fairness_incident_count =
+        repo::count_open_fairness_incidents_for_order(&client, order_id.as_str())
+            .await
+            .map_err(map_db_error)?;
+    let recent_projection_gaps = repo::search_recent_chain_projection_gaps_for_aggregates(
+        &client,
+        &consistency_aggregate_type_candidates("order"),
+        order_id.as_str(),
+        Some(order_id.as_str()),
+        5,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_chain_anchors = repo::search_recent_chain_anchors_for_refs(
+        &client,
+        &["order".to_string()],
+        order_id.as_str(),
+        5,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    let last_external_fact_at = recent_external_facts.items.first().and_then(|receipt| {
+        receipt
+            .confirmed_at
+            .clone()
+            .or_else(|| receipt.received_at.clone())
+            .or_else(|| receipt.occurred_at.clone())
+    });
+    let last_chain_confirmed_at = recent_chain_anchors
+        .iter()
+        .find_map(confirmed_chain_anchor_time);
+    let last_observed_at = latest_timestamp(
+        checkpoints
+            .items
+            .iter()
+            .map(trade_checkpoint_observed_at)
+            .chain(
+                recent_external_facts
+                    .items
+                    .iter()
+                    .map(external_fact_observed_at),
+            )
+            .chain(
+                recent_fairness_incidents
+                    .items
+                    .iter()
+                    .map(fairness_incident_observed_at),
+            )
+            .chain(
+                recent_projection_gaps
+                    .items
+                    .iter()
+                    .map(chain_projection_gap_observed_at),
+            )
+            .chain(recent_chain_anchors.iter().map(confirmed_chain_anchor_time)),
+    )
+    .unwrap_or_else(|| observed_at.clone());
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "trade_monitor_query",
+        Some(order_id.clone()),
+        "GET /api/v1/ops/trade-monitor/orders/{orderId}",
+        json!({
+            "order_id": order_id,
+            "business_state": subject.business_status,
+            "current_checkpoint_code": current_checkpoint.map(|checkpoint| checkpoint.checkpoint_code.clone()),
+            "current_checkpoint_status": current_checkpoint.map(|checkpoint| checkpoint.checkpoint_status.clone()),
+            "recent_checkpoint_total": checkpoints.total,
+            "recent_external_fact_total": recent_external_facts.total,
+            "recent_fairness_incident_total": recent_fairness_incidents.total,
+            "recent_projection_gap_total": recent_projection_gaps.total,
+            "open_fairness_incident_count": open_fairness_incident_count,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(TradeMonitorOverviewView {
+        order_id: order_id.clone(),
+        request_id,
+        trace_id,
+        business_state: subject.business_status.clone(),
+        current_checkpoint_code: current_checkpoint
+            .map(|checkpoint| checkpoint.checkpoint_code.clone())
+            .unwrap_or_else(|| "not_started".to_string()),
+        current_checkpoint_status: current_checkpoint
+            .map(|checkpoint| checkpoint.checkpoint_status.clone())
+            .unwrap_or_else(|| "missing".to_string()),
+        proof_commit_state: subject.proof_commit_state,
+        external_fact_status: subject.external_fact_status,
+        reconcile_status: subject.reconcile_status,
+        open_fairness_incident_count,
+        last_external_fact_at,
+        last_chain_confirmed_at,
+        last_observed_at,
+        recent_checkpoints: checkpoints
+            .items
+            .iter()
+            .map(TradeLifecycleCheckpointView::from)
+            .collect(),
+        recent_external_facts: recent_external_facts
+            .items
+            .iter()
+            .map(ExternalFactReceiptView::from)
+            .collect(),
+        recent_fairness_incidents: recent_fairness_incidents
+            .items
+            .iter()
+            .map(FairnessIncidentView::from)
+            .collect(),
+        recent_projection_gaps: recent_projection_gaps
+            .items
+            .iter()
+            .map(ChainProjectionGapView::from)
+            .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_trade_monitor_checkpoints(
+    State(state): State<AppState>,
+    Path(order_id): Path<String>,
+    Query(query): Query<TradeMonitorCheckpointQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<TradeMonitorCheckpointPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&order_id, "orderId", &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsTradeMonitorRead,
+        "ops trade monitor read",
+    )?;
+
+    let normalized_query = TradeMonitorCheckpointQuery {
+        checkpoint_code: normalize_optional_filter(
+            query.checkpoint_code.as_deref(),
+            "checkpoint_code",
+            &request_id,
+        )?,
+        checkpoint_status: normalize_optional_filter(
+            query.checkpoint_status.as_deref(),
+            "checkpoint_status",
+            &request_id,
+        )?,
+        lifecycle_stage: normalize_optional_filter(
+            query.lifecycle_stage.as_deref(),
+            "lifecycle_stage",
+            &request_id,
+        )?,
+        from: normalize_optional_filter(query.from.as_deref(), "from", &request_id)?,
+        to: normalize_optional_filter(query.to.as_deref(), "to", &request_id)?,
+        page: query.page,
+        page_size: query.page_size,
+    };
+
+    let client = state_client(&state)?;
+    let scope = repo::load_order_audit_scope(&client, &order_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("trade monitor target not found: {order_id}"),
+            )
+        })?;
+    ensure_order_scope(&headers, &scope, &request_id, "ops trade monitor read")?;
+
+    let pagination = normalized_query.pagination();
+    let page = repo::search_trade_lifecycle_checkpoints_by_order(
+        &client,
+        order_id.as_str(),
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "trade_checkpoint_query",
+        Some(order_id.clone()),
+        "GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints",
+        json!({
+            "order_id": order_id,
+            "checkpoint_code": normalized_query.checkpoint_code,
+            "checkpoint_status": normalized_query.checkpoint_status,
+            "lifecycle_stage": normalized_query.lifecycle_stage,
+            "from": normalized_query.from,
+            "to": normalized_query.to,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(TradeMonitorCheckpointPageView {
+        order_id,
+        total: page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: page
+            .items
+            .iter()
+            .map(TradeLifecycleCheckpointView::from)
+            .collect(),
     }))
 }
 
@@ -2362,6 +2634,7 @@ struct ReplayReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AuditPermission {
     TraceRead,
+    OpsTradeMonitorRead,
     OpsOutboxRead,
     OpsDeadLetterRead,
     OpsConsistencyRead,
@@ -2394,6 +2667,17 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
                 | "data_custody_admin"
                 | "regulator_readonly"
                 | "regulator_observer"
+        ),
+        AuditPermission::OpsTradeMonitorRead => matches!(
+            role,
+            "tenant_admin"
+                | "tenant_audit_readonly"
+                | "platform_admin"
+                | "platform_audit_security"
+                | "platform_risk_settlement"
+                | "consistency_operator"
+                | "node_ops_admin"
+                | "audit_admin"
         ),
         AuditPermission::OpsOutboxRead => matches!(
             role,
@@ -4870,6 +5154,57 @@ fn count_open_projection_gaps(counts: Option<&serde_json::Map<String, Value>>) -
         .filter(|(status, _)| status.as_str() != "resolved")
         .filter_map(|(_, value)| value.as_i64())
         .sum()
+}
+
+fn trade_checkpoint_observed_at(
+    checkpoint: &repo::TradeLifecycleCheckpointRecord,
+) -> Option<String> {
+    checkpoint
+        .occurred_at
+        .clone()
+        .or_else(|| checkpoint.expected_by.clone())
+        .or_else(|| checkpoint.created_at.clone())
+}
+
+fn external_fact_observed_at(receipt: &repo::ExternalFactReceiptRecord) -> Option<String> {
+    receipt
+        .confirmed_at
+        .clone()
+        .or_else(|| receipt.received_at.clone())
+        .or_else(|| receipt.occurred_at.clone())
+}
+
+fn fairness_incident_observed_at(incident: &repo::FairnessIncidentRecord) -> Option<String> {
+    incident
+        .closed_at
+        .clone()
+        .or_else(|| incident.updated_at.clone())
+        .or_else(|| incident.created_at.clone())
+}
+
+fn chain_projection_gap_observed_at(gap: &repo::ChainProjectionGapRecord) -> Option<String> {
+    gap.resolved_at
+        .clone()
+        .or_else(|| gap.last_detected_at.clone())
+        .or_else(|| gap.created_at.clone())
+        .or_else(|| gap.first_detected_at.clone())
+}
+
+fn confirmed_chain_anchor_time(anchor: &repo::ChainAnchorRecord) -> Option<String> {
+    match anchor.status.as_str() {
+        "anchored" | "confirmed" | "committed" | "matched" => anchor
+            .anchored_at
+            .clone()
+            .or_else(|| anchor.created_at.clone()),
+        _ => None,
+    }
+}
+
+fn latest_timestamp<I>(timestamps: I) -> Option<String>
+where
+    I: IntoIterator<Item = Option<String>>,
+{
+    timestamps.into_iter().flatten().max()
 }
 
 fn build_consistency_reconcile_subject_snapshot(

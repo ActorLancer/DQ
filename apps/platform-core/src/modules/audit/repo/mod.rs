@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 
 use crate::modules::audit::domain::{
     AnchorBatchQuery, AuditTraceQuery, ChainProjectionGapQuery, ConsumerIdempotencyQuery,
-    ExternalFactReceiptQuery, OpsDeadLetterQuery, OpsOutboxQuery,
+    ExternalFactReceiptQuery, OpsDeadLetterQuery, OpsOutboxQuery, TradeMonitorCheckpointQuery,
 };
 use crate::modules::audit::dto::AuditTraceView;
 
@@ -756,6 +756,67 @@ pub struct ChainProjectionGapRecord {
 pub struct ChainProjectionGapPage {
     pub total: i64,
     pub items: Vec<ChainProjectionGapRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TradeLifecycleCheckpointRecord {
+    pub trade_lifecycle_checkpoint_id: Option<String>,
+    pub monitoring_policy_profile_id: Option<String>,
+    pub order_id: Option<String>,
+    pub ref_domain: String,
+    pub ref_type: String,
+    pub ref_id: String,
+    pub checkpoint_code: String,
+    pub lifecycle_stage: String,
+    pub checkpoint_status: String,
+    pub expected_by: Option<String>,
+    pub occurred_at: Option<String>,
+    pub source_type: String,
+    pub source_ref_type: Option<String>,
+    pub source_ref_id: Option<String>,
+    pub related_tx_hash: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub metadata: Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TradeLifecycleCheckpointPage {
+    pub total: i64,
+    pub items: Vec<TradeLifecycleCheckpointRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FairnessIncidentRecord {
+    pub fairness_incident_id: Option<String>,
+    pub order_id: Option<String>,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub incident_type: String,
+    pub severity: String,
+    pub lifecycle_stage: String,
+    pub detected_by_type: String,
+    pub source_checkpoint_id: Option<String>,
+    pub source_receipt_id: Option<String>,
+    pub fairness_incident_status: String,
+    pub auto_action_code: Option<String>,
+    pub assigned_role_key: Option<String>,
+    pub assigned_user_id: Option<String>,
+    pub resolution_summary: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub metadata: Value,
+    pub created_at: Option<String>,
+    pub closed_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FairnessIncidentPage {
+    pub total: i64,
+    pub items: Vec<FairnessIncidentRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1974,6 +2035,161 @@ pub async fn load_chain_projection_gap(
     Ok(row.map(|row| parse_chain_projection_gap_row(&row)))
 }
 
+pub async fn search_trade_lifecycle_checkpoints_by_order(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    query: &TradeMonitorCheckpointQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<TradeLifecycleCheckpointPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.trade_lifecycle_checkpoint tlc
+             WHERE tlc.order_id = $1::text::uuid
+               AND ($2::text IS NULL OR tlc.checkpoint_code = $2)
+               AND ($3::text IS NULL OR tlc.checkpoint_status = $3)
+               AND ($4::text IS NULL OR tlc.lifecycle_stage = $4)
+               AND ($5::text IS NULL OR COALESCE(tlc.occurred_at, tlc.expected_by, tlc.created_at) >= $5::timestamptz)
+               AND ($6::text IS NULL OR COALESCE(tlc.occurred_at, tlc.expected_by, tlc.created_at) <= $6::timestamptz)",
+            &[
+                &order_id,
+                &query.checkpoint_code,
+                &query.checkpoint_status,
+                &query.lifecycle_stage,
+                &query.from,
+                &query.to,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               trade_lifecycle_checkpoint_id::text,
+               monitoring_policy_profile_id::text,
+               order_id::text,
+               ref_domain,
+               ref_type,
+               ref_id::text,
+               checkpoint_code,
+               lifecycle_stage,
+               checkpoint_status,
+               to_char(expected_by AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               source_type,
+               source_ref_type,
+               source_ref_id::text,
+               related_tx_hash,
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.trade_lifecycle_checkpoint tlc
+             WHERE tlc.order_id = $1::text::uuid
+               AND ($2::text IS NULL OR tlc.checkpoint_code = $2)
+               AND ($3::text IS NULL OR tlc.checkpoint_status = $3)
+               AND ($4::text IS NULL OR tlc.lifecycle_stage = $4)
+               AND ($5::text IS NULL OR COALESCE(tlc.occurred_at, tlc.expected_by, tlc.created_at) >= $5::timestamptz)
+               AND ($6::text IS NULL OR COALESCE(tlc.occurred_at, tlc.expected_by, tlc.created_at) <= $6::timestamptz)
+             ORDER BY COALESCE(tlc.occurred_at, tlc.expected_by, tlc.created_at) DESC,
+                      tlc.created_at DESC,
+                      tlc.trade_lifecycle_checkpoint_id DESC
+             LIMIT $7
+             OFFSET $8",
+            &[
+                &order_id,
+                &query.checkpoint_code,
+                &query.checkpoint_status,
+                &query.lifecycle_stage,
+                &query.from,
+                &query.to,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(TradeLifecycleCheckpointPage {
+        total,
+        items: rows
+            .iter()
+            .map(parse_trade_lifecycle_checkpoint_row)
+            .collect(),
+    })
+}
+
+pub async fn search_recent_fairness_incidents_for_order(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+    limit: i64,
+) -> Result<FairnessIncidentPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM risk.fairness_incident fi
+             WHERE fi.order_id = $1::text::uuid",
+            &[&order_id],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               fairness_incident_id::text,
+               order_id::text,
+               ref_type,
+               ref_id::text,
+               incident_type,
+               severity,
+               lifecycle_stage,
+               detected_by_type,
+               source_checkpoint_id::text,
+               source_receipt_id::text,
+               status,
+               auto_action_code,
+               assigned_role_key,
+               assigned_user_id::text,
+               resolution_summary,
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM risk.fairness_incident fi
+             WHERE fi.order_id = $1::text::uuid
+             ORDER BY fi.created_at DESC, fi.fairness_incident_id DESC
+             LIMIT $2",
+            &[&order_id, &limit],
+        )
+        .await?;
+
+    Ok(FairnessIncidentPage {
+        total,
+        items: rows.iter().map(parse_fairness_incident_row).collect(),
+    })
+}
+
+pub async fn count_open_fairness_incidents_for_order(
+    client: &(impl GenericClient + Sync),
+    order_id: &str,
+) -> Result<i64, Error> {
+    client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM risk.fairness_incident fi
+             WHERE fi.order_id = $1::text::uuid
+               AND fi.status <> 'closed'",
+            &[&order_id],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
 pub async fn load_consistency_subject(
     client: &(impl GenericClient + Sync),
     ref_type: &str,
@@ -3007,6 +3223,57 @@ fn parse_chain_projection_gap_row(row: &Row) -> ChainProjectionGapRecord {
         resolution_summary: row.get(17),
         metadata: row.get(18),
         created_at: row.get(19),
+        updated_at: row.get(20),
+    }
+}
+
+fn parse_trade_lifecycle_checkpoint_row(row: &Row) -> TradeLifecycleCheckpointRecord {
+    TradeLifecycleCheckpointRecord {
+        trade_lifecycle_checkpoint_id: row.get(0),
+        monitoring_policy_profile_id: row.get(1),
+        order_id: row.get(2),
+        ref_domain: row.get(3),
+        ref_type: row.get(4),
+        ref_id: row.get(5),
+        checkpoint_code: row.get(6),
+        lifecycle_stage: row.get(7),
+        checkpoint_status: row.get(8),
+        expected_by: row.get(9),
+        occurred_at: row.get(10),
+        source_type: row.get(11),
+        source_ref_type: row.get(12),
+        source_ref_id: row.get(13),
+        related_tx_hash: row.get(14),
+        request_id: row.get(15),
+        trace_id: row.get(16),
+        metadata: row.get(17),
+        created_at: row.get(18),
+        updated_at: row.get(19),
+    }
+}
+
+fn parse_fairness_incident_row(row: &Row) -> FairnessIncidentRecord {
+    FairnessIncidentRecord {
+        fairness_incident_id: row.get(0),
+        order_id: row.get(1),
+        ref_type: row.get(2),
+        ref_id: row.get(3),
+        incident_type: row.get(4),
+        severity: row.get(5),
+        lifecycle_stage: row.get(6),
+        detected_by_type: row.get(7),
+        source_checkpoint_id: row.get(8),
+        source_receipt_id: row.get(9),
+        fairness_incident_status: row.get(10),
+        auto_action_code: row.get(11),
+        assigned_role_key: row.get(12),
+        assigned_user_id: row.get(13),
+        resolution_summary: row.get(14),
+        request_id: row.get(15),
+        trace_id: row.get(16),
+        metadata: row.get(17),
+        created_at: row.get(18),
+        closed_at: row.get(19),
         updated_at: row.get(20),
     }
 }

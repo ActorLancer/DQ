@@ -15,3 +15,4 @@
 - `audit-dead-letter-reprocess.md`：`AUD-010` SEARCHREC dead letter dry-run 重处理控制面的权限、step-up、DB / 审计回查与运行态边界。
 - `audit-consistency-lookup.md`：`AUD-011` 一致性联查接口的宿主机调用、正式 `refType`、DB / 审计回查与运行态边界。
 - `audit-consistency-reconcile.md`：`AUD-012` 一致性修复 dry-run 控制面的权限、step-up、`ops.chain_projection_gap` 预演建议、DB / 审计回查与“无执行副作用”边界。
+- `audit-trade-monitor.md`：`AUD-018` 交易链监控总览 / checkpoints 的宿主机调用、tenant+order scope、`trade_lifecycle_checkpoint / external_fact / fairness / projection_gap / chain_anchor` 回查与运行态边界。
