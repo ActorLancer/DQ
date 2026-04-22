@@ -1195,3 +1195,43 @@
   - 无。目录搜索接口当前仍同时覆盖正式鉴权、错误码、`staging/local` 候选召回分流、Redis 搜索缓存、PostgreSQL 最终放行与读审计，没有新增 `V1-gap`。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-273（计划中）
+- 任务：`SEARCHREC-005` 逐任务复核与正式重验（搜索排序基线）
+- 状态：计划中
+- 说明：按 `SEARCHREC-005` 的冻结口径，重新核对 `composite` 搜索排序是否仍是真实组合 `相关性 / 更新时间 / 热度 / 信誉` 的简单加权规则，并确认它在 `staging -> OpenSearch` 与 `local/demo -> PostgreSQL fallback` 两条候选链上口径一致；同时核查 `search.ranking_profile` 活跃权重、排序 patch 审计与缓存失效是否仍处于正式闭环，没有把推荐位、曝光点击或个性化重排混入搜索主排序。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-005`，不提前进入 `SEARCHREC-006`。
+### BATCH-273（待审批）
+- 任务：`SEARCHREC-005` 逐任务复核与正式重验（搜索排序基线）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-005`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-004` 已重验 `staging -> OpenSearch / local-demo -> PostgreSQL fallback / PostgreSQL final check` 搜索主链与目录搜索接口基线，本批在该基线上重新确认 `composite` 排序和 ranking profile 动态切换。
+- 复核结论：
+  - `SEARCHREC-005` 当前实现满足冻结口径，无需额外代码修订。`apps/platform-core/src/modules/search/repo/mod.rs` 仍从活跃 `search.ranking_profile` 读取正式权重，并把 `composite` 排序统一收口为 `lexical / freshness / reputation / trade-hotness` 的简单组合，对商品继续兼容 `quality` 与 completeness 信号，对 seller 保持较轻权重模型。
+  - `staging` 的 OpenSearch 查询仍通过 `script_score` 应用组合权重，`local/demo` 的 PostgreSQL fallback 查询仍通过同口径 SQL 分数与 `ORDER BY` 对齐；`latest / price / quality / reputation / hotness` 显式排序保持独立，没有把推荐逻辑塞进搜索主排序。
+  - `search_catalog_composite_ranking_db_smoke` 仍真实验证默认平衡权重下的排序结果、`PATCH /api/v1/ops/search/ranking-profiles/{id}` 后的 lexical-heavy 切换、`audit.audit_event + audit.access_audit + ops.system_log` 留痕，以及 ranking patch 触发的搜索缓存失效；`staging` 与 `local` 两条链路仍同步切换排序结果。
+- 验证：
+  - `cargo fmt --all`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_catalog_composite_ranking_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `search_catalog_composite_ranking_db_smoke` 通过，继续证明默认平衡 profile 下会优先 fresher/stronger 候选，ranking profile patch 后 `staging -> OpenSearch` 与 `local -> PostgreSQL fallback` 都切换到 lexical-heavy 结果，并保留审计与缓存失效回查。
+  - `search_api_and_ops_db_smoke` 与 `search_catalog_pg_fallback_db_smoke` 通过，证明搜索主链与 PG fallback 没有因排序逻辑重验而回退。
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 0 ignored`；本轮没有发现搜索排序、ranking profile 或目录搜索审计链回退。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过；本轮仅刷新离线 `.sqlx` 缓存，没有引入新的查询编译缺口。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-005`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`、`6. 搜索投影设计`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：`GET /api/v1/catalog/search` 与搜索排序语义
+  - `057_search_sync_architecture.sql`：`search.ranking_profile` 默认权重基线
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+- 覆盖的任务清单条目：`SEARCHREC-005`
+- 未覆盖项：
+  - 无。搜索排序基线当前仍保持简单组合排序、动态权重 patch、正式审计与缓存失效闭环，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
