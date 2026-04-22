@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-docker compose -f infra/fabric/docker-compose.fabric.local.yml down --remove-orphans >/dev/null 2>&1 || true
-docker rm -f datab-fabric-ca datab-fabric-orderer datab-fabric-peer >/dev/null 2>&1 || true
-docker compose -f infra/fabric/docker-compose.fabric.local.yml up -d
-echo "[done] fabric local network started"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${REPO_ROOT}/scripts/fabric-env.sh"
+
+"${REPO_ROOT}/infra/fabric/install-deps.sh"
+
+if [[ ! -d "${FABRIC_TEST_NETWORK_ROOT}" ]]; then
+  echo "fabric test-network root not found: ${FABRIC_TEST_NETWORK_ROOT}" >&2
+  exit 1
+fi
+
+pushd "${FABRIC_TEST_NETWORK_ROOT}" >/dev/null
+./network.sh down >/dev/null 2>&1 || true
+./network.sh up createChannel -ca -c "${FABRIC_CHANNEL_NAME}"
+popd >/dev/null
+
+"${REPO_ROOT}/infra/fabric/deploy-chaincode.sh"
+echo "[done] fabric local test-network started"

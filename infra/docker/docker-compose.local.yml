@@ -425,57 +425,6 @@ services:
       retries: 10
       start_period: 10s
 
-  # ENV-053 Fabric test-network block (local mock boundary)
-  # Runtime chain operations are orchestrated by ./infra/fabric/*.sh scripts.
-  fabric-ca:
-    <<: *service-defaults
-    profiles: ["fabric", "demo"]
-    image: hyperledger/fabric-ca:1.5.15
-    container_name: datab-fabric-ca
-    command: sh -c "mkdir -p /var/hyperledger/fabric-ca && echo 'fabric-ca local mock started' && tail -f /dev/null"
-    ports:
-      - "${FABRIC_CA_PORT:-7054}:7054"
-    volumes:
-      - ../fabric/state/ca:/var/hyperledger/fabric-ca
-    healthcheck:
-      test: ["CMD-SHELL", "test -d /var/hyperledger/fabric-ca"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  fabric-orderer:
-    <<: *service-defaults
-    profiles: ["fabric", "demo"]
-    image: hyperledger/fabric-orderer:2.5.10
-    container_name: datab-fabric-orderer
-    command: sh -c "mkdir -p /var/hyperledger/orderer && echo 'fabric-orderer local mock started' && tail -f /dev/null"
-    ports:
-      - "${FABRIC_ORDERER_PORT:-7050}:7050"
-    volumes:
-      - ../fabric/state/orderer:/var/hyperledger/orderer
-    healthcheck:
-      test: ["CMD-SHELL", "test -d /var/hyperledger/orderer"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  fabric-peer:
-    <<: *service-defaults
-    profiles: ["fabric", "demo"]
-    image: hyperledger/fabric-peer:2.5.10
-    container_name: datab-fabric-peer
-    command: sh -c "mkdir -p /var/hyperledger/peer && echo 'fabric-peer local mock started' && tail -f /dev/null"
-    ports:
-      - "${FABRIC_PEER_PORT:-7051}:7051"
-      - "${FABRIC_PEER_EVENT_PORT:-7053}:7053"
-    volumes:
-      - ../fabric/state/peer:/var/hyperledger/peer
-    healthcheck:
-      test: ["CMD-SHELL", "test -d /var/hyperledger/peer"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 networks:
   datab-local:
     driver: bridge

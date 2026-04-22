@@ -1145,3 +1145,78 @@
     2. 首次失败残留固定 `registry_name` 种子，重跑命中 `uq_fabric_ca_registry_name`；现已改为带纳秒后缀的唯一 seed / request id，避免重复重跑互相污染。
   - 本批业务测试数据已清理；`audit.audit_event / ops.system_log` 按 append-only 保留。
   - 本批未发现新的 `CSV / Markdown / technical_reference / IAM 权限模型 / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+### BATCH-230（计划中）
+- 任务：AUD-017 链写入 Provider 切换到 `mock / fabric-test-network`
+- 状态：计划中
+- 说明：按 `AUD-017` 冻结口径，把 `fabric-adapter` 的 Go 执行面从单一 `mock` provider 扩展为可在 local 模式下切换 `mock` 与 `fabric-test-network` 两种实现，并把仓库内目前仍是 placeholder 的 `infra/fabric/**` 本地链基线一并收口为可重复执行的 test-network bootstrap / channel / chaincode 部署脚本，统一把外部依赖下载到 `third_party/external-deps/`。本批坚持既定语言边界：Rust 继续只负责平台控制面与审计主体，所有 Fabric Gateway、链码提交、链码部署、网络初始化都由 Go 服务和仓库脚本承接。
+- 追溯：你已明确确认 `Go` 负责所有 Fabric 交互、链码和部署；本批据此推进 `AUD-017`，不再延续 placeholder Fabric 基线。
+### BATCH-230（待审批）
+- 任务：`AUD-017` 链写入 Provider 切换到 `mock / fabric-test-network`
+- 状态：待审批
+- 当前任务编号：`AUD-017`
+- 前置依赖核对结果：`CORE-007`、`CORE-008`、`DB-008`、`ENV-022` 已作为前序基线完成；`AUD-016` 已于本地提交 `1cd8353` 完成，当前批次可继续把 `fabric-adapter` 切到真实 `fabric-test-network` provider。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-017` DoD 为 local 模式可切换 `mock / fabric-test-network`，且至少一条集成测试或手工验证通过，并在审计/日志中留下痕迹。
+  - `docs/开发准备/技术选型正式版.md`、`docs/原始PRD/链上链下技术架构与能力边界稿.md`、`docs/领域模型/全量领域模型与对象关系说明.md`、`docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`：复核 `Go` 负责 Fabric Gateway / 链码 / 部署，Rust 只保留控制面与审计主体。
+  - `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/fabric-adapter.md`、`docs/04-runbooks/provider-switch.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/compose-boundary.md`：核对本地启动、provider 切换和 compose/Fabric 边界需要同步改成真实 `test-network` 口径。
+  - `infra/docker/docker-compose.local.yml`、`Makefile`、`scripts/check-fabric-local.sh`、`scripts/fabric-adapter-run.sh`、`infra/fabric/**`：确认仓库内仍存在 placeholder Fabric compose 与链码部署脚本，需要在本批收口为真实可执行基线。
+  - `services/fabric-adapter/**`：确认现有 provider 仅有 `mock`，尚未真实等待 `commit status`，不满足 `AUD` 阶段 Fabric 回执要求。
+- 实现要点：
+  - `infra/fabric/**`：
+    - 新增 `install-deps.sh`、`patch-samples.sh`、`deploy-chaincode.sh`、`query-anchor.sh`，统一把 Fabric 依赖下载到 `third_party/external-deps/fabric/`，并把官方 `fabric-samples` 默认 `latest/main` 漂移收口到 pinned `2.5.15 / 1.5.17`。
+    - 新增 Go 链码 `infra/fabric/chaincode/datab-audit-anchor/`，实现 `SubmitEvidenceBatchRoot / SubmitOrderDigest / SubmitAuthorizationDigest / SubmitAcceptanceDigest / GetAnchorByReference`。
+    - `fabric-up/down/reset/channel` 全部切到真实 `test-network` 与 Go 链码部署；删除 placeholder `infra/fabric/docker-compose.fabric.local.yml`。
+    - `Makefile` 与 `infra/docker/docker-compose.local.yml` 收口：Fabric 不再由本地 compose 承担 placeholder 容器，正式由 `infra/fabric/*.sh` 启停。
+  - `services/fabric-adapter/**`：
+    - 新增 `fabric_gateway` provider、provider factory 与配置项，支持 `FABRIC_ADAPTER_PROVIDER_MODE=mock|fabric-test-network`。
+    - 真实 `fabric-test-network` provider 使用 Go SDK 直连 Gateway，提交链码后显式等待 `commit status`，并把 `commit_status / commit_block / gateway_status=committed` 写入 receipt payload。
+    - 新增 `live_smoke_test.go`，真实完成 `Gateway -> chaincode -> PostgreSQL receipt/audit/system_log -> ledger query` 联查。
+  - 脚本与文档：
+    - 新增 `scripts/fabric-env.sh`、`scripts/fabric-adapter-live-smoke.sh`。
+    - 修复 `scripts/fabric-adapter-run.sh` 的环境变量覆盖顺序，允许外部显式切换 `FABRIC_ADAPTER_PROVIDER_MODE` 与 `TOPIC_*`。
+    - 更新 `docs/04-runbooks/fabric-local.md`、`fabric-adapter.md`、`provider-switch.md`、`local-startup.md`、`compose-boundary.md`、`scripts/README.md`、`services/README.md` 到真实 `test-network` 口径。
+    - 新增 `infra/fabric/state/.gitignore`，忽略运行时生成的 `runtime.env`。
+- 验证步骤：
+  1. `find services/fabric-adapter -name '*.go' -print0 | xargs -0 gofmt -w`
+  2. `find infra/fabric/chaincode/datab-audit-anchor -name '*.go' -print0 | xargs -0 gofmt -w`
+  3. `bash -n scripts/fabric-env.sh infra/fabric/install-deps.sh infra/fabric/patch-samples.sh infra/fabric/deploy-chaincode.sh infra/fabric/query-anchor.sh infra/fabric/fabric-up.sh infra/fabric/fabric-down.sh infra/fabric/fabric-reset.sh infra/fabric/fabric-channel.sh scripts/check-fabric-local.sh scripts/fabric-adapter-run.sh scripts/fabric-adapter-live-smoke.sh`
+  4. `source ./scripts/go-env.sh && cd services/fabric-adapter && go mod tidy && go test ./...`
+  5. `cd infra/fabric/chaincode/datab-audit-anchor && go mod tidy && go test ./...`
+  6. `./infra/fabric/install-deps.sh`
+  7. `./infra/fabric/fabric-up.sh`
+  8. `./scripts/check-fabric-local.sh`
+  9. `./scripts/fabric-adapter-live-smoke.sh`
+  10. `timeout 5 env FABRIC_ADAPTER_PROVIDER_MODE=fabric-test-network FABRIC_ADAPTER_CONSUMER_GROUP=cg-fabric-adapter-aud017-startup-check TOPIC_AUDIT_ANCHOR=dtp.audit.anchor.smoke.aud017 TOPIC_FABRIC_REQUESTS=dtp.fabric.requests.smoke.aud017 ./scripts/fabric-adapter-run.sh`
+  11. `cargo fmt --all`
+  12. `cargo check -p platform-core`
+  13. `cargo test -p platform-core`
+  14. `set -a && source infra/docker/.env.local && set +a && cargo sqlx prepare --workspace`
+  15. `./scripts/check-query-compile.sh`
+  16. `./scripts/check-topic-topology.sh`
+- 验证结果：
+  - Go 侧 `gofmt`、`go mod tidy`、`go test ./...` 全部通过；新增 live smoke 测试会在 `FABRIC_ADAPTER_LIVE_SMOKE=1` 时真实连 Fabric。
+  - `./infra/fabric/install-deps.sh` 通过，并把官方依赖下载到 `third_party/external-deps/fabric/`；补丁脚本已把样例网络的 `latest` 镜像标签收敛为 pinned `2.5.15 / 1.5.17`。
+  - `./infra/fabric/fabric-up.sh` 通过，真实启动 `ca_org1 / ca_org2 / ca_orderer / orderer.example.com / peer0.org1.example.com / peer0.org2.example.com`，创建 channel `datab-channel`，并成功部署 Go 链码 `datab-audit-anchor`。
+  - `./scripts/check-fabric-local.sh` 通过，确认 channel、链码版本/sequence 与 `Ping` 均正确。
+  - `./scripts/fabric-adapter-live-smoke.sh` 通过：真实提交 `audit.anchor_requested`，等待 `commit status=VALID`，并回查：
+    - `ops.external_fact_receipt.receipt_status=committed`
+    - `audit.audit_event.action_name=fabric.adapter.submit`
+    - `ops.system_log.message_text='fabric adapter accepted submit event'`
+    - `chain.chain_anchor.status=submitted` 且 `tx_hash=provider_reference`
+    - `./infra/fabric/query-anchor.sh anchor_batch <id> evidence_batch_root` 返回账本记录，`transaction_id` 与 `provider_reference` 一致。
+  - `timeout ... ./scripts/fabric-adapter-run.sh` 通过启动检查：日志已显示 `provider_mode=fabric-test-network` 且 `audit_anchor_topic / fabric_requests_topic` 可由外部环境覆盖。
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-topic-topology.sh` 全部通过；Rust 侧仅剩仓库既存 `unused_*` warning。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-017`
+  - `技术选型正式版.md`：Go 负责 Fabric 执行面
+  - `链上链下技术架构与能力边界稿.md`：Rust 控制面 + Go Fabric 执行面分层
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：Fabric 适配器/本地运行契约必须落成正式脚本与 runbook
+- 覆盖的任务清单条目：`AUD-017`
+- 未覆盖项：
+  - `projection-gaps` 公共控制面仍留待 `AUD-021`
+  - `fabric-event-listener` 的真实 chaincode event callback 全闭环与 consumer 幂等/DLQ/reprocess 统一矩阵仍留待后续 `AUD` 批次
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛为仅继续跟踪 `AUD-021 projection-gaps`。
+- 备注：
+  - 本批中途发现官方 `fabric-samples` 默认拉取 `main/latest`，会把 peer 拉到 `3.1.4` 并导致 Go 链码安装口径漂移；当前已通过仓库脚本固定到 pinned `2.5.15 / 1.5.17`，不再依赖机器偶然状态。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / topics / route-policy / Fabric 组件边界 / Go-Rust 分层` 冲突，不触发暂停条件。

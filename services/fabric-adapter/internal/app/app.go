@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"log/slog"
 
 	adapterconfig "datab.local/fabric-adapter/internal/config"
@@ -18,7 +19,13 @@ func Run(ctx context.Context, cfg adapterconfig.Config, logger *slog.Logger) err
 	}
 	defer persist.Close()
 
-	submitter := provider.NewMock(cfg.ChannelName, cfg.ChaincodeName)
+	submitter, err := provider.NewSubmissionProvider(cfg)
+	if err != nil {
+		return err
+	}
+	if closer, ok := submitter.(io.Closer); ok {
+		defer closer.Close()
+	}
 	processor := service.NewProcessor(cfg.ServiceName, persist, submitter, logger)
 	consumer := adapterkafka.NewConsumer(cfg, processor.ProcessMessage, logger)
 
@@ -29,6 +36,7 @@ func Run(ctx context.Context, cfg adapterconfig.Config, logger *slog.Logger) err
 		"consumer_group", cfg.ConsumerGroup,
 		"audit_anchor_topic", cfg.AuditAnchorTopic,
 		"fabric_requests_topic", cfg.FabricRequestsTopic,
+		"provider_mode", cfg.ProviderMode,
 		"chaincode_name", cfg.ChaincodeName,
 		"channel_name", cfg.ChannelName,
 		"gateway_endpoint", cfg.GatewayEndpoint,

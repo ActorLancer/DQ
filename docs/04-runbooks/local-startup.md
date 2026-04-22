@@ -54,6 +54,8 @@
    `SeaORM` 负责标准 CRUD、稳定读模型和固定关系加载
 21. 按需叠加观测栈：`make up-observability`
 22. 按需叠加 Fabric：`make up-fabric`
+   - 该命令会先启动 `core` 基础设施，再运行 `infra/fabric/fabric-up.sh`
+   - Fabric 不再依赖本地 compose 内 placeholder 容器
 23. 一键演示模式（全量）：`make up-demo`
 24. 支付/回执联调模式（`local` 子场景，非正式新 mode）：`make up-mocks`
    - 启动后可执行：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh mocks`
@@ -62,20 +64,21 @@
 
 25. 验证 Keycloak realm：`./scripts/check-keycloak-realm.sh`
 26. 启动 Fabric 本地链（按需）：`make fabric-up`
-27. 生成本地通道与链码占位工件：`make fabric-channel && ./infra/fabric/deploy-chaincode-placeholder.sh`
+27. 生成本地通道并部署真实 Go 链码：`make fabric-channel`
 28. Fabric 自检：`./scripts/check-fabric-local.sh`
-29. OTel Collector 自检：`./scripts/check-otel-collector.sh`
-30. 观测栈自检（仅 `make up-observability` 或 `make up-demo` 后执行）：`./scripts/check-observability-stack.sh`
-31. 执行回执模拟（Mock Payment）：
+29. Fabric adapter 实链 smoke：`./scripts/fabric-adapter-live-smoke.sh`
+30. OTel Collector 自检：`./scripts/check-otel-collector.sh`
+31. 观测栈自检（仅 `make up-observability` 或 `make up-demo` 后执行）：`./scripts/check-observability-stack.sh`
+32. 执行回执模拟（Mock Payment）：
    - 前置条件：已执行 `make up-mocks` 或 `make up-demo`
    - 检查命令：`./scripts/check-mock-payment.sh`
-32. 全量健康检查（仅 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
+33. 全量健康检查（仅 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
     - 该检查包含端口与 HTTP 存活探测，以及命令级探测：`psql`、`redis-cli`、`kcat`（容器无 `kcat` 时优先临时 `kcat` 容器探测，再回退 `kafka-topics.sh`）、`mc`、`curl`。
 
 ## 阶段 6：配置快照与 Smoke
 
-33. 导出当前本地配置快照：`./scripts/export-local-config.sh`
-34. 运行本地 smoke 套件（建议在 `make up-demo` 后执行；若不用 `demo`，至少需要 `core + observability + mocks` 组合）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+34. 导出当前本地配置快照：`./scripts/export-local-config.sh`
+35. 运行本地 smoke 套件（建议在 `make up-demo` 后执行；若不用 `demo`，至少需要 `core + observability + mocks` 组合）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
     - 该 smoke 会按 `infra/kafka/topics.v1.json` 检查 canonical topics 是否真实存在，防止 auto-create 掩盖 topic 漂移。
 
 ## 迁移兼容说明（ENV-001 / ENV-057）

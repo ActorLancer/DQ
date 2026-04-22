@@ -1,4 +1,4 @@
-# Fabric Adapter（AUD-013 / AUD-014）
+# Fabric Adapter（AUD-013 / AUD-014 / AUD-017）
 
 `AUD-013` 起，`services/fabric-adapter/` 作为正式 Go 进程落地，负责消费：
 
@@ -16,8 +16,10 @@
 
 - `AUD-013` 已落地 Go module、Kafka consumer、canonical envelope 解析、mock provider、PostgreSQL 回执写回
 - `AUD-014` 已在 Go 侧补齐四类正式消息处理占位：`evidence_batch_root / order_summary / authorization_summary / acceptance_summary`
-- 当前 provider 仍是 `mock`
-- `fabric-test-network / Gateway / chaincode / listener / CA admin` 留待 `AUD-015~AUD-017`
+- `AUD-017` 起 provider 正式支持：
+  - `mock`
+  - `fabric-test-network`
+- `fabric-test-network` 模式下，adapter 通过 Go SDK 直连 Fabric Gateway，并显式等待 `commit status`
 - 当前不消费 `dtp.outbox.domain-events`
 
 ## 命令入口
@@ -26,6 +28,7 @@
 make fabric-adapter-bootstrap
 make fabric-adapter-test
 make fabric-adapter-run
+./scripts/fabric-adapter-live-smoke.sh
 ```
 
 等价脚本：
@@ -53,14 +56,30 @@ third_party/external-deps/go
 - `TOPIC_AUDIT_ANCHOR`
 - `TOPIC_FABRIC_REQUESTS`
 - `FABRIC_ADAPTER_CONSUMER_GROUP`
+- `FABRIC_ADAPTER_PROVIDER_MODE`
 - `FABRIC_CHANNEL_NAME`
 - `FABRIC_CHAINCODE_NAME`
+- `FABRIC_GATEWAY_ENDPOINT`
+- `FABRIC_GATEWAY_PEER`
+- `FABRIC_MSP_ID`
+- `FABRIC_TLS_CERT_PATH`
+- `FABRIC_SIGN_CERT_PATH`
+- `FABRIC_PRIVATE_KEY_DIR / FABRIC_PRIVATE_KEY_PATH`
 
 当前本地默认值：
 
 - Kafka：`127.0.0.1:9094`
 - PostgreSQL：`postgres://datab:datab_local_pass@127.0.0.1:5432/datab`
 - consumer group：`cg-fabric-adapter`
+- provider mode：`mock`
+
+如需切到真实链：
+
+```bash
+FABRIC_ADAPTER_PROVIDER_MODE=fabric-test-network ./scripts/fabric-adapter-run.sh
+```
+
+`scripts/fabric-adapter-run.sh` 现在会保留外部传入的 `FABRIC_ADAPTER_PROVIDER_MODE / TOPIC_* / DATABASE_URL / KAFKA_BROKERS / Gateway` 覆盖，不再被 `.env.local` 反向覆盖。
 
 ## 消息处理占位（AUD-014）
 
@@ -80,7 +99,36 @@ third_party/external-deps/go
 
 如果 `summary_type` 缺失或不是上述三种之一，Go handler 会直接拒绝消费，不会伪造默认摘要类型。
 
-## 手工 Smoke
+## 真实 Smoke
+
+优先使用仓库内脚本：
+
+```bash
+./scripts/fabric-adapter-live-smoke.sh
+```
+
+该 smoke 会：
+
+1. 生成一组新的 `anchor_batch_id / chain_anchor_id / request_id / trace_id`
+2. 向 PostgreSQL 写入最小 `chain.chain_anchor + audit.anchor_batch`
+3. 通过真实 `fabric-test-network` provider 提交 `SubmitEvidenceBatchRoot`
+4. 等待 `commit status`
+5. 回查：
+   - `ops.external_fact_receipt`
+   - `audit.audit_event`
+   - `ops.system_log`
+   - `chain.chain_anchor`
+   - `./infra/fabric/query-anchor.sh`
+
+预期口径：
+
+- `receipt_status = committed`
+- `gateway_status = committed`
+- `commit_status = VALID`
+- `chain.chain_anchor.status = submitted`
+- `chain.chain_anchor.tx_hash = provider_reference`
+
+## 旧手工 Smoke（历史 backlog 验证）
 
 1. 启动适配器：
 

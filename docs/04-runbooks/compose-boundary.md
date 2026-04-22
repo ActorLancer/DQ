@@ -24,17 +24,21 @@
 - `loki`
 - `tempo`
 - `mock-payment-provider`
-- `fabric-ca`
-- `fabric-orderer`
-- `fabric-peer`
+
+Fabric test-network 不再由 `infra/docker/docker-compose.local.yml` 承载；正式入口改为：
+
+- `infra/fabric/install-deps.sh`
+- `infra/fabric/patch-samples.sh`
+- `infra/fabric/fabric-up.sh`
+- `infra/fabric/fabric-down.sh`
+- `infra/fabric/deploy-chaincode.sh`
 
 ## Profile 约束
 
 - `core`：`postgres/redis/kafka/minio/opensearch/keycloak/otel-collector`
 - `kafka-topics-init` 作为 compose 内定义的一次性 init service，由 `scripts/up-local.sh` 在 `core/demo` 启动后显式调用，不属于业务常驻进程。
 - `observability`：`prometheus/alertmanager/*-exporter/grafana/loki/tempo`
-- `fabric`：`fabric-ca/fabric-orderer/fabric-peer`
-- `demo`：全量联调集合（覆盖 core + observability + fabric + mock-payment）
+- `demo`：全量联调集合（覆盖 core + observability + mock-payment）
 - `mocks`：`local` 下的可选联调子 profile，仅承载 `mock-payment-provider`
 
 ## 端口矩阵（主入口）
@@ -43,7 +47,7 @@
 
 - Core：`5432/6379/9094/9000/9200/8081/4317/4318`
 - Observability：`9090/9093/3000/3100/3200`
-- Fabric：`7054/7050/7051/7053`
+- Fabric：由 `infra/fabric/*.sh` 启动的 test-network 占用 `7054/8054/9054/7050/7051/9051/7053`
 - Mock Payment：`8089`
 
 ## 不纳入 compose 的业务进程

@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-docker compose -f infra/fabric/docker-compose.fabric.local.yml down --remove-orphans
-docker rm -f datab-fabric-ca datab-fabric-orderer datab-fabric-peer >/dev/null 2>&1 || true
-echo "[done] fabric local network stopped"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${REPO_ROOT}/scripts/fabric-env.sh"
+
+if [[ -d "${FABRIC_TEST_NETWORK_ROOT}" ]]; then
+  pushd "${FABRIC_TEST_NETWORK_ROOT}" >/dev/null
+  ./network.sh down
+  popd >/dev/null
+fi
+
+rm -f "${FABRIC_STATE_DIR}/runtime.env"
+echo "[done] fabric local test-network stopped"

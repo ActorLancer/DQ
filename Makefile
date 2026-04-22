@@ -17,13 +17,16 @@ up-mocks:
 	COMPOSE_PROFILES="core,mocks" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
 
 up-fabric:
-	COMPOSE_PROFILES="core,fabric" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+	COMPOSE_PROFILES="core" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+	./infra/fabric/fabric-up.sh
 
 up-demo:
-	COMPOSE_PROFILES="demo" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+	COMPOSE_PROFILES="core,observability,mocks" COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/up-local.sh
+	./infra/fabric/fabric-up.sh
 
 down-local:
 	COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/down-local.sh
+	./infra/fabric/fabric-down.sh
 
 logs:
 	docker compose --env-file "$(COMPOSE_ENV_FILE)" -f "$(COMPOSE_FILE)" logs -f
