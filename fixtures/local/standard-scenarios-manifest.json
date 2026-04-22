@@ -5,6 +5,7 @@
     {
       "scenario_id": "S1",
       "name": "工业设备运行指标 API 订阅",
+      "recommended_placement_code": "home_featured",
       "primary_sku_type": "API_SUB",
       "optional_sku_types": [
         "API_PPU"
@@ -15,6 +16,7 @@
     {
       "scenario_id": "S2",
       "name": "工业质量与产线日报文件包交付",
+      "recommended_placement_code": "home_featured",
       "primary_sku_type": "FILE_STD",
       "optional_sku_types": [
         "FILE_SUB"
@@ -25,6 +27,7 @@
     {
       "scenario_id": "S3",
       "name": "供应链协同查询沙箱",
+      "recommended_placement_code": "home_featured",
       "primary_sku_type": "SBX_STD",
       "optional_sku_types": [
         "SHARE_RO"
@@ -35,6 +38,7 @@
     {
       "scenario_id": "S4",
       "name": "零售门店经营分析 API / 报告订阅",
+      "recommended_placement_code": "home_featured",
       "primary_sku_type": "API_SUB",
       "optional_sku_types": [
         "RPT_STD"
@@ -45,6 +49,7 @@
     {
       "scenario_id": "S5",
       "name": "商圈/门店选址查询服务",
+      "recommended_placement_code": "home_featured",
       "primary_sku_type": "QRY_LITE",
       "optional_sku_types": [
         "RPT_STD"

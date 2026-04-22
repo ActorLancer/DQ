@@ -114,6 +114,14 @@ struct ContextEntity {
 }
 
 #[derive(Debug, Clone)]
+struct PlacementFixedSample {
+    sample_order: usize,
+    entity_scope: String,
+    entity_id: String,
+    scenario_code: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 struct SubjectProfile {
     preferred_categories: Vec<String>,
     preferred_tags: Vec<String>,
@@ -526,7 +534,9 @@ pub async fn patch_placement(
                  filter_policy_json = COALESCE($3::jsonb, filter_policy_json),
                  default_ranking_profile_key = COALESCE($4::text, default_ranking_profile_key),
                  status = COALESCE($5::text, status),
-                 metadata = COALESCE($6::jsonb, metadata) || jsonb_build_object(
+                 metadata = COALESCE(metadata, '{}'::jsonb)
+                   || COALESCE($6::jsonb, '{}'::jsonb)
+                   || jsonb_build_object(
                    'last_request_id', $7::text,
                    'last_trace_id', $8::text,
                    'last_actor_role', $9::text
@@ -640,7 +650,9 @@ pub async fn patch_ranking_profile(
                  exploration_policy_json = COALESCE($4::jsonb, exploration_policy_json),
                  explain_codes = COALESCE($5::text[], explain_codes),
                  status = COALESCE($6::text, status),
-                 metadata = COALESCE($7::jsonb, metadata) || jsonb_build_object(
+                 metadata = COALESCE(metadata, '{}'::jsonb)
+                   || COALESCE($7::jsonb, '{}'::jsonb)
+                   || jsonb_build_object(
                    'last_request_id', $8::text,
                    'last_trace_id', $9::text,
                    'last_actor_role', $10::text
@@ -883,6 +895,8 @@ async fn generate_candidate_snapshot(
     let mut merged: HashMap<String, RecallCandidate> = HashMap::new();
     let fetch_limit = (limit.max(6) * 4) as usize;
 
+    merge_recall_candidates(&mut merged, fixed_sample_candidates(placement));
+
     for recall_source in recall_sources {
         let candidates = match recall_source.as_str() {
             "popular" => recall_popular(placement, fetch_limit).await?,
@@ -1000,6 +1014,71 @@ fn candidate_backend_for_runtime(runtime_mode: &RuntimeMode) -> CandidateBackend
     }
 }
 
+fn fixed_sample_candidates(placement: &PlacementDefinition) -> Vec<RecallCandidate> {
+    parse_fixed_samples(&placement.metadata)
+        .into_iter()
+        .filter(|sample| placement_allows_scope(placement, &sample.entity_scope))
+        .map(|sample| {
+            let mut candidate = recall_candidate(
+                sample.entity_scope,
+                sample.entity_id,
+                100.0 - sample.sample_order as f64,
+                "placement_sample",
+            );
+            candidate
+                .explanation_codes
+                .insert("placement:fixed_sample".to_string());
+            if let Some(scenario_code) = sample.scenario_code {
+                candidate
+                    .explanation_codes
+                    .insert(format!("scenario:{scenario_code}"));
+            }
+            candidate
+        })
+        .collect()
+}
+
+fn parse_fixed_samples(metadata: &Value) -> Vec<PlacementFixedSample> {
+    let mut samples = metadata
+        .get("fixed_samples")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .enumerate()
+                .filter_map(|(index, item)| {
+                    let entity_scope = item.get("entity_scope")?.as_str()?.trim();
+                    let entity_id = item.get("entity_id")?.as_str()?.trim();
+                    if entity_scope.is_empty()
+                        || entity_id.is_empty()
+                        || !matches!(entity_scope, "product" | "seller")
+                        || Uuid::parse_str(entity_id).is_err()
+                    {
+                        return None;
+                    }
+                    Some(PlacementFixedSample {
+                        sample_order: item
+                            .get("sample_order")
+                            .and_then(Value::as_u64)
+                            .map(|value| value as usize)
+                            .unwrap_or(index),
+                        entity_scope: entity_scope.to_string(),
+                        entity_id: entity_id.to_string(),
+                        scenario_code: item
+                            .get("scenario_code")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(ToString::to_string),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    samples.sort_by_key(|sample| sample.sample_order);
+    samples
+}
+
 async fn generate_local_candidate_snapshot(
     client: &(impl GenericClient + Sync),
     query: &RecommendationQuery,
@@ -1010,6 +1089,8 @@ async fn generate_local_candidate_snapshot(
     let context = load_context_entity(client, query).await?;
     let mut merged: HashMap<String, RecallCandidate> = HashMap::new();
     let fetch_limit = (limit.max(6) * 4) as usize;
+
+    merge_recall_candidates(&mut merged, fixed_sample_candidates(placement));
 
     if let Some(context) = context.as_ref() {
         merge_recall_candidates(
@@ -1058,6 +1139,7 @@ async fn generate_local_zero_result_snapshot(
     let fetch_limit = (limit.max(6) * 4) as usize;
     let mut merged = HashMap::new();
 
+    merge_recall_candidates(&mut merged, fixed_sample_candidates(placement));
     merge_recall_candidates(
         &mut merged,
         recall_zero_result_projection(client, placement, context.as_ref(), fetch_limit).await?,

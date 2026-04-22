@@ -54,6 +54,24 @@ struct SeedIds {
     operator_user_id: String,
 }
 
+#[derive(Debug)]
+struct StandardScenarioSample {
+    scenario_code: String,
+    scenario_name: String,
+    product_id: String,
+}
+
+#[derive(Debug)]
+struct PlacementConfigSnapshot {
+    default_ranking_profile_key: Option<String>,
+    metadata: Value,
+}
+
+#[derive(Debug)]
+struct RankingProfileMetadataSnapshot {
+    metadata: Value,
+}
+
 async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedIds, Error> {
     let org = client
         .query_one(
@@ -201,6 +219,112 @@ async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedIds, Error> {
         product_ids,
         operator_user_id,
     })
+}
+
+async fn load_standard_scenario_samples(
+    client: &Client,
+) -> Result<Vec<StandardScenarioSample>, String> {
+    let rows = client
+        .query(
+            "SELECT
+               metadata ->> 'scenario_code',
+               scenario_name,
+               metadata ->> 'primary_product_id'
+             FROM developer.test_application
+             WHERE metadata ->> 'seed' = 'db035'
+               AND metadata ->> 'recommended_placement_code' = 'home_featured'
+             ORDER BY metadata ->> 'scenario_code'",
+            &[],
+        )
+        .await
+        .map_err(|err| format!("load standard scenario homepage samples failed: {err}"))?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let product_id: Option<String> = row.get(2);
+            product_id.map(|product_id| StandardScenarioSample {
+                scenario_code: row.get(0),
+                scenario_name: row.get(1),
+                product_id,
+            })
+        })
+        .collect())
+}
+
+async fn load_placement_config_snapshot(
+    client: &Client,
+    placement_code: &str,
+) -> Result<PlacementConfigSnapshot, Error> {
+    let row = client
+        .query_one(
+            "SELECT
+               default_ranking_profile_key,
+               metadata
+             FROM recommend.placement_definition
+             WHERE placement_code = $1",
+            &[&placement_code],
+        )
+        .await?;
+    Ok(PlacementConfigSnapshot {
+        default_ranking_profile_key: row.get(0),
+        metadata: row.get(1),
+    })
+}
+
+async fn restore_placement_config_snapshot(
+    client: &Client,
+    placement_code: &str,
+    snapshot: &PlacementConfigSnapshot,
+) -> Result<(), Error> {
+    client
+        .execute(
+            "UPDATE recommend.placement_definition
+             SET default_ranking_profile_key = $2,
+                 metadata = $3::jsonb,
+                 updated_at = now()
+             WHERE placement_code = $1",
+            &[
+                &placement_code,
+                &snapshot.default_ranking_profile_key,
+                &snapshot.metadata,
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
+async fn load_ranking_profile_metadata_snapshot(
+    client: &Client,
+    profile_id: &str,
+) -> Result<RankingProfileMetadataSnapshot, Error> {
+    let row = client
+        .query_one(
+            "SELECT metadata
+             FROM recommend.ranking_profile
+             WHERE recommendation_ranking_profile_id = $1::text::uuid",
+            &[&profile_id],
+        )
+        .await?;
+    Ok(RankingProfileMetadataSnapshot {
+        metadata: row.get(0),
+    })
+}
+
+async fn restore_ranking_profile_metadata_snapshot(
+    client: &Client,
+    profile_id: &str,
+    snapshot: &RankingProfileMetadataSnapshot,
+) -> Result<(), Error> {
+    client
+        .execute(
+            "UPDATE recommend.ranking_profile
+             SET metadata = $2::jsonb,
+                 updated_at = now()
+             WHERE recommendation_ranking_profile_id = $1::text::uuid",
+            &[&profile_id, &snapshot.metadata],
+        )
+        .await?;
+    Ok(())
 }
 
 async fn seed_operator_user(client: &Client, org_id: &str, suffix: &str) -> Result<String, Error> {
@@ -1111,6 +1235,13 @@ async fn recommendation_api_full_runtime_db_smoke() {
     let ranking_profile_key = ranking_profiles_json["data"][0]["profile_key"]
         .as_str()
         .expect("ranking profile key");
+    let placement_snapshot = load_placement_config_snapshot(&client, "home_featured")
+        .await
+        .expect("load placement snapshot");
+    let ranking_profile_snapshot =
+        load_ranking_profile_metadata_snapshot(&client, ranking_profile_id)
+            .await
+            .expect("load ranking profile snapshot");
 
     seed_redis_value(&placement_cache_key, "{\"seed\":true}", 300)
         .await
@@ -1166,6 +1297,18 @@ async fn recommendation_api_full_runtime_db_smoke() {
         Some(suffix.as_str())
     );
     assert_eq!(
+        patch_placement_json["data"]["metadata"]["fixed_sample_set"].as_str(),
+        placement_snapshot.metadata["fixed_sample_set"].as_str()
+    );
+    assert_eq!(
+        patch_placement_json["data"]["metadata"]["fixed_samples"]
+            .as_array()
+            .map(|items| items.len()),
+        placement_snapshot.metadata["fixed_samples"]
+            .as_array()
+            .map(|items| items.len())
+    );
+    assert_eq!(
         patch_placement_json["data"]["default_ranking_profile_key"].as_str(),
         Some(ranking_profile_key)
     );
@@ -1187,6 +1330,10 @@ async fn recommendation_api_full_runtime_db_smoke() {
     assert_eq!(
         placement_row.get::<_, Option<String>>(1).as_deref(),
         Some(suffix.as_str())
+    );
+    assert_eq!(
+        placement_snapshot.metadata["fixed_sample_set"].as_str(),
+        Some("five_standard_scenarios_v1")
     );
     assert_eq!(
         count_access_audit(
@@ -1679,6 +1826,16 @@ async fn recommendation_api_full_runtime_db_smoke() {
         Some(click_idempotency_key.as_str())
     );
 
+    restore_ranking_profile_metadata_snapshot(
+        &client,
+        ranking_profile_id,
+        &ranking_profile_snapshot,
+    )
+    .await
+    .expect("restore ranking profile snapshot");
+    restore_placement_config_snapshot(&client, "home_featured", &placement_snapshot)
+        .await
+        .expect("restore placement snapshot");
     cleanup_opensearch_documents(&ids).await;
     cleanup_graph(&client, &ids).await;
 }
@@ -2135,4 +2292,155 @@ async fn recommendation_local_minimal_candidate_db_smoke() {
     if let Err(message) = outcome {
         panic!("{message}");
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn recommendation_home_featured_standard_scenarios_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let _env_lock = RECOMMEND_ENV_TEST_LOCK.lock().expect("lock recommend env");
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "staging");
+    crate::modules::recommendation::repo::invalidate_placement_runtime_cache("home_featured")
+        .await
+        .expect("invalidate home_featured runtime cache");
+
+    let placement_row = client
+        .query_one(
+            "SELECT
+               metadata ->> 'fixed_sample_set',
+               jsonb_array_length(metadata -> 'fixed_samples')
+             FROM recommend.placement_definition
+             WHERE placement_code = 'home_featured'",
+            &[],
+        )
+        .await
+        .expect("load home_featured fixed sample metadata");
+    assert_eq!(
+        placement_row.get::<_, Option<String>>(0).as_deref(),
+        Some("five_standard_scenarios_v1")
+    );
+    assert_eq!(placement_row.get::<_, i32>(1), 5);
+
+    let samples = load_standard_scenario_samples(&client)
+        .await
+        .expect("load standard scenario samples");
+    assert_eq!(samples.len(), 5);
+
+    let app = crate::with_live_test_state(router()).await;
+    let buyer_auth = authorization_header(
+        "10000000-0000-0000-0000-000000000302",
+        "10000000-0000-0000-0000-000000000102",
+        &["buyer_operator"],
+    );
+    let request_id = format!(
+        "req-recommend-home-standard-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id=10000000-0000-0000-0000-000000000102&limit=5")
+                .header("authorization", &buyer_auth)
+                .header("x-request-id", &request_id)
+                .body(Body::empty())
+                .expect("build standard scenario recommendation request"),
+        )
+        .await
+        .expect("call standard scenario recommendation endpoint");
+    let status = response.status();
+    let json = response_json(response)
+        .await
+        .expect("decode standard scenario response");
+    assert_eq!(status, StatusCode::OK, "{json}");
+
+    let items = json["data"]["items"]
+        .as_array()
+        .expect("home_featured items");
+    assert_eq!(items.len(), 5, "{json}");
+
+    let actual_titles = items
+        .iter()
+        .map(|item| item["title"].as_str().unwrap_or_default().to_string())
+        .collect::<Vec<_>>();
+    let expected_titles = samples
+        .iter()
+        .map(|sample| sample.scenario_name.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(actual_titles, expected_titles, "{json}");
+
+    for (item, sample) in items.iter().zip(samples.iter()) {
+        let scenario_explanation = format!("scenario:{}", sample.scenario_code);
+        assert_eq!(
+            item["entity_id"].as_str(),
+            Some(sample.product_id.as_str()),
+            "{json}"
+        );
+        let explanation_codes = item["explanation_codes"]
+            .as_array()
+            .expect("scenario explanation codes");
+        assert!(
+            explanation_codes
+                .iter()
+                .any(|code| { code.as_str() == Some("placement:fixed_sample") })
+        );
+        assert!(
+            explanation_codes
+                .iter()
+                .any(|code| { code.as_str() == Some(scenario_explanation.as_str()) })
+        );
+    }
+
+    let request_row = client
+        .query_one(
+            "SELECT
+               candidate_source_summary ->> 'placement_sample',
+               request_attrs ->> 'cache_hit'
+             FROM recommend.recommendation_request
+             WHERE recommendation_request_id = $1::text::uuid",
+            &[&json["data"]["recommendation_request_id"]
+                .as_str()
+                .expect("recommendation_request_id")],
+        )
+        .await
+        .expect("load standard scenario recommendation request");
+    assert_eq!(
+        request_row.get::<_, Option<String>>(0).as_deref(),
+        Some("5")
+    );
+    assert_eq!(
+        request_row.get::<_, Option<String>>(1).as_deref(),
+        Some("false")
+    );
+
+    assert_eq!(
+        count_access_audit(&client, &request_id, "recommendation_result")
+            .await
+            .expect("count standard scenario access audit"),
+        1
+    );
+    assert_eq!(
+        count_system_logs(
+            &client,
+            &request_id,
+            "recommendation lookup executed: GET /api/v1/recommendations",
+        )
+        .await
+        .expect("count standard scenario system log"),
+        1
+    );
 }

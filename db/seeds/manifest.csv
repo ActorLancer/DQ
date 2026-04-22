@@ -5,3 +5,4 @@ version,seed_sql
 030,db/seeds/030_test_orders.sql
 031,db/seeds/031_sku_trigger_matrix.sql
 032,db/seeds/032_five_scenarios.sql
+033,db/seeds/033_searchrec_recommendation_samples.sql

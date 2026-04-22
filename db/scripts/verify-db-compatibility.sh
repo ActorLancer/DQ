@@ -13,6 +13,8 @@ echo "==> baseline seed apply"
 echo "==> verify baseline seeds"
 ./db/scripts/verify-seed-001.sh
 ./db/scripts/verify-seed-010-030.sh
+./db/scripts/verify-seed-032.sh
+./db/scripts/verify-seed-033.sh
 
 echo "==> migration roundtrip drill"
 ./db/scripts/verify-migration-roundtrip.sh
@@ -23,6 +25,8 @@ echo "==> re-apply seed after roundtrip"
 echo "==> verify seeds after roundtrip"
 ./db/scripts/verify-seed-001.sh
 ./db/scripts/verify-seed-010-030.sh
+./db/scripts/verify-seed-032.sh
+./db/scripts/verify-seed-033.sh
 
 echo "==> verify critical migration segments"
 ./db/scripts/verify-migration-065-068.sh

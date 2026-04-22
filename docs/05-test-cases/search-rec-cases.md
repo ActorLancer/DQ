@@ -54,6 +54,8 @@
 - `recommend.behavior_event` 的基础行为模型至少要覆盖 `recommendation_panel_viewed / recommendation_item_exposed / recommendation_item_clicked`，并在写入曝光/点击后真实推进 `recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity`。
 - `ops.event_route_policy` 中 `recommend.behavior_event / recommend.behavior_recorded` 的 canonical topic 必须唯一收口到 `dtp.recommend.behavior`，且不再依赖旧的 `trg_recommend_behavior_event_outbox` 自动派生 topic。
 - `GET /api/v1/recommendations` 必须要求 `Authorization: Bearer <access_token>`；`staging` 走 `OpenSearch recall + PostgreSQL final check + recommendation_result` 落库闭环，`local` 必须退化为 PostgreSQL 搜索投影驱动的最小候选策略（最新上架、同类目、同卖方、热销、零结果兜底），并写 `audit.access_audit(target_type='recommendation_result') + ops.system_log`。
+- `home_featured` 在演示种子完成后必须固定返回五条标准链路官方商品样例，顺序为 `S1 -> S2 -> S3 -> S4 -> S5`；`recommend.placement_definition.metadata.fixed_samples` 必须与 `developer.test_application(metadata.primary_product_id)` 保持一致。
+- 首页五场景样例请求的 `items[].explanation_codes` 必须包含 `placement:fixed_sample` 与对应 `scenario:S1..S5`，且 `recommendation_request.candidate_source_summary ->> 'placement_sample' = '5'`。
 - 推荐返回前必须过滤掉 PostgreSQL 最终不可见对象，不能直接信任 OpenSearch 命中。
 - 推荐缓存必须写入 `datab:v1:recommend:*`，曝光后应能看到 `datab:v1:recommend:seen:*` 已看集合。
 - `APP_MODE=local` 下，同一推荐请求两次命中必须观察到 `cache_hit=false -> true`，并且 `recommendation_request.request_attrs ->> 'candidate_backend'`、`recommendation_result.metadata ->> 'candidate_backend'` 必须为 `postgresql_local_minimal`。
@@ -75,6 +77,7 @@
 - 推荐行为流测试不得只断言 `ops.outbox_event` 有行存在，还必须验证 consumer 侧派生状态、副作用、DLQ 与 `POST /api/v1/ops/dead-letters/{id}/reprocess` 路径。
 - 推荐回归命令：
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_get_api_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_home_featured_standard_scenarios_db_smoke -- --nocapture`
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
   - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
   - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`

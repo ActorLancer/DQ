@@ -631,3 +631,53 @@
   - 无。`SEARCHREC-013` 要求的 local 最小候选召回策略、缓存隔离、零结果兜底、真实 API/DB 审计回查与 staging 主链保护已同时覆盖代码、测试、runbook、OpenAPI 摘要与手工联调证据。
 - 新增 TODO / 预留项：
   - 新增非阻塞技术债 `TODO-SEARCHREC-CLEANUP-001`：append-only 审计引用会阻断 local 手工联调 principal 的物理删除，后续需要补齐与审计兼容的 principal 清理策略。
+### BATCH-260（计划中）
+- 任务：`SEARCHREC-014` 为五条标准链路商品准备固定推荐位样例，确保演示环境首页可直接进入闭环
+- 状态：计划中
+- 说明：按 `SEARCHREC-014` 冻结口径重新核对后，当前推荐位只具备通用 `placement_definition / ranking_profile` 基线，缺少可稳定落到官方五条标准链路的固定首页样例；现有本地 seed 也只有 8 个标准 SKU 的泛化示例商品，首页 `home_featured` 无法保证直接展示“工业设备运行指标 API 订阅 / 工业质量与产线日报文件包交付 / 供应链协同查询沙箱 / 零售门店经营分析 API / 报告订阅 / 商圈/门店选址查询服务”五条官方链路。本批只处理五场景官方样例商品、推荐位固定样例配置、运行时置顶召回和验证链路，不提前实现 `TEST-002 seed-demo.sh` 的一键全量导入，也不改写 staging/local 的正式搜索/推荐主边界。
+- 追溯：继续沿 `SEARCHREC` 顺序推进；本批以 `home_featured` 推荐位为首页直达入口，保持 `PostgreSQL truth + OpenSearch recall + Redis cache + Kafka behavior + PostgreSQL final validation` 正式边界不变。
+### BATCH-260（待审批）
+- 任务：`SEARCHREC-014` 为五条标准链路商品准备固定推荐位样例，确保演示环境首页可直接进入闭环
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-014`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-013` 已完成搜索主链、推荐运行时、曝光/点击回流、运维接口和 local fallback 基线，本批在其基础上为首页推荐位补齐五条标准链路的正式固定样例和演示数据。
+- 完成情况：
+  - `db/seeds/033_searchrec_recommendation_samples.sql`、`db/seeds/manifest.csv`、`db/scripts/verify-seed-033.sh`、`db/scripts/verify-db-compatibility.sh`、`db/migrations/v1/README.md`：新增 SEARCHREC-014 seed，写入五条官方场景商品、10 个样例 SKU、模板绑定、搜索热度聚合、`developer.test_application.primary_product_id / recommended_placement_code`，并将 `recommend.placement_definition(home_featured).metadata.fixed_samples` 固化为 `five_standard_scenarios_v1`。
+  - `apps/platform-core/src/modules/recommendation/repo/mod.rs`：推荐运行时新增 `placement.metadata.fixed_samples` 解析与 `placement_sample` 召回源，`home_featured` 会按 `S1 -> S2 -> S3 -> S4 -> S5` 置顶返回官方样例；同时修正推荐位/排序配置 PATCH 的 metadata 语义为“合并而非整块覆盖”，避免运维补丁把 `fixed_samples`、`fixed_sample_set` 等冻结元数据抹掉。
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：新增 `recommendation_home_featured_standard_scenarios_db_smoke`，真实校验首页五样例顺序、`placement:fixed_sample / scenario:S1..S5` explanation code、`candidate_source_summary.placement_sample=5`、`audit.access_audit` 与 `ops.system_log`；同时为既有 `recommendation_api_full_runtime_db_smoke` 增加推荐位/排序配置 snapshot restore，避免 smoke 自身污染 `home_featured` metadata。
+  - `fixtures/local/standard-scenarios-manifest.json`、`fixtures/local/standard-scenarios-sample.json`、`fixtures/local/README.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：把五条标准链路样例与首页 `home_featured` 固定样例对齐，补齐 `fixed_sample_set=five_standard_scenarios_v1`、`placement_sample`、Redis cache 命中和回归命令说明。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/seed-up.sh`
+  - `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/verify-seed-032.sh`
+  - `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/verify-seed-033.sh`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_home_featured_standard_scenarios_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_get_api_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 手工服务级验证：
+    - 宿主机启动 `target/debug/platform-core-bin`（`APP_MODE=staging APP_PORT=18080`）并用真实 `Authorization: Bearer <JWT>` 请求 `GET /api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id=10000000-0000-0000-0000-000000000102&limit=5`
+    - `psql` 回查 `recommend.recommendation_request.candidate_source_summary / request_attrs`、`recommend.recommendation_result_item`、`audit.access_audit`、`ops.system_log`
+    - `redis-cli -n 1` 回查 `datab:v1:recommend:*` 推荐短缓存和 TTL
+    - 宿主机启动 `target/debug/search-indexer`，通过 `POST /api/v1/ops/search/reindex`（`platform_admin + X-Idempotency-Key + X-Step-Up-Token`）触发 product batch reindex，再用 `curl http://127.0.0.1:9200/product_search_read/_search` 回查五个官方样例标题已真实写入 OpenSearch
+- 验证结果：
+  - seed 与验证脚本通过：`verify-seed-033.sh` 确认五条官方商品、10 个样例 SKU、30 个模板绑定、`home_featured.fixed_samples(5)` 和 `developer.test_application.primary_product_id` 已全部落库。
+  - 新增 smoke 通过：`recommendation_home_featured_standard_scenarios_db_smoke` 真实返回五条官方标题，顺序为 `S1 -> S2 -> S3 -> S4 -> S5`；`recommendation_request.candidate_source_summary` 回查为 `{"placement_sample": 5}`，`audit.access_audit(target_type='recommendation_result')` 与 `ops.system_log(message_text='recommendation lookup executed: GET /api/v1/recommendations')` 均存在。
+  - 全量回归通过：`cargo test -p platform-core` 最终 `349 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过。
+  - 服务联调期间暴露并修复正式缺陷：既有推荐位 PATCH 会整块覆盖 metadata，导致 `home_featured.fixed_samples` 被 smoke 和运维修改意外清空，真实服务退回到通用热门召回。本批已改为 metadata merge，并补齐 smoke snapshot restore；复测后 `GET /api/v1/recommendations` 首次返回 `cache_hit=false` 的五条官方样例，二次请求返回 `cache_hit=true`，Redis DB1 中存在 `datab:v1:recommend:*` 缓存键且 TTL 正常递减。
+  - OpenSearch 联调通过：启动 `search-indexer` 后，使用真实 `POST /api/v1/ops/search/reindex` 触发 `52` 条 product batch reindex，`audit.audit_event(action_name='search.reindex.queue')`、`audit.access_audit(target_type='search_reindex')`、`ops.system_log(message_text='search ops action executed: POST /api/v1/ops/search/reindex')` 均留痕；随后 `search.index_sync_task` 中五条官方样例商品全部转为 `completed`，`product_search_read` 别名下可回查五个官方标题文档，证明演示样例已真正进入 OpenSearch 读模型。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-014`
+  - `商品推荐与个性化发现设计.md`：推荐位、首页精选和个性化发现入口
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐读取接口、推荐位模型与返回说明码
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐主链、缓存边界、PostgreSQL 最终放行
+  - `recommendation-runtime.md`、`search-rec-cases.md`、`local-startup.md`：SEARCHREC 阶段首页固定样例、Redis cache、OpenSearch reindex 和本地演示闭环要求
+- 覆盖的任务清单条目：`SEARCHREC-014`
+- 未覆盖项：
+  - 无。`SEARCHREC-014` 要求的五条标准链路首页固定样例、推荐运行时置顶召回、演示环境入口、Redis 缓存命中、OpenSearch 实际写入与正式审计留痕已同时覆盖代码、seed、测试、runbook 与服务级证据。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

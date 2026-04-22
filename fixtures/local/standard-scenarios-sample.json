@@ -37,7 +37,9 @@
   "products": [
     {
       "product_id": "prd_industrial_runtime_api",
-      "name": "Industrial Runtime Metrics API",
+      "scenario_code": "S1",
+      "name": "工业设备运行指标 API 订阅",
+      "recommended_placement_code": "home_featured",
       "seller_enterprise_id": "ent_seller_industrial_a",
       "sku_types": [
         "API_SUB",
@@ -46,7 +48,9 @@
     },
     {
       "product_id": "prd_quality_file_pack",
-      "name": "Industrial Quality File Pack",
+      "scenario_code": "S2",
+      "name": "工业质量与产线日报文件包交付",
+      "recommended_placement_code": "home_featured",
       "seller_enterprise_id": "ent_seller_industrial_a",
       "sku_types": [
         "FILE_STD",
@@ -55,7 +59,9 @@
     },
     {
       "product_id": "prd_supply_sandbox",
-      "name": "Supply Chain Sandbox",
+      "scenario_code": "S3",
+      "name": "供应链协同查询沙箱",
+      "recommended_placement_code": "home_featured",
       "seller_enterprise_id": "ent_seller_industrial_a",
       "sku_types": [
         "SBX_STD",
@@ -64,7 +70,9 @@
     },
     {
       "product_id": "prd_retail_analysis_api",
-      "name": "Retail Operations Analysis API",
+      "scenario_code": "S4",
+      "name": "零售门店经营分析 API / 报告订阅",
+      "recommended_placement_code": "home_featured",
       "seller_enterprise_id": "ent_seller_retail_b",
       "sku_types": [
         "API_SUB",
@@ -73,7 +81,9 @@
     },
     {
       "product_id": "prd_location_query_service",
-      "name": "Location Query Service",
+      "scenario_code": "S5",
+      "name": "商圈/门店选址查询服务",
+      "recommended_placement_code": "home_featured",
       "seller_enterprise_id": "ent_seller_retail_b",
       "sku_types": [
         "QRY_LITE",

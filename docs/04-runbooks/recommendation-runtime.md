@@ -62,6 +62,10 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
   - `recommendation_panel_viewed`
   - `recommendation_item_exposed`
   - `recommendation_item_clicked`
+- `SEARCHREC-014` 首页固定样例：
+  - `home_featured` 的 `recommend.placement_definition.metadata.fixed_samples` 固化五条标准链路官方商品样例
+  - 排序顺序固定为 `S1 -> S2 -> S3 -> S4 -> S5`
+  - 响应 `explanation_codes` 中应能回查 `placement:fixed_sample` 与 `scenario:S1..S5`
 
 基础模型回查：
 
@@ -112,6 +116,9 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - `recommend.placement_definition.default_ranking_profile_key` 必须能在 `recommend.ranking_profile.profile_key` 中解析到有效配置。
 - `GET /api/v1/recommendations` 后必须能在 `audit.access_audit` 中回查 `target_type='recommendation_result'`，并在 `ops.system_log` 中回查 `recommendation lookup executed: GET /api/v1/recommendations`。
 - `APP_MODE=local` 下，`recommend.recommendation_request.request_attrs ->> 'candidate_backend'` 与 `recommend.recommendation_result.metadata ->> 'candidate_backend'` 必须为 `postgresql_local_minimal`，且同一查询两次命中应观察到 `cache_hit=false -> true`。
+- `home_featured` 在演示种子完成后必须能稳定返回五条标准链路官方商品：`工业设备运行指标 API 订阅 / 工业质量与产线日报文件包交付 / 供应链协同查询沙箱 / 零售门店经营分析 API / 报告订阅 / 商圈/门店选址查询服务`。
+- `recommend.placement_definition.metadata ->> 'fixed_sample_set'` 必须为 `five_standard_scenarios_v1`，且 `jsonb_array_length(metadata -> 'fixed_samples') = 5`。
+- `recommend.recommendation_request.candidate_source_summary ->> 'placement_sample'` 在首页五场景样例请求中必须为 `5`。
 - `placement_code=search_zero_result_fallback` 在 `APP_MODE=local` 下必须返回非空候选，且至少一个 `recommendation_result_item.feature_snapshot -> 'recall_sources'` 或响应 `explanation_codes` 能证明 `fallback:zero_result` 已参与兜底。
 - `POST /api/v1/recommendations/track/exposure`、`POST /api/v1/recommendations/track/click` 后必须能在 `audit.audit_event` 中回查 `recommendation.exposure.track / recommendation.click.track`，在 `audit.access_audit` 中回查 `target_type='recommendation_behavior'`，并在 `ops.system_log` 中回查 `recommendation behavior tracked: POST ...`。
 - `POST /api/v1/ops/recommendation/rebuild` 后必须能在 `audit.audit_event` 中回查 `recommendation.rebuild.execute`，在 `audit.access_audit` 中回查 `target_type='recommendation_rebuild'` 和 `step_up_challenge_id`，并在 `ops.system_log` 中回查 `recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild`。
@@ -132,6 +139,10 @@ RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:54
 RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 \
   cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture
+
+RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  APP_MODE=staging \
+  cargo test -p platform-core recommendation_home_featured_standard_scenarios_db_smoke -- --nocapture
 
 SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
