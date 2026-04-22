@@ -673,7 +673,17 @@ pub async fn rebuild_runtime(
     _actor_role: &str,
 ) -> RepoResult<RecommendationRebuildResponse> {
     let scope = request.scope.trim().to_ascii_lowercase();
-    if !matches!(scope.as_str(), "all" | "cache" | "features") {
+    if !matches!(
+        scope.as_str(),
+        "all"
+            | "cache"
+            | "features"
+            | "subject_profile"
+            | "cohort"
+            | "signals"
+            | "similarity"
+            | "bundle"
+    ) {
         return Err(format!(
             "unsupported recommendation rebuild scope: {}",
             request.scope
@@ -692,11 +702,19 @@ pub async fn rebuild_runtime(
     let mut refreshed_signal_rows = 0;
     let mut refreshed_similarity_rows = 0;
     let mut refreshed_bundle_rows = 0;
-    if scope == "all" || scope == "features" {
+    if matches!(scope.as_str(), "all" | "features" | "subject_profile") {
         refreshed_subject_profiles = rebuild_subject_profiles(client, request).await?;
+    }
+    if matches!(scope.as_str(), "all" | "features" | "cohort") {
         refreshed_cohort_rows = rebuild_cohort_popularity(client, request).await?;
+    }
+    if matches!(scope.as_str(), "all" | "features" | "signals") {
         refreshed_signal_rows = rebuild_search_signal_aggregate(client, request).await?;
+    }
+    if matches!(scope.as_str(), "all" | "features" | "similarity") {
         refreshed_similarity_rows = rebuild_similarity_edges(client, request).await?;
+    }
+    if matches!(scope.as_str(), "all" | "features" | "bundle") {
         refreshed_bundle_rows = rebuild_bundle_relations(client, request).await?;
     }
 
@@ -2544,39 +2562,66 @@ pub async fn invalidate_placement_runtime_cache(placement_code: &str) -> RepoRes
 async fn invalidate_recommendation_cache(
     request: &RecommendationRebuildRequest,
 ) -> RepoResult<usize> {
-    let pattern = recommendation_cache_pattern(request);
     let client = redis::Client::open(redis_url().as_str())
         .map_err(|err| format!("redis recommendation client init failed: {err}"))?;
     let mut connection = client
         .get_multiplexed_async_connection()
         .await
         .map_err(|err| format!("redis recommendation connect failed: {err}"))?;
-    let keys: Vec<String> = connection
-        .keys(pattern)
+    let mut keys: Vec<String> = connection
+        .keys(recommendation_cache_pattern(request))
         .await
         .map_err(|err| format!("redis recommendation keys lookup failed: {err}"))?;
-    let deleted = if keys.is_empty() {
-        0
-    } else {
-        connection
-            .del::<_, usize>(keys)
+    let seen_keys: Vec<String> = connection
+        .keys(recommendation_seen_pattern(request))
+        .await
+        .map_err(|err| format!("redis recommendation seen-set lookup failed: {err}"))?;
+    keys.extend(seen_keys);
+    keys.sort();
+    keys.dedup();
+    let mut deleted = 0usize;
+    for key in keys {
+        deleted += connection
+            .del::<_, usize>(key)
             .await
-            .map_err(|err| format!("redis recommendation delete failed: {err}"))?
-    };
+            .map_err(|err| format!("redis recommendation delete failed: {err}"))?;
+    }
     Ok(deleted)
 }
 
 fn recommendation_cache_pattern(request: &RecommendationRebuildRequest) -> String {
-    let tenant = request
-        .subject_org_id
-        .clone()
-        .unwrap_or_else(|| "*".to_string());
+    let tenant = request.subject_org_id.clone().unwrap_or_else(|| {
+        if request.subject_user_id.is_some() || request.anonymous_session_key.is_some() {
+            "public".to_string()
+        } else {
+            "*".to_string()
+        }
+    });
     let actor = request
         .subject_user_id
         .clone()
         .or_else(|| request.anonymous_session_key.clone())
         .unwrap_or_else(|| "*".to_string());
     format!("{}:recommend:{tenant}:{actor}:*", redis_namespace())
+}
+
+fn recommendation_seen_pattern(request: &RecommendationRebuildRequest) -> String {
+    let subject_key = request
+        .subject_user_id
+        .clone()
+        .or_else(|| request.subject_org_id.clone())
+        .or_else(|| request.anonymous_session_key.clone())
+        .unwrap_or_else(|| "*".to_string());
+    let placement_code = request
+        .placement_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("*");
+    format!(
+        "{}:recommend:seen:{subject_key}:{placement_code}",
+        redis_namespace()
+    )
 }
 
 async fn rebuild_subject_profiles(
@@ -2606,8 +2651,8 @@ async fn rebuild_subject_profiles(
              SELECT
                be.subject_scope,
                COALESCE(be.subject_org_id::text, be.subject_user_id::text, be.anonymous_session_key),
-               max(be.subject_org_id),
-               max(be.subject_user_id),
+               max(be.subject_org_id::text)::uuid,
+               max(be.subject_user_id::text)::uuid,
                GREATEST(count(*)::bigint, 1),
                array_remove(array_agg(DISTINCT NULLIF(be.attrs ->> 'category', '')), NULL),
                array_remove(array_agg(DISTINCT NULLIF(tag.value, '')), NULL),

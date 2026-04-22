@@ -3,13 +3,14 @@ info:
   title: Recommendation API
   version: v1
   description: >
-    `SEARCHREC-009`、`SEARCHREC-010` 与 `SEARCHREC-011` 已把推荐读取、行为写接口和
-    推荐位运营接口收口到正式契约。
+    `SEARCHREC-009`、`SEARCHREC-010`、`SEARCHREC-011` 与 `SEARCHREC-012` 已把推荐读取、
+    行为写接口、推荐位运营接口和推荐重建接口收口到正式契约。
     `GET /api/v1/recommendations`、`POST /api/v1/recommendations/track/exposure`、
     `POST /api/v1/recommendations/track/click`、`GET /api/v1/ops/recommendation/placements`、
-    `PATCH /api/v1/ops/recommendation/placements/{placement_code}` 都必须要求
+    `PATCH /api/v1/ops/recommendation/placements/{placement_code}`、`POST /api/v1/ops/recommendation/rebuild`
+    都必须要求
     `Authorization: Bearer <access_token>`；行为写接口还必须携带非空
-    `X-Idempotency-Key`，推荐位修改还必须携带 `X-Step-Up-Token`，并写
+    `X-Idempotency-Key`，高风险推荐运维写接口还必须携带 `X-Step-Up-Token`，并写
     `audit.audit_event`、`audit.access_audit` 与 `ops.system_log`。
 servers:
   - url: http://127.0.0.1:8080
@@ -316,7 +317,7 @@ components:
       properties:
         scope:
           type: string
-          enum: [all, cache, subject_profile, cohort, signals, similarity, bundle]
+          enum: [all, cache, features, subject_profile, cohort, signals, similarity, bundle]
           default: all
         placement_code:
           type: string
@@ -742,6 +743,26 @@ paths:
   /api/v1/ops/recommendation/rebuild:
     post:
       summary: rebuild recommendation cache and derived features
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: Required idempotency key for high-risk rebuild requests.
+        - in: header
+          name: X-Step-Up-Token
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: >
+            Verified `iam.step_up_challenge.step_up_challenge_id` bound to
+            `target_action=recommendation.rebuild.execute` and
+            `target_ref_type=recommendation_rebuild`.
       requestBody:
         required: true
         content:
@@ -761,3 +782,33 @@ paths:
                     type: boolean
                   data:
                     $ref: "#/components/schemas/RecommendationRebuildResponse"
+        "400":
+          description: invalid rebuild request, idempotency key, or step-up binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: missing `ops.recommend_rebuild.execute`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: referenced step-up challenge not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: redis or opensearch rebuild dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"

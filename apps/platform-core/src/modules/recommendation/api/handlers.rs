@@ -35,6 +35,10 @@ const RECOMMENDATION_PLACEMENT_INVALID_ERROR: &str = "RECOMMENDATION_PLACEMENT_I
 const RECOMMENDATION_PLACEMENT_NOT_FOUND_ERROR: &str = "RECOMMENDATION_PLACEMENT_NOT_FOUND";
 const RECOMMENDATION_PLACEMENT_BACKEND_UNAVAILABLE_ERROR: &str =
     "RECOMMENDATION_PLACEMENT_BACKEND_UNAVAILABLE";
+const RECOMMENDATION_REBUILD_INVALID_ERROR: &str = "RECOMMENDATION_REBUILD_INVALID";
+const RECOMMENDATION_REBUILD_BACKEND_UNAVAILABLE_ERROR: &str =
+    "RECOMMENDATION_REBUILD_BACKEND_UNAVAILABLE";
+const RECOMMENDATION_REBUILD_STEP_UP_ACTION: &str = "recommendation.rebuild.execute";
 
 #[derive(Debug, Clone)]
 struct StepUpBinding {
@@ -417,26 +421,89 @@ pub(in crate::modules::recommendation) async fn post_rebuild(
     headers: HeaderMap,
     Json(payload): Json<RecommendationRebuildRequest>,
 ) -> Result<Json<ApiResponse<RecommendationRebuildResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_placeholder_permission(
+    let request_id = request_id(&headers);
+    let trace_id = trace_id(&headers, Some(request_id.clone()));
+    let subject = require_permission(
         &headers,
         RecommendationPermission::RebuildExecute,
         "recommendation rebuild execute",
+        &request_id,
     )?;
-    require_write_controls(
+    validate_rebuild_request(&payload, &request_id)?;
+    let idempotency_key = required_non_empty_idempotency_key(
         &headers,
+        "recommendation rebuild execute",
+        &request_id,
+        RECOMMENDATION_REBUILD_INVALID_ERROR,
+    )?;
+    let actor_user_id = require_actor_user_id(&subject, &request_id)?;
+    require_step_up_header(
+        &headers,
+        "recommendation rebuild execute",
+        &request_id,
+        RECOMMENDATION_REBUILD_INVALID_ERROR,
+    )?;
+    let client = state_client_with_request_id(&state, &request_id)?;
+    let step_up = require_ops_write_controls(
+        &client,
+        &headers,
+        &subject,
         RecommendationPermission::RebuildExecute,
         "recommendation rebuild execute",
-    )?;
-    let client = state_client(&state)?;
+        RECOMMENDATION_REBUILD_STEP_UP_ACTION,
+        Some("recommendation_rebuild"),
+        None,
+        &request_id,
+        RECOMMENDATION_REBUILD_INVALID_ERROR,
+    )
+    .await?;
+    let accessor_role_key =
+        first_matching_role(&subject.roles, RecommendationPermission::RebuildExecute)
+            .unwrap_or_else(|| "unknown".to_string());
     let response = repo::rebuild_runtime(
         &client,
         &payload,
-        header(&headers, "x-request-id").as_deref(),
-        header(&headers, "x-trace-id").as_deref(),
-        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        Some(request_id.as_str()),
+        Some(trace_id.as_str()),
+        accessor_role_key.as_str(),
     )
     .await
-    .map_err(map_recommendation_error)?;
+    .map_err(|message| map_recommendation_rebuild_error(&request_id, &message))?;
+
+    record_recommendation_write_side_effects(
+        &client,
+        &subject,
+        RecommendationPermission::RebuildExecute,
+        &step_up,
+        "recommendation_rebuild",
+        None,
+        "recommendation.rebuild.execute",
+        "rebuilt",
+        "POST /api/v1/ops/recommendation/rebuild",
+        json!({
+            "scope": response.scope,
+            "placement_code": payload.placement_code,
+            "subject_scope": normalized_rebuild_subject_scope(&payload),
+            "subject_org_id": payload.subject_org_id,
+            "subject_user_id": payload.subject_user_id,
+            "anonymous_session_key": payload.anonymous_session_key,
+            "entity_scope": payload.entity_scope,
+            "entity_id": payload.entity_id,
+            "purge_cache": payload.purge_cache.unwrap_or(true),
+            "idempotency_key": idempotency_key,
+            "cache_keys_deleted": response.cache_keys_deleted,
+            "refreshed_subject_profiles": response.refreshed_subject_profiles,
+            "refreshed_cohort_rows": response.refreshed_cohort_rows,
+            "refreshed_signal_rows": response.refreshed_signal_rows,
+            "refreshed_similarity_rows": response.refreshed_similarity_rows,
+            "refreshed_bundle_rows": response.refreshed_bundle_rows,
+        }),
+        actor_user_id.as_str(),
+        &request_id,
+        &trace_id,
+    )
+    .await?;
+
     Ok(ApiResponse::ok(response))
 }
 
@@ -830,6 +897,142 @@ fn validate_patch_placement_request(
             ));
         }
     }
+    Ok(())
+}
+
+fn validate_rebuild_request(
+    payload: &RecommendationRebuildRequest,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let scope = payload.scope.trim().to_ascii_lowercase();
+    if !matches!(
+        scope.as_str(),
+        "all"
+            | "cache"
+            | "features"
+            | "subject_profile"
+            | "cohort"
+            | "signals"
+            | "similarity"
+            | "bundle"
+    ) {
+        return Err(recommendation_rebuild_bad_request(
+            request_id,
+            format!(
+                "scope must be one of: all, cache, features, subject_profile, cohort, signals, similarity, bundle; got `{}`",
+                payload.scope
+            ),
+        ));
+    }
+
+    if let Some(placement_code) = payload.placement_code.as_deref() {
+        if placement_code.trim().is_empty() {
+            return Err(recommendation_rebuild_bad_request(
+                request_id,
+                "placement_code cannot be empty".to_string(),
+            ));
+        }
+    }
+
+    if let Some(subject_org_id) = payload.subject_org_id.as_deref() {
+        validate_uuid_with_code(
+            subject_org_id,
+            "subject_org_id",
+            request_id,
+            RECOMMENDATION_REBUILD_INVALID_ERROR,
+        )?;
+    }
+    if let Some(subject_user_id) = payload.subject_user_id.as_deref() {
+        validate_uuid_with_code(
+            subject_user_id,
+            "subject_user_id",
+            request_id,
+            RECOMMENDATION_REBUILD_INVALID_ERROR,
+        )?;
+    }
+    if let Some(anonymous_session_key) = payload.anonymous_session_key.as_deref() {
+        if anonymous_session_key.trim().is_empty() {
+            return Err(recommendation_rebuild_bad_request(
+                request_id,
+                "anonymous_session_key cannot be empty".to_string(),
+            ));
+        }
+    }
+
+    if let Some(subject_scope) = payload.subject_scope.as_deref() {
+        match subject_scope.trim().to_ascii_lowercase().as_str() {
+            "organization" => {
+                if payload.subject_org_id.is_none() {
+                    return Err(recommendation_rebuild_bad_request(
+                        request_id,
+                        "subject_org_id is required when subject_scope=organization".to_string(),
+                    ));
+                }
+            }
+            "user" => {
+                if payload.subject_user_id.is_none() {
+                    return Err(recommendation_rebuild_bad_request(
+                        request_id,
+                        "subject_user_id is required when subject_scope=user".to_string(),
+                    ));
+                }
+            }
+            "anonymous" => {
+                if payload.anonymous_session_key.is_none() {
+                    return Err(recommendation_rebuild_bad_request(
+                        request_id,
+                        "anonymous_session_key is required when subject_scope=anonymous"
+                            .to_string(),
+                    ));
+                }
+            }
+            other => {
+                return Err(recommendation_rebuild_bad_request(
+                    request_id,
+                    format!(
+                        "subject_scope must be one of: organization, user, anonymous; got `{other}`"
+                    ),
+                ));
+            }
+        }
+    }
+
+    match (
+        payload.entity_scope.as_deref(),
+        payload.entity_id.as_deref(),
+    ) {
+        (None, None) => {}
+        (Some(_), None) => {
+            return Err(recommendation_rebuild_bad_request(
+                request_id,
+                "entity_id is required when entity_scope is provided".to_string(),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(recommendation_rebuild_bad_request(
+                request_id,
+                "entity_scope is required when entity_id is provided".to_string(),
+            ));
+        }
+        (Some(scope), Some(entity_id)) => {
+            match scope.trim().to_ascii_lowercase().as_str() {
+                "product" | "seller" => {}
+                other => {
+                    return Err(recommendation_rebuild_bad_request(
+                        request_id,
+                        format!("entity_scope must be one of: product, seller; got `{other}`"),
+                    ));
+                }
+            }
+            validate_uuid_with_code(
+                entity_id,
+                "entity_id",
+                request_id,
+                RECOMMENDATION_REBUILD_INVALID_ERROR,
+            )?;
+        }
+    }
+
     Ok(())
 }
 
@@ -1357,6 +1560,18 @@ fn normalized_subject_scope(query: &RecommendationQuery) -> String {
     })
 }
 
+fn normalized_rebuild_subject_scope(payload: &RecommendationRebuildRequest) -> String {
+    payload.subject_scope.clone().unwrap_or_else(|| {
+        if payload.subject_user_id.is_some() {
+            "user".to_string()
+        } else if payload.subject_org_id.is_some() {
+            "organization".to_string()
+        } else {
+            "anonymous".to_string()
+        }
+    })
+}
+
 fn validate_uuid(
     raw: &str,
     field_name: &str,
@@ -1446,6 +1661,13 @@ fn recommendation_placement_bad_request(
         message,
         RECOMMENDATION_PLACEMENT_INVALID_ERROR,
     )
+}
+
+fn recommendation_rebuild_bad_request(
+    request_id: &str,
+    message: String,
+) -> (StatusCode, Json<ErrorResponse>) {
+    recommendation_bad_request_with_code(request_id, message, RECOMMENDATION_REBUILD_INVALID_ERROR)
 }
 
 fn recommendation_behavior_bad_request(
@@ -1619,6 +1841,43 @@ fn map_recommendation_placement_error(
         (
             StatusCode::BAD_GATEWAY,
             RECOMMENDATION_PLACEMENT_BACKEND_UNAVAILABLE_ERROR,
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::OpsInternal.as_str(),
+        )
+    };
+
+    (
+        status,
+        Json(ErrorResponse {
+            code: code.to_string(),
+            message: message.to_string(),
+            request_id: Some(request_id.to_string()),
+        }),
+    )
+}
+
+fn map_recommendation_rebuild_error(
+    request_id: &str,
+    message: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    let lower = message.to_ascii_lowercase();
+    let (status, code) = if lower.contains("required")
+        || lower.contains("must be")
+        || lower.contains("valid uuid")
+        || lower.contains("unsupported")
+        || lower.contains("step-up challenge target_")
+    {
+        (
+            StatusCode::BAD_REQUEST,
+            RECOMMENDATION_REBUILD_INVALID_ERROR,
+        )
+    } else if lower.contains("redis") || lower.contains("opensearch") {
+        (
+            StatusCode::BAD_GATEWAY,
+            RECOMMENDATION_REBUILD_BACKEND_UNAVAILABLE_ERROR,
         )
     } else {
         (

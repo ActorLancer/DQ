@@ -97,7 +97,7 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - `GET /api/v1/recommendations`、`POST /track/exposure`、`POST /track/click` 对应正式权限点为 `portal.recommendation.read`。
 - `GET /api/v1/ops/recommendation/placements`、`GET /api/v1/ops/recommendation/ranking-profiles` 对应正式权限点为 `ops.recommendation.read`；其中 `SEARCHREC-011` 已把 `placements` 读取接口收口为 Bearer 鉴权，并要求写入 `audit.access_audit(target_type='recommendation_placement') + ops.system_log`。
 - `PATCH /api/v1/ops/recommendation/placements/{placement_code}`、`PATCH /api/v1/ops/recommendation/ranking-profiles/{id}` 对应正式权限点为 `ops.recommendation.manage`，并要求审计；其中 `SEARCHREC-011` 已把 `PATCH /placements/{placement_code}` 收口为 `Authorization + X-Idempotency-Key + X-Step-Up-Token`，真实校验 `iam.step_up_challenge(target_action='recommendation.placement.patch', target_ref_type='recommendation_placement')`，并写入 `audit.audit_event(action_name='recommendation.placement.patch') + audit.access_audit + ops.system_log`。
-- `POST /api/v1/ops/recommendation/rebuild` 对应正式权限点为 `ops.recommend_rebuild.execute`，并要求审计；是否强制 `step-up` 以后续实现批次按风险级别落地。
+- `POST /api/v1/ops/recommendation/rebuild` 对应正式权限点为 `ops.recommend_rebuild.execute`，属于高风险动作，必须要求 `Authorization + X-Idempotency-Key + X-Step-Up-Token`；`step-up` 必须真实绑定 `iam.step_up_challenge(target_action='recommendation.rebuild.execute', target_ref_type='recommendation_rebuild')`，并写入 `audit.audit_event(action_name='recommendation.rebuild.execute') + audit.access_audit(target_type='recommendation_rebuild') + ops.system_log`。
 - 推荐行为写接口必须使用 `X-Idempotency-Key`，不得继续以“header 存在即可”的占位方式定义正式幂等语义。
 - 当前 runbook 只冻结正式口径，不代表统一鉴权 / 审计 / OpenAPI / 测试已经补齐；进入 `SEARCHREC` 实现批次后，Agent 必须按 `A13` 同步修改代码与契约。
 - `recommendation-aggregator` 已按 `AUD-026` 收口为正式 consumer：统一使用 envelope `event_id` 做幂等，写入 `ops.consumer_idempotency_record`，失败时先进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，再决定 offset 提交。
@@ -112,6 +112,8 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - `recommend.placement_definition.default_ranking_profile_key` 必须能在 `recommend.ranking_profile.profile_key` 中解析到有效配置。
 - `GET /api/v1/recommendations` 后必须能在 `audit.access_audit` 中回查 `target_type='recommendation_result'`，并在 `ops.system_log` 中回查 `recommendation lookup executed: GET /api/v1/recommendations`。
 - `POST /api/v1/recommendations/track/exposure`、`POST /api/v1/recommendations/track/click` 后必须能在 `audit.audit_event` 中回查 `recommendation.exposure.track / recommendation.click.track`，在 `audit.access_audit` 中回查 `target_type='recommendation_behavior'`，并在 `ops.system_log` 中回查 `recommendation behavior tracked: POST ...`。
+- `POST /api/v1/ops/recommendation/rebuild` 后必须能在 `audit.audit_event` 中回查 `recommendation.rebuild.execute`，在 `audit.access_audit` 中回查 `target_type='recommendation_rebuild'` 和 `step_up_challenge_id`，并在 `ops.system_log` 中回查 `recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild`。
+- 推荐重建触发 `scope=all/features/subject_profile/cohort/signals/similarity/bundle` 时，必须真实重刷 `recommend.subject_profile_snapshot`、`recommend.cohort_popularity`、`search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation` 中对应派生表；`scope=cache` 或 `purge_cache=true` 时，必须真实删除 `datab:v1:recommend:*` 与命中的 `datab:v1:recommend:seen:*`。
 - `recommend.behavior_event` 写入 `recommendation_item_exposed / recommendation_item_clicked` 后，`recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity` 必须同步更新。
 - `search.index_sync_task` 会因推荐行为热度更新而出现新的 `queued` 任务。
 - Redis 推荐缓存前缀：`datab:v1:recommend:*`

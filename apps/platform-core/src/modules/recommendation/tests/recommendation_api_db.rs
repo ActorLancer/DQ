@@ -868,7 +868,10 @@ async fn recommendation_api_full_runtime_db_smoke() {
     let placement_list_trace_id = format!("recommend-placement-list-trace-{suffix}");
     let placement_patch_request_id = format!("recommend-placement-patch-{suffix}");
     let placement_patch_trace_id = format!("recommend-placement-patch-trace-{suffix}");
+    let rebuild_request_id = format!("recommend-rebuild-{suffix}");
+    let rebuild_trace_id = format!("recommend-rebuild-trace-{suffix}");
     let placement_idempotency_key = format!("recommend-placement-{suffix}");
+    let rebuild_idempotency_key = format!("recommend-rebuild-{suffix}");
     let exposure_idempotency_key = format!("recommend-exposure-{suffix}");
     let click_idempotency_key = format!("recommend-click-{suffix}");
     let redis_namespace =
@@ -879,6 +882,14 @@ async fn recommendation_api_full_runtime_db_smoke() {
     );
     let placement_seen_key =
         format!("{redis_namespace}:recommend:seen:placement-smoke-{suffix}:home_featured");
+    let rebuild_cache_key = format!(
+        "{redis_namespace}:recommend:{}:anonymous:rebuild-{suffix}",
+        ids.org_id
+    );
+    let rebuild_seen_key = format!(
+        "{redis_namespace}:recommend:seen:{}:home_featured",
+        ids.org_id
+    );
 
     let app = crate::with_live_test_state(router()).await;
     let response = app
@@ -1271,6 +1282,23 @@ async fn recommendation_api_full_runtime_db_smoke() {
         .expect("patch ranking response");
     assert_eq!(patch_ranking_response.status(), StatusCode::OK);
 
+    seed_redis_value(&rebuild_cache_key, "{\"seed\":true}", 300)
+        .await
+        .expect("seed rebuild cache key");
+    seed_redis_value(&rebuild_seen_key, "1", 300)
+        .await
+        .expect("seed rebuild seen key");
+    let rebuild_step_up = seed_verified_step_up_challenge(
+        &client,
+        &ids.operator_user_id,
+        "recommendation.rebuild.execute",
+        "recommendation_rebuild",
+        None,
+        &format!("recommend-rebuild-step-up-{suffix}"),
+    )
+    .await
+    .expect("seed rebuild step-up");
+
     let rebuild_response = app
         .clone()
         .oneshot(
@@ -1278,12 +1306,16 @@ async fn recommendation_api_full_runtime_db_smoke() {
                 .method("POST")
                 .uri("/api/v1/ops/recommendation/rebuild")
                 .header("content-type", "application/json")
-                .header("x-role", "platform_admin")
-                .header("x-idempotency-key", format!("recommend-rebuild-{suffix}"))
-                .header("x-step-up-token", "step-up-ok")
+                .header("authorization", &admin_auth)
+                .header("x-request-id", &rebuild_request_id)
+                .header("x-trace-id", &rebuild_trace_id)
+                .header("x-idempotency-key", &rebuild_idempotency_key)
+                .header("x-step-up-token", &rebuild_step_up)
                 .body(Body::from(
                     json!({
-                      "scope": "cache",
+                      "scope": "all",
+                      "placement_code": "home_featured",
+                      "subject_scope": "organization",
                       "subject_org_id": ids.org_id,
                       "purge_cache": true
                     })
@@ -1293,7 +1325,46 @@ async fn recommendation_api_full_runtime_db_smoke() {
         )
         .await
         .expect("rebuild response");
-    assert_eq!(rebuild_response.status(), StatusCode::OK);
+    let rebuild_status = rebuild_response.status();
+    let rebuild_json = response_json(rebuild_response).await.expect("rebuild json");
+    assert_eq!(rebuild_status, StatusCode::OK, "{rebuild_json}");
+    assert_eq!(rebuild_json["data"]["scope"].as_str(), Some("all"));
+    assert!(
+        rebuild_json["data"]["cache_keys_deleted"]
+            .as_u64()
+            .is_some_and(|deleted| deleted >= 2),
+        "{rebuild_json}"
+    );
+    assert!(
+        rebuild_json["data"]["refreshed_subject_profiles"]
+            .as_u64()
+            .is_some_and(|count| count >= 1),
+        "{rebuild_json}"
+    );
+    assert!(
+        rebuild_json["data"]["refreshed_cohort_rows"]
+            .as_u64()
+            .is_some_and(|count| count >= 1),
+        "{rebuild_json}"
+    );
+    assert!(
+        rebuild_json["data"]["refreshed_signal_rows"]
+            .as_u64()
+            .is_some_and(|count| count >= 1),
+        "{rebuild_json}"
+    );
+    assert!(
+        rebuild_json["data"]["refreshed_similarity_rows"]
+            .as_u64()
+            .is_some_and(|count| count >= 1),
+        "{rebuild_json}"
+    );
+    assert!(
+        rebuild_json["data"]["refreshed_bundle_rows"]
+            .as_u64()
+            .is_some_and(|count| count >= 1),
+        "{rebuild_json}"
+    );
 
     let outbox_row = client
         .query_one(
@@ -1349,6 +1420,151 @@ async fn recommendation_api_full_runtime_db_smoke() {
     .await
     .expect("count click system log");
     assert_eq!(click_log_count, 1);
+
+    assert_eq!(
+        count_audit_events(
+            &client,
+            &rebuild_request_id,
+            "recommendation.rebuild.execute",
+        )
+        .await
+        .expect("count rebuild audit events"),
+        1
+    );
+    assert_eq!(
+        count_access_audit(&client, &rebuild_request_id, "recommendation_rebuild")
+            .await
+            .expect("count rebuild access audit"),
+        1
+    );
+    assert_eq!(
+        latest_access_step_up(&client, &rebuild_request_id)
+            .await
+            .expect("load rebuild step-up")
+            .as_deref(),
+        Some(rebuild_step_up.as_str())
+    );
+    assert_eq!(
+        count_system_logs(
+            &client,
+            &rebuild_request_id,
+            "recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild",
+        )
+        .await
+        .expect("count rebuild system log"),
+        1
+    );
+    let rebuild_audit_row = client
+        .query_one(
+            "SELECT
+               result_code,
+               metadata ->> 'endpoint',
+               metadata ->> 'permission_code',
+               metadata -> 'details' ->> 'idempotency_key',
+               metadata -> 'details' ->> 'cache_keys_deleted'
+             FROM audit.audit_event
+             WHERE request_id = $1
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT 1",
+            &[&rebuild_request_id],
+        )
+        .await
+        .expect("load rebuild audit row");
+    assert_eq!(rebuild_audit_row.get::<_, String>(0), "rebuilt");
+    assert_eq!(
+        rebuild_audit_row.get::<_, Option<String>>(1).as_deref(),
+        Some("POST /api/v1/ops/recommendation/rebuild")
+    );
+    assert_eq!(
+        rebuild_audit_row.get::<_, Option<String>>(2).as_deref(),
+        Some("ops.recommend_rebuild.execute")
+    );
+    assert_eq!(
+        rebuild_audit_row.get::<_, Option<String>>(3).as_deref(),
+        Some(rebuild_idempotency_key.as_str())
+    );
+    assert!(
+        rebuild_audit_row
+            .get::<_, Option<String>>(4)
+            .as_deref()
+            .and_then(|value| value.parse::<i64>().ok())
+            .is_some_and(|deleted| deleted >= 2)
+    );
+    assert!(
+        load_redis_value(&rebuild_cache_key)
+            .await
+            .expect("load rebuild cache after patch")
+            .is_none()
+    );
+    assert!(
+        load_redis_value(&rebuild_seen_key)
+            .await
+            .expect("load rebuild seen after patch")
+            .is_none()
+    );
+    assert!(
+        client
+            .query_opt(
+                "SELECT 1
+                 FROM recommend.subject_profile_snapshot
+                 WHERE subject_scope = 'organization'
+                   AND org_id = $1::text::uuid",
+                &[&ids.org_id],
+            )
+            .await
+            .expect("load rebuilt subject profile")
+            .is_some()
+    );
+    assert!(
+        client
+            .query_one(
+                "SELECT count(*)::bigint
+                 FROM recommend.cohort_popularity
+                 WHERE cohort_key = $1",
+                &[&format!("org:{}", ids.org_id)],
+            )
+            .await
+            .expect("load rebuilt cohort rows")
+            .get::<_, i64>(0)
+            >= 1
+    );
+    assert!(
+        client
+            .query_one(
+                "SELECT count(*)::bigint
+                 FROM search.search_signal_aggregate
+                 WHERE entity_scope IN ('product', 'seller')",
+                &[],
+            )
+            .await
+            .expect("load rebuilt signal rows")
+            .get::<_, i64>(0)
+            >= 1
+    );
+    assert!(
+        client
+            .query_opt(
+                "SELECT 1
+                 FROM recommend.entity_similarity
+                 WHERE evidence_json ->> 'rebuild_source' = 'recommendation_result_item'",
+                &[],
+            )
+            .await
+            .expect("load rebuilt similarity row")
+            .is_some()
+    );
+    assert!(
+        client
+            .query_opt(
+                "SELECT 1
+                 FROM recommend.bundle_relation
+                 WHERE metadata ->> 'rebuild_source' = 'recommendation_result_item'",
+                &[],
+            )
+            .await
+            .expect("load rebuilt bundle row")
+            .is_some()
+    );
 
     let exposure_audit_row = client
         .query_one(

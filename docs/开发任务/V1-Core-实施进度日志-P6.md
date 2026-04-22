@@ -6,6 +6,70 @@
 - 当前活动分卷以入口页为准；当前入口页指向本卷
 - 若后续切换到新的 `P{N}` 分卷，必须先更新入口页，再开始续写新分卷
 
+### BATCH-258（计划中）
+- 任务：`SEARCHREC-012` 实现推荐重建接口 `POST /api/v1/ops/recommendation/rebuild`
+- 状态：计划中
+- 说明：按 `SEARCHREC-012` 冻结口径复核后，当前仓库虽然已有 `rebuild` 路由、DTO 与 repo 重建逻辑，但入口层仍停留在 `x-role + x-step-up-token` 占位鉴权，缺少正式 Bearer 权限链、真实 `iam.step_up_challenge` 绑定、高风险审计/系统日志、请求校验与 OpenAPI/runbook/test-case 对齐。本批只收口推荐重建接口，不提前合并 `SEARCHREC-013` local 候选召回策略或 `SEARCHREC-014` 排序配置整改。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，当前仅处理推荐重建接口的正式鉴权、step-up、审计、错误码、最小联调与日志证据闭环；推荐候选策略与排序配置仍在后续 task 分批收口。
+### BATCH-258（待审批）
+- 任务：`SEARCHREC-012` 实现推荐重建接口 `POST /api/v1/ops/recommendation/rebuild`
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-012`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-011` 已形成推荐读取、行为写接口、推荐位运维接口、OpenSearch/Redis/Kafka 运行时基线与正式 `iam.step_up_challenge` 验证路径，本批在该基线上收口推荐重建接口的正式鉴权、高风险 step-up、审计和重建证据闭环。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：定位 `SEARCHREC-012` 描述、DoD、依赖、`technical_reference` 与“不提前合并 013/014”边界。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认推荐正式链路是 `PostgreSQL 主存 + OpenSearch 候选召回 + Redis 缓存 + Kafka 行为流 + PostgreSQL 最终业务校验`，并存在 `POST /api/v1/ops/recommendation/rebuild` 运维接口与 `ops.recommend_rebuild.execute` 权限点。
+  - `docs/开发任务/问题修复任务/A09-推荐主链路与行为流契约缺口.md`：确认推荐重建接口属于正式主链路组成部分，不能继续停留在“只有 route/DTO、有 repo 但无正式权限/审计”的假完成状态。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`：复核 PostgreSQL / Redis / OpenSearch / Kafka / IAM / 审计链边界，以及高风险动作必须 `step-up + 审计` 的统一约束。
+  - `docs/权限设计/接口权限校验清单.md`、`docs/权限设计/后端鉴权中间件规则说明.md`：确认 `POST /api/v1/ops/recommendation/rebuild` 必需权限为 `ops.recommend_rebuild.execute`，属于高风险动作，必须真实校验 `step-up`。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`、`packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`、`apps/platform-core/src/modules/recommendation/**`：复核当前实现中 `rebuild` 已有 repo 逻辑，但 handler/OpenAPI/runbook/test-case 仍停留在占位语义，需要统一收口。
+- 完成情况：
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`：`POST /api/v1/ops/recommendation/rebuild` 改为正式 `Authorization: Bearer <access_token>` 权限校验，不再允许 `x-role` 占位路径；新增 `RECOMMENDATION_REBUILD_INVALID / RECOMMENDATION_REBUILD_BACKEND_UNAVAILABLE` 错误码分层、非空 `X-Idempotency-Key` 校验、请求字段校验和 `jwt.sub` UUID 校验。
+  - `handlers.rs`：推荐重建写接口不再只检查 step-up header 是否存在，而是通过 `iam.step_up_challenge` 真实核验 `X-Step-Up-Token`，按高风险口径要求 `target_action='recommendation.rebuild.execute'`、`target_ref_type='recommendation_rebuild'`、`target_ref_id=NULL` 绑定，并写入 `audit.audit_event(action_name='recommendation.rebuild.execute', result_code='rebuilt') + audit.access_audit(target_type='recommendation_rebuild', access_mode='rebuilt', step_up_challenge_id=...) + ops.system_log`。
+  - `apps/platform-core/src/modules/recommendation/repo/mod.rs`：推荐重建 scope 从原来的 `all/cache/features` 扩展为 `all / cache / features / subject_profile / cohort / signals / similarity / bundle`，允许分别重刷派生特征表；同时修复 `rebuild_subject_profiles` 中 PostgreSQL 不支持的 `max(uuid)` 真实 SQL 缺陷，改为 `max(uuid::text)::uuid`。
+  - `repo/mod.rs`：`invalidate_recommendation_cache(...)` 改为同时清理命中的 `datab:v1:recommend:*` 结果缓存与 `datab:v1:recommend:seen:*` 已看集合，并改用逐 key 删除，避免继续依赖批量 `DEL(Vec<String>)` 的不透明行为。
+  - `apps/platform-core/src/modules/recommendation/tests/mod.rs`：新增路由级失败用例，覆盖缺失 Bearer、缺少 `ops.recommend_rebuild.execute`、缺失 `X-Idempotency-Key`、缺失 `X-Step-Up-Token`、非法 rebuild payload 等失败路径，确认重建接口不再能通过旧占位语义放行。
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：扩展 `recommendation_api_full_runtime_db_smoke`，真实验证正式 Bearer rebuild、`iam.step_up_challenge` 绑定、`audit.audit_event` / `audit.access_audit` / `ops.system_log` 留痕、Redis 结果缓存与 `seen` key 删除，以及 `recommend.subject_profile_snapshot`、`recommend.cohort_popularity`、`search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation` 的真实重刷。
+  - `packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`、`docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：同步更新推荐重建接口的正式 Bearer、`X-Idempotency-Key`、`X-Step-Up-Token`、scope 枚举、错误响应、step-up 绑定方式和缓存/派生表回查要求，消除代码与契约漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core recommendation_rebuild -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - 手工服务级验证：
+    - 以 `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`、`KAFKA_BROKERS=127.0.0.1:9094`、`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 启动 `cargo run -p platform-core`
+    - 为真实平台管理员用户插入 `iam.step_up_challenge(target_action='recommendation.rebuild.execute', target_ref_type='recommendation_rebuild', target_ref_id=NULL)`
+    - 向 Redis `/1` 写入 `datab:v1:recommend:*` 与 `datab:v1:recommend:seen:*` 测试 key
+    - 使用真实 `Authorization: Bearer <JWT>`、`X-Idempotency-Key`、`X-Step-Up-Token` 执行 `POST /api/v1/ops/recommendation/rebuild`
+    - 用 `psql` 与 `redis-cli -n 1` 回查审计、step-up 绑定与缓存删除
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - 路由测试通过：缺失 Bearer、缺少 `ops.recommend_rebuild.execute`、缺失 `X-Idempotency-Key`、缺失 `X-Step-Up-Token` 和非法 rebuild payload 都会被真实拦截，不再允许 `POST /api/v1/ops/recommendation/rebuild` 通过 `x-role` 旁路放行。
+  - `recommendation_api_full_runtime_db_smoke` 通过：真实验证推荐读取、曝光、点击、推荐位修改、推荐重建整条 runtime；其中 rebuild 使用正式 Bearer + step-up，回查到 `audit.audit_event(action_name='recommendation.rebuild.execute')`、`audit.access_audit(target_type='recommendation_rebuild', step_up_challenge_id=...)`、`ops.system_log(message_text='recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild')`，并确认 `cache_keys_deleted >= 2`、派生特征表真实重刷。
+  - 本批 smoke 先后暴露并修复了两个真实问题：
+    - `rebuild_subject_profiles` 使用 PostgreSQL 不支持的 `max(uuid)`，导致 rebuild 在 DB smoke 中返回 `500`；已修复为可执行 SQL。
+    - rebuild 回查最初把验证绑死到单个实体，导致断言过窄；已调整为按目标派生表真实重刷结果做回查，避免把测试假设误当成业务契约。
+  - 手工 `curl` 联调通过：`POST /api/v1/ops/recommendation/rebuild` 返回 `{"success":true,"data":{"scope":"cache","cache_keys_deleted":3,...}}`；手工请求 `request_id=manual-recommend-rebuild-1776875912` 回查确认：
+    - `audit.audit_event = recommendation.rebuild.execute|rebuilt|ops.recommend_rebuild.execute`
+    - `audit.access_audit = recommendation_rebuild|rebuilt|9b2562b5-2c7a-45df-b3a0-e964126649f4`
+    - `ops.system_log = recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild`
+    - Redis `/1` 中手工写入的结果缓存 key 和 `seen` key 都已删除
+  - 完整 `cargo test -p platform-core` 通过（`347 passed`，`1 ignored`）；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，离线 query cache 与当前 schema 保持一致。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-012`
+  - `商品推荐与个性化发现设计.md`：推荐正式链路、推荐位与派生特征边界
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐重建接口、推荐运营权限与审计边界
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐重建属于正式主链路一部分，不能停留在占位实现
+  - `接口权限校验清单.md`、`后端鉴权中间件规则说明.md`：`ops.recommend_rebuild.execute` 为高风险动作，必须 `step-up + 审计`
+  - `recommendation-runtime.md`、`search-rec-cases.md`：推荐重建接口的 Bearer、step-up、审计、缓存删除与派生表重刷回查要求
+- 覆盖的任务清单条目：`SEARCHREC-012`
+- 未覆盖项：
+  - 无。`SEARCHREC-012` 要求的推荐重建接口、正式 Bearer 权限链、真实 `iam.step_up_challenge` 校验、错误码、审计留痕、OpenAPI 对齐和最小联调闭环均已完成；local 候选召回策略仍留在 `SEARCHREC-013` 处理。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-257（计划中）
 - 任务：`SEARCHREC-011` 实现推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`
 - 状态：计划中

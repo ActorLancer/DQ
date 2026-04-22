@@ -184,6 +184,106 @@ mod route_tests {
     }
 
     #[tokio::test]
+    async fn rejects_recommendation_rebuild_without_bearer() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/recommendation/rebuild")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"scope":"cache"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn rejects_recommendation_rebuild_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/recommendation/rebuild")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["buyer_operator"],
+                ),
+            )
+            .body(Body::from(r#"{"scope":"cache"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn recommendation_rebuild_requires_idempotency_key() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/recommendation/rebuild")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["platform_admin"],
+                ),
+            )
+            .body(Body::from(r#"{"scope":"cache"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn recommendation_rebuild_requires_step_up_token() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/recommendation/rebuild")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["platform_admin"],
+                ),
+            )
+            .header("x-idempotency-key", "recommend-rebuild-route-test")
+            .body(Body::from(r#"{"scope":"cache"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_recommendation_rebuild_with_invalid_payload() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/recommendation/rebuild")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["platform_admin"],
+                ),
+            )
+            .header("x-idempotency-key", "recommend-rebuild-invalid")
+            .header("x-step-up-token", "00000000-0000-0000-0000-000000000000")
+            .body(Body::from(r#"{"scope":"bad-scope"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
     async fn rejects_recommendation_behavior_without_bearer() {
         let app = crate::with_stub_test_state(router());
         let request = Request::builder()
