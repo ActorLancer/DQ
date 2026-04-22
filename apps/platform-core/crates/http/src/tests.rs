@@ -79,4 +79,23 @@ mod tests {
             Some("evt-12")
         );
     }
+
+    #[test]
+    fn metrics_path_normalizes_numeric_and_uuid_like_segments() {
+        assert_eq!(
+            normalize_metrics_path(
+                "/api/v1/orders/123/payments/550e8400-e29b-41d4-a716-446655440000"
+            ),
+            "/api/v1/orders/{id}/payments/{id}"
+        );
+    }
+
+    #[test]
+    fn looks_like_dynamic_segment_detects_ids() {
+        assert!(looks_like_dynamic_path_segment("12345"));
+        assert!(looks_like_dynamic_path_segment(
+            "550e8400-e29b-41d4-a716-446655440000"
+        ));
+        assert!(!looks_like_dynamic_path_segment("projection-gaps"));
+    }
 }

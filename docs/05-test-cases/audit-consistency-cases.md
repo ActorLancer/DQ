@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019`、`AUD-020`、`AUD-021` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019`、`AUD-020`、`AUD-021`、`AUD-023` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -22,6 +22,7 @@
 - 交易链监控总览 / checkpoints：`GET /api/v1/ops/trade-monitor/orders/{orderId}`、`GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints`
 - 公平性事件查询 / 处理：`GET /api/v1/ops/fairness-incidents`、`POST /api/v1/ops/fairness-incidents/{id}/handle`
 - 投影缺口查询 / 关闭：`GET /api/v1/ops/projection-gaps`、`POST /api/v1/ops/projection-gaps/{id}/resolve`
+- 观测总览 / 日志镜像查询导出 / trace 联查 / 告警与 incident / SLO：`GET /api/v1/ops/observability/overview`、`GET /api/v1/ops/logs/query`、`POST /api/v1/ops/logs/export`、`GET /api/v1/ops/traces/{traceId}`、`GET /api/v1/ops/alerts`、`GET /api/v1/ops/incidents`、`GET /api/v1/ops/slos`
 
 后续 `search sync ops / export package aggregate` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
@@ -53,6 +54,9 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 
 AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core audit_projection_gap_resolve_db_smoke -- --nocapture
+
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core observability_api_db_smoke -- --nocapture
 ```
 
 ## 验收矩阵
@@ -89,13 +93,20 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-028` | 公平性事件处理 | `POST /api/v1/ops/fairness-incidents/{id}/handle` + verified `x-step-up-challenge-id` + `{"action":"close","resolution_summary":"...","auto_action_override":"notify_ops","freeze_settlement":true,"create_dispute_suggestion":true}` | 仅允许 `fairness_incident_status='open'`；成功后只更新 `risk.fairness_incident.status / auto_action_code / resolution_summary / metadata / closed_at`，写入 `audit.audit_event(action_name='risk.fairness_incident.handle')`、`audit.access_audit(access_mode='handle', target_type='fairness_incident')`、`ops.system_log`，且 `freeze_settlement / freeze_delivery / create_dispute_suggestion` 只作为 `linked_action_plan` 建议留痕，不得直接改写 `trade.order_main` | API 响应、`risk.fairness_incident`、`trade.order_main`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-029` | 投影缺口分页查询 | `GET /api/v1/ops/projection-gaps?aggregate_type=order&aggregate_id=...&order_id=...&chain_id=fabric-local&gap_type=missing_callback&gap_status=open` | 返回 `ops.chain_projection_gap` 分页结果；查询动作写入 `audit.access_audit(target_type='projection_gap_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.chain_projection_gap`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-030` | 投影缺口关闭 | `POST /api/v1/ops/projection-gaps/{id}/resolve` + verified `x-step-up-challenge-id` + `{"dry_run":false,"resolution_mode":"callback_confirmed","reason":"...","expected_state_digest":"..."}` | 默认支持 `dry_run=true` 预演；真实关闭仅允许 `gap_status!='resolved'`，并在 `expected_state_digest` 命中时更新 `ops.chain_projection_gap.gap_status / resolved_at / resolution_summary / metadata / request_id / trace_id`，写入 `audit.audit_event(action_name='ops.projection_gap.resolve')`、`audit.access_audit(access_mode='resolve', target_type='projection_gap')`、`ops.system_log`，且不得写出 `dtp.consistency.reconcile` 新 outbox 事件 | API 响应、`ops.chain_projection_gap`、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event` |
+| `AUD-CASE-031` | 观测总览 | `GET /api/v1/ops/observability/overview` | 返回 `backend_statuses / alert_summary / key_services / slo_summary / recent_incidents`；其中 backend 状态必须来自对 `Prometheus / Alertmanager / Grafana / Loki / Tempo / OTel Collector` 的真实探测，查询动作写入 `audit.access_audit(target_type='observability_overview')` 与 `ops.system_log` | API 响应、`ops.observability_backend`、`ops.alert_event`、`ops.incident_ticket`、`ops.slo_definition`、`ops.slo_snapshot`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-032` | 日志镜像查询 | `GET /api/v1/ops/logs/query?trace_id=...&page=1&page_size=20` | 返回 `ops.system_log` 镜像分页结果；`/api/v1/ops/logs` 兼容别名与 `/logs/query` 返回口径一致；查询动作写入 `audit.access_audit(target_type='system_log_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.system_log`、`audit.access_audit` |
+| `AUD-CASE-033` | 原始日志导出 | `POST /api/v1/ops/logs/export` + verified `x-step-up-challenge-id` + `{"reason":"...","trace_id":"..."}` | 至少要求一个 selector；成功后把 JSON 导出对象写入 `MinIO(report-results)`，并写入 `audit.audit_event(action_name='ops.log.export')`、`audit.access_audit(target_type='system_log_export', access_mode='export')`、`ops.system_log`；`step_up_bound=true` | API 响应、MinIO `report-results` 对象、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-034` | Trace 联查 | `GET /api/v1/ops/traces/{trace_id}` | 以 `ops.trace_index` 为正式索引返回 trace 信息，同时返回 `related_log_count / related_alert_count` 与 `tempo_link / grafana_link`；查询动作写入 `audit.access_audit(target_type='trace_lookup')` 与 `ops.system_log` | API 响应、`ops.trace_index`、`ops.system_log`、`ops.alert_event`、`audit.access_audit` |
+| `AUD-CASE-035` | 告警中心查询 | `GET /api/v1/ops/alerts?severity=high&source_backend_key=prometheus_main` | 返回 `ops.alert_event` 分页结果；查询动作写入 `audit.access_audit(target_type='alert_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.alert_event`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-036` | 事故工单查询 | `GET /api/v1/ops/incidents?owner_role_key=platform_audit_security` | 返回 `ops.incident_ticket` 分页结果与最新 incident event 摘要；查询动作写入 `audit.access_audit(target_type='incident_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.incident_ticket`、`ops.incident_event`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-037` | SLO 查询 | `GET /api/v1/ops/slos?service_name=platform-core` | 返回 `ops.slo_definition` 联查最新 `ops.slo_snapshot` 的分页结果；查询动作写入 `audit.access_audit(target_type='slo_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.slo_definition`、`ops.slo_snapshot`、`audit.access_audit`、`ops.system_log` |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
 - `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`AUD-015` 已补齐 `fabric-event-listener` 的 callback 轮询源、Kafka callback 发布与 DB 回写；`AUD-016` 已补齐 `fabric-ca-admin` 的证书治理执行面；`fabric-test-network / Gateway / chaincode / real Fabric CA` 留待 `AUD-017`。
-- `AUD-019` 已把 `ops.external_fact_receipt` 的公共 HTTP 控制面补齐到查询 / confirm；`AUD-020` 已把 `risk.fairness_incident` 的公共 HTTP 控制面补齐到查询 / handle；`AUD-021` 已把 `projection-gaps` 的公共 HTTP 控制面补齐到查询 / resolve。
+- `AUD-019` 已把 `ops.external_fact_receipt` 的公共 HTTP 控制面补齐到查询 / confirm；`AUD-020` 已把 `risk.fairness_incident` 的公共 HTTP 控制面补齐到查询 / handle；`AUD-021` 已把 `projection-gaps` 的公共 HTTP 控制面补齐到查询 / resolve；`AUD-023` 已补齐观测总览、日志镜像查询 / 导出、trace 联查、告警 / incident / SLO 查询。
 
 ## `AUD-011` 手工一致性联查验证
 

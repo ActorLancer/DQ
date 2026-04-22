@@ -16,20 +16,25 @@ use crate::modules::audit::domain::{
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
     AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, ChainProjectionGapPageView,
     ChainProjectionGapQuery, ExternalFactReceiptPageView, ExternalFactReceiptQuery,
-    FairnessIncidentPageView, FairnessIncidentQuery, OpsConsistencyBusinessStateView,
+    FairnessIncidentPageView, FairnessIncidentQuery, ObservabilityBackendStatusView,
+    OpsAlertPageView, OpsAlertQuery, OpsAlertSummaryView, OpsConsistencyBusinessStateView,
     OpsConsistencyExternalFactStateView, OpsConsistencyProofStateView,
     OpsConsistencyReconcileRequest, OpsConsistencyReconcileView,
     OpsConsistencyRepairRecommendationView, OpsConsistencyView, OpsDeadLetterPageView,
     OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
     OpsExternalFactConfirmRequest, OpsExternalFactConfirmView, OpsFairnessIncidentHandleRequest,
-    OpsFairnessIncidentHandleView, OpsOutboxPageView, OpsOutboxQuery,
-    OpsProjectionGapResolveRequest, OpsProjectionGapResolveView, OrderAuditQuery, OrderAuditView,
-    TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery, TradeMonitorOverviewView,
+    OpsFairnessIncidentHandleView, OpsIncidentPageView, OpsIncidentQuery, OpsLogExportRequest,
+    OpsLogExportView, OpsLogMirrorPageView, OpsLogMirrorQuery, OpsObservabilityOverviewView,
+    OpsOutboxPageView, OpsOutboxQuery, OpsProjectionGapResolveRequest, OpsProjectionGapResolveView,
+    OpsServiceHealthView, OpsSloPageView, OpsSloQuery, OpsSloSummaryView, OpsTraceLookupView,
+    OrderAuditQuery, OrderAuditView, TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery,
+    TradeMonitorOverviewView,
 };
 use crate::modules::audit::dto::{
-    AnchorBatchView, ChainProjectionGapView, DeadLetterEventView, EvidenceManifestView,
-    EvidencePackageView, ExternalFactReceiptView, FairnessIncidentView, LegalHoldView,
-    OutboxEventView, ReplayJobView, ReplayResultView, TradeLifecycleCheckpointView,
+    AlertEventView, AnchorBatchView, ChainProjectionGapView, DeadLetterEventView,
+    EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView, FairnessIncidentView,
+    IncidentTicketView, LegalHoldView, ObservabilityBackendView, OutboxEventView, ReplayJobView,
+    ReplayResultView, SloView, SystemLogMirrorView, TraceIndexView, TradeLifecycleCheckpointView,
 };
 use crate::modules::audit::repo::{self, AccessAuditInsert, OrderAuditScope, SystemLogInsert};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
@@ -37,8 +42,12 @@ use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 
 const EXPORT_BUCKET_ENV: &str = "BUCKET_EVIDENCE_PACKAGES";
 const DEFAULT_EXPORT_BUCKET: &str = "evidence-packages";
+const LOG_EXPORT_BUCKET_ENV: &str = "BUCKET_REPORT_RESULTS";
+const DEFAULT_LOG_EXPORT_BUCKET: &str = "report-results";
 const EXPORT_STEP_UP_ACTION: &str = "audit.package.export";
 const EXPORT_STEP_UP_ACTION_COMPAT: &str = "audit.evidence.export";
+const LOG_EXPORT_STEP_UP_ACTION: &str = "ops.log.export";
+const LOG_EXPORT_MAX_ROWS: i64 = 1000;
 const REPLAY_STEP_UP_ACTION: &str = "audit.replay.execute";
 const LEGAL_HOLD_STEP_UP_ACTION: &str = "audit.legal_hold.manage";
 const ANCHOR_STEP_UP_ACTION: &str = "audit.anchor.manage";
@@ -59,6 +68,7 @@ const PROJECTION_GAP_RESOLVE_STATE_ERROR: &str = "AUDIT_PROJECTION_GAP_RESOLVE_S
 const PROJECTION_GAP_STATE_DIGEST_ERROR: &str = "AUDIT_PROJECTION_GAP_STATE_DIGEST_CONFLICT";
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
+const LOG_EXPORT_EMPTY_ERROR: &str = "OPS_LOG_EXPORT_EMPTY";
 
 pub(in crate::modules::audit) async fn get_order_audit_traces(
     State(state): State<AppState>,
@@ -1521,6 +1531,549 @@ pub(in crate::modules::audit) async fn get_ops_consistency(
             .map(DeadLetterEventView::from)
             .collect(),
         recent_audit_traces,
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_observability_overview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsObservabilityOverviewView>>, (StatusCode, Json<ErrorResponse>)> {
+    let _request_id = require_request_id(&headers)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsObservabilityRead,
+        "ops observability read",
+    )?;
+
+    let client = state_client(&state)?;
+    let checked_at = current_utc_timestamp(&client).await?;
+    let backends = repo::search_observability_backends(&client)
+        .await
+        .map_err(map_db_error)?;
+    let mut backend_statuses = Vec::with_capacity(backends.len());
+    for backend in &backends {
+        backend_statuses.push(probe_observability_backend(backend, checked_at.as_str()).await);
+    }
+
+    let alert_summary_row = client
+        .query_one(
+            "SELECT
+               COUNT(*) FILTER (WHERE status = 'open')::bigint,
+               COUNT(*) FILTER (WHERE status = 'acknowledged')::bigint,
+               COUNT(*) FILTER (WHERE severity = 'critical' AND status <> 'resolved')::bigint,
+               COUNT(*) FILTER (WHERE severity = 'high' AND status <> 'resolved')::bigint,
+               MAX(to_char(fired_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'))
+             FROM ops.alert_event",
+            &[],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let recent_incidents =
+        repo::search_incident_tickets(&client, &OpsIncidentQuery::default(), 5, 0)
+            .await
+            .map_err(map_db_error)?;
+    let slo_page = repo::search_slos(&client, &OpsSloQuery::default(), 5, 0)
+        .await
+        .map_err(map_db_error)?;
+    let slo_summary_row = client
+        .query_one(
+            "SELECT
+               COUNT(*)::bigint,
+               COUNT(*) FILTER (WHERE COALESCE(ss.status, 'unknown') = 'ok')::bigint,
+               COUNT(*) FILTER (WHERE COALESCE(ss.status, 'unknown') = 'degraded')::bigint,
+               COUNT(*) FILTER (WHERE COALESCE(ss.status, 'unknown') = 'breached')::bigint
+             FROM ops.slo_definition sd
+             LEFT JOIN LATERAL (
+               SELECT status
+               FROM ops.slo_snapshot
+               WHERE slo_definition_id = sd.slo_definition_id
+               ORDER BY window_ended_at DESC, slo_snapshot_id DESC
+               LIMIT 1
+             ) ss ON true",
+            &[],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let key_services = load_key_service_healths(checked_at.as_str()).await;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "observability_overview",
+        None,
+        "GET /api/v1/ops/observability/overview",
+        json!({
+            "backend_total": backend_statuses.len(),
+            "open_alert_count": alert_summary_row.get::<_, i64>(0),
+            "open_incident_count": recent_incidents.total,
+            "slo_total": slo_summary_row.get::<_, i64>(0),
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsObservabilityOverviewView {
+        backend_statuses,
+        alert_summary: OpsAlertSummaryView {
+            open_count: alert_summary_row.get(0),
+            acknowledged_count: alert_summary_row.get(1),
+            critical_count: alert_summary_row.get(2),
+            high_count: alert_summary_row.get(3),
+            latest_fired_at: alert_summary_row.get(4),
+        },
+        key_services,
+        slo_summary: OpsSloSummaryView {
+            total: slo_summary_row.get(0),
+            ok_count: slo_summary_row.get(1),
+            degraded_count: slo_summary_row.get(2),
+            breached_count: slo_summary_row.get(3),
+            items: slo_page.items.iter().map(SloView::from).collect(),
+        },
+        recent_incidents: recent_incidents
+            .items
+            .iter()
+            .map(IncidentTicketView::from)
+            .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_logs_query(
+    State(state): State<AppState>,
+    Query(query): Query<OpsLogMirrorQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsLogMirrorPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(&headers, AuditPermission::OpsLogQuery, "ops log query")?;
+    let normalized_query = normalize_ops_log_query(query, &request_id)?;
+    let pagination = normalized_query.pagination();
+    let client = state_client(&state)?;
+    let page = repo::search_system_log_mirrors(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "system_log_query",
+        normalized_query.object_id.clone(),
+        "GET /api/v1/ops/logs/query",
+        json!({
+            "service_name": normalized_query.service_name,
+            "log_level": normalized_query.log_level,
+            "request_id": normalized_query.request_id,
+            "trace_id": normalized_query.trace_id,
+            "object_type": normalized_query.object_type,
+            "object_id": normalized_query.object_id,
+            "from": normalized_query.from,
+            "to": normalized_query.to,
+            "query": normalized_query.query,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsLogMirrorPageView {
+        total: page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: page.items.iter().map(SystemLogMirrorView::from).collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn export_ops_logs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<OpsLogExportRequest>,
+) -> Result<Json<ApiResponse<OpsLogExportView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(&headers, AuditPermission::OpsLogExport, "ops log export")?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let normalized = normalize_ops_log_export_request(payload, &request_id)?;
+    require_log_export_selector(&normalized, &request_id)?;
+    ensure_step_up_header_present_for(&headers, &request_id, "ops log export")?;
+
+    let client = state_client(&state)?;
+    let step_up = require_step_up_for_log_export(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        normalized.object_id.as_deref(),
+    )
+    .await?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let export_requested_at = current_utc_timestamp(&client).await?;
+    let export_id = next_uuid(&client).await?;
+    let search_query = OpsLogMirrorQuery {
+        service_name: normalized.service_name.clone(),
+        log_level: normalized.log_level.clone(),
+        request_id: normalized.request_id.clone(),
+        trace_id: normalized.trace_id.clone(),
+        object_type: normalized.object_type.clone(),
+        object_id: normalized.object_id.clone(),
+        from: normalized.from.clone(),
+        to: normalized.to.clone(),
+        query: normalized.query.clone(),
+        page: Some(1),
+        page_size: Some(LOG_EXPORT_MAX_ROWS as u32),
+    };
+    let export_page =
+        repo::search_system_log_mirrors(&client, &search_query, LOG_EXPORT_MAX_ROWS, 0)
+            .await
+            .map_err(map_db_error)?;
+    if export_page.total == 0 {
+        return Err(conflict_error(
+            &request_id,
+            LOG_EXPORT_EMPTY_ERROR,
+            "ops log export requires at least one matching log mirror row",
+        ));
+    }
+
+    let bucket_name = log_export_bucket_name();
+    let object_key = format!("ops/log-exports/{export_id}.json");
+    let object_uri = format!("s3://{bucket_name}/{object_key}");
+    let exported_items: Vec<SystemLogMirrorView> = export_page
+        .items
+        .iter()
+        .map(SystemLogMirrorView::from)
+        .collect();
+    let export_bytes = serde_json::to_vec(&json!({
+        "export_id": export_id.clone(),
+        "reason": normalized.reason.clone(),
+        "filters": {
+            "service_name": normalized.service_name.clone(),
+            "log_level": normalized.log_level.clone(),
+            "request_id": normalized.request_id.clone(),
+            "trace_id": normalized.trace_id.clone(),
+            "object_type": normalized.object_type.clone(),
+            "object_id": normalized.object_id.clone(),
+            "from": normalized.from.clone(),
+            "to": normalized.to.clone(),
+            "query": normalized.query.clone(),
+        },
+        "request_id": request_id.clone(),
+        "trace_id": trace_id.clone(),
+        "exported_at": export_requested_at.clone(),
+        "exported_count": exported_items.len(),
+        "items": exported_items,
+    }))
+    .map_err(|err| {
+        internal_error(
+            Some(request_id.clone()),
+            format!("ops log export payload encode failed: {err}"),
+        )
+    })?;
+    let object_hash = sha256_hex(export_bytes.as_slice());
+    put_object_bytes(
+        bucket_name.as_str(),
+        object_key.as_str(),
+        export_bytes,
+        Some("application/json"),
+    )
+    .await?;
+
+    let audit_event = build_ops_log_export_audit_event(
+        &headers,
+        request_id.as_str(),
+        trace_id.as_str(),
+        actor_user_id.as_str(),
+        normalized.reason.as_str(),
+        object_uri.as_str(),
+        object_hash.as_str(),
+        export_page.total,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+        normalized.object_id.clone(),
+    );
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let write_result = async {
+        repo::insert_audit_event(&tx, &audit_event)
+            .await
+            .map_err(map_db_error)?;
+        let access_audit_id = repo::record_access_audit(
+            &tx,
+            &AccessAuditInsert {
+                accessor_user_id: Some(actor_user_id.clone()),
+                accessor_role_key: Some(current_role(&headers)),
+                access_mode: "export".to_string(),
+                target_type: "system_log_export".to_string(),
+                target_id: normalized.object_id.clone(),
+                masked_view: true,
+                breakglass_reason: None,
+                step_up_challenge_id: step_up.challenge_id.clone(),
+                request_id: Some(request_id.clone()),
+                trace_id: Some(trace_id.clone()),
+                metadata: json!({
+                    "endpoint": "POST /api/v1/ops/logs/export",
+                    "reason": normalized.reason,
+                    "service_name": normalized.service_name,
+                    "log_level": normalized.log_level,
+                    "request_id_filter": normalized.request_id,
+                    "trace_id_filter": normalized.trace_id,
+                    "object_type": normalized.object_type,
+                    "object_id": normalized.object_id,
+                    "from": normalized.from,
+                    "to": normalized.to,
+                    "query": normalized.query,
+                    "export_id": export_id,
+                    "exported_count": export_page.total,
+                    "object_uri": object_uri,
+                    "object_hash": object_hash,
+                }),
+            },
+        )
+        .await
+        .map_err(map_db_error)?;
+        repo::record_system_log(
+            &tx,
+            &SystemLogInsert {
+                service_name: "platform-core".to_string(),
+                log_level: "INFO".to_string(),
+                request_id: Some(request_id.clone()),
+                trace_id: Some(trace_id.clone()),
+                message_text: "ops logs exported: POST /api/v1/ops/logs/export".to_string(),
+                structured_payload: json!({
+                    "module": "ops",
+                    "endpoint": "POST /api/v1/ops/logs/export",
+                    "access_audit_id": access_audit_id,
+                    "export_id": export_id,
+                    "object_uri": object_uri,
+                    "object_hash": object_hash,
+                    "exported_count": export_page.total,
+                    "step_up_challenge_id": step_up.challenge_id,
+                }),
+            },
+        )
+        .await
+        .map_err(map_db_error)?;
+        tx.commit().await.map_err(map_db_error)
+    }
+    .await;
+    if let Err(err) = write_result {
+        let _ = delete_object(bucket_name.as_str(), object_key.as_str()).await;
+        return Err(err);
+    }
+
+    Ok(ApiResponse::ok(OpsLogExportView {
+        export_id,
+        bucket_name,
+        object_key,
+        object_uri,
+        object_hash,
+        exported_count: export_page.total,
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+        content_type: "application/json".to_string(),
+        request_id,
+        trace_id,
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_trace(
+    State(state): State<AppState>,
+    Path(trace_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsTraceLookupView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(&headers, AuditPermission::OpsTraceRead, "ops trace read")?;
+    let client = state_client(&state)?;
+    let trace = repo::load_trace_index_by_trace_id(&client, trace_id.as_str())
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| not_found(&request_id, format!("trace not found: {trace_id}")))?;
+    let checked_at = current_utc_timestamp(&client).await?;
+    let backend_status = if let Some(backend_key) = trace.backend_key.as_deref() {
+        if let Some(backend) = repo::search_observability_backends(&client)
+            .await
+            .map_err(map_db_error)?
+            .into_iter()
+            .find(|backend| backend.backend_key == backend_key)
+        {
+            Some(probe_observability_backend(&backend, checked_at.as_str()).await)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let related_log_count = repo::count_system_logs_by_trace_id(&client, trace.trace_id.as_str())
+        .await
+        .map_err(map_db_error)?;
+    let related_alert_count =
+        repo::count_alert_events_by_trace_id(&client, trace.trace_id.as_str())
+            .await
+            .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "trace_lookup",
+        trace.object_id.clone().or_else(|| trace.ref_id.clone()),
+        "GET /api/v1/ops/traces/{traceId}",
+        json!({
+            "trace_id": trace.trace_id.clone(),
+            "request_id": trace.request_id.clone(),
+            "ref_type": trace.ref_type.clone(),
+            "ref_id": trace.ref_id.clone(),
+            "object_type": trace.object_type.clone(),
+            "object_id": trace.object_id.clone(),
+            "backend_key": trace.backend_key.clone(),
+            "related_log_count": related_log_count,
+            "related_alert_count": related_alert_count,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsTraceLookupView {
+        trace: TraceIndexView::from(&trace),
+        related_log_count,
+        related_alert_count,
+        backend_status,
+        tempo_link: build_tempo_trace_link(trace.trace_id.as_str()),
+        grafana_link: build_grafana_trace_link(trace.trace_id.as_str()),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_alerts(
+    State(state): State<AppState>,
+    Query(query): Query<OpsAlertQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsAlertPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(&headers, AuditPermission::OpsAlertRead, "ops alert read")?;
+    let normalized_query = normalize_ops_alert_query(query, &request_id)?;
+    let pagination = normalized_query.pagination();
+    let client = state_client(&state)?;
+    let page = repo::search_alert_events(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "alert_query",
+        None,
+        "GET /api/v1/ops/alerts",
+        json!({
+            "alert_status": normalized_query.alert_status,
+            "severity": normalized_query.severity,
+            "source_backend_key": normalized_query.source_backend_key,
+            "alert_type": normalized_query.alert_type,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsAlertPageView {
+        total: page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: page.items.iter().map(AlertEventView::from).collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_incidents(
+    State(state): State<AppState>,
+    Query(query): Query<OpsIncidentQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsIncidentPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsIncidentRead,
+        "ops incident read",
+    )?;
+    let normalized_query = normalize_ops_incident_query(query, &request_id)?;
+    let pagination = normalized_query.pagination();
+    let client = state_client(&state)?;
+    let page = repo::search_incident_tickets(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "incident_query",
+        None,
+        "GET /api/v1/ops/incidents",
+        json!({
+            "incident_status": normalized_query.incident_status,
+            "severity": normalized_query.severity,
+            "owner_role_key": normalized_query.owner_role_key,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsIncidentPageView {
+        total: page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: page.items.iter().map(IncidentTicketView::from).collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_slos(
+    State(state): State<AppState>,
+    Query(query): Query<OpsSloQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsSloPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(&headers, AuditPermission::OpsSloRead, "ops slo read")?;
+    let normalized_query = normalize_ops_slo_query(query, &request_id)?;
+    let pagination = normalized_query.pagination();
+    let client = state_client(&state)?;
+    let page = repo::search_slos(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "slo_query",
+        None,
+        "GET /api/v1/ops/slos",
+        json!({
+            "service_name": normalized_query.service_name,
+            "source_backend_key": normalized_query.source_backend_key,
+            "status": normalized_query.status,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsSloPageView {
+        total: page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: page.items.iter().map(SloView::from).collect(),
     }))
 }
 
@@ -3633,6 +4186,13 @@ struct ReplayReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AuditPermission {
     TraceRead,
+    OpsObservabilityRead,
+    OpsLogQuery,
+    OpsLogExport,
+    OpsTraceRead,
+    OpsAlertRead,
+    OpsIncidentRead,
+    OpsSloRead,
     OpsTradeMonitorRead,
     OpsOutboxRead,
     OpsDeadLetterRead,
@@ -3672,6 +4232,30 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
                 | "data_custody_admin"
                 | "regulator_readonly"
                 | "regulator_observer"
+        ),
+        AuditPermission::OpsObservabilityRead => matches!(
+            role,
+            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
+        ),
+        AuditPermission::OpsLogQuery | AuditPermission::OpsLogExport => matches!(
+            role,
+            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
+        ),
+        AuditPermission::OpsTraceRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_audit_security"
+                | "node_ops_admin"
+                | "audit_admin"
+                | "tenant_developer"
+        ),
+        AuditPermission::OpsAlertRead => matches!(
+            role,
+            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
+        ),
+        AuditPermission::OpsIncidentRead | AuditPermission::OpsSloRead => matches!(
+            role,
+            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
         ),
         AuditPermission::OpsTradeMonitorRead => matches!(
             role,
@@ -3987,6 +4571,27 @@ async fn require_step_up_for_anchor_retry(
         Some("anchor_batch"),
         Some(anchor_batch_id),
         "audit anchor batch retry",
+    )
+    .await
+}
+
+async fn require_step_up_for_log_export(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    object_id: Option<&str>,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        LOG_EXPORT_STEP_UP_ACTION,
+        None,
+        Some("system_log_query"),
+        object_id,
+        "ops log export",
     )
     .await
 }
@@ -6650,6 +7255,446 @@ fn normalize_optional_long_text(
         ));
     }
     Ok(Some(value.to_string()))
+}
+
+fn normalize_required_reason(
+    raw: &str,
+    request_id: &str,
+    action_label: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let reason = raw.trim();
+    if reason.is_empty() {
+        return Err(bad_request(
+            request_id,
+            format!("reason is required for {action_label}"),
+        ));
+    }
+    if reason.len() > 1000 {
+        return Err(bad_request(
+            request_id,
+            "reason must be shorter than 1001 characters",
+        ));
+    }
+    Ok(reason.to_string())
+}
+
+fn normalize_ops_log_query(
+    query: OpsLogMirrorQuery,
+    request_id: &str,
+) -> Result<OpsLogMirrorQuery, (StatusCode, Json<ErrorResponse>)> {
+    validate_optional_uuid(query.object_id.as_deref(), "object_id", request_id)?;
+    Ok(OpsLogMirrorQuery {
+        service_name: normalize_optional_filter(
+            query.service_name.as_deref(),
+            "service_name",
+            request_id,
+        )?,
+        log_level: normalize_optional_filter(query.log_level.as_deref(), "log_level", request_id)?,
+        request_id: normalize_optional_filter(
+            query.request_id.as_deref(),
+            "request_id",
+            request_id,
+        )?,
+        trace_id: normalize_optional_filter(query.trace_id.as_deref(), "trace_id", request_id)?,
+        object_type: normalize_optional_filter(
+            query.object_type.as_deref(),
+            "object_type",
+            request_id,
+        )?,
+        object_id: normalize_optional_filter(query.object_id.as_deref(), "object_id", request_id)?,
+        from: normalize_optional_filter(query.from.as_deref(), "from", request_id)?,
+        to: normalize_optional_filter(query.to.as_deref(), "to", request_id)?,
+        query: normalize_optional_long_text(query.query.as_deref(), "query", request_id)?,
+        page: query.page,
+        page_size: query.page_size,
+    })
+}
+
+fn normalize_ops_log_export_request(
+    payload: OpsLogExportRequest,
+    request_id: &str,
+) -> Result<OpsLogExportRequest, (StatusCode, Json<ErrorResponse>)> {
+    validate_optional_uuid(payload.object_id.as_deref(), "object_id", request_id)?;
+    Ok(OpsLogExportRequest {
+        reason: normalize_required_reason(payload.reason.as_str(), request_id, "ops log export")?,
+        service_name: normalize_optional_filter(
+            payload.service_name.as_deref(),
+            "service_name",
+            request_id,
+        )?,
+        log_level: normalize_optional_filter(
+            payload.log_level.as_deref(),
+            "log_level",
+            request_id,
+        )?,
+        request_id: normalize_optional_filter(
+            payload.request_id.as_deref(),
+            "request_id",
+            request_id,
+        )?,
+        trace_id: normalize_optional_filter(payload.trace_id.as_deref(), "trace_id", request_id)?,
+        object_type: normalize_optional_filter(
+            payload.object_type.as_deref(),
+            "object_type",
+            request_id,
+        )?,
+        object_id: normalize_optional_filter(
+            payload.object_id.as_deref(),
+            "object_id",
+            request_id,
+        )?,
+        from: normalize_optional_filter(payload.from.as_deref(), "from", request_id)?,
+        to: normalize_optional_filter(payload.to.as_deref(), "to", request_id)?,
+        query: normalize_optional_long_text(payload.query.as_deref(), "query", request_id)?,
+    })
+}
+
+fn require_log_export_selector(
+    payload: &OpsLogExportRequest,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let has_selector = payload.service_name.is_some()
+        || payload.log_level.is_some()
+        || payload.request_id.is_some()
+        || payload.trace_id.is_some()
+        || payload.object_type.is_some()
+        || payload.object_id.is_some()
+        || payload.from.is_some()
+        || payload.to.is_some()
+        || payload.query.is_some();
+    if has_selector {
+        Ok(())
+    } else {
+        Err(bad_request(
+            request_id,
+            "ops log export requires at least one filter or time window selector",
+        ))
+    }
+}
+
+fn normalize_ops_alert_query(
+    query: OpsAlertQuery,
+    request_id: &str,
+) -> Result<OpsAlertQuery, (StatusCode, Json<ErrorResponse>)> {
+    Ok(OpsAlertQuery {
+        alert_status: normalize_optional_filter(
+            query.alert_status.as_deref(),
+            "alert_status",
+            request_id,
+        )?,
+        severity: normalize_optional_filter(query.severity.as_deref(), "severity", request_id)?,
+        source_backend_key: normalize_optional_filter(
+            query.source_backend_key.as_deref(),
+            "source_backend_key",
+            request_id,
+        )?,
+        alert_type: normalize_optional_filter(
+            query.alert_type.as_deref(),
+            "alert_type",
+            request_id,
+        )?,
+        page: query.page,
+        page_size: query.page_size,
+    })
+}
+
+fn normalize_ops_incident_query(
+    query: OpsIncidentQuery,
+    request_id: &str,
+) -> Result<OpsIncidentQuery, (StatusCode, Json<ErrorResponse>)> {
+    Ok(OpsIncidentQuery {
+        incident_status: normalize_optional_filter(
+            query.incident_status.as_deref(),
+            "incident_status",
+            request_id,
+        )?,
+        severity: normalize_optional_filter(query.severity.as_deref(), "severity", request_id)?,
+        owner_role_key: normalize_optional_filter(
+            query.owner_role_key.as_deref(),
+            "owner_role_key",
+            request_id,
+        )?,
+        page: query.page,
+        page_size: query.page_size,
+    })
+}
+
+fn normalize_ops_slo_query(
+    query: OpsSloQuery,
+    request_id: &str,
+) -> Result<OpsSloQuery, (StatusCode, Json<ErrorResponse>)> {
+    Ok(OpsSloQuery {
+        service_name: normalize_optional_filter(
+            query.service_name.as_deref(),
+            "service_name",
+            request_id,
+        )?,
+        source_backend_key: normalize_optional_filter(
+            query.source_backend_key.as_deref(),
+            "source_backend_key",
+            request_id,
+        )?,
+        status: normalize_optional_filter(query.status.as_deref(), "status", request_id)?,
+        page: query.page,
+        page_size: query.page_size,
+    })
+}
+
+fn build_ops_log_export_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: &str,
+    actor_user_id: &str,
+    reason: &str,
+    object_uri: &str,
+    object_hash: &str,
+    exported_count: i64,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+    object_id: Option<String>,
+) -> AuditEvent {
+    let mut event = AuditEvent::business(
+        "ops",
+        "system_log_query",
+        object_id,
+        "ops.log.export",
+        "exported",
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id: trace_id.to_string(),
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "reason": reason,
+                "object_uri": object_uri,
+                "object_hash": object_hash,
+                "exported_count": exported_count,
+                "current_role": current_role(headers),
+                "step_up_token_present": step_up_token_present,
+            }),
+        },
+    );
+    event.after_state_digest = Some(object_hash.to_string());
+    event.evidence_hash = Some(object_hash.to_string());
+    event.payload_digest = Some(object_hash.to_string());
+    event.sensitivity_level = "high".to_string();
+    event
+}
+
+fn observability_port(var: &str, default_port: &str) -> String {
+    std::env::var(var).unwrap_or_else(|_| default_port.to_string())
+}
+
+fn prometheus_base_url() -> String {
+    format!(
+        "http://127.0.0.1:{}",
+        observability_port("PROMETHEUS_PORT", "9090")
+    )
+}
+
+fn alertmanager_base_url() -> String {
+    format!(
+        "http://127.0.0.1:{}",
+        observability_port("ALERTMANAGER_PORT", "9093")
+    )
+}
+
+fn grafana_base_url() -> String {
+    format!(
+        "http://127.0.0.1:{}",
+        observability_port("GRAFANA_PORT", "3000")
+    )
+}
+
+fn loki_base_url() -> String {
+    format!(
+        "http://127.0.0.1:{}",
+        observability_port("LOKI_PORT", "3100")
+    )
+}
+
+fn tempo_base_url() -> String {
+    format!(
+        "http://127.0.0.1:{}",
+        observability_port("TEMPO_PORT", "3200")
+    )
+}
+
+fn otel_collector_health_url() -> String {
+    format!(
+        "http://127.0.0.1:{}",
+        observability_port("OTEL_COLLECTOR_HEALTH_PORT", "13133")
+    )
+}
+
+fn observability_backend_probe_url(backend_key: &str) -> Option<String> {
+    match backend_key {
+        "prometheus_main" => Some(format!("{}/-/ready", prometheus_base_url())),
+        "alertmanager_main" => Some(format!("{}/-/ready", alertmanager_base_url())),
+        "grafana_main" => Some(format!("{}/api/health", grafana_base_url())),
+        "loki_main" => Some(format!("{}/ready", loki_base_url())),
+        "tempo_main" => Some(format!("{}/metrics", tempo_base_url())),
+        "otel_collector" => Some(otel_collector_health_url()),
+        _ => None,
+    }
+}
+
+fn observability_backend_detail_url(backend_key: &str) -> Option<String> {
+    match backend_key {
+        "prometheus_main" => Some(format!("{}/graph", prometheus_base_url())),
+        "alertmanager_main" => Some(format!("{}/#/alerts", alertmanager_base_url())),
+        "grafana_main" => Some(format!("{}/dashboards", grafana_base_url())),
+        "loki_main" => Some(format!("{}/explore", grafana_base_url())),
+        "tempo_main" => Some(tempo_base_url()),
+        "otel_collector" => Some(otel_collector_health_url()),
+        _ => None,
+    }
+}
+
+async fn probe_observability_backend(
+    backend: &repo::ObservabilityBackendRecord,
+    checked_at: &str,
+) -> ObservabilityBackendStatusView {
+    let local_probe_url = observability_backend_probe_url(backend.backend_key.as_str());
+    let detail_url = observability_backend_detail_url(backend.backend_key.as_str());
+    let signals: Vec<String> = backend
+        .capability_json
+        .get("signals")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(ToString::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut metadata = json!({
+        "configured_endpoint_uri": backend.endpoint_uri,
+        "signals": signals,
+    });
+    let (probe_status, http_status) = if let Some(probe_url) = local_probe_url.as_deref() {
+        match reqwest::Client::new()
+            .get(probe_url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                let status_code = response.status().as_u16();
+                let healthy = response.status().is_success();
+                if let Some(map) = metadata.as_object_mut() {
+                    map.insert(
+                        "status_family".to_string(),
+                        Value::String(if healthy { "success" } else { "http_error" }.to_string()),
+                    );
+                }
+                (
+                    if healthy { "up" } else { "down" }.to_string(),
+                    Some(status_code),
+                )
+            }
+            Err(err) => {
+                if let Some(map) = metadata.as_object_mut() {
+                    map.insert("error".to_string(), Value::String(err.to_string()));
+                }
+                ("down".to_string(), None)
+            }
+        }
+    } else {
+        ("unknown".to_string(), None)
+    };
+
+    ObservabilityBackendStatusView {
+        backend: ObservabilityBackendView::from(backend),
+        probe_status,
+        checked_at: Some(checked_at.to_string()),
+        local_probe_url,
+        http_status,
+        detail_url,
+        metadata,
+    }
+}
+
+fn build_tempo_trace_link(trace_id: &str) -> Option<String> {
+    Some(format!("{}/api/traces/{}", tempo_base_url(), trace_id))
+}
+
+fn build_grafana_trace_link(trace_id: &str) -> Option<String> {
+    Some(format!(
+        "{}/explore?traceId={}",
+        grafana_base_url(),
+        trace_id
+    ))
+}
+
+async fn query_prometheus_up(job: &str) -> Option<f64> {
+    let query = format!("up{{job=\"{job}\"}}");
+    let response = reqwest::Client::new()
+        .get(format!("{}/api/v1/query", prometheus_base_url()))
+        .query(&[("query", query.as_str())])
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let body: Value = response.json().await.ok()?;
+    body.get("data")
+        .and_then(|data| data.get("result"))
+        .and_then(|result| result.as_array())
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("value"))
+        .and_then(|value| value.as_array())
+        .and_then(|value| value.get(1))
+        .and_then(|value| value.as_str())
+        .and_then(|value| value.parse::<f64>().ok())
+}
+
+async fn load_key_service_healths(checked_at: &str) -> Vec<OpsServiceHealthView> {
+    let services = [
+        ("platform-core", "Platform Core"),
+        ("notification-worker", "Notification Worker"),
+        ("outbox-publisher", "Outbox Publisher"),
+    ];
+    let mut result = Vec::with_capacity(services.len());
+    for (job, display_name) in services {
+        let observed_value = query_prometheus_up(job).await;
+        let status = match observed_value {
+            Some(value) if value >= 1.0 => "up",
+            Some(_) => "down",
+            None => "unknown",
+        };
+        result.push(OpsServiceHealthView {
+            service_name: job.to_string(),
+            status: status.to_string(),
+            metric_name: format!("up{{job=\"{job}\"}}"),
+            backend_key: "prometheus_main".to_string(),
+            observed_value,
+            checked_at: Some(checked_at.to_string()),
+            detail_url: Some(format!("{}/graph", prometheus_base_url())),
+            metadata: json!({
+                "job": job,
+                "display_name": display_name,
+                "source": "prometheus_instant_query",
+            }),
+        });
+    }
+    result
+}
+
+fn log_export_bucket_name() -> String {
+    std::env::var(LOG_EXPORT_BUCKET_ENV).unwrap_or_else(|_| DEFAULT_LOG_EXPORT_BUCKET.to_string())
 }
 
 fn consistency_ref_type_candidates(ref_type: &str) -> Vec<String> {

@@ -10,9 +10,10 @@ pub use audit_kit::{
 
 use crate::modules::audit::dto::AuditTraceView;
 use crate::modules::audit::dto::{
-    ChainProjectionGapView, ConsumerIdempotencyRecordView, DeadLetterEventView,
+    AlertEventView, ChainProjectionGapView, ConsumerIdempotencyRecordView, DeadLetterEventView,
     EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView, FairnessIncidentView,
-    LegalHoldView, OutboxEventView, ReplayJobView, ReplayResultView, TradeLifecycleCheckpointView,
+    IncidentTicketView, LegalHoldView, ObservabilityBackendView, OutboxEventView, ReplayJobView,
+    ReplayResultView, SloView, SystemLogMirrorView, TraceIndexView, TradeLifecycleCheckpointView,
 };
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -570,4 +571,203 @@ pub struct TradeMonitorCheckpointPageView {
     pub page: u32,
     pub page_size: u32,
     pub items: Vec<TradeLifecycleCheckpointView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ObservabilityBackendStatusView {
+    pub backend: ObservabilityBackendView,
+    pub probe_status: String,
+    pub checked_at: Option<String>,
+    pub local_probe_url: Option<String>,
+    pub http_status: Option<u16>,
+    pub detail_url: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsAlertSummaryView {
+    pub open_count: i64,
+    pub acknowledged_count: i64,
+    pub critical_count: i64,
+    pub high_count: i64,
+    pub latest_fired_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsServiceHealthView {
+    pub service_name: String,
+    pub status: String,
+    pub metric_name: String,
+    pub backend_key: String,
+    pub observed_value: Option<f64>,
+    pub checked_at: Option<String>,
+    pub detail_url: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsSloSummaryView {
+    pub total: i64,
+    pub ok_count: i64,
+    pub degraded_count: i64,
+    pub breached_count: i64,
+    pub items: Vec<SloView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsObservabilityOverviewView {
+    pub backend_statuses: Vec<ObservabilityBackendStatusView>,
+    pub alert_summary: OpsAlertSummaryView,
+    pub key_services: Vec<OpsServiceHealthView>,
+    pub slo_summary: OpsSloSummaryView,
+    pub recent_incidents: Vec<IncidentTicketView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct OpsLogMirrorQuery {
+    pub service_name: Option<String>,
+    pub log_level: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub query: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl OpsLogMirrorQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsLogMirrorPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<SystemLogMirrorView>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct OpsLogExportRequest {
+    pub reason: String,
+    pub service_name: Option<String>,
+    pub log_level: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub query: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsLogExportView {
+    pub export_id: String,
+    pub bucket_name: String,
+    pub object_key: String,
+    pub object_uri: String,
+    pub object_hash: String,
+    pub exported_count: i64,
+    pub step_up_bound: bool,
+    pub content_type: String,
+    pub request_id: String,
+    pub trace_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsTraceLookupView {
+    pub trace: TraceIndexView,
+    pub related_log_count: i64,
+    pub related_alert_count: i64,
+    pub backend_status: Option<ObservabilityBackendStatusView>,
+    pub tempo_link: Option<String>,
+    pub grafana_link: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct OpsAlertQuery {
+    pub alert_status: Option<String>,
+    pub severity: Option<String>,
+    pub source_backend_key: Option<String>,
+    pub alert_type: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl OpsAlertQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsAlertPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<AlertEventView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct OpsIncidentQuery {
+    pub incident_status: Option<String>,
+    pub severity: Option<String>,
+    pub owner_role_key: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl OpsIncidentQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsIncidentPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<IncidentTicketView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct OpsSloQuery {
+    pub service_name: Option<String>,
+    pub source_backend_key: Option<String>,
+    pub status: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl OpsSloQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsSloPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<SloView>,
 }

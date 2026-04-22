@@ -2,17 +2,18 @@ use audit_kit::AuditAnnotation;
 use axum::{
     Json, Router,
     extract::Request,
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::get,
 };
 use config::RuntimeConfig;
 use kernel::{AppError, AppResult, ErrorResponse, new_uuid_string};
+use prometheus::{Encoder, HistogramOpts, HistogramVec, IntCounterVec, Registry, TextEncoder};
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::{future::Future, time::Duration, time::Instant, time::SystemTime, time::UNIX_EPOCH};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -107,6 +108,7 @@ struct DevOverviewFeed {
 
 const DEV_OVERVIEW_WINDOW: usize = 10;
 static DEV_OVERVIEW_FEED: OnceLock<Mutex<DevOverviewFeed>> = OnceLock::new();
+static HTTP_METRICS: OnceLock<Arc<HttpMetrics>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct RequestContext {
@@ -124,6 +126,7 @@ where
         .route("/health/live", get(live_handler))
         .route("/health/ready", get(ready_handler))
         .route("/health/deps", get(deps_handler))
+        .route("/metrics", get(metrics_handler))
         .route(
             "/internal/runtime",
             get({
@@ -168,6 +171,25 @@ pub async fn trace_links_handler() -> Json<ApiResponse<TraceLinks>> {
 
 pub async fn dev_overview_handler() -> Json<ApiResponse<DevOverview>> {
     ApiResponse::ok(build_dev_overview())
+}
+
+async fn metrics_handler() -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let encoder = TextEncoder::new();
+    let metric_families = http_metrics().registry.gather();
+    let mut buffer = Vec::new();
+    encoder
+        .encode(&metric_families, &mut buffer)
+        .map_err(|err| internal_error(format!("encode prometheus metrics failed: {err}")))?;
+    let body = String::from_utf8(buffer)
+        .map_err(|err| internal_error(format!("metrics utf8 decode failed: {err}")))?;
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_str(encoder.format_type())
+                .unwrap_or_else(|_| HeaderValue::from_static("text/plain")),
+        )],
+        body,
+    ))
 }
 
 async fn check_dependencies() -> Vec<DependencyStatus> {
@@ -353,6 +375,7 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
 
     let method = req.method().clone();
     let path = req.uri().path().to_string();
+    let metrics_path = normalize_metrics_path(&path);
     req.extensions_mut().insert(RequestContext {
         request_id: request_id.clone(),
         trace_id: trace_id.clone(),
@@ -361,6 +384,16 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
     });
 
     let mut response = next.run(req).await;
+    let status = response.status().as_u16().to_string();
+    let elapsed_seconds = started_at.elapsed().as_secs_f64();
+    http_metrics()
+        .requests_total
+        .with_label_values(&[method.as_str(), metrics_path.as_str(), status.as_str()])
+        .inc();
+    http_metrics()
+        .request_duration_seconds
+        .with_label_values(&[method.as_str(), metrics_path.as_str()])
+        .observe(elapsed_seconds);
     set_header(&mut response, "x-request-id", &request_id);
     set_header(&mut response, "x-trace-id", &trace_id);
     set_header(&mut response, "x-tenant-id", &tenant_id);
@@ -378,6 +411,108 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
         "request finished"
     );
     response
+}
+
+#[derive(Debug)]
+struct HttpMetrics {
+    registry: Registry,
+    requests_total: IntCounterVec,
+    request_duration_seconds: HistogramVec,
+}
+
+impl HttpMetrics {
+    fn new() -> Result<Self, String> {
+        let registry = Registry::new();
+        let requests_total = IntCounterVec::new(
+            prometheus::Opts::new(
+                "platform_core_http_requests_total",
+                "Platform core HTTP requests by method, normalized path, and status",
+            ),
+            &["method", "path", "status"],
+        )
+        .map_err(|err| format!("build request counter failed: {err}"))?;
+        let request_duration_seconds = HistogramVec::new(
+            HistogramOpts::new(
+                "platform_core_http_request_duration_seconds",
+                "Platform core HTTP request latency by method and normalized path",
+            )
+            .buckets(vec![
+                0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+            ]),
+            &["method", "path"],
+        )
+        .map_err(|err| format!("build request duration histogram failed: {err}"))?;
+        registry
+            .register(Box::new(requests_total.clone()))
+            .map_err(|err| format!("register request counter failed: {err}"))?;
+        registry
+            .register(Box::new(request_duration_seconds.clone()))
+            .map_err(|err| format!("register request duration histogram failed: {err}"))?;
+        Ok(Self {
+            registry,
+            requests_total,
+            request_duration_seconds,
+        })
+    }
+}
+
+fn http_metrics() -> &'static Arc<HttpMetrics> {
+    HTTP_METRICS.get_or_init(|| {
+        Arc::new(
+            HttpMetrics::new()
+                .unwrap_or_else(|err| panic!("platform-core http metrics init failed: {err}")),
+        )
+    })
+}
+
+fn normalize_metrics_path(path: &str) -> String {
+    let normalized_segments = path
+        .split('/')
+        .map(|segment| {
+            if segment.is_empty() {
+                String::new()
+            } else if looks_like_dynamic_path_segment(segment) {
+                "{id}".to_string()
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    let normalized = normalized_segments.join("/");
+    if normalized.is_empty() {
+        "/".to_string()
+    } else {
+        normalized
+    }
+}
+
+fn looks_like_dynamic_path_segment(segment: &str) -> bool {
+    if segment.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    if segment.len() >= 8
+        && segment
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '_')
+        && (segment.contains('-') || segment.contains('_'))
+    {
+        return true;
+    }
+    segment.len() >= 24
+        && segment
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+fn internal_error(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            code: "OPS_INTERNAL".to_string(),
+            message: message.into(),
+            request_id: None,
+        }),
+    )
 }
 
 pub fn set_audit_annotation(req: &mut Request, annotation: AuditAnnotation) {

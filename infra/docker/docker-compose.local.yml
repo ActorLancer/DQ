@@ -139,6 +139,7 @@ services:
       # Runtime clients and scripts should use MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY.
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-datab}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-datab_local_pass}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"

@@ -5,8 +5,7 @@ use crate::modules::audit::domain::{
 };
 use crate::modules::audit::repo;
 use crate::modules::order::repo::write_trade_audit_event;
-use crate::modules::storage::application::fetch_object_bytes;
-use crate::modules::storage::application::put_object_bytes;
+use crate::modules::storage::application::{delete_object, fetch_object_bytes, put_object_bytes};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use db::{Client, Error, GenericClient, NoTls, connect};
@@ -533,6 +532,107 @@ mod route_tests {
             .expect("request");
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_observability_overview_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/observability/overview")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud023-observability-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn ops_logs_query_requires_request_id() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/logs/query")
+            .header("x-role", "platform_audit_security")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn ops_logs_export_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/logs/export")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud023-log-export-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"reason":"missing step-up","trace_id":"trace-aud023"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_ops_trace_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/traces/trace-aud023")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud023-trace-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_ops_alerts_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/alerts")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud023-alerts-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_ops_incidents_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/incidents")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud023-incidents-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_ops_slos_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/slos")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud023-slos-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }
 
@@ -5433,6 +5533,817 @@ async fn audit_projection_gap_resolve_db_smoke() {
         .execute(
             "DELETE FROM ops.chain_projection_gap WHERE chain_projection_gap_id = $1::text::uuid",
             &[&chain_projection_gap_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+            &[&operator_user_id],
+        )
+        .await;
+    cleanup_business_rows(&client, &seed).await;
+}
+
+#[tokio::test]
+async fn observability_api_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let seed = seed_order_graph(&client, &suffix)
+        .await
+        .expect("seed order graph");
+    let operator_user_id = seed_user(&client, &seed.buyer_org_id, &format!("aud023-{suffix}"))
+        .await
+        .expect("seed aud023 user");
+    let log_export_step_up_id = seed_verified_step_up_challenge(
+        &client,
+        &operator_user_id,
+        "ops.log.export",
+        "system_log_query",
+        None,
+        "aud023",
+    )
+    .await
+    .expect("seed aud023 log export step-up");
+
+    let app = crate::with_live_test_state(router()).await;
+    let seed_request_id = format!("req-aud023-seed-{suffix}");
+    let trace_id = format!("trace-aud023-{suffix}");
+    let overview_request_id = format!("req-aud023-overview-{suffix}");
+    let logs_request_id = format!("req-aud023-logs-{suffix}");
+    let export_request_id = format!("req-aud023-export-{suffix}");
+    let trace_request_id = format!("req-aud023-trace-{suffix}");
+    let alerts_request_id = format!("req-aud023-alerts-{suffix}");
+    let incidents_request_id = format!("req-aud023-incidents-{suffix}");
+    let slos_request_id = format!("req-aud023-slos-{suffix}");
+
+    let trace_index_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate trace index id")
+        .get(0);
+    let alert_rule_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate alert rule id")
+        .get(0);
+    let alert_event_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate alert event id")
+        .get(0);
+    let incident_ticket_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate incident ticket id")
+        .get(0);
+    let incident_event_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate incident event id")
+        .get(0);
+    let slo_definition_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate slo definition id")
+        .get(0);
+
+    client
+        .execute(
+            "INSERT INTO ops.system_log (
+               system_log_id,
+               service_name,
+               logger_name,
+               log_level,
+               request_id,
+               trace_id,
+               message_text,
+               structured_payload,
+               environment_code,
+               backend_type,
+               severity_number,
+               object_type,
+               object_id,
+               masked_status,
+               retention_class,
+               legal_hold_status,
+               resource_attrs
+             ) VALUES (
+               $1::text::uuid,
+               'platform-core',
+               'audit.observability',
+               'INFO',
+               $2,
+               $3,
+               $4,
+               $5::jsonb,
+               'local',
+               'database_mirror',
+               9,
+               'order',
+               $6::text::uuid,
+               'masked',
+               'ops_default',
+               'none',
+               '{}'::jsonb
+             )",
+            &[
+                &client
+                    .query_one("SELECT gen_random_uuid()::text", &[])
+                    .await
+                    .expect("log row 1 id")
+                    .get::<_, String>(0),
+                &seed_request_id,
+                &trace_id,
+                &format!("aud023 seed log row one {suffix}"),
+                &json!({"seed":"aud023","row":1}),
+                &seed.order_id,
+            ],
+        )
+        .await
+        .expect("insert aud023 system log row one");
+    client
+        .execute(
+            "INSERT INTO ops.system_log (
+               system_log_id,
+               service_name,
+               logger_name,
+               log_level,
+               request_id,
+               trace_id,
+               message_text,
+               structured_payload,
+               environment_code,
+               backend_type,
+               severity_number,
+               object_type,
+               object_id,
+               masked_status,
+               retention_class,
+               legal_hold_status,
+               resource_attrs
+             ) VALUES (
+               $1::text::uuid,
+               'platform-core',
+               'audit.observability',
+               'WARN',
+               $2,
+               $3,
+               $4,
+               $5::jsonb,
+               'local',
+               'database_mirror',
+               13,
+               'order',
+               $6::text::uuid,
+               'masked',
+               'ops_default',
+               'none',
+               '{}'::jsonb
+             )",
+            &[
+                &client
+                    .query_one("SELECT gen_random_uuid()::text", &[])
+                    .await
+                    .expect("log row 2 id")
+                    .get::<_, String>(0),
+                &seed_request_id,
+                &trace_id,
+                &format!("aud023 seed log row two {suffix}"),
+                &json!({"seed":"aud023","row":2,"alert_candidate":true}),
+                &seed.order_id,
+            ],
+        )
+        .await
+        .expect("insert aud023 system log row two");
+    client
+        .execute(
+            "INSERT INTO ops.trace_index (
+               trace_index_id,
+               trace_id,
+               traceparent,
+               backend_key,
+               root_service_name,
+               root_span_name,
+               request_id,
+               ref_type,
+               ref_id,
+               object_type,
+               object_id,
+               status,
+               span_count,
+               started_at,
+               ended_at,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2,
+               '00-aud023trace-00000000000000000000000000000000-0000000000000000-01',
+               'tempo_main',
+               'platform-core',
+               'GET /api/v1/ops/logs/export',
+               $3,
+               'order',
+               $4::text::uuid,
+               'order',
+               $4::text::uuid,
+               'ok',
+               5,
+               now() - interval '2 minutes',
+               now() - interval '1 minute',
+               jsonb_build_object('seed', 'aud023')
+             )",
+            &[&trace_index_id, &trace_id, &seed_request_id, &seed.order_id],
+        )
+        .await
+        .expect("insert aud023 trace index");
+    client
+        .execute(
+            "INSERT INTO ops.alert_rule (
+               alert_rule_id,
+               rule_key,
+               source_backend_key,
+               severity,
+               alert_type,
+               expression_text,
+               target_scope_json,
+               notification_policy_json,
+               runbook_uri,
+               status,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2,
+               'prometheus_main',
+               'high',
+               'event_pipeline',
+               'aud023 export trace count spike',
+               '{}'::jsonb,
+               '{}'::jsonb,
+               '/runbooks/observability-local',
+               'active',
+               jsonb_build_object('seed', 'aud023')
+             )",
+            &[&alert_rule_id, &format!("aud023-alert-rule-{suffix}")],
+        )
+        .await
+        .expect("insert aud023 alert rule");
+    client
+        .execute(
+            "INSERT INTO ops.alert_event (
+               alert_event_id,
+               alert_rule_id,
+               source_backend_key,
+               fingerprint,
+               alert_type,
+               severity,
+               title_text,
+               summary_text,
+               ref_type,
+               ref_id,
+               request_id,
+               trace_id,
+               labels_json,
+               annotations_json,
+               status,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'prometheus_main',
+               $3,
+               'event_pipeline',
+               'high',
+               'AUD023 log export incident',
+               'log export trace produced observability signal',
+               'order',
+               $4::text::uuid,
+               $5,
+               $6,
+               jsonb_build_object('service', 'platform-core'),
+               jsonb_build_object('runbook', '/runbooks/observability-local'),
+               'open',
+               jsonb_build_object('seed', 'aud023')
+             )",
+            &[
+                &alert_event_id,
+                &alert_rule_id,
+                &format!("aud023-alert-fingerprint-{suffix}"),
+                &seed.order_id,
+                &seed_request_id,
+                &trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud023 alert event");
+    client
+        .execute(
+            "INSERT INTO ops.incident_ticket (
+               incident_ticket_id,
+               incident_key,
+               source_alert_event_id,
+               severity,
+               title_text,
+               summary_text,
+               status,
+               owner_role_key,
+               owner_user_id,
+               runbook_uri,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2,
+               $3::text::uuid,
+               'high',
+               'AUD023 observability incident',
+               'triage ongoing',
+               'open',
+               'platform_audit_security',
+               $4::text::uuid,
+               '/runbooks/observability-local',
+               jsonb_build_object(
+                 'seed', 'aud023',
+                 'impact_summary', 'log export path under incident triage',
+                 'root_cause_summary', 'seeded observability incident'
+               )
+             )",
+            &[
+                &incident_ticket_id,
+                &format!("INC-AUD023-{suffix}"),
+                &alert_event_id,
+                &operator_user_id,
+            ],
+        )
+        .await
+        .expect("insert aud023 incident ticket");
+    client
+        .execute(
+            "INSERT INTO ops.incident_event (
+               incident_event_id,
+               incident_ticket_id,
+               event_type,
+               actor_type,
+               actor_id,
+               from_status,
+               to_status,
+               note_text,
+               request_id,
+               trace_id
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'triaged',
+               'user',
+               $3::text::uuid,
+               'open',
+               'open',
+               'aud023 incident triaged',
+               $4,
+               $5
+             )",
+            &[
+                &incident_event_id,
+                &incident_ticket_id,
+                &operator_user_id,
+                &seed_request_id,
+                &trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud023 incident event");
+    client
+        .execute(
+            "INSERT INTO ops.slo_definition (
+               slo_definition_id,
+               slo_key,
+               service_name,
+               indicator_type,
+               objective_value,
+               window_code,
+               source_backend_key,
+               alert_rule_id,
+               status,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2,
+               'platform-core',
+               'availability',
+               99.900000,
+               'rolling_7d',
+               'prometheus_main',
+               $3::text::uuid,
+               'active',
+               jsonb_build_object('seed', 'aud023')
+             )",
+            &[
+                &slo_definition_id,
+                &format!("aud023-platform-core-{suffix}"),
+                &alert_rule_id,
+            ],
+        )
+        .await
+        .expect("insert aud023 slo definition");
+    client
+        .execute(
+            "INSERT INTO ops.slo_snapshot (
+               slo_definition_id,
+               source_backend_key,
+               window_started_at,
+               window_ended_at,
+               measured_value,
+               error_budget_remaining,
+               status
+             ) VALUES (
+               $1::text::uuid,
+               'prometheus_main',
+               now() - interval '7 days',
+               now(),
+               98.500000,
+               12.300000,
+               'breached'
+             )",
+            &[&slo_definition_id],
+        )
+        .await
+        .expect("insert aud023 slo snapshot");
+
+    let overview_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/ops/observability/overview")
+                .header("x-role", "platform_audit_security")
+                .header("x-request-id", &overview_request_id)
+                .body(Body::empty())
+                .expect("overview request"),
+        )
+        .await
+        .expect("call aud023 overview");
+    assert_eq!(overview_response.status(), StatusCode::OK);
+    let overview_body = to_bytes(overview_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud023 overview body");
+    let overview_json: Value =
+        serde_json::from_slice(&overview_body).expect("decode aud023 overview body");
+    assert!(
+        overview_json["data"]["alert_summary"]["open_count"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
+    assert!(
+        overview_json["data"]["backend_statuses"]
+            .as_array()
+            .expect("backend statuses array")
+            .iter()
+            .any(|item| item["backend"]["backend_key"].as_str() == Some("prometheus_main"))
+    );
+    assert!(
+        overview_json["data"]["key_services"]
+            .as_array()
+            .expect("key services array")
+            .iter()
+            .any(|item| item["service_name"].as_str() == Some("platform-core"))
+    );
+    assert!(
+        overview_json["data"]["recent_incidents"]
+            .as_array()
+            .expect("recent incidents array")
+            .iter()
+            .any(|item| item["incident_ticket_id"].as_str() == Some(incident_ticket_id.as_str()))
+    );
+
+    let logs_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/ops/logs/query?trace_id={trace_id}"))
+                .header("x-role", "platform_audit_security")
+                .header("x-request-id", &logs_request_id)
+                .body(Body::empty())
+                .expect("logs request"),
+        )
+        .await
+        .expect("call aud023 logs");
+    assert_eq!(logs_response.status(), StatusCode::OK);
+    let logs_body = to_bytes(logs_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud023 logs body");
+    let logs_json: Value = serde_json::from_slice(&logs_body).expect("decode aud023 logs body");
+    assert_eq!(logs_json["data"]["total"].as_i64(), Some(2));
+
+    let export_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/ops/logs/export")
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &export_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &log_export_step_up_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "reason": "incident triage export",
+                        "trace_id": trace_id,
+                    })
+                    .to_string(),
+                ))
+                .expect("export request"),
+        )
+        .await
+        .expect("call aud023 export");
+    let export_status = export_response.status();
+    let export_body = to_bytes(export_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud023 export body");
+    assert_eq!(
+        export_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&export_body)
+    );
+    let export_json: Value =
+        serde_json::from_slice(&export_body).expect("decode aud023 export body");
+    assert_eq!(export_json["data"]["exported_count"].as_i64(), Some(2));
+    assert_eq!(export_json["data"]["step_up_bound"].as_bool(), Some(true));
+    let export_bucket = export_json["data"]["bucket_name"]
+        .as_str()
+        .expect("export bucket");
+    let export_key = export_json["data"]["object_key"]
+        .as_str()
+        .expect("export key");
+    let exported_object = fetch_object_bytes(export_bucket, export_key)
+        .await
+        .expect("fetch aud023 export object");
+    let exported_json: Value =
+        serde_json::from_slice(exported_object.bytes.as_slice()).expect("decode export object");
+    assert_eq!(
+        exported_json["exported_count"].as_i64(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(exported_object.bytes.as_slice())
+    );
+
+    let trace_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/ops/traces/{trace_id}"))
+                .header("x-role", "platform_audit_security")
+                .header("x-request-id", &trace_request_id)
+                .body(Body::empty())
+                .expect("trace request"),
+        )
+        .await
+        .expect("call aud023 trace");
+    assert_eq!(trace_response.status(), StatusCode::OK);
+    let trace_body = to_bytes(trace_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud023 trace body");
+    let trace_json: Value = serde_json::from_slice(&trace_body).expect("decode aud023 trace body");
+    assert!(
+        trace_json["data"]["related_log_count"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 2
+    );
+    assert_eq!(trace_json["data"]["related_alert_count"].as_i64(), Some(1));
+    assert_eq!(
+        trace_json["data"]["trace"]["backend_key"].as_str(),
+        Some("tempo_main")
+    );
+
+    let alerts_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/ops/alerts?severity=high")
+                .header("x-role", "platform_audit_security")
+                .header("x-request-id", &alerts_request_id)
+                .body(Body::empty())
+                .expect("alerts request"),
+        )
+        .await
+        .expect("call aud023 alerts");
+    assert_eq!(alerts_response.status(), StatusCode::OK);
+    let alerts_body = to_bytes(alerts_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud023 alerts body");
+    let alerts_json: Value =
+        serde_json::from_slice(&alerts_body).expect("decode aud023 alerts body");
+    assert!(
+        alerts_json["data"]["items"]
+            .as_array()
+            .expect("alerts items")
+            .iter()
+            .any(|item| item["alert_event_id"].as_str() == Some(alert_event_id.as_str()))
+    );
+
+    let incidents_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/ops/incidents?owner_role_key=platform_audit_security")
+                .header("x-role", "platform_audit_security")
+                .header("x-request-id", &incidents_request_id)
+                .body(Body::empty())
+                .expect("incidents request"),
+        )
+        .await
+        .expect("call aud023 incidents");
+    assert_eq!(incidents_response.status(), StatusCode::OK);
+    let incidents_body = to_bytes(incidents_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud023 incidents body");
+    let incidents_json: Value =
+        serde_json::from_slice(&incidents_body).expect("decode aud023 incidents body");
+    assert!(
+        incidents_json["data"]["items"]
+            .as_array()
+            .expect("incidents items")
+            .iter()
+            .any(|item| item["incident_ticket_id"].as_str() == Some(incident_ticket_id.as_str()))
+    );
+
+    let slos_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/ops/slos?service_name=platform-core")
+                .header("x-role", "platform_audit_security")
+                .header("x-request-id", &slos_request_id)
+                .body(Body::empty())
+                .expect("slos request"),
+        )
+        .await
+        .expect("call aud023 slos");
+    assert_eq!(slos_response.status(), StatusCode::OK);
+    let slos_body = to_bytes(slos_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud023 slos body");
+    let slos_json: Value = serde_json::from_slice(&slos_body).expect("decode aud023 slos body");
+    assert!(
+        slos_json["data"]["items"]
+            .as_array()
+            .expect("slos items")
+            .iter()
+            .any(|item| item["slo_definition_id"].as_str() == Some(slo_definition_id.as_str()))
+    );
+
+    let audit_event_row = client
+        .query_one(
+            "SELECT
+               COUNT(*)::bigint,
+               MIN(step_up_challenge_id::text)
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = 'ops.log.export'",
+            &[&export_request_id],
+        )
+        .await
+        .expect("load aud023 audit event row");
+    assert_eq!(audit_event_row.get::<_, i64>(0), 1);
+    assert_eq!(
+        audit_event_row.get::<_, Option<String>>(1).as_deref(),
+        Some(log_export_step_up_id.as_str())
+    );
+
+    let access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND target_type = ANY($2::text[])",
+            &[
+                &vec![
+                    overview_request_id.clone(),
+                    logs_request_id.clone(),
+                    export_request_id.clone(),
+                    trace_request_id.clone(),
+                    alerts_request_id.clone(),
+                    incidents_request_id.clone(),
+                    slos_request_id.clone(),
+                ],
+                &vec![
+                    "observability_overview".to_string(),
+                    "system_log_query".to_string(),
+                    "system_log_export".to_string(),
+                    "trace_lookup".to_string(),
+                    "alert_query".to_string(),
+                    "incident_query".to_string(),
+                    "slo_query".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud023 access audit")
+        .get(0);
+    assert_eq!(access_count, 7);
+
+    let system_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = ANY($2::text[])",
+            &[
+                &vec![
+                    overview_request_id.clone(),
+                    logs_request_id.clone(),
+                    export_request_id.clone(),
+                    trace_request_id.clone(),
+                    alerts_request_id.clone(),
+                    incidents_request_id.clone(),
+                    slos_request_id.clone(),
+                ],
+                &vec![
+                    "ops lookup executed: GET /api/v1/ops/observability/overview".to_string(),
+                    "ops lookup executed: GET /api/v1/ops/logs/query".to_string(),
+                    "ops logs exported: POST /api/v1/ops/logs/export".to_string(),
+                    "ops lookup executed: GET /api/v1/ops/traces/{traceId}".to_string(),
+                    "ops lookup executed: GET /api/v1/ops/alerts".to_string(),
+                    "ops lookup executed: GET /api/v1/ops/incidents".to_string(),
+                    "ops lookup executed: GET /api/v1/ops/slos".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud023 system log")
+        .get(0);
+    assert_eq!(system_log_count, 7);
+
+    let _ = delete_object(export_bucket, export_key).await;
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&log_export_step_up_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.incident_event WHERE incident_ticket_id = $1::text::uuid",
+            &[&incident_ticket_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.incident_ticket WHERE incident_ticket_id = $1::text::uuid",
+            &[&incident_ticket_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.alert_event WHERE alert_event_id = $1::text::uuid",
+            &[&alert_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.alert_rule WHERE alert_rule_id = $1::text::uuid",
+            &[&alert_rule_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.trace_index WHERE trace_index_id = $1::text::uuid",
+            &[&trace_index_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.slo_definition WHERE slo_definition_id = $1::text::uuid",
+            &[&slo_definition_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.system_log WHERE request_id = $1",
+            &[&seed_request_id],
         )
         .await;
     let _ = client

@@ -1502,3 +1502,53 @@
   - 本批最初 smoke 失败并非实现口径冲突，而是测试断言把统一错误响应误当成 `error.code` 包装，以及把 `audit.access_audit.step_up_challenge_id` 的可空列按非空字符串读取；修正测试后，正式链路与回查全部通过。
   - 宿主机 smoke 的业务对象、OpenSearch 文档与临时索引已清理；`core.user_account / core.organization` 在尝试删除时会触发 `audit.access_audit` 的 append-only 保护，无法执行 `ON DELETE SET NULL` 更新，因此继续按既有 `AUD` 阶段策略保留最小主体样本，不通过强删破坏审计引用关系。
   - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。
+### BATCH-236（计划中）
+- 任务：`AUD-023` 观测总览 / 日志镜像查询导出 / trace 联查 / 告警与事故工单接口
+- 状态：计划中
+- 说明：按 `AUD-023` 冻结口径，当前批次在 `apps/platform-core/src/modules/audit/**` 补齐 `GET /api/v1/ops/observability/overview`、日志镜像查询/导出、`GET /api/v1/ops/traces/{traceId}`、`GET /api/v1/ops/alerts`、`GET /api/v1/ops/incidents`，并把 `ops.observability.read / ops.log.query / ops.log.export / ops.trace.read / ops.alert.read / ops.incident.read`、必要 step-up、审计与观测域错误码收口到正式实现。`PostgreSQL` 继续作为 `ops.system_log / ops.trace_index / ops.alert_event / ops.incident_ticket / ops.slo_*` 的主权威，`Prometheus / Alertmanager / Loki / Tempo / Grafana` 必须通过真实健康探测、联查 URL 或结果摘要进入接口返回与 runbook，不允许只读本地占位配置。
+- 追溯：已重新核对 `CSV / Markdown`、`日志、可观测性与告警设计.md`、`日志与可观测性接口协议正式版.md`、`页面说明书-V1-完整版.md` 第 21 章、`A04-AUD-Ops-接口与契约落地缺口.md`、`059_logging_observability.sql`、`060/070 authz seed`、`observability-local.md`、`check-observability-stack.sh`、`docker-compose.local.yml` 以及现有 `audit` 模块与 `ops.yaml`。当前确认的正式完成标准是：观测总览要能显示 backend/告警/SLO/incident 摘要；日志查询/导出要走 `ops.system_log + Loki` 边界、导出动作用 step-up + 审计 + MinIO 对象；trace 联查要以 `ops.trace_index` 为正式索引并联到 `Tempo`；告警/工单查询要真实覆盖 `ops.alert_event / ops.incident_ticket` 并保留 `request_id / trace_id / object_id` 联查能力。
+### BATCH-236（待审批）
+- 任务：`AUD-023` 观测总览 / 日志镜像查询导出 / trace 联查 / 告警与事故工单接口
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/api/{router,handlers}.rs`、`domain/mod.rs`、`dto/mod.rs`、`repo/mod.rs`：补齐 `GET /api/v1/ops/observability/overview`、`GET /api/v1/ops/logs/query`、兼容别名 `GET /api/v1/ops/logs`、`POST /api/v1/ops/logs/export`、`GET /api/v1/ops/traces/{traceId}`、`GET /api/v1/ops/alerts`、`GET /api/v1/ops/incidents`、`GET /api/v1/ops/slos`；以 `ops.system_log / ops.trace_index / ops.alert_event / ops.incident_ticket / ops.slo_* / ops.observability_backend` 为正式读模型，导出动作真实写 `MinIO(report-results)`、`audit.audit_event`、`audit.access_audit` 与 `ops.system_log`，并把 `Prometheus / Alertmanager / Grafana / Loki / Tempo / OTel Collector` 的真实 probe 状态回填到总览接口。
+  - `apps/platform-core/crates/http/src/lib.rs`、`Cargo.toml`：为宿主机 `platform-core` 补正式 `/metrics` 端点，暴露 `platform_core_http_requests_total` 与 `platform_core_http_request_duration_seconds`，Prometheus 现在可以真实抓取宿主机 `platform-core:8094/metrics`，不再依赖占位 exporter。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增 `AUD-023` 路由权限负例与 `observability_api_db_smoke`，真实串起 PostgreSQL、MinIO、审计留痕、`trace_id / request_id / object_id` 联查，并校验 overview/logs/export/trace/alerts/incidents/slos 全链路。
+  - `infra/docker/monitoring/prometheus.yml`、`infra/docker/docker-compose.local.yml`、`infra/mock-payment/mappings/admin-metrics.json`：将 `mock-payment-provider` 的 Prometheus 抓取收口到真实 `/metrics`，补齐 `MINIO_PROMETHEUS_AUTH_TYPE=public`，重建 `Prometheus / MinIO / mock-payment-provider` 后 `platform-core / mock-payment-provider / minio-exporter` 全部转为 `up`。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`docs/04-runbooks/audit-observability.md`、`docs/04-runbooks/observability-local.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`、`packages/openapi/README.md`、`docs/02-openapi/README.md`：同步补齐正式契约、宿主机联调步骤、Prometheus / MinIO / trace / alert 回查与 `AUD-023` 验收矩阵。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：无新增 `V1-gap / V2-reserved / V3-reserved`；关闭历史观测缺口 `TODO-NOTIF-OBS-001`，并把 `TODO-AUD-OPENAPI-001`、`TODO-AUD-TEST-001` 推进到 `AUD-023` 已完成的最新状态。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo test -p http@0.1.0` 通过；新增 `metrics` path 归一化测试通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既存 `unused_*` warning，无新增编译失败。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core` 通过：`313 passed; 0 failed`。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core observability_api_db_smoke -- --nocapture` 通过：真实回查 `MinIO(report-results)`、`audit.audit_event / audit.access_audit / ops.system_log`。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+  - `./scripts/check-observability-stack.sh` 通过：`platform-core / mock-payment-provider / kafka-exporter / postgres-exporter / redis-exporter / minio-exporter / opensearch-exporter` target、规则、datasource、dashboard 全绿。
+  - 宿主机真实接口联调通过：
+    - `curl http://127.0.0.1:8094/metrics` 可见 `platform_core_http_requests_total`、`platform_core_http_request_duration_seconds`。
+    - `curl http://127.0.0.1:8089/metrics` 可见 `mock_payment_provider_up 1`。
+    - 使用 `curl` 真实调用 `GET /api/v1/ops/observability/overview`、`GET /api/v1/ops/logs/query`、`GET /api/v1/ops/traces/{traceId}`、`GET /api/v1/ops/alerts`、`GET /api/v1/ops/incidents`、`GET /api/v1/ops/slos`，并通过 `jq` 回查 `backend_keys / related_log_count / related_alert_count / incident / slo` 等正式字段。
+    - 手工插入的临时 `trace_index / alert_rule / alert_event / incident_ticket / slo_*` 样本已清理；尝试删除对应 `ops.system_log` 时被 append-only guard 拦截，说明该对象在本地运行基线下也是真正式约束，不做破坏性清理。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-023`
+  - `日志、可观测性与告警设计.md`
+  - `日志与可观测性接口协议正式版.md`
+  - `页面说明书-V1-完整版.md` 第 21 章
+  - `A04-AUD-Ops-接口与契约落地缺口.md`
+  - `059_logging_observability.sql`
+  - `060_seed_authz_v1.sql`、`070_seed_role_permissions_v1.sql`
+  - `observability-local.md`、`audit-observability.md`、`check-observability-stack.sh`
+- 覆盖的任务清单条目：`AUD-023`
+- 未覆盖项：
+  - `AUD-024+` 其余 AUD 高风险控制面
+  - `SEARCHREC` 后续 worker 幂等 / DLQ / reprocess 可靠性闭环
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批同时关闭了历史 `TODO-NOTIF-OBS-001`。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-023` 按冻结口径属于 `platform-core` 的观测控制面，不要求新增 Fabric handler。Go 与 Fabric 的真实交互继续保持 `AUD-013 ~ AUD-017` 已落地的 `fabric-adapter / fabric-event-listener / fabric-ca-admin / chaincode` 分层。
+  - `./scripts/check-observability-stack.sh` 最初失败不是文档口径冲突，而是宿主机 `platform-core` 缺少正式 `/metrics`、`mock-payment-provider` 使用了 WireMock 保留的 `__admin` 路径、MinIO 指标抓取仍在旧配置。补齐正式 `/metrics` 与重建容器后已收口。
+  - 手工 live 验证阶段，`ops.system_log` 被 append-only guard 拦截删除；该约束与 `audit.*` 一样属于正式留痕保护，本批按真实约束保留相关日志镜像记录，不通过绕过 trigger 的方式伪造“清理成功”。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / Prometheus scrape / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。

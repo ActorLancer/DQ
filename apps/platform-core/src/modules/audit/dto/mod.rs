@@ -5,9 +5,10 @@ use audit_kit::{
 use serde::{Deserialize, Serialize};
 
 use crate::modules::audit::repo::{
-    ChainProjectionGapRecord, ConsumerIdempotencyRecord, DeadLetterEventRecord,
-    ExternalFactReceiptRecord, FairnessIncidentRecord, OutboxEventRecord,
-    OutboxPublishAttemptRecord, TradeLifecycleCheckpointRecord,
+    AlertEventRecord, ChainProjectionGapRecord, ConsumerIdempotencyRecord, DeadLetterEventRecord,
+    ExternalFactReceiptRecord, FairnessIncidentRecord, IncidentTicketRecord,
+    ObservabilityBackendRecord, OutboxEventRecord, OutboxPublishAttemptRecord, SloRecord,
+    SystemLogMirrorRecord, TraceIndexRecord, TradeLifecycleCheckpointRecord,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -450,6 +451,139 @@ pub struct FairnessIncidentView {
     pub updated_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ObservabilityBackendView {
+    pub observability_backend_id: Option<String>,
+    pub backend_key: String,
+    pub backend_type: String,
+    pub endpoint_uri: Option<String>,
+    pub auth_mode: String,
+    pub enabled: bool,
+    pub stage_from: String,
+    pub capability_json: serde_json::Value,
+    pub metadata: serde_json::Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SystemLogMirrorView {
+    pub system_log_id: Option<String>,
+    pub service_name: String,
+    pub logger_name: Option<String>,
+    pub log_level: String,
+    pub severity_number: Option<i32>,
+    pub environment_code: String,
+    pub host_name: Option<String>,
+    pub node_name: Option<String>,
+    pub pod_name: Option<String>,
+    pub backend_type: String,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub message_text: String,
+    pub structured_payload: serde_json::Value,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+    pub masked_status: String,
+    pub retention_class: String,
+    pub legal_hold_status: String,
+    pub resource_attrs: serde_json::Value,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TraceIndexView {
+    pub trace_index_id: Option<String>,
+    pub trace_id: String,
+    pub traceparent: Option<String>,
+    pub backend_key: Option<String>,
+    pub root_service_name: Option<String>,
+    pub root_span_name: Option<String>,
+    pub request_id: Option<String>,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+    pub status: String,
+    pub span_count: Option<i32>,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AlertEventView {
+    pub alert_event_id: Option<String>,
+    pub alert_rule_id: Option<String>,
+    pub source_backend_key: Option<String>,
+    pub fingerprint: String,
+    pub alert_type: String,
+    pub severity: String,
+    pub title_text: String,
+    pub summary_text: Option<String>,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub labels_json: serde_json::Value,
+    pub annotations_json: serde_json::Value,
+    pub status: String,
+    pub acknowledged_by: Option<String>,
+    pub acknowledged_at: Option<String>,
+    pub fired_at: Option<String>,
+    pub resolved_at: Option<String>,
+    pub metadata: serde_json::Value,
+    pub incident_ticket_id: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct IncidentTicketView {
+    pub incident_ticket_id: Option<String>,
+    pub incident_key: String,
+    pub source_alert_event_id: Option<String>,
+    pub severity: String,
+    pub title_text: String,
+    pub summary_text: Option<String>,
+    pub status: String,
+    pub owner_role_key: Option<String>,
+    pub owner_user_id: Option<String>,
+    pub runbook_uri: Option<String>,
+    pub impact_summary: Option<String>,
+    pub root_cause_summary: Option<String>,
+    pub latest_event_type: Option<String>,
+    pub latest_event_note: Option<String>,
+    pub metadata: serde_json::Value,
+    pub started_at: Option<String>,
+    pub resolved_at: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SloView {
+    pub slo_definition_id: Option<String>,
+    pub slo_key: String,
+    pub service_name: String,
+    pub indicator_type: String,
+    pub objective_value: String,
+    pub window_code: String,
+    pub source_backend_key: Option<String>,
+    pub alert_rule_id: Option<String>,
+    pub status: String,
+    pub current_value: Option<String>,
+    pub budget_remaining: Option<String>,
+    pub snapshot_status: Option<String>,
+    pub window_started_at: Option<String>,
+    pub window_ended_at: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
 impl From<&OutboxPublishAttemptRecord> for OutboxPublishAttemptView {
     fn from(attempt: &OutboxPublishAttemptRecord) -> Self {
         Self {
@@ -655,6 +789,157 @@ impl From<&FairnessIncidentRecord> for FairnessIncidentView {
             metadata: record.metadata.clone(),
             created_at: record.created_at.clone(),
             closed_at: record.closed_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&ObservabilityBackendRecord> for ObservabilityBackendView {
+    fn from(record: &ObservabilityBackendRecord) -> Self {
+        Self {
+            observability_backend_id: record.observability_backend_id.clone(),
+            backend_key: record.backend_key.clone(),
+            backend_type: record.backend_type.clone(),
+            endpoint_uri: record.endpoint_uri.clone(),
+            auth_mode: record.auth_mode.clone(),
+            enabled: record.enabled,
+            stage_from: record.stage_from.clone(),
+            capability_json: record.capability_json.clone(),
+            metadata: record.metadata.clone(),
+            created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&SystemLogMirrorRecord> for SystemLogMirrorView {
+    fn from(record: &SystemLogMirrorRecord) -> Self {
+        Self {
+            system_log_id: record.system_log_id.clone(),
+            service_name: record.service_name.clone(),
+            logger_name: record.logger_name.clone(),
+            log_level: record.log_level.clone(),
+            severity_number: record.severity_number,
+            environment_code: record.environment_code.clone(),
+            host_name: record.host_name.clone(),
+            node_name: record.node_name.clone(),
+            pod_name: record.pod_name.clone(),
+            backend_type: record.backend_type.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            message_text: record.message_text.clone(),
+            structured_payload: record.structured_payload.clone(),
+            object_type: record.object_type.clone(),
+            object_id: record.object_id.clone(),
+            masked_status: record.masked_status.clone(),
+            retention_class: record.retention_class.clone(),
+            legal_hold_status: record.legal_hold_status.clone(),
+            resource_attrs: record.resource_attrs.clone(),
+            created_at: record.created_at.clone(),
+        }
+    }
+}
+
+impl From<&TraceIndexRecord> for TraceIndexView {
+    fn from(record: &TraceIndexRecord) -> Self {
+        Self {
+            trace_index_id: record.trace_index_id.clone(),
+            trace_id: record.trace_id.clone(),
+            traceparent: record.traceparent.clone(),
+            backend_key: record.backend_key.clone(),
+            root_service_name: record.root_service_name.clone(),
+            root_span_name: record.root_span_name.clone(),
+            request_id: record.request_id.clone(),
+            ref_type: record.ref_type.clone(),
+            ref_id: record.ref_id.clone(),
+            object_type: record.object_type.clone(),
+            object_id: record.object_id.clone(),
+            status: record.status.clone(),
+            span_count: record.span_count,
+            started_at: record.started_at.clone(),
+            ended_at: record.ended_at.clone(),
+            metadata: record.metadata.clone(),
+            created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&AlertEventRecord> for AlertEventView {
+    fn from(record: &AlertEventRecord) -> Self {
+        Self {
+            alert_event_id: record.alert_event_id.clone(),
+            alert_rule_id: record.alert_rule_id.clone(),
+            source_backend_key: record.source_backend_key.clone(),
+            fingerprint: record.fingerprint.clone(),
+            alert_type: record.alert_type.clone(),
+            severity: record.severity.clone(),
+            title_text: record.title_text.clone(),
+            summary_text: record.summary_text.clone(),
+            ref_type: record.ref_type.clone(),
+            ref_id: record.ref_id.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            labels_json: record.labels_json.clone(),
+            annotations_json: record.annotations_json.clone(),
+            status: record.status.clone(),
+            acknowledged_by: record.acknowledged_by.clone(),
+            acknowledged_at: record.acknowledged_at.clone(),
+            fired_at: record.fired_at.clone(),
+            resolved_at: record.resolved_at.clone(),
+            metadata: record.metadata.clone(),
+            incident_ticket_id: record.incident_ticket_id.clone(),
+            created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&IncidentTicketRecord> for IncidentTicketView {
+    fn from(record: &IncidentTicketRecord) -> Self {
+        Self {
+            incident_ticket_id: record.incident_ticket_id.clone(),
+            incident_key: record.incident_key.clone(),
+            source_alert_event_id: record.source_alert_event_id.clone(),
+            severity: record.severity.clone(),
+            title_text: record.title_text.clone(),
+            summary_text: record.summary_text.clone(),
+            status: record.status.clone(),
+            owner_role_key: record.owner_role_key.clone(),
+            owner_user_id: record.owner_user_id.clone(),
+            runbook_uri: record.runbook_uri.clone(),
+            impact_summary: record.impact_summary.clone(),
+            root_cause_summary: record.root_cause_summary.clone(),
+            latest_event_type: record.latest_event_type.clone(),
+            latest_event_note: record.latest_event_note.clone(),
+            metadata: record.metadata.clone(),
+            started_at: record.started_at.clone(),
+            resolved_at: record.resolved_at.clone(),
+            created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&SloRecord> for SloView {
+    fn from(record: &SloRecord) -> Self {
+        Self {
+            slo_definition_id: record.slo_definition_id.clone(),
+            slo_key: record.slo_key.clone(),
+            service_name: record.service_name.clone(),
+            indicator_type: record.indicator_type.clone(),
+            objective_value: record.objective_value.clone(),
+            window_code: record.window_code.clone(),
+            source_backend_key: record.source_backend_key.clone(),
+            alert_rule_id: record.alert_rule_id.clone(),
+            status: record.status.clone(),
+            current_value: record.current_value.clone(),
+            budget_remaining: record.budget_remaining.clone(),
+            snapshot_status: record.snapshot_status.clone(),
+            window_started_at: record.window_started_at.clone(),
+            window_ended_at: record.window_ended_at.clone(),
+            metadata: record.metadata.clone(),
+            created_at: record.created_at.clone(),
             updated_at: record.updated_at.clone(),
         }
     }

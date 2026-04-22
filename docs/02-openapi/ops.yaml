@@ -1844,6 +1844,711 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/observability/overview:
+    get:
+      summary: query local observability overview
+      tags: [AuditOps]
+      description: |
+        Returns the formal local observability read model for `AUD-023`. PostgreSQL
+        remains the authority for mirrored `ops.alert_event / ops.incident_ticket /
+        ops.slo_* / ops.observability_backend`, while the handler also performs real
+        probe checks against Prometheus, Alertmanager, Grafana, Loki, Tempo, and the
+        local OTel collector.
+      responses:
+        "200":
+          description: observability overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsObservabilityOverviewResponse"
+              example:
+                success: true
+                data:
+                  backend_statuses:
+                    - backend:
+                        observability_backend_id: a7b6fdbf-5e15-4873-a4e8-11f273968e20
+                        backend_key: prometheus_main
+                        backend_type: prometheus
+                        endpoint_uri: http://prometheus:9090
+                        auth_mode: none
+                        enabled: true
+                        stage_from: V1
+                        capability_json:
+                          signals: [metrics, alerts]
+                        metadata:
+                          seed: aud023
+                      probe_status: up
+                      checked_at: "2026-04-22T10:33:00.000Z"
+                      local_probe_url: http://127.0.0.1:9090/-/ready
+                      http_status: 200
+                      detail_url: http://127.0.0.1:9090/graph
+                      metadata:
+                        configured_endpoint_uri: http://prometheus:9090
+                        signals: [metrics, alerts]
+                        status_family: success
+                  alert_summary:
+                    open_count: 7
+                    acknowledged_count: 0
+                    critical_count: 1
+                    high_count: 2
+                    latest_fired_at: "2026-04-22T10:31:00.000Z"
+                  key_services:
+                    - service_name: platform-core
+                      status: up
+                      metric_name: up{job="platform-core"}
+                      backend_key: prometheus_main
+                      observed_value: 1
+                      checked_at: "2026-04-22T10:33:00.000Z"
+                      detail_url: http://127.0.0.1:9090/graph
+                      metadata:
+                        job: platform-core
+                        display_name: Platform Core
+                        source: prometheus_instant_query
+                  slo_summary:
+                    total: 1
+                    ok_count: 0
+                    degraded_count: 0
+                    breached_count: 1
+                    items:
+                      - slo_definition_id: 8d34c92d-6ee4-47f8-98c7-f24d88dc4dc7
+                        slo_key: aud023-platform-core
+                        service_name: platform-core
+                        indicator_type: availability
+                        objective_value: "99.900000"
+                        window_code: rolling_7d
+                        source_backend_key: prometheus_main
+                        alert_rule_id: 6c5b7b32-c5de-428b-bd91-f0f510af5a19
+                        status: active
+                        current_value: "98.500000"
+                        budget_remaining: "12.300000"
+                        snapshot_status: breached
+                        window_started_at: "2026-04-15T10:33:00.000Z"
+                        window_ended_at: "2026-04-22T10:33:00.000Z"
+                        metadata:
+                          seed: aud023
+                  recent_incidents:
+                    - incident_ticket_id: 46aafc43-a02c-4d58-ae90-37cf2d4fb8cf
+                      incident_key: INC-AUD023-1
+                      source_alert_event_id: 9ca57392-6e39-4b53-a07b-10efe5d54fb7
+                      severity: high
+                      title_text: AUD023 observability incident
+                      summary_text: triage ongoing
+                      status: open
+                      owner_role_key: platform_audit_security
+                      owner_user_id: 10000000-0000-0000-0000-000000000401
+                      runbook_uri: /runbooks/observability-local
+                      impact_summary: log export path under incident triage
+                      root_cause_summary: seeded observability incident
+                      latest_event_type: triaged
+                      latest_event_note: aud023 incident triaged
+                      metadata:
+                        seed: aud023
+        "400":
+          description: request id missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/logs/query:
+    get:
+      summary: query mirrored ops system logs
+      tags: [AuditOps]
+      description: |
+        Returns the formal PostgreSQL mirror for system logs. The mirror is the
+        authority for `AUD-023` log query and export control-plane actions; Loki
+        remains the runtime observability backend referenced through backend metadata
+        and runbook links, but does not replace the mirrored query object.
+      parameters:
+        - in: query
+          name: service_name
+          schema:
+            type: string
+        - in: query
+          name: log_level
+          schema:
+            type: string
+        - in: query
+          name: request_id
+          schema:
+            type: string
+        - in: query
+          name: trace_id
+          schema:
+            type: string
+        - in: query
+          name: object_type
+          schema:
+            type: string
+        - in: query
+          name: object_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: from
+          schema:
+            type: string
+        - in: query
+          name: to
+          schema:
+            type: string
+        - in: query
+          name: query
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: system log mirror page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsLogMirrorPageResponse"
+              example:
+                success: true
+                data:
+                  total: 2
+                  page: 1
+                  page_size: 20
+                  items:
+                    - system_log_id: b7e999a9-f34a-45bf-b94f-bfd72753a824
+                      service_name: platform-core
+                      logger_name: audit.observability
+                      log_level: INFO
+                      severity_number: 9
+                      environment_code: local
+                      backend_type: database_mirror
+                      request_id: req-aud023-seed
+                      trace_id: trace-aud023
+                      message_text: aud023 seed log row one
+                      structured_payload:
+                        seed: aud023
+                        row: 1
+                      object_type: order
+                      object_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      masked_status: masked
+                      retention_class: ops_default
+                      legal_hold_status: none
+                      resource_attrs: {}
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/logs:
+    get:
+      summary: query mirrored ops system logs (compat alias)
+      tags: [AuditOps]
+      description: |
+        Compatibility alias for `GET /api/v1/ops/logs/query`. The formal V1 query
+        contract remains `/api/v1/ops/logs/query`, but the implementation also accepts
+        `/api/v1/ops/logs` to stay aligned with existing menu / permission references.
+      parameters:
+        - in: query
+          name: service_name
+          schema:
+            type: string
+        - in: query
+          name: log_level
+          schema:
+            type: string
+        - in: query
+          name: request_id
+          schema:
+            type: string
+        - in: query
+          name: trace_id
+          schema:
+            type: string
+        - in: query
+          name: object_type
+          schema:
+            type: string
+        - in: query
+          name: object_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: from
+          schema:
+            type: string
+        - in: query
+          name: to
+          schema:
+            type: string
+        - in: query
+          name: query
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: system log mirror page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsLogMirrorPageResponse"
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/logs/export:
+    post:
+      summary: export mirrored ops system logs to MinIO
+      tags: [AuditOps]
+      description: |
+        Performs the high-risk raw log export action for `AUD-023`. The request
+        requires `ops.log.export`, verified step-up binding, at least one selector,
+        and writes a JSON export object to MinIO bucket `report-results` together with
+        `audit.audit_event`, `audit.access_audit`, and `ops.system_log` side effects.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpsLogExportRequest"
+            example:
+              reason: incident triage export
+              trace_id: trace-aud023
+      responses:
+        "200":
+          description: log export object recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsLogExportResponse"
+              example:
+                success: true
+                data:
+                  export_id: f8dcb956-11df-44c3-aa5e-1b4d88981ee0
+                  bucket_name: report-results
+                  object_key: ops/log-exports/f8dcb956-11df-44c3-aa5e-1b4d88981ee0.json
+                  object_uri: s3://report-results/ops/log-exports/f8dcb956-11df-44c3-aa5e-1b4d88981ee0.json
+                  object_hash: 16527fd8aa24f7e4e24b48d2df2d4fe9632805020fffeceb917b64a3229ed99b
+                  exported_count: 2
+                  step_up_bound: true
+                  content_type: application/json
+                  request_id: req-aud023-export
+                  trace_id: trace-aud023
+        "400":
+          description: invalid payload or missing step-up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or verified step-up missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: no matching log mirror rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: export failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/traces/{traceId}:
+    get:
+      summary: lookup one mirrored trace index
+      tags: [AuditOps]
+      description: |
+        Uses `ops.trace_index` as the formal trace lookup authority for `AUD-023`,
+        then links the trace to Tempo / Grafana endpoints and counts related mirrored
+        logs and alert events for the same `trace_id`.
+      parameters:
+        - in: path
+          name: traceId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: trace lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsTraceLookupResponse"
+              example:
+                success: true
+                data:
+                  trace:
+                    trace_index_id: 22084516-bd16-4657-aece-3dbff6b32e0c
+                    trace_id: trace-aud023
+                    traceparent: 00-aud023trace-00000000000000000000000000000000-0000000000000000-01
+                    backend_key: tempo_main
+                    root_service_name: platform-core
+                    root_span_name: GET /api/v1/ops/logs/export
+                    request_id: req-aud023-seed
+                    ref_type: order
+                    ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    object_type: order
+                    object_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    status: ok
+                    span_count: 5
+                    started_at: "2026-04-22T10:31:00.000Z"
+                    ended_at: "2026-04-22T10:32:00.000Z"
+                    metadata:
+                      seed: aud023
+                  related_log_count: 3
+                  related_alert_count: 1
+                  backend_status:
+                    backend:
+                      backend_key: tempo_main
+                      backend_type: tempo
+                      auth_mode: none
+                      enabled: true
+                      stage_from: V1
+                      capability_json:
+                        signals: [traces]
+                      metadata: {}
+                    probe_status: up
+                    checked_at: "2026-04-22T10:33:00.000Z"
+                    local_probe_url: http://127.0.0.1:3200/metrics
+                    http_status: 200
+                    detail_url: http://127.0.0.1:3200
+                    metadata:
+                      configured_endpoint_uri: http://tempo:3200
+                      signals: [traces]
+                      status_family: success
+                  tempo_link: http://127.0.0.1:3200/api/traces/trace-aud023
+                  grafana_link: http://127.0.0.1:3000/explore?traceId=trace-aud023
+        "400":
+          description: request id missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: trace id not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/alerts:
+    get:
+      summary: query alert events
+      tags: [AuditOps]
+      description: |
+        Returns `ops.alert_event` as the formal alert center read model. Alertmanager
+        remains the runtime backend; the handler exposes backend links through overview
+        and trace lookup but alert objects themselves are read from PostgreSQL.
+      parameters:
+        - in: query
+          name: alert_status
+          schema:
+            type: string
+        - in: query
+          name: severity
+          schema:
+            type: string
+        - in: query
+          name: source_backend_key
+          schema:
+            type: string
+        - in: query
+          name: alert_type
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: alert page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsAlertPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - alert_event_id: 9ca57392-6e39-4b53-a07b-10efe5d54fb7
+                      alert_rule_id: 6c5b7b32-c5de-428b-bd91-f0f510af5a19
+                      source_backend_key: prometheus_main
+                      fingerprint: aud023-alert-fingerprint
+                      alert_type: event_pipeline
+                      severity: high
+                      title_text: AUD023 log export incident
+                      summary_text: log export trace produced observability signal
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      request_id: req-aud023-seed
+                      trace_id: trace-aud023
+                      labels_json:
+                        service: platform-core
+                      annotations_json:
+                        runbook: /runbooks/observability-local
+                      status: open
+                      metadata:
+                        seed: aud023
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/incidents:
+    get:
+      summary: query incident tickets
+      tags: [AuditOps]
+      description: |
+        Returns `ops.incident_ticket` as the formal incident work-order read model,
+        including the latest incident event note and ownership fields.
+      parameters:
+        - in: query
+          name: incident_status
+          schema:
+            type: string
+        - in: query
+          name: severity
+          schema:
+            type: string
+        - in: query
+          name: owner_role_key
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: incident page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsIncidentPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - incident_ticket_id: 46aafc43-a02c-4d58-ae90-37cf2d4fb8cf
+                      incident_key: INC-AUD023-1
+                      source_alert_event_id: 9ca57392-6e39-4b53-a07b-10efe5d54fb7
+                      severity: high
+                      title_text: AUD023 observability incident
+                      summary_text: triage ongoing
+                      status: open
+                      owner_role_key: platform_audit_security
+                      owner_user_id: 10000000-0000-0000-0000-000000000401
+                      runbook_uri: /runbooks/observability-local
+                      impact_summary: log export path under incident triage
+                      root_cause_summary: seeded observability incident
+                      latest_event_type: triaged
+                      latest_event_note: aud023 incident triaged
+                      metadata:
+                        seed: aud023
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/slos:
+    get:
+      summary: query SLO definitions with current snapshot
+      tags: [AuditOps]
+      description: |
+        Returns `ops.slo_definition` joined with the latest `ops.slo_snapshot` for each
+        row. The endpoint is read-only in `AUD-023` and is used by the overview page
+        and manual ops verification.
+      parameters:
+        - in: query
+          name: service_name
+          schema:
+            type: string
+        - in: query
+          name: source_backend_key
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: slo page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsSloPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - slo_definition_id: 8d34c92d-6ee4-47f8-98c7-f24d88dc4dc7
+                      slo_key: aud023-platform-core
+                      service_name: platform-core
+                      indicator_type: availability
+                      objective_value: "99.900000"
+                      window_code: rolling_7d
+                      source_backend_key: prometheus_main
+                      alert_rule_id: 6c5b7b32-c5de-428b-bd91-f0f510af5a19
+                      status: active
+                      current_value: "98.500000"
+                      budget_remaining: "12.300000"
+                      snapshot_status: breached
+                      window_started_at: "2026-04-15T10:33:00.000Z"
+                      window_ended_at: "2026-04-22T10:33:00.000Z"
+                      metadata:
+                        seed: aud023
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     ApiResponseString:
@@ -2017,6 +2722,69 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsProjectionGapResolveResponse"
+    ApiResponseOpsObservabilityOverviewResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsObservabilityOverviewResponse"
+    ApiResponseOpsLogMirrorPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsLogMirrorPageResponse"
+    ApiResponseOpsLogExportResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsLogExportResponse"
+    ApiResponseOpsTraceLookupResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsTraceLookupResponse"
+    ApiResponseOpsAlertPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsAlertPageResponse"
+    ApiResponseOpsIncidentPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsIncidentPageResponse"
+    ApiResponseOpsSloPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsSloPageResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -2658,6 +3426,186 @@ components:
         status:
           type: string
           enum: [dry_run_ready, resolution_recorded]
+    OpsObservabilityOverviewResponse:
+      type: object
+      required:
+        - backend_statuses
+        - alert_summary
+        - key_services
+        - slo_summary
+        - recent_incidents
+      properties:
+        backend_statuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObservabilityBackendStatusRecord"
+        alert_summary:
+          $ref: "#/components/schemas/OpsAlertSummary"
+        key_services:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpsServiceHealthRecord"
+        slo_summary:
+          $ref: "#/components/schemas/OpsSloSummary"
+        recent_incidents:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentTicketRecord"
+    OpsLogMirrorPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemLogMirrorRecord"
+    OpsLogExportRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+        service_name:
+          type: string
+          nullable: true
+        log_level:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        object_type:
+          type: string
+          nullable: true
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+        query:
+          type: string
+          nullable: true
+    OpsLogExportResponse:
+      type: object
+      required:
+        - export_id
+        - bucket_name
+        - object_key
+        - object_uri
+        - object_hash
+        - exported_count
+        - step_up_bound
+        - content_type
+        - request_id
+        - trace_id
+      properties:
+        export_id:
+          type: string
+          format: uuid
+        bucket_name:
+          type: string
+        object_key:
+          type: string
+        object_uri:
+          type: string
+        object_hash:
+          type: string
+        exported_count:
+          type: integer
+          format: int64
+        step_up_bound:
+          type: boolean
+        content_type:
+          type: string
+        request_id:
+          type: string
+        trace_id:
+          type: string
+    OpsTraceLookupResponse:
+      type: object
+      required:
+        - trace
+        - related_log_count
+        - related_alert_count
+      properties:
+        trace:
+          $ref: "#/components/schemas/TraceIndexRecord"
+        related_log_count:
+          type: integer
+          format: int64
+        related_alert_count:
+          type: integer
+          format: int64
+        backend_status:
+          allOf:
+            - $ref: "#/components/schemas/ObservabilityBackendStatusRecord"
+          nullable: true
+        tempo_link:
+          type: string
+          nullable: true
+        grafana_link:
+          type: string
+          nullable: true
+    OpsAlertPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertEventRecord"
+    OpsIncidentPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentTicketRecord"
+    OpsSloPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SloRecord"
     OpsOutboxPageResponse:
       type: object
       required: [total, page, page_size, items]
@@ -3619,6 +4567,474 @@ components:
           nullable: true
         resolution_summary:
           $ref: "#/components/schemas/JsonObject"
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    ObservabilityBackendRecord:
+      type: object
+      required:
+        - backend_key
+        - backend_type
+        - auth_mode
+        - enabled
+        - stage_from
+        - capability_json
+        - metadata
+      properties:
+        observability_backend_id:
+          type: string
+          format: uuid
+          nullable: true
+        backend_key:
+          type: string
+        backend_type:
+          type: string
+        endpoint_uri:
+          type: string
+          nullable: true
+        auth_mode:
+          type: string
+        enabled:
+          type: boolean
+        stage_from:
+          type: string
+        capability_json:
+          $ref: "#/components/schemas/JsonObject"
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    ObservabilityBackendStatusRecord:
+      type: object
+      required:
+        - backend
+        - probe_status
+        - metadata
+      properties:
+        backend:
+          $ref: "#/components/schemas/ObservabilityBackendRecord"
+        probe_status:
+          type: string
+        checked_at:
+          type: string
+          nullable: true
+        local_probe_url:
+          type: string
+          nullable: true
+        http_status:
+          type: integer
+          nullable: true
+        detail_url:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+    OpsAlertSummary:
+      type: object
+      required:
+        - open_count
+        - acknowledged_count
+        - critical_count
+        - high_count
+      properties:
+        open_count:
+          type: integer
+          format: int64
+        acknowledged_count:
+          type: integer
+          format: int64
+        critical_count:
+          type: integer
+          format: int64
+        high_count:
+          type: integer
+          format: int64
+        latest_fired_at:
+          type: string
+          nullable: true
+    OpsServiceHealthRecord:
+      type: object
+      required:
+        - service_name
+        - status
+        - metric_name
+        - backend_key
+        - metadata
+      properties:
+        service_name:
+          type: string
+        status:
+          type: string
+        metric_name:
+          type: string
+        backend_key:
+          type: string
+        observed_value:
+          type: number
+          nullable: true
+        checked_at:
+          type: string
+          nullable: true
+        detail_url:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+    OpsSloSummary:
+      type: object
+      required:
+        - total
+        - ok_count
+        - degraded_count
+        - breached_count
+        - items
+      properties:
+        total:
+          type: integer
+          format: int64
+        ok_count:
+          type: integer
+          format: int64
+        degraded_count:
+          type: integer
+          format: int64
+        breached_count:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SloRecord"
+    SystemLogMirrorRecord:
+      type: object
+      required:
+        - service_name
+        - log_level
+        - environment_code
+        - backend_type
+        - message_text
+        - structured_payload
+        - masked_status
+        - retention_class
+        - legal_hold_status
+        - resource_attrs
+      properties:
+        system_log_id:
+          type: string
+          format: uuid
+          nullable: true
+        service_name:
+          type: string
+        logger_name:
+          type: string
+          nullable: true
+        log_level:
+          type: string
+        severity_number:
+          type: integer
+          nullable: true
+        environment_code:
+          type: string
+        host_name:
+          type: string
+          nullable: true
+        node_name:
+          type: string
+          nullable: true
+        pod_name:
+          type: string
+          nullable: true
+        backend_type:
+          type: string
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        message_text:
+          type: string
+        structured_payload:
+          $ref: "#/components/schemas/JsonObject"
+        object_type:
+          type: string
+          nullable: true
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        masked_status:
+          type: string
+        retention_class:
+          type: string
+        legal_hold_status:
+          type: string
+        resource_attrs:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+    TraceIndexRecord:
+      type: object
+      required:
+        - trace_id
+        - status
+        - metadata
+      properties:
+        trace_index_id:
+          type: string
+          format: uuid
+          nullable: true
+        trace_id:
+          type: string
+        traceparent:
+          type: string
+          nullable: true
+        backend_key:
+          type: string
+          nullable: true
+        root_service_name:
+          type: string
+          nullable: true
+        root_span_name:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        ref_type:
+          type: string
+          nullable: true
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        object_type:
+          type: string
+          nullable: true
+        object_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+        span_count:
+          type: integer
+          nullable: true
+        started_at:
+          type: string
+          nullable: true
+        ended_at:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    AlertEventRecord:
+      type: object
+      required:
+        - fingerprint
+        - alert_type
+        - severity
+        - title_text
+        - labels_json
+        - annotations_json
+        - status
+        - metadata
+      properties:
+        alert_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        alert_rule_id:
+          type: string
+          format: uuid
+          nullable: true
+        source_backend_key:
+          type: string
+          nullable: true
+        fingerprint:
+          type: string
+        alert_type:
+          type: string
+        severity:
+          type: string
+        title_text:
+          type: string
+        summary_text:
+          type: string
+          nullable: true
+        ref_type:
+          type: string
+          nullable: true
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        labels_json:
+          $ref: "#/components/schemas/JsonObject"
+        annotations_json:
+          $ref: "#/components/schemas/JsonObject"
+        status:
+          type: string
+        acknowledged_by:
+          type: string
+          format: uuid
+          nullable: true
+        acknowledged_at:
+          type: string
+          nullable: true
+        fired_at:
+          type: string
+          nullable: true
+        resolved_at:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        incident_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    IncidentTicketRecord:
+      type: object
+      required:
+        - incident_key
+        - severity
+        - title_text
+        - status
+        - metadata
+      properties:
+        incident_ticket_id:
+          type: string
+          format: uuid
+          nullable: true
+        incident_key:
+          type: string
+        source_alert_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        severity:
+          type: string
+        title_text:
+          type: string
+        summary_text:
+          type: string
+          nullable: true
+        status:
+          type: string
+        owner_role_key:
+          type: string
+          nullable: true
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        runbook_uri:
+          type: string
+          nullable: true
+        impact_summary:
+          type: string
+          nullable: true
+        root_cause_summary:
+          type: string
+          nullable: true
+        latest_event_type:
+          type: string
+          nullable: true
+        latest_event_note:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+        started_at:
+          type: string
+          nullable: true
+        resolved_at:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+    SloRecord:
+      type: object
+      required:
+        - slo_key
+        - service_name
+        - indicator_type
+        - objective_value
+        - window_code
+        - status
+        - metadata
+      properties:
+        slo_definition_id:
+          type: string
+          format: uuid
+          nullable: true
+        slo_key:
+          type: string
+        service_name:
+          type: string
+        indicator_type:
+          type: string
+        objective_value:
+          type: string
+        window_code:
+          type: string
+        source_backend_key:
+          type: string
+          nullable: true
+        alert_rule_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+        current_value:
+          type: string
+          nullable: true
+        budget_remaining:
+          type: string
+          nullable: true
+        snapshot_status:
+          type: string
+          nullable: true
+        window_started_at:
+          type: string
+          nullable: true
+        window_ended_at:
+          type: string
+          nullable: true
         metadata:
           $ref: "#/components/schemas/JsonObject"
         created_at:

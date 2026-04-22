@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/metrics"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "text/plain; version=0.0.4; charset=utf-8"
+    },
+    "body": "# HELP mock_payment_provider_up mock payment provider readiness\n# TYPE mock_payment_provider_up gauge\nmock_payment_provider_up 1\n"
+  }
+}

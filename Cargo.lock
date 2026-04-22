@@ -1397,6 +1397,7 @@ dependencies = [
  "axum",
  "config",
  "kernel",
+ "prometheus",
  "serde",
  "tokio",
  "tracing",

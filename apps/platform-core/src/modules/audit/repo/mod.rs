@@ -7,8 +7,8 @@ use serde_json::{Map, Value};
 
 use crate::modules::audit::domain::{
     AnchorBatchQuery, AuditTraceQuery, ChainProjectionGapQuery, ConsumerIdempotencyQuery,
-    ExternalFactReceiptQuery, FairnessIncidentQuery, OpsDeadLetterQuery, OpsOutboxQuery,
-    TradeMonitorCheckpointQuery,
+    ExternalFactReceiptQuery, FairnessIncidentQuery, OpsAlertQuery, OpsDeadLetterQuery,
+    OpsIncidentQuery, OpsLogMirrorQuery, OpsOutboxQuery, OpsSloQuery, TradeMonitorCheckpointQuery,
 };
 use crate::modules::audit::dto::AuditTraceView;
 
@@ -818,6 +818,163 @@ pub struct FairnessIncidentRecord {
 pub struct FairnessIncidentPage {
     pub total: i64,
     pub items: Vec<FairnessIncidentRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObservabilityBackendRecord {
+    pub observability_backend_id: Option<String>,
+    pub backend_key: String,
+    pub backend_type: String,
+    pub endpoint_uri: Option<String>,
+    pub auth_mode: String,
+    pub enabled: bool,
+    pub stage_from: String,
+    pub capability_json: Value,
+    pub metadata: Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SystemLogMirrorRecord {
+    pub system_log_id: Option<String>,
+    pub service_name: String,
+    pub logger_name: Option<String>,
+    pub log_level: String,
+    pub severity_number: Option<i32>,
+    pub environment_code: String,
+    pub host_name: Option<String>,
+    pub node_name: Option<String>,
+    pub pod_name: Option<String>,
+    pub backend_type: String,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub message_text: String,
+    pub structured_payload: Value,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+    pub masked_status: String,
+    pub retention_class: String,
+    pub legal_hold_status: String,
+    pub resource_attrs: Value,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SystemLogMirrorPage {
+    pub total: i64,
+    pub items: Vec<SystemLogMirrorRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraceIndexRecord {
+    pub trace_index_id: Option<String>,
+    pub trace_id: String,
+    pub traceparent: Option<String>,
+    pub backend_key: Option<String>,
+    pub root_service_name: Option<String>,
+    pub root_span_name: Option<String>,
+    pub request_id: Option<String>,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+    pub status: String,
+    pub span_count: Option<i32>,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub metadata: Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlertEventRecord {
+    pub alert_event_id: Option<String>,
+    pub alert_rule_id: Option<String>,
+    pub source_backend_key: Option<String>,
+    pub fingerprint: String,
+    pub alert_type: String,
+    pub severity: String,
+    pub title_text: String,
+    pub summary_text: Option<String>,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub labels_json: Value,
+    pub annotations_json: Value,
+    pub status: String,
+    pub acknowledged_by: Option<String>,
+    pub acknowledged_at: Option<String>,
+    pub fired_at: Option<String>,
+    pub resolved_at: Option<String>,
+    pub metadata: Value,
+    pub incident_ticket_id: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlertEventPage {
+    pub total: i64,
+    pub items: Vec<AlertEventRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IncidentTicketRecord {
+    pub incident_ticket_id: Option<String>,
+    pub incident_key: String,
+    pub source_alert_event_id: Option<String>,
+    pub severity: String,
+    pub title_text: String,
+    pub summary_text: Option<String>,
+    pub status: String,
+    pub owner_role_key: Option<String>,
+    pub owner_user_id: Option<String>,
+    pub runbook_uri: Option<String>,
+    pub impact_summary: Option<String>,
+    pub root_cause_summary: Option<String>,
+    pub latest_event_type: Option<String>,
+    pub latest_event_note: Option<String>,
+    pub metadata: Value,
+    pub started_at: Option<String>,
+    pub resolved_at: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IncidentTicketPage {
+    pub total: i64,
+    pub items: Vec<IncidentTicketRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SloRecord {
+    pub slo_definition_id: Option<String>,
+    pub slo_key: String,
+    pub service_name: String,
+    pub indicator_type: String,
+    pub objective_value: String,
+    pub window_code: String,
+    pub source_backend_key: Option<String>,
+    pub alert_rule_id: Option<String>,
+    pub status: String,
+    pub current_value: Option<String>,
+    pub budget_remaining: Option<String>,
+    pub snapshot_status: Option<String>,
+    pub window_started_at: Option<String>,
+    pub window_ended_at: Option<String>,
+    pub metadata: Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SloPage {
+    pub total: i64,
+    pub items: Vec<SloRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2477,6 +2634,423 @@ pub async fn handle_fairness_incident(
     Ok(row.map(|row| parse_fairness_incident_row(&row)))
 }
 
+pub async fn search_observability_backends(
+    client: &(impl GenericClient + Sync),
+) -> Result<Vec<ObservabilityBackendRecord>, Error> {
+    let rows = client
+        .query(
+            "SELECT
+               observability_backend_id::text,
+               backend_key,
+               backend_type,
+               endpoint_uri,
+               auth_mode,
+               enabled,
+               stage_from,
+               capability_json,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.observability_backend
+             ORDER BY backend_type, backend_key",
+            &[],
+        )
+        .await?;
+    Ok(rows.iter().map(parse_observability_backend_row).collect())
+}
+
+pub async fn search_system_log_mirrors(
+    client: &(impl GenericClient + Sync),
+    query: &OpsLogMirrorQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<SystemLogMirrorPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log sl
+             WHERE ($1::text IS NULL OR sl.service_name = $1)
+               AND ($2::text IS NULL OR sl.log_level = $2)
+               AND ($3::text IS NULL OR sl.request_id = $3)
+               AND ($4::text IS NULL OR sl.trace_id = $4)
+               AND ($5::text IS NULL OR sl.object_type = $5)
+               AND ($6::text IS NULL OR sl.object_id = $6::text::uuid)
+               AND ($7::text IS NULL OR sl.created_at >= $7::timestamptz)
+               AND ($8::text IS NULL OR sl.created_at <= $8::timestamptz)
+               AND (
+                 $9::text IS NULL
+                 OR sl.message_text ILIKE '%' || $9 || '%'
+                 OR COALESCE(sl.logger_name, '') ILIKE '%' || $9 || '%'
+                 OR sl.structured_payload::text ILIKE '%' || $9 || '%'
+               )",
+            &[
+                &query.service_name,
+                &query.log_level,
+                &query.request_id,
+                &query.trace_id,
+                &query.object_type,
+                &query.object_id,
+                &query.from,
+                &query.to,
+                &query.query,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               sl.system_log_id::text,
+               sl.service_name,
+               sl.logger_name,
+               sl.log_level,
+               sl.severity_number,
+               sl.environment_code,
+               sl.host_name,
+               sl.node_name,
+               sl.pod_name,
+               sl.backend_type,
+               sl.request_id,
+               sl.trace_id,
+               sl.message_text,
+               sl.structured_payload,
+               sl.object_type,
+               sl.object_id::text,
+               sl.masked_status,
+               sl.retention_class,
+               sl.legal_hold_status,
+               sl.resource_attrs,
+               to_char(sl.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.system_log sl
+             WHERE ($1::text IS NULL OR sl.service_name = $1)
+               AND ($2::text IS NULL OR sl.log_level = $2)
+               AND ($3::text IS NULL OR sl.request_id = $3)
+               AND ($4::text IS NULL OR sl.trace_id = $4)
+               AND ($5::text IS NULL OR sl.object_type = $5)
+               AND ($6::text IS NULL OR sl.object_id = $6::text::uuid)
+               AND ($7::text IS NULL OR sl.created_at >= $7::timestamptz)
+               AND ($8::text IS NULL OR sl.created_at <= $8::timestamptz)
+               AND (
+                 $9::text IS NULL
+                 OR sl.message_text ILIKE '%' || $9 || '%'
+                 OR COALESCE(sl.logger_name, '') ILIKE '%' || $9 || '%'
+                 OR sl.structured_payload::text ILIKE '%' || $9 || '%'
+               )
+             ORDER BY sl.created_at DESC, sl.system_log_id DESC
+             LIMIT $10 OFFSET $11",
+            &[
+                &query.service_name,
+                &query.log_level,
+                &query.request_id,
+                &query.trace_id,
+                &query.object_type,
+                &query.object_id,
+                &query.from,
+                &query.to,
+                &query.query,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(SystemLogMirrorPage {
+        total,
+        items: rows.iter().map(parse_system_log_mirror_row).collect(),
+    })
+}
+
+pub async fn load_trace_index_by_trace_id(
+    client: &(impl GenericClient + Sync),
+    trace_id: &str,
+) -> Result<Option<TraceIndexRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               trace_index_id::text,
+               trace_id,
+               traceparent,
+               backend_key,
+               root_service_name,
+               root_span_name,
+               request_id,
+               ref_type,
+               ref_id::text,
+               object_type,
+               object_id::text,
+               status,
+               span_count,
+               to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.trace_index
+             WHERE trace_id = $1
+             ORDER BY COALESCE(ended_at, started_at, created_at) DESC, trace_index_id DESC
+             LIMIT 1",
+            &[&trace_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_trace_index_row(&row)))
+}
+
+pub async fn count_system_logs_by_trace_id(
+    client: &(impl GenericClient + Sync),
+    trace_id: &str,
+) -> Result<i64, Error> {
+    client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE trace_id = $1",
+            &[&trace_id],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
+pub async fn count_alert_events_by_trace_id(
+    client: &(impl GenericClient + Sync),
+    trace_id: &str,
+) -> Result<i64, Error> {
+    client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.alert_event
+             WHERE trace_id = $1",
+            &[&trace_id],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
+pub async fn search_alert_events(
+    client: &(impl GenericClient + Sync),
+    query: &OpsAlertQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<AlertEventPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.alert_event ae
+             WHERE ($1::text IS NULL OR ae.status = $1)
+               AND ($2::text IS NULL OR ae.severity = $2)
+               AND ($3::text IS NULL OR ae.source_backend_key = $3)
+               AND ($4::text IS NULL OR ae.alert_type = $4)",
+            &[
+                &query.alert_status,
+                &query.severity,
+                &query.source_backend_key,
+                &query.alert_type,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               ae.alert_event_id::text,
+               ae.alert_rule_id::text,
+               ae.source_backend_key,
+               ae.fingerprint,
+               ae.alert_type,
+               ae.severity,
+               ae.title_text,
+               ae.summary_text,
+               ae.ref_type,
+               ae.ref_id::text,
+               ae.request_id,
+               ae.trace_id,
+               ae.labels_json,
+               ae.annotations_json,
+               ae.status,
+               ae.acknowledged_by::text,
+               to_char(ae.acknowledged_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ae.fired_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ae.resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               ae.metadata,
+               it.incident_ticket_id::text,
+               to_char(ae.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ae.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.alert_event ae
+             LEFT JOIN ops.incident_ticket it
+               ON it.source_alert_event_id = ae.alert_event_id
+             WHERE ($1::text IS NULL OR ae.status = $1)
+               AND ($2::text IS NULL OR ae.severity = $2)
+               AND ($3::text IS NULL OR ae.source_backend_key = $3)
+               AND ($4::text IS NULL OR ae.alert_type = $4)
+             ORDER BY ae.fired_at DESC, ae.alert_event_id DESC
+             LIMIT $5 OFFSET $6",
+            &[
+                &query.alert_status,
+                &query.severity,
+                &query.source_backend_key,
+                &query.alert_type,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(AlertEventPage {
+        total,
+        items: rows.iter().map(parse_alert_event_row).collect(),
+    })
+}
+
+pub async fn search_incident_tickets(
+    client: &(impl GenericClient + Sync),
+    query: &OpsIncidentQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<IncidentTicketPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.incident_ticket it
+             WHERE ($1::text IS NULL OR it.status = $1)
+               AND ($2::text IS NULL OR it.severity = $2)
+               AND ($3::text IS NULL OR it.owner_role_key = $3)",
+            &[
+                &query.incident_status,
+                &query.severity,
+                &query.owner_role_key,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               it.incident_ticket_id::text,
+               it.incident_key,
+               it.source_alert_event_id::text,
+               it.severity,
+               it.title_text,
+               it.summary_text,
+               it.status,
+               it.owner_role_key,
+               it.owner_user_id::text,
+               it.runbook_uri,
+               it.metadata ->> 'impact_summary',
+               it.metadata ->> 'root_cause_summary',
+               ie.event_type,
+               ie.note_text,
+               it.metadata,
+               to_char(it.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(it.resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(it.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(it.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.incident_ticket it
+             LEFT JOIN LATERAL (
+               SELECT event_type, note_text
+               FROM ops.incident_event
+               WHERE incident_ticket_id = it.incident_ticket_id
+               ORDER BY created_at DESC, incident_event_id DESC
+               LIMIT 1
+             ) ie ON true
+             WHERE ($1::text IS NULL OR it.status = $1)
+               AND ($2::text IS NULL OR it.severity = $2)
+               AND ($3::text IS NULL OR it.owner_role_key = $3)
+             ORDER BY it.started_at DESC, it.incident_ticket_id DESC
+             LIMIT $4 OFFSET $5",
+            &[
+                &query.incident_status,
+                &query.severity,
+                &query.owner_role_key,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(IncidentTicketPage {
+        total,
+        items: rows.iter().map(parse_incident_ticket_row).collect(),
+    })
+}
+
+pub async fn search_slos(
+    client: &(impl GenericClient + Sync),
+    query: &OpsSloQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<SloPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.slo_definition sd
+             WHERE ($1::text IS NULL OR sd.service_name = $1)
+               AND ($2::text IS NULL OR sd.source_backend_key = $2)
+               AND ($3::text IS NULL OR sd.status = $3)",
+            &[
+                &query.service_name,
+                &query.source_backend_key,
+                &query.status,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               sd.slo_definition_id::text,
+               sd.slo_key,
+               sd.service_name,
+               sd.indicator_type,
+               sd.objective_value::text,
+               sd.window_code,
+               sd.source_backend_key,
+               sd.alert_rule_id::text,
+               sd.status,
+               ss.measured_value::text,
+               ss.error_budget_remaining::text,
+               ss.status,
+               to_char(ss.window_started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(ss.window_ended_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               sd.metadata,
+               to_char(sd.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(sd.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.slo_definition sd
+             LEFT JOIN LATERAL (
+               SELECT
+                 measured_value,
+                 error_budget_remaining,
+                 status,
+                 window_started_at,
+                 window_ended_at
+               FROM ops.slo_snapshot
+               WHERE slo_definition_id = sd.slo_definition_id
+               ORDER BY window_ended_at DESC, slo_snapshot_id DESC
+               LIMIT 1
+             ) ss ON true
+             WHERE ($1::text IS NULL OR sd.service_name = $1)
+               AND ($2::text IS NULL OR sd.source_backend_key = $2)
+               AND ($3::text IS NULL OR sd.status = $3)
+             ORDER BY sd.service_name, sd.slo_key
+             LIMIT $4 OFFSET $5",
+            &[
+                &query.service_name,
+                &query.source_backend_key,
+                &query.status,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(SloPage {
+        total,
+        items: rows.iter().map(parse_slo_row).collect(),
+    })
+}
+
 pub async fn count_open_fairness_incidents_for_order(
     client: &(impl GenericClient + Sync),
     order_id: &str,
@@ -3578,6 +4152,145 @@ fn parse_fairness_incident_row(row: &Row) -> FairnessIncidentRecord {
         created_at: row.get(18),
         closed_at: row.get(19),
         updated_at: row.get(20),
+    }
+}
+
+fn parse_observability_backend_row(row: &Row) -> ObservabilityBackendRecord {
+    ObservabilityBackendRecord {
+        observability_backend_id: row.get(0),
+        backend_key: row.get(1),
+        backend_type: row.get(2),
+        endpoint_uri: row.get(3),
+        auth_mode: row.get(4),
+        enabled: row.get(5),
+        stage_from: row.get(6),
+        capability_json: row.get(7),
+        metadata: row.get(8),
+        created_at: row.get(9),
+        updated_at: row.get(10),
+    }
+}
+
+fn parse_system_log_mirror_row(row: &Row) -> SystemLogMirrorRecord {
+    SystemLogMirrorRecord {
+        system_log_id: row.get(0),
+        service_name: row.get(1),
+        logger_name: row.get(2),
+        log_level: row.get(3),
+        severity_number: row.get(4),
+        environment_code: row.get(5),
+        host_name: row.get(6),
+        node_name: row.get(7),
+        pod_name: row.get(8),
+        backend_type: row.get(9),
+        request_id: row.get(10),
+        trace_id: row.get(11),
+        message_text: row.get(12),
+        structured_payload: row.get(13),
+        object_type: row.get(14),
+        object_id: row.get(15),
+        masked_status: row.get(16),
+        retention_class: row.get(17),
+        legal_hold_status: row.get(18),
+        resource_attrs: row.get(19),
+        created_at: row.get(20),
+    }
+}
+
+fn parse_trace_index_row(row: &Row) -> TraceIndexRecord {
+    TraceIndexRecord {
+        trace_index_id: row.get(0),
+        trace_id: row.get(1),
+        traceparent: row.get(2),
+        backend_key: row.get(3),
+        root_service_name: row.get(4),
+        root_span_name: row.get(5),
+        request_id: row.get(6),
+        ref_type: row.get(7),
+        ref_id: row.get(8),
+        object_type: row.get(9),
+        object_id: row.get(10),
+        status: row.get(11),
+        span_count: row.get(12),
+        started_at: row.get(13),
+        ended_at: row.get(14),
+        metadata: row.get(15),
+        created_at: row.get(16),
+        updated_at: row.get(17),
+    }
+}
+
+fn parse_alert_event_row(row: &Row) -> AlertEventRecord {
+    AlertEventRecord {
+        alert_event_id: row.get(0),
+        alert_rule_id: row.get(1),
+        source_backend_key: row.get(2),
+        fingerprint: row.get(3),
+        alert_type: row.get(4),
+        severity: row.get(5),
+        title_text: row.get(6),
+        summary_text: row.get(7),
+        ref_type: row.get(8),
+        ref_id: row.get(9),
+        request_id: row.get(10),
+        trace_id: row.get(11),
+        labels_json: row.get(12),
+        annotations_json: row.get(13),
+        status: row.get(14),
+        acknowledged_by: row.get(15),
+        acknowledged_at: row.get(16),
+        fired_at: row.get(17),
+        resolved_at: row.get(18),
+        metadata: row.get(19),
+        incident_ticket_id: row.get(20),
+        created_at: row.get(21),
+        updated_at: row.get(22),
+    }
+}
+
+fn parse_incident_ticket_row(row: &Row) -> IncidentTicketRecord {
+    IncidentTicketRecord {
+        incident_ticket_id: row.get(0),
+        incident_key: row.get(1),
+        source_alert_event_id: row.get(2),
+        severity: row.get(3),
+        title_text: row.get(4),
+        summary_text: row.get(5),
+        status: row.get(6),
+        owner_role_key: row.get(7),
+        owner_user_id: row.get(8),
+        runbook_uri: row.get(9),
+        impact_summary: row.get(10),
+        root_cause_summary: row.get(11),
+        latest_event_type: row.get(12),
+        latest_event_note: row.get(13),
+        metadata: row.get(14),
+        started_at: row.get(15),
+        resolved_at: row.get(16),
+        created_at: row.get(17),
+        updated_at: row.get(18),
+    }
+}
+
+fn parse_slo_row(row: &Row) -> SloRecord {
+    SloRecord {
+        slo_definition_id: row.get(0),
+        slo_key: row.get(1),
+        service_name: row.get(2),
+        indicator_type: row.get(3),
+        objective_value: row.get(4),
+        window_code: row.get(5),
+        source_backend_key: row.get(6),
+        alert_rule_id: row.get(7),
+        status: row.get(8),
+        current_value: row.get(9),
+        budget_remaining: row.get(10),
+        snapshot_status: row.get(11),
+        window_started_at: row.get(12),
+        window_ended_at: row.get(13),
+        metadata: row.get(14),
+        created_at: row.get(15),
+        updated_at: row.get(16),
     }
 }
 

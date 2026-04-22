@@ -10,6 +10,7 @@ audit-kit = { path = "../audit-kit" }
 axum = { version = "0.8", features = ["macros"] }
 config = { path = "../config" }
 kernel = { path = "../kernel" }
+prometheus = "0.13"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["net"] }
 tracing = "0.1"

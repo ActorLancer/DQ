@@ -89,4 +89,15 @@ pub fn router() -> Router<AppState> {
             "/api/v1/ops/dead-letters/{id}/reprocess",
             post(handlers::reprocess_ops_dead_letter),
         )
+        .route(
+            "/api/v1/ops/observability/overview",
+            get(handlers::get_ops_observability_overview),
+        )
+        .route("/api/v1/ops/logs", get(handlers::get_ops_logs_query))
+        .route("/api/v1/ops/logs/query", get(handlers::get_ops_logs_query))
+        .route("/api/v1/ops/logs/export", post(handlers::export_ops_logs))
+        .route("/api/v1/ops/traces/{traceId}", get(handlers::get_ops_trace))
+        .route("/api/v1/ops/alerts", get(handlers::get_ops_alerts))
+        .route("/api/v1/ops/incidents", get(handlers::get_ops_incidents))
+        .route("/api/v1/ops/slos", get(handlers::get_ops_slos))
 }
