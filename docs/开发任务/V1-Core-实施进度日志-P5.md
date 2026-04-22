@@ -1344,3 +1344,54 @@
   - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-019` 按冻结口径属于 `platform-core` 的外部事实控制面。Fabric 的真实写链、Gateway、chaincode event listener 与 CA admin 仍保持 `AUD-013 ~ AUD-017` 已落地的 `Go` 分层，不回退到 Rust 直接交互。
   - 手工清理时，尝试删除本次联调用到的 `iam.step_up_challenge` 会触发 `audit.audit_event.step_up_challenge_id -> SET NULL -> UPDATE append-only`，尝试删除 `core.user_account / buyer organization` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`；这两类对象因此按审计依赖保留，不视为业务测试脏数据外泄。其余订单 / 商品 / receipt 业务测试数据已清理。
   - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。
+### BATCH-233（计划中）
+- 任务：`AUD-020` 公平性事件查询 / 处理接口
+- 状态：计划中
+- 说明：按 `AUD-020` 冻结口径，实现 `GET /api/v1/ops/fairness-incidents` 与 `POST /api/v1/ops/fairness-incidents/{id}/handle`。本批以 `risk.fairness_incident` 为唯一正式持久化对象，查询接口补齐 `order_id / incident_type / severity / fairness_incident_status / assigned_role_key / assigned_user_id / request_id / trace_id` 过滤、platform-only 鉴权与 `audit.access_audit + ops.system_log` 留痕；处理接口补齐 `risk.fairness_incident.handle`、`step-up`、事件状态约束、处理结果回写、正式审计事件和系统日志，并明确“只能处理事件与联动建议，不直接篡改业务事实”。同时同步 `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、runbook、测试矩阵和 `AUD_DB_SMOKE + 宿主机 curl + psql` 验证。
+- 追溯：已按 `CSV > Markdown > technical_reference > 其他辅助文档` 重新核对 `AUD-020`、`交易链监控与公平性接口协议正式版`、`交易链监控、公平性与信任安全设计`、`067/068/072/074`、`A04`、`trade-monitor` / `external-facts` / `fabric-local` runbook 与当前 `audit` 模块实现；当前未发现需要暂停的人为冲突。
+### BATCH-233（待审批）
+- 任务：`AUD-020` 公平性事件查询 / 处理接口
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`、`domain/mod.rs`、`repo/mod.rs`：新增 `GET /api/v1/ops/fairness-incidents` 与 `POST /api/v1/ops/fairness-incidents/{id}/handle`，补齐 `order_id / incident_type / severity / fairness_incident_status / assigned_role_key / assigned_user_id / request_id / trace_id` 过滤、`risk.fairness_incident.read / risk.fairness_incident.handle` 权限矩阵、`step-up` 绑定、`open -> close` 状态保护，以及 `risk.fairness_incident` 的正式查询 / 单对象装载 / manual handle 回写。
+  - `apps/platform-core/src/modules/audit/api/handlers.rs`：处理动作只更新 `risk.fairness_incident.status / auto_action_code / resolution_summary / metadata / closed_at`，把 `handling` 与 `linked_action_plan` 写回 incident metadata；`freeze_settlement / freeze_delivery / create_dispute_suggestion` 仅记录为 `suggestion_only` 联动建议，不直接改写 `trade.order_main`，并同步写入 `audit.audit_event(action_name='risk.fairness_incident.handle')`、`audit.access_audit(target_type='fairness_incident')` 与 `ops.system_log`。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增路由级 `permission / step-up` 测试与 `audit_fairness_incident_handle_db_smoke`；真实插入最小订单图、`ops.trade_lifecycle_checkpoint`、`ops.external_fact_receipt(receipt_status='pending')`、`risk.fairness_incident(status='open')` 与 verified `iam.step_up_challenge`，调用 list + handle 两条正式 API，并回查 `risk.fairness_incident / trade.order_main / audit.audit_event / audit.access_audit / ops.system_log`。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`：归档 `fairness-incidents` 两条正式接口、请求/响应 schema 与示例，并把剩余公共控制面缺口收敛到 `AUD-021 projection-gaps`。
+  - `docs/04-runbooks/audit-fairness-incidents.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：补齐 `AUD-020` 的宿主机 `curl + psql` 操作手册、验收矩阵、排障说明与回查 SQL。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：无新增 `V1-gap / V2-reserved / V3-reserved`；`TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 已推进到仅剩 `AUD-021 projection-gaps` 公共控制面缺口。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既存 `unused_*` warning，无新增编译失败。
+  - `cargo test -p platform-core` 通过：`302 passed; 0 failed`，新增 `audit_fairness_incident_handle_db_smoke` 与路由级权限 / step-up 测试均通过。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线查询缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过，确认 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml` 同步且 schema 骨架完整。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_fairness_incident_handle_db_smoke -- --nocapture` 通过：真实完成 `risk.fairness_incident` 查询 / handle、`linked_action_plan` 建议留痕、`trade.order_main` 主状态不变、`audit.audit_event + audit.access_audit + ops.system_log` 回查与临时业务对象清理。
+  - 真实宿主机联调通过：启动 `APP_PORT=18080 cargo run -p platform-core-bin`，用 `psql` 手工写入一笔最小订单图、`ops.trade_lifecycle_checkpoint`、`ops.external_fact_receipt`、`risk.fairness_incident(status='open')` 与 verified `iam.step_up_challenge`，然后执行：
+    - `GET /api/v1/ops/fairness-incidents?order_id=...&incident_type=seller_delivery_delay&severity=high&fairness_incident_status=open&assigned_role_key=platform_risk_settlement&assigned_user_id=...&page=1&page_size=20`
+    - `POST /api/v1/ops/fairness-incidents/<fairness_incident_id>/handle`
+    并回查到：
+    - `risk.fairness_incident.status='closed'`
+    - `risk.fairness_incident.auto_action_code='notify_ops'`
+    - `risk.fairness_incident.metadata.handling.action='close'`
+    - `risk.fairness_incident.metadata.linked_action_plan.status='suggestion_recorded'`
+    - `trade.order_main.settlement_status='pending_settlement'`、`delivery_status='pending_delivery'`、`dispute_status='none'`，未被 handle 直接改写
+    - `audit.audit_event(action_name='risk.fairness_incident.handle', result_code='close') = 1`
+    - `audit.access_audit` 共 `2` 条，`target_type in ('fairness_incident_query','fairness_incident')`
+    - `ops.system_log` 共 `2` 条，对应 list / handle 两条正式路径
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-020`
+  - `交易链监控与公平性接口协议正式版.md`：`GET /api/v1/ops/fairness-incidents`、`POST /api/v1/ops/fairness-incidents/{id}/handle`
+  - `交易链监控、公平性与信任安全设计.md`：公平性事件来源、等级与人工处理边界
+  - `067_trade_chain_monitoring.sql`、`068_trade_chain_monitoring_authz.sql`：`risk.fairness_incident` 正式对象与 `risk.fairness_incident.read / handle` 权限绑定
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：fairness-incidents 公共控制面的契约 / runbook / 测试收口缺口
+  - `async-chain-write.md`、`kafka-topics.md`：确认本批仍是正式 incident 控制面，不旁路出新的 topic / outbox 链
+- 覆盖的任务清单条目：`AUD-020`
+- 未覆盖项：
+  - `GET /api/v1/ops/projection-gaps`、`POST /api/v1/ops/projection-gaps/{id}/resolve` 留待 `AUD-021`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 推进到仅剩 `AUD-021 projection-gaps` 的最新状态。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-020` 按冻结口径属于 `platform-core` 的公平性事件控制面。Fabric 的真实写链、Gateway、chaincode、event listener 与 CA admin 仍保持 `AUD-013 ~ AUD-017` 已落地的 `Go` 分层，不回退到 Rust 直接交互。
+  - 手工清理时，尝试删除本次联调用到的 `iam.step_up_challenge` 会触发 `audit.audit_event.step_up_challenge_id -> SET NULL -> UPDATE append-only`，尝试删除 `core.user_account / buyer organization` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`；这两类对象因此按审计依赖保留，不视为业务测试脏数据外泄。其余订单 / 商品 / checkpoint / fairness incident / external fact 业务测试数据已清理。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。

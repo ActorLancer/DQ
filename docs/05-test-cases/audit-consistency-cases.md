@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019`、`AUD-020` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -20,8 +20,9 @@
 - fabric callback listener：`services/fabric-event-listener -> dtp.fabric.callbacks -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor / audit.anchor_batch`
 - fabric CA admin：`platform-core IAM API -> services/fabric-ca-admin -> iam.fabric_identity_binding / iam.certificate_record / iam.certificate_revocation_record / ops.external_fact_receipt / audit.audit_event / ops.system_log`
 - 交易链监控总览 / checkpoints：`GET /api/v1/ops/trade-monitor/orders/{orderId}`、`GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints`
+- 公平性事件查询 / 处理：`GET /api/v1/ops/fairness-incidents`、`POST /api/v1/ops/fairness-incidents/{id}/handle`
 
-后续 `fabric-test-network / real Fabric CA / projection-gaps / reconcile` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
+后续 `projection-gaps / search sync ops / export package aggregate` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
 ## 前置条件
 
@@ -45,6 +46,9 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 
 IAM_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core iam_fabric_ca_admin_db_smoke -- --nocapture
+
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_fairness_incident_handle_db_smoke -- --nocapture
 ```
 
 ## 验收矩阵
@@ -77,13 +81,15 @@ IAM_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-024` | 生命周期检查点过滤查询 | `GET /api/v1/ops/trade-monitor/orders/{order_id}/checkpoints?checkpoint_status=pending&lifecycle_stage=delivery&page=1&page_size=20` | 返回过滤后的 `ops.trade_lifecycle_checkpoint` 分页结果；tenant 侧必须命中 buyer/seller order scope；查询动作写入 `audit.access_audit + ops.system_log` | API 响应、`ops.trade_lifecycle_checkpoint`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-025` | 外部事实分页查询 | `GET /api/v1/ops/external-facts?order_id=...&receipt_status=pending&provider_type=mock_payment_provider&from=...&to=...` | 返回 `ops.external_fact_receipt` 分页结果；查询动作写入 `audit.access_audit(target_type='external_fact_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.external_fact_receipt`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-026` | 外部事实确认 | `POST /api/v1/ops/external-facts/{id}/confirm` + verified `x-step-up-challenge-id` + `{"confirm_result":"confirmed","reason":"...","operator_note":"..."}` | 仅允许 `receipt_status='pending'`；成功后只更新 `ops.external_fact_receipt.receipt_status / confirmed_at / metadata.manual_confirmation / metadata.rule_evaluation`，写入 `audit.audit_event(action_name='ops.external_fact.confirm')`、`audit.access_audit(access_mode='confirm', target_type='external_fact_receipt')`、`ops.system_log`，且不得直接改写 `trade.order_main.external_fact_status` | API 响应、`ops.external_fact_receipt`、`trade.order_main`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-027` | 公平性事件分页查询 | `GET /api/v1/ops/fairness-incidents?order_id=...&incident_type=seller_delivery_delay&severity=high&fairness_incident_status=open&assigned_role_key=platform_risk_settlement&assigned_user_id=...` | 返回 `risk.fairness_incident` 分页结果；查询动作写入 `audit.access_audit(target_type='fairness_incident_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`risk.fairness_incident`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-028` | 公平性事件处理 | `POST /api/v1/ops/fairness-incidents/{id}/handle` + verified `x-step-up-challenge-id` + `{"action":"close","resolution_summary":"...","auto_action_override":"notify_ops","freeze_settlement":true,"create_dispute_suggestion":true}` | 仅允许 `fairness_incident_status='open'`；成功后只更新 `risk.fairness_incident.status / auto_action_code / resolution_summary / metadata / closed_at`，写入 `audit.audit_event(action_name='risk.fairness_incident.handle')`、`audit.access_audit(access_mode='handle', target_type='fairness_incident')`、`ops.system_log`，且 `freeze_settlement / freeze_delivery / create_dispute_suggestion` 只作为 `linked_action_plan` 建议留痕，不得直接改写 `trade.order_main` | API 响应、`risk.fairness_incident`、`trade.order_main`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
 - `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`AUD-015` 已补齐 `fabric-event-listener` 的 callback 轮询源、Kafka callback 发布与 DB 回写；`AUD-016` 已补齐 `fabric-ca-admin` 的证书治理执行面；`fabric-test-network / Gateway / chaincode / real Fabric CA` 留待 `AUD-017`。
-- `AUD-019` 已把 `ops.external_fact_receipt` 的公共 HTTP 控制面补齐到查询 / confirm；`fairness-incidents / projection-gaps` 继续由 `AUD-020 / AUD-021` 承接。
+- `AUD-019` 已把 `ops.external_fact_receipt` 的公共 HTTP 控制面补齐到查询 / confirm；`AUD-020` 已把 `risk.fairness_incident` 的公共 HTTP 控制面补齐到查询 / handle；`projection-gaps` 继续由 `AUD-021` 承接。
 
 ## `AUD-011` 手工一致性联查验证
 
@@ -1001,6 +1007,212 @@ ORDER BY created_at;
 - `audit.access_audit` 覆盖 list + retry
 - `ops.system_log` 含 list 与 retry 两条记录
 
+## `AUD-020` 手工公平性事件查询 / handle 验证
+
+1. 准备一条最小公平性事件：
+
+```sql
+INSERT INTO ops.trade_lifecycle_checkpoint (
+  trade_lifecycle_checkpoint_id,
+  order_id,
+  ref_type,
+  ref_id,
+  checkpoint_code,
+  lifecycle_stage,
+  checkpoint_status,
+  occurred_at,
+  source_type,
+  request_id,
+  trace_id,
+  metadata
+) VALUES (
+  '<checkpoint_id>'::uuid,
+  '<order_id>'::uuid,
+  'order',
+  '<order_id>'::uuid,
+  'delivery_follow_up',
+  'delivery',
+  'pending',
+  now() - interval '5 minutes',
+  'system',
+  'req-aud020-manual-list',
+  'trace-aud020-manual',
+  jsonb_build_object('source', 'aud020-manual')
+);
+
+INSERT INTO ops.external_fact_receipt (
+  external_fact_receipt_id,
+  order_id,
+  ref_type,
+  ref_id,
+  fact_type,
+  provider_type,
+  provider_reference,
+  receipt_status,
+  receipt_payload,
+  receipt_hash,
+  occurred_at,
+  request_id,
+  trace_id,
+  metadata
+) VALUES (
+  '<external_fact_receipt_id>'::uuid,
+  '<order_id>'::uuid,
+  'order',
+  '<order_id>'::uuid,
+  'payment_callback',
+  'mock_payment_provider',
+  'provider-ref-aud020-manual',
+  'pending',
+  jsonb_build_object('manual', true),
+  'aud020-manual-receipt-hash',
+  now() - interval '7 minutes',
+  'req-aud020-manual-list',
+  'trace-aud020-manual',
+  jsonb_build_object('source', 'aud020-manual')
+);
+
+INSERT INTO risk.fairness_incident (
+  fairness_incident_id,
+  order_id,
+  ref_type,
+  ref_id,
+  incident_type,
+  severity,
+  lifecycle_stage,
+  detected_by_type,
+  source_checkpoint_id,
+  source_receipt_id,
+  status,
+  auto_action_code,
+  assigned_role_key,
+  assigned_user_id,
+  resolution_summary,
+  request_id,
+  trace_id,
+  metadata
+) VALUES (
+  '<fairness_incident_id>'::uuid,
+  '<order_id>'::uuid,
+  'order',
+  '<order_id>'::uuid,
+  'seller_delivery_delay',
+  'high',
+  'delivery',
+  'rule_engine',
+  '<checkpoint_id>'::uuid,
+  '<external_fact_receipt_id>'::uuid,
+  'open',
+  'notify_ops',
+  'platform_risk_settlement',
+  '<operator_user_id>'::uuid,
+  'awaiting manual review',
+  'req-aud020-manual-list',
+  'trace-aud020-manual',
+  jsonb_build_object('source', 'aud020-manual')
+);
+
+INSERT INTO iam.step_up_challenge (
+  user_id,
+  challenge_type,
+  target_action,
+  target_ref_type,
+  target_ref_id,
+  challenge_status,
+  expires_at,
+  completed_at,
+  metadata
+) VALUES (
+  '<operator_user_id>'::uuid,
+  'mock_otp',
+  'risk.fairness_incident.handle',
+  'fairness_incident',
+  '<fairness_incident_id>'::uuid,
+  'verified',
+  now() + interval '10 minutes',
+  now(),
+  jsonb_build_object('seed', 'aud020-manual')
+)
+RETURNING step_up_challenge_id::text;
+```
+
+2. 查询公平性事件：
+
+```bash
+curl -sS "http://127.0.0.1:18080/api/v1/ops/fairness-incidents?order_id=<order_id>&incident_type=seller_delivery_delay&severity=high&fairness_incident_status=open&assigned_role_key=platform_risk_settlement&assigned_user_id=<operator_user_id>&page=1&page_size=20" \
+  -H 'x-role: platform_risk_settlement' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud020-manual-list' \
+  -H 'x-trace-id: trace-aud020-manual'
+```
+
+3. 处理公平性事件：
+
+```bash
+curl -sS -X POST "http://127.0.0.1:18080/api/v1/ops/fairness-incidents/<fairness_incident_id>/handle" \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_risk_settlement' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud020-manual-handle' \
+  -H 'x-trace-id: trace-aud020-manual' \
+  -H 'x-step-up-challenge-id: <handle_step_up_id>' \
+  -d '{
+    "action": "close",
+    "resolution_summary": "manual review confirmed delivery delay risk",
+    "auto_action_override": "notify_ops",
+    "freeze_settlement": true,
+    "freeze_delivery": false,
+    "create_dispute_suggestion": true
+  }'
+```
+
+4. 回查处理结果与“无业务主状态副作用”：
+
+```sql
+SELECT status,
+       auto_action_code,
+       metadata -> 'handling' ->> 'action' AS handled_action,
+       metadata -> 'linked_action_plan' ->> 'status' AS action_plan_status,
+       metadata -> 'linked_action_plan' ->> 'execution_mode' AS execution_mode,
+       closed_at IS NOT NULL AS closed
+FROM risk.fairness_incident
+WHERE fairness_incident_id = '<fairness_incident_id>'::uuid;
+
+SELECT settlement_status, delivery_status, dispute_status
+FROM trade.order_main
+WHERE order_id = '<order_id>'::uuid;
+
+SELECT COUNT(*)::bigint
+FROM audit.audit_event
+WHERE request_id = 'req-aud020-manual-handle'
+  AND action_name = 'risk.fairness_incident.handle'
+  AND result_code = 'close';
+
+SELECT COUNT(*)::bigint
+FROM audit.access_audit
+WHERE request_id IN ('req-aud020-manual-list', 'req-aud020-manual-handle')
+  AND target_type IN ('fairness_incident_query', 'fairness_incident');
+
+SELECT COUNT(*)::bigint
+FROM ops.system_log
+WHERE request_id IN ('req-aud020-manual-list', 'req-aud020-manual-handle')
+  AND message_text IN (
+    'ops lookup executed: GET /api/v1/ops/fairness-incidents',
+    'risk fairness incident handle executed: POST /api/v1/ops/fairness-incidents/{id}/handle'
+  );
+```
+
+预期：
+
+- `risk.fairness_incident.status='closed'`
+- `metadata.handling.action='close'`
+- `metadata.linked_action_plan.status='suggestion_recorded'`
+- `metadata.linked_action_plan.execution_mode='suggestion_only'`
+- `trade.order_main.settlement_status / delivery_status / dispute_status` 保持原值
+- `audit.audit_event = 1`
+- `audit.access_audit = 2`
+- `ops.system_log = 2`
+
 ## 清理约束
 
 - 业务测试数据可清理：`trade.order_main` 及本手工步骤创建的临时 `core.organization / catalog.*` scope 图数据
@@ -1010,7 +1222,7 @@ ORDER BY created_at;
 
 ## 当前未覆盖项
 
-- `AUD-008+` Fabric request / callback / reconcile
-- `AUD-011+` consistency repair / OpenSearch ops
+- `AUD-021` projection-gaps 查询 / resolve
+- `AUD-022+` OpenSearch sync/reindex/alias/cache 与后续剩余 AUD 高风险控制面
 
 进入对应批次后，必须在本文件继续追加，不得把本文件视为 `AUD` 全阶段完成证明。

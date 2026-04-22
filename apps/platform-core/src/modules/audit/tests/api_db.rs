@@ -470,6 +470,38 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn rejects_fairness_incident_query_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/fairness-incidents")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud020-fairness-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn fairness_incident_handle_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/fairness-incidents/10000000-0000-0000-0000-000000000020/handle")
+            .header("x-role", "platform_risk_settlement")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud020-fairness-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"action":"close","resolution_summary":"missing step-up"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -4515,6 +4547,459 @@ async fn audit_external_fact_confirm_db_smoke() {
         .execute(
             "DELETE FROM ops.external_fact_receipt WHERE external_fact_receipt_id = $1::text::uuid",
             &[&external_fact_receipt_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+            &[&operator_user_id],
+        )
+        .await;
+    cleanup_business_rows(&client, &seed).await;
+}
+
+#[tokio::test]
+async fn audit_fairness_incident_handle_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let seed = seed_order_graph(&client, &format!("aud020-{suffix}"))
+        .await
+        .expect("seed order graph");
+    let operator_user_id = seed_user(&client, &seed.buyer_org_id, &format!("aud020-{suffix}"))
+        .await
+        .expect("seed aud020 operator");
+    let app = crate::with_live_test_state(router()).await;
+    let list_request_id = format!("req-aud020-list-{suffix}");
+    let handle_request_id = format!("req-aud020-handle-{suffix}");
+    let trace_id = format!("trace-aud020-{suffix}");
+    let checkpoint_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud020 checkpoint id")
+        .get(0);
+    let external_fact_receipt_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud020 receipt id")
+        .get(0);
+    let fairness_incident_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud020 fairness incident id")
+        .get(0);
+
+    client
+        .execute(
+            "UPDATE trade.order_main
+             SET authority_model = 'dual_layer',
+                 business_state_version = 13,
+                 proof_commit_state = 'pending_anchor',
+                 proof_commit_policy = 'async_evidence',
+                 external_fact_status = 'pending_receipt',
+                 reconcile_status = 'pending_check',
+                 last_reconciled_at = now() - interval '12 minutes'
+             WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await
+        .expect("update aud020 order consistency fields");
+
+    client
+        .execute(
+            "INSERT INTO ops.trade_lifecycle_checkpoint (
+               trade_lifecycle_checkpoint_id,
+               order_id,
+               ref_domain,
+               ref_type,
+               ref_id,
+               checkpoint_code,
+               lifecycle_stage,
+               checkpoint_status,
+               expected_by,
+               occurred_at,
+               source_type,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'trade',
+               'order',
+               $2::text::uuid,
+               'delivery_prepared',
+               'delivery',
+               'pending',
+               now() + interval '5 minutes',
+               now() - interval '6 minutes',
+               'system',
+               $3,
+               $4,
+               jsonb_build_object('seed', $5, 'source', 'aud020-smoke')
+             )",
+            &[
+                &checkpoint_id,
+                &seed.order_id,
+                &list_request_id,
+                &trace_id,
+                &suffix,
+            ],
+        )
+        .await
+        .expect("insert aud020 checkpoint");
+
+    client
+        .execute(
+            "INSERT INTO ops.external_fact_receipt (
+               external_fact_receipt_id,
+               order_id,
+               ref_domain,
+               ref_type,
+               ref_id,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               occurred_at,
+               received_at,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'delivery',
+               'order',
+               $2::text::uuid,
+               'delivery_callback',
+               'mock_delivery_provider',
+               'mock-delivery',
+               $3,
+               'pending',
+               jsonb_build_object('seed', $4, 'provider_status', 'late'),
+               $5,
+               now() - interval '8 minutes',
+               now() - interval '7 minutes',
+               $6,
+               $7,
+               jsonb_build_object('seed', $4, 'source', 'aud020-smoke')
+             )",
+            &[
+                &external_fact_receipt_id,
+                &seed.order_id,
+                &format!("provider-ref-aud020-{suffix}"),
+                &suffix,
+                &format!("aud020-receipt-hash-{suffix}"),
+                &list_request_id,
+                &trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud020 external receipt");
+
+    client
+        .execute(
+            "INSERT INTO risk.fairness_incident (
+               fairness_incident_id,
+               order_id,
+               ref_type,
+               ref_id,
+               incident_type,
+               severity,
+               lifecycle_stage,
+               detected_by_type,
+               source_checkpoint_id,
+               source_receipt_id,
+               status,
+               auto_action_code,
+               assigned_role_key,
+               assigned_user_id,
+               resolution_summary,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'order',
+               $2::text::uuid,
+               'seller_delivery_delay',
+               'high',
+               'delivery',
+               'rule_engine',
+               $3::text::uuid,
+               $4::text::uuid,
+               'open',
+               'notify_ops',
+               'platform_risk_settlement',
+               $5::text::uuid,
+               'awaiting manual review',
+               $6,
+               $7,
+               jsonb_build_object('seed', $8, 'source', 'aud020-smoke')
+             )",
+            &[
+                &fairness_incident_id,
+                &seed.order_id,
+                &checkpoint_id,
+                &external_fact_receipt_id,
+                &operator_user_id,
+                &list_request_id,
+                &trace_id,
+                &suffix,
+            ],
+        )
+        .await
+        .expect("insert aud020 fairness incident");
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/fairness-incidents?order_id={}&incident_type=seller_delivery_delay&severity=high&fairness_incident_status=open&assigned_role_key=platform_risk_settlement&assigned_user_id={}&page=1&page_size=10",
+                    seed.order_id, operator_user_id
+                ))
+                .header("x-role", "platform_risk_settlement")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &list_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("aud020 list request"),
+        )
+        .await
+        .expect("call aud020 list");
+    let list_status = list_response.status();
+    let list_body = to_bytes(list_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud020 list body");
+    assert_eq!(
+        list_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&list_body)
+    );
+    let list_json: Value = serde_json::from_slice(&list_body).expect("decode aud020 list body");
+    assert_eq!(list_json["data"]["total"].as_i64(), Some(1));
+    assert_eq!(
+        list_json["data"]["items"][0]["fairness_incident_id"].as_str(),
+        Some(fairness_incident_id.as_str())
+    );
+    assert_eq!(
+        list_json["data"]["items"][0]["fairness_incident_status"].as_str(),
+        Some("open")
+    );
+
+    let handle_step_up_id = seed_verified_step_up_challenge(
+        &client,
+        &operator_user_id,
+        "risk.fairness_incident.handle",
+        "fairness_incident",
+        Some(&fairness_incident_id),
+        &format!("aud020-{suffix}"),
+    )
+    .await
+    .expect("seed aud020 fairness handle step-up");
+
+    let handle_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/ops/fairness-incidents/{}/handle",
+                    fairness_incident_id
+                ))
+                .header("x-role", "platform_risk_settlement")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &handle_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &handle_step_up_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"action":"close","resolution_summary":"manual review confirmed delivery delay risk","auto_action_override":"notify_ops","freeze_settlement":true,"freeze_delivery":false,"create_dispute_suggestion":true}"#,
+                ))
+                .expect("aud020 handle request"),
+        )
+        .await
+        .expect("call aud020 handle");
+    let handle_status = handle_response.status();
+    let handle_body = to_bytes(handle_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud020 handle body");
+    assert_eq!(
+        handle_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&handle_body)
+    );
+    let handle_json: Value =
+        serde_json::from_slice(&handle_body).expect("decode aud020 handle body");
+    assert_eq!(handle_json["data"]["action"].as_str(), Some("close"));
+    assert_eq!(
+        handle_json["data"]["status"].as_str(),
+        Some("manual_handling_recorded")
+    );
+    assert_eq!(
+        handle_json["data"]["action_plan_status"].as_str(),
+        Some("suggestion_recorded")
+    );
+    assert_eq!(
+        handle_json["data"]["fairness_incident"]["fairness_incident_status"].as_str(),
+        Some("closed")
+    );
+    assert!(
+        handle_json["data"]["fairness_incident"]["closed_at"]
+            .as_str()
+            .is_some()
+    );
+
+    let incident_row = client
+        .query_one(
+            "SELECT
+               status,
+               closed_at IS NOT NULL,
+               auto_action_code,
+               resolution_summary,
+               metadata -> 'handling' ->> 'action',
+               metadata -> 'linked_action_plan' ->> 'status',
+               metadata -> 'linked_action_plan' ->> 'freeze_settlement',
+               metadata -> 'linked_action_plan' ->> 'create_dispute_suggestion'
+             FROM risk.fairness_incident
+             WHERE fairness_incident_id = $1::text::uuid",
+            &[&fairness_incident_id],
+        )
+        .await
+        .expect("load aud020 incident row");
+    let incident_status: String = incident_row.get(0);
+    let closed_at_present: bool = incident_row.get(1);
+    let auto_action_code: Option<String> = incident_row.get(2);
+    let resolution_summary: Option<String> = incident_row.get(3);
+    let handled_action: Option<String> = incident_row.get(4);
+    let action_plan_status: Option<String> = incident_row.get(5);
+    let freeze_settlement: Option<String> = incident_row.get(6);
+    let create_dispute_suggestion: Option<String> = incident_row.get(7);
+    assert_eq!(incident_status, "closed");
+    assert!(closed_at_present);
+    assert_eq!(auto_action_code.as_deref(), Some("notify_ops"));
+    assert_eq!(
+        resolution_summary.as_deref(),
+        Some("manual review confirmed delivery delay risk")
+    );
+    assert_eq!(handled_action.as_deref(), Some("close"));
+    assert_eq!(action_plan_status.as_deref(), Some("suggestion_recorded"));
+    assert_eq!(freeze_settlement.as_deref(), Some("true"));
+    assert_eq!(create_dispute_suggestion.as_deref(), Some("true"));
+
+    let order_state_row = client
+        .query_one(
+            "SELECT settlement_status, delivery_status, dispute_status
+             FROM trade.order_main
+             WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await
+        .expect("load aud020 order state");
+    let settlement_status: String = order_state_row.get(0);
+    let delivery_status: String = order_state_row.get(1);
+    let dispute_status: String = order_state_row.get(2);
+    assert_eq!(settlement_status, "pending_settlement");
+    assert_eq!(delivery_status, "pending_delivery");
+    assert_eq!(dispute_status, "none");
+
+    let audit_event_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = 'risk.fairness_incident.handle'
+               AND result_code = 'close'",
+            &[&handle_request_id],
+        )
+        .await
+        .expect("count aud020 audit event")
+        .get(0);
+    assert_eq!(audit_event_count, 1);
+
+    let access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND target_type = ANY($2::text[])",
+            &[
+                &vec![list_request_id.clone(), handle_request_id.clone()],
+                &vec![
+                    "fairness_incident_query".to_string(),
+                    "fairness_incident".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud020 access audit")
+        .get(0);
+    assert_eq!(access_count, 2);
+
+    let log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = ANY($2::text[])",
+            &[
+                &vec![list_request_id.clone(), handle_request_id.clone()],
+                &vec![
+                    "ops lookup executed: GET /api/v1/ops/fairness-incidents".to_string(),
+                    "risk fairness incident handle executed: POST /api/v1/ops/fairness-incidents/{id}/handle".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud020 system log")
+        .get(0);
+    assert_eq!(log_count, 2);
+
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&handle_step_up_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM risk.fairness_incident WHERE fairness_incident_id = $1::text::uuid",
+            &[&fairness_incident_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.external_fact_receipt WHERE external_fact_receipt_id = $1::text::uuid",
+            &[&external_fact_receipt_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.trade_lifecycle_checkpoint WHERE trade_lifecycle_checkpoint_id = $1::text::uuid",
+            &[&checkpoint_id],
         )
         .await;
     let _ = client

@@ -982,6 +982,205 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/fairness-incidents:
+    get:
+      summary: query fairness incidents
+      tags: [AuditOps]
+      description: |
+        Returns the formal `risk.fairness_incident` read model used by trade monitor and
+        risk operators. The endpoint is platform-only and every lookup is mirrored into
+        `audit.access_audit + ops.system_log`.
+      parameters:
+        - in: query
+          name: order_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: incident_type
+          schema:
+            type: string
+        - in: query
+          name: severity
+          schema:
+            type: string
+        - in: query
+          name: fairness_incident_status
+          schema:
+            type: string
+        - in: query
+          name: assigned_role_key
+          schema:
+            type: string
+        - in: query
+          name: assigned_user_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: request_id
+          schema:
+            type: string
+        - in: query
+          name: trace_id
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: fairness incident page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseFairnessIncidentPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - fairness_incident_id: 0de23c6d-6dc9-49d6-bb13-c31182093210
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      incident_type: seller_delivery_delay
+                      severity: high
+                      lifecycle_stage: delivery
+                      detected_by_type: rule_engine
+                      source_checkpoint_id: c657397a-e623-47d3-88f1-cb359f0c9ba5
+                      source_receipt_id: 991f69a0-ae84-4c5e-89f4-d764354e955d
+                      fairness_incident_status: open
+                      auto_action_code: notify_ops
+                      assigned_role_key: platform_risk_settlement
+                      assigned_user_id: a715e0f9-cb89-4b97-90b7-2e2a683c9a55
+                      resolution_summary: awaiting manual review
+                      request_id: req-aud020-list
+                      trace_id: trace-aud020
+                      metadata:
+                        source: aud020-smoke
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/fairness-incidents/{id}/handle:
+    post:
+      summary: handle one open fairness incident
+      tags: [AuditOps]
+      description: |
+        Performs the high-risk handling action for one open `risk.fairness_incident`.
+        The endpoint requires `risk.fairness_incident.handle` plus step-up, records formal
+        audit / access / system-log traces, and only records linked-action suggestions
+        instead of directly mutating business facts.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpsFairnessIncidentHandleRequest"
+            example:
+              action: close
+              resolution_summary: manual review confirmed delivery delay risk
+              auto_action_override: notify_ops
+              freeze_settlement: true
+              freeze_delivery: false
+              create_dispute_suggestion: true
+      responses:
+        "200":
+          description: fairness incident handling recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsFairnessIncidentHandleResponse"
+              example:
+                success: true
+                data:
+                  fairness_incident:
+                    fairness_incident_id: 0de23c6d-6dc9-49d6-bb13-c31182093210
+                    order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    ref_type: order
+                    ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    incident_type: seller_delivery_delay
+                    severity: high
+                    lifecycle_stage: delivery
+                    detected_by_type: rule_engine
+                    source_checkpoint_id: c657397a-e623-47d3-88f1-cb359f0c9ba5
+                    source_receipt_id: 991f69a0-ae84-4c5e-89f4-d764354e955d
+                    fairness_incident_status: closed
+                    auto_action_code: notify_ops
+                    assigned_role_key: platform_risk_settlement
+                    assigned_user_id: a715e0f9-cb89-4b97-90b7-2e2a683c9a55
+                    resolution_summary: manual review confirmed delivery delay risk
+                    request_id: req-aud020-handle
+                    trace_id: trace-aud020
+                    metadata:
+                      handling:
+                        action: close
+                        business_mutation_executed: false
+                      linked_action_plan:
+                        status: suggestion_recorded
+                    closed_at: "2026-04-22T10:21:00.000Z"
+                  action: close
+                  step_up_bound: true
+                  status: manual_handling_recorded
+                  action_plan_status: suggestion_recorded
+        "400":
+          description: invalid payload or step-up binding mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or verified step-up missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: fairness incident not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: fairness incident is no longer open
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/consistency/{refType}/{refId}:
     get:
       summary: query dual-authority consistency state for a business reference
@@ -1584,6 +1783,24 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsExternalFactConfirmResponse"
+    ApiResponseFairnessIncidentPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/FairnessIncidentPageResponse"
+    ApiResponseOpsFairnessIncidentHandleResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsFairnessIncidentHandleResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -2106,6 +2323,65 @@ components:
         rule_evaluation_status:
           type: string
           enum: [pending_follow_up]
+    OpsFairnessIncidentHandleRequest:
+      type: object
+      required:
+        - action
+        - resolution_summary
+      properties:
+        action:
+          type: string
+          enum: [acknowledge, escalate, close]
+        resolution_summary:
+          type: string
+        auto_action_override:
+          type: string
+          nullable: true
+        freeze_settlement:
+          type: boolean
+          default: false
+        freeze_delivery:
+          type: boolean
+          default: false
+        create_dispute_suggestion:
+          type: boolean
+          default: false
+    FairnessIncidentPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FairnessIncidentRecord"
+    OpsFairnessIncidentHandleResponse:
+      type: object
+      required:
+        - fairness_incident
+        - action
+        - step_up_bound
+        - status
+        - action_plan_status
+      properties:
+        fairness_incident:
+          $ref: "#/components/schemas/FairnessIncidentRecord"
+        action:
+          type: string
+          enum: [acknowledge, escalate, close]
+        step_up_bound:
+          type: boolean
+        status:
+          type: string
+          enum: [manual_handling_recorded]
+        action_plan_status:
+          type: string
+          enum: [suggestion_recorded, no_linked_action]
     OpsOutboxPageResponse:
       type: object
       required: [total, page, page_size, items]

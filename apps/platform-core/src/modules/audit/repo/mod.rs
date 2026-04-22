@@ -7,7 +7,8 @@ use serde_json::{Map, Value};
 
 use crate::modules::audit::domain::{
     AnchorBatchQuery, AuditTraceQuery, ChainProjectionGapQuery, ConsumerIdempotencyQuery,
-    ExternalFactReceiptQuery, OpsDeadLetterQuery, OpsOutboxQuery, TradeMonitorCheckpointQuery,
+    ExternalFactReceiptQuery, FairnessIncidentQuery, OpsDeadLetterQuery, OpsOutboxQuery,
+    TradeMonitorCheckpointQuery,
 };
 use crate::modules::audit::dto::AuditTraceView;
 
@@ -2228,6 +2229,196 @@ pub async fn search_recent_fairness_incidents_for_order(
         total,
         items: rows.iter().map(parse_fairness_incident_row).collect(),
     })
+}
+
+pub async fn search_fairness_incidents(
+    client: &(impl GenericClient + Sync),
+    query: &FairnessIncidentQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<FairnessIncidentPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM risk.fairness_incident fi
+             WHERE ($1::text IS NULL OR fi.order_id = $1::text::uuid)
+               AND ($2::text IS NULL OR fi.incident_type = $2)
+               AND ($3::text IS NULL OR fi.severity = $3)
+               AND ($4::text IS NULL OR fi.status = $4)
+               AND ($5::text IS NULL OR fi.assigned_role_key = $5)
+               AND ($6::text IS NULL OR fi.assigned_user_id = $6::text::uuid)
+               AND ($7::text IS NULL OR fi.request_id = $7)
+               AND ($8::text IS NULL OR fi.trace_id = $8)",
+            &[
+                &query.order_id,
+                &query.incident_type,
+                &query.severity,
+                &query.fairness_incident_status,
+                &query.assigned_role_key,
+                &query.assigned_user_id,
+                &query.request_id,
+                &query.trace_id,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               fairness_incident_id::text,
+               order_id::text,
+               ref_type,
+               ref_id::text,
+               incident_type,
+               severity,
+               lifecycle_stage,
+               detected_by_type,
+               source_checkpoint_id::text,
+               source_receipt_id::text,
+               status,
+               auto_action_code,
+               assigned_role_key,
+               assigned_user_id::text,
+               resolution_summary,
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM risk.fairness_incident fi
+             WHERE ($1::text IS NULL OR fi.order_id = $1::text::uuid)
+               AND ($2::text IS NULL OR fi.incident_type = $2)
+               AND ($3::text IS NULL OR fi.severity = $3)
+               AND ($4::text IS NULL OR fi.status = $4)
+               AND ($5::text IS NULL OR fi.assigned_role_key = $5)
+               AND ($6::text IS NULL OR fi.assigned_user_id = $6::text::uuid)
+               AND ($7::text IS NULL OR fi.request_id = $7)
+               AND ($8::text IS NULL OR fi.trace_id = $8)
+             ORDER BY fi.created_at DESC, fi.fairness_incident_id DESC
+             LIMIT $9 OFFSET $10",
+            &[
+                &query.order_id,
+                &query.incident_type,
+                &query.severity,
+                &query.fairness_incident_status,
+                &query.assigned_role_key,
+                &query.assigned_user_id,
+                &query.request_id,
+                &query.trace_id,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(FairnessIncidentPage {
+        total,
+        items: rows.iter().map(parse_fairness_incident_row).collect(),
+    })
+}
+
+pub async fn load_fairness_incident(
+    client: &(impl GenericClient + Sync),
+    fairness_incident_id: &str,
+) -> Result<Option<FairnessIncidentRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               fairness_incident_id::text,
+               order_id::text,
+               ref_type,
+               ref_id::text,
+               incident_type,
+               severity,
+               lifecycle_stage,
+               detected_by_type,
+               source_checkpoint_id::text,
+               source_receipt_id::text,
+               status,
+               auto_action_code,
+               assigned_role_key,
+               assigned_user_id::text,
+               resolution_summary,
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM risk.fairness_incident
+             WHERE fairness_incident_id = $1::text::uuid",
+            &[&fairness_incident_id],
+        )
+        .await?;
+
+    Ok(row.map(|row| parse_fairness_incident_row(&row)))
+}
+
+pub async fn handle_fairness_incident(
+    client: &(impl GenericClient + Sync),
+    fairness_incident_id: &str,
+    next_status: &str,
+    resolution_summary: &str,
+    auto_action_code: Option<&str>,
+    closed_at: Option<&str>,
+    request_id: &str,
+    trace_id: &str,
+    metadata_patch: &Value,
+) -> Result<Option<FairnessIncidentRecord>, Error> {
+    let row = client
+        .query_opt(
+            "UPDATE risk.fairness_incident
+             SET status = $2,
+                 resolution_summary = $3,
+                 auto_action_code = COALESCE($4, auto_action_code),
+                 closed_at = CASE
+                   WHEN $5::text IS NULL THEN closed_at
+                   ELSE $5::text::timestamptz
+                 END,
+                 request_id = $6,
+                 trace_id = $7,
+                 metadata = metadata || $8::jsonb,
+                 updated_at = now()
+             WHERE fairness_incident_id = $1::text::uuid
+               AND status = 'open'
+             RETURNING
+               fairness_incident_id::text,
+               order_id::text,
+               ref_type,
+               ref_id::text,
+               incident_type,
+               severity,
+               lifecycle_stage,
+               detected_by_type,
+               source_checkpoint_id::text,
+               source_receipt_id::text,
+               status,
+               auto_action_code,
+               assigned_role_key,
+               assigned_user_id::text,
+               resolution_summary,
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(closed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[
+                &fairness_incident_id,
+                &next_status,
+                &resolution_summary,
+                &auto_action_code,
+                &closed_at,
+                &request_id,
+                &trace_id,
+                metadata_patch,
+            ],
+        )
+        .await?;
+
+    Ok(row.map(|row| parse_fairness_incident_row(&row)))
 }
 
 pub async fn count_open_fairness_incidents_for_order(

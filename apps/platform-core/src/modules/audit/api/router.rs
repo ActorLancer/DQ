@@ -50,6 +50,10 @@ pub fn router() -> Router<AppState> {
             get(handlers::get_ops_external_facts),
         )
         .route(
+            "/api/v1/ops/fairness-incidents",
+            get(handlers::get_ops_fairness_incidents),
+        )
+        .route(
             "/api/v1/ops/consistency/{refType}/{refId}",
             get(handlers::get_ops_consistency),
         )
@@ -68,6 +72,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/ops/external-facts/{id}/confirm",
             post(handlers::confirm_ops_external_fact),
+        )
+        .route(
+            "/api/v1/ops/fairness-incidents/{id}/handle",
+            post(handlers::handle_ops_fairness_incident),
         )
         .route(
             "/api/v1/ops/dead-letters/{id}/reprocess",

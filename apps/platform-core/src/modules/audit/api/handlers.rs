@@ -15,12 +15,14 @@ use crate::modules::audit::domain::{
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
     AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, ExternalFactReceiptPageView,
-    ExternalFactReceiptQuery, OpsConsistencyBusinessStateView, OpsConsistencyExternalFactStateView,
+    ExternalFactReceiptQuery, FairnessIncidentPageView, FairnessIncidentQuery,
+    OpsConsistencyBusinessStateView, OpsConsistencyExternalFactStateView,
     OpsConsistencyProofStateView, OpsConsistencyReconcileRequest, OpsConsistencyReconcileView,
     OpsConsistencyRepairRecommendationView, OpsConsistencyView, OpsDeadLetterPageView,
     OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
-    OpsExternalFactConfirmRequest, OpsExternalFactConfirmView, OpsOutboxPageView, OpsOutboxQuery,
-    OrderAuditQuery, OrderAuditView, TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery,
+    OpsExternalFactConfirmRequest, OpsExternalFactConfirmView, OpsFairnessIncidentHandleRequest,
+    OpsFairnessIncidentHandleView, OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery,
+    OrderAuditView, TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery,
     TradeMonitorOverviewView,
 };
 use crate::modules::audit::dto::{
@@ -42,6 +44,7 @@ const ANCHOR_STEP_UP_ACTION: &str = "audit.anchor.manage";
 const DEAD_LETTER_REPROCESS_STEP_UP_ACTION: &str = "ops.dead_letter.reprocess";
 const CONSISTENCY_RECONCILE_STEP_UP_ACTION: &str = "ops.consistency.reconcile";
 const EXTERNAL_FACT_CONFIRM_STEP_UP_ACTION: &str = "ops.external_fact.manage";
+const FAIRNESS_INCIDENT_HANDLE_STEP_UP_ACTION: &str = "risk.fairness_incident.handle";
 const CONSISTENCY_RECONCILE_TARGET_TOPIC: &str = "dtp.consistency.reconcile";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
 const DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_DRY_RUN_ONLY";
@@ -49,6 +52,7 @@ const DEAD_LETTER_REPROCESS_NOT_SUPPORTED_ERROR: &str = "AUDIT_DEAD_LETTER_REPRO
 const DEAD_LETTER_REPROCESS_STATE_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_STATE_CONFLICT";
 const CONSISTENCY_RECONCILE_DRY_RUN_ONLY_ERROR: &str = "AUDIT_CONSISTENCY_RECONCILE_DRY_RUN_ONLY";
 const EXTERNAL_FACT_CONFIRM_STATE_ERROR: &str = "AUDIT_EXTERNAL_FACT_CONFIRM_STATE_CONFLICT";
+const FAIRNESS_INCIDENT_HANDLE_STATE_ERROR: &str = "AUDIT_FAIRNESS_INCIDENT_HANDLE_STATE_CONFLICT";
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
 
@@ -625,6 +629,316 @@ pub(in crate::modules::audit) async fn confirm_ops_external_fact(
         step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
         status: "manual_confirmation_recorded".to_string(),
         rule_evaluation_status: "pending_follow_up".to_string(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_fairness_incidents(
+    State(state): State<AppState>,
+    Query(query): Query<FairnessIncidentQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<FairnessIncidentPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_optional_uuid(query.order_id.as_deref(), "order_id", &request_id)?;
+    validate_optional_uuid(
+        query.assigned_user_id.as_deref(),
+        "assigned_user_id",
+        &request_id,
+    )?;
+    require_permission(
+        &headers,
+        AuditPermission::RiskFairnessIncidentRead,
+        "risk fairness incident read",
+    )?;
+
+    let normalized_query = FairnessIncidentQuery {
+        order_id: normalize_optional_filter(query.order_id.as_deref(), "order_id", &request_id)?,
+        incident_type: normalize_optional_filter(
+            query.incident_type.as_deref(),
+            "incident_type",
+            &request_id,
+        )?,
+        severity: normalize_optional_filter(query.severity.as_deref(), "severity", &request_id)?,
+        fairness_incident_status: normalize_optional_filter(
+            query.fairness_incident_status.as_deref(),
+            "fairness_incident_status",
+            &request_id,
+        )?,
+        assigned_role_key: normalize_optional_filter(
+            query.assigned_role_key.as_deref(),
+            "assigned_role_key",
+            &request_id,
+        )?,
+        assigned_user_id: normalize_optional_filter(
+            query.assigned_user_id.as_deref(),
+            "assigned_user_id",
+            &request_id,
+        )?,
+        request_id: normalize_optional_filter(
+            query.request_id.as_deref(),
+            "request_id",
+            &request_id,
+        )?,
+        trace_id: normalize_optional_filter(query.trace_id.as_deref(), "trace_id", &request_id)?,
+        page: query.page,
+        page_size: query.page_size,
+    };
+
+    let client = state_client(&state)?;
+    let pagination = normalized_query.pagination();
+    let fairness_page = repo::search_fairness_incidents(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "fairness_incident_query",
+        normalized_query
+            .order_id
+            .clone()
+            .or_else(|| normalized_query.assigned_user_id.clone()),
+        "GET /api/v1/ops/fairness-incidents",
+        json!({
+            "order_id": normalized_query.order_id,
+            "incident_type": normalized_query.incident_type,
+            "severity": normalized_query.severity,
+            "fairness_incident_status": normalized_query.fairness_incident_status,
+            "assigned_role_key": normalized_query.assigned_role_key,
+            "assigned_user_id": normalized_query.assigned_user_id,
+            "request_id": normalized_query.request_id,
+            "trace_id": normalized_query.trace_id,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": fairness_page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(FairnessIncidentPageView {
+        total: fairness_page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: fairness_page
+            .items
+            .iter()
+            .map(FairnessIncidentView::from)
+            .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn handle_ops_fairness_incident(
+    State(state): State<AppState>,
+    Path(fairness_incident_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<OpsFairnessIncidentHandleRequest>,
+) -> Result<Json<ApiResponse<OpsFairnessIncidentHandleView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&fairness_incident_id, "id", &request_id)?;
+    let action = normalize_fairness_incident_action(&payload.action, &request_id)?;
+    let resolution_summary =
+        normalize_fairness_incident_resolution_summary(&payload.resolution_summary, &request_id)?;
+    let auto_action_override = normalize_optional_filter(
+        payload.auto_action_override.as_deref(),
+        "auto_action_override",
+        &request_id,
+    )?;
+    let freeze_settlement = payload.freeze_settlement.unwrap_or(false);
+    let freeze_delivery = payload.freeze_delivery.unwrap_or(false);
+    let create_dispute_suggestion = payload.create_dispute_suggestion.unwrap_or(false);
+    require_permission(
+        &headers,
+        AuditPermission::RiskFairnessIncidentHandle,
+        "risk fairness incident handle",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "risk fairness incident handle")?;
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_fairness_incident_handle(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        fairness_incident_id.as_str(),
+    )
+    .await?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+
+    let existing_incident = repo::load_fairness_incident(&client, &fairness_incident_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("fairness incident not found: {fairness_incident_id}"),
+            )
+        })?;
+    if existing_incident.fairness_incident_status != "open" {
+        return Err(conflict_error(
+            &request_id,
+            FAIRNESS_INCIDENT_HANDLE_STATE_ERROR,
+            format!(
+                "fairness incident handle is only allowed when status=`open`; got `{}`",
+                existing_incident.fairness_incident_status
+            ),
+        ));
+    }
+
+    let handled_at = current_utc_timestamp(&client).await?;
+    let next_status = if action == "close" { "closed" } else { "open" };
+    let closed_at = (next_status == "closed").then_some(handled_at.as_str());
+    let action_plan_status = if auto_action_override.is_some()
+        || freeze_settlement
+        || freeze_delivery
+        || create_dispute_suggestion
+    {
+        "suggestion_recorded"
+    } else {
+        "no_linked_action"
+    };
+    let metadata_patch = build_fairness_incident_handle_metadata(
+        &headers,
+        request_id.as_str(),
+        trace_id.as_str(),
+        handled_at.as_str(),
+        action.as_str(),
+        resolution_summary.as_str(),
+        auto_action_override.as_deref(),
+        freeze_settlement,
+        freeze_delivery,
+        create_dispute_suggestion,
+        actor_user_id.as_str(),
+        &existing_incident,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let handled_incident = repo::handle_fairness_incident(
+        &tx,
+        fairness_incident_id.as_str(),
+        next_status,
+        resolution_summary.as_str(),
+        auto_action_override.as_deref(),
+        closed_at,
+        request_id.as_str(),
+        trace_id.as_str(),
+        &metadata_patch,
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        conflict_error(
+            &request_id,
+            FAIRNESS_INCIDENT_HANDLE_STATE_ERROR,
+            format!("fairness incident is no longer open: {fairness_incident_id}"),
+        )
+    })?;
+
+    let audit_event = build_fairness_incident_handle_audit_event(
+        &headers,
+        request_id.as_str(),
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        action.as_str(),
+        resolution_summary.as_str(),
+        auto_action_override.as_deref(),
+        freeze_settlement,
+        freeze_delivery,
+        create_dispute_suggestion,
+        action_plan_status,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+        &existing_incident,
+        &handled_incident,
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+
+    let access_audit_id = repo::record_access_audit(
+        &tx,
+        &AccessAuditInsert {
+            accessor_user_id: Some(actor_user_id.clone()),
+            accessor_role_key: Some(current_role(&headers)),
+            access_mode: "handle".to_string(),
+            target_type: "fairness_incident".to_string(),
+            target_id: Some(fairness_incident_id.clone()),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: step_up.challenge_id.clone(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            metadata: json!({
+                "endpoint": "POST /api/v1/ops/fairness-incidents/{id}/handle",
+                "order_id": handled_incident.order_id.clone(),
+                "ref_type": handled_incident.ref_type.clone(),
+                "ref_id": handled_incident.ref_id.clone(),
+                "incident_type": handled_incident.incident_type.clone(),
+                "severity": handled_incident.severity.clone(),
+                "action": action.clone(),
+                "fairness_incident_status_before": existing_incident.fairness_incident_status.clone(),
+                "fairness_incident_status_after": handled_incident.fairness_incident_status.clone(),
+                "resolution_summary": resolution_summary.clone(),
+                "auto_action_override": auto_action_override.clone(),
+                "freeze_settlement": freeze_settlement,
+                "freeze_delivery": freeze_delivery,
+                "create_dispute_suggestion": create_dispute_suggestion,
+                "action_plan_status": action_plan_status,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text:
+                "risk fairness incident handle executed: POST /api/v1/ops/fairness-incidents/{id}/handle"
+                    .to_string(),
+            structured_payload: json!({
+                "module": "ops",
+                "endpoint": "POST /api/v1/ops/fairness-incidents/{id}/handle",
+                "access_audit_id": access_audit_id,
+                "fairness_incident_id": fairness_incident_id.clone(),
+                "order_id": handled_incident.order_id.clone(),
+                "incident_type": handled_incident.incident_type.clone(),
+                "severity": handled_incident.severity.clone(),
+                "action": action.clone(),
+                "fairness_incident_status_before": existing_incident.fairness_incident_status.clone(),
+                "fairness_incident_status_after": handled_incident.fairness_incident_status.clone(),
+                "resolution_summary": resolution_summary.clone(),
+                "auto_action_override": auto_action_override.clone(),
+                "freeze_settlement": freeze_settlement,
+                "freeze_delivery": freeze_delivery,
+                "create_dispute_suggestion": create_dispute_suggestion,
+                "closed_at": handled_incident.closed_at.clone(),
+                "action_plan_status": action_plan_status,
+                "business_mutation_executed": false,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(OpsFairnessIncidentHandleView {
+        fairness_incident: FairnessIncidentView::from(&handled_incident),
+        action,
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+        status: "manual_handling_recorded".to_string(),
+        action_plan_status: action_plan_status.to_string(),
     }))
 }
 
@@ -2913,6 +3227,8 @@ enum AuditPermission {
     OpsDeadLetterRead,
     OpsExternalFactRead,
     OpsExternalFactManage,
+    RiskFairnessIncidentRead,
+    RiskFairnessIncidentHandle,
     OpsConsistencyRead,
     OpsConsistencyReconcile,
     OpsDeadLetterReprocess,
@@ -2976,6 +3292,13 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
         ),
         AuditPermission::OpsExternalFactManage => {
             matches!(role, "platform_admin" | "platform_audit_security")
+        }
+        AuditPermission::RiskFairnessIncidentRead => matches!(
+            role,
+            "platform_admin" | "platform_audit_security" | "platform_risk_settlement"
+        ),
+        AuditPermission::RiskFairnessIncidentHandle => {
+            matches!(role, "platform_admin" | "platform_risk_settlement")
         }
         AuditPermission::OpsConsistencyRead => matches!(
             role,
@@ -3312,6 +3635,27 @@ async fn require_step_up_for_external_fact_confirm(
         Some("external_fact_receipt"),
         Some(external_fact_receipt_id),
         "ops external fact confirm",
+    )
+    .await
+}
+
+async fn require_step_up_for_fairness_incident_handle(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    fairness_incident_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        FAIRNESS_INCIDENT_HANDLE_STEP_UP_ACTION,
+        None,
+        Some("fairness_incident"),
+        Some(fairness_incident_id),
+        "risk fairness incident handle",
     )
     .await
 }
@@ -5284,6 +5628,129 @@ fn build_external_fact_confirm_audit_event(
     event
 }
 
+#[allow(clippy::too_many_arguments)]
+fn build_fairness_incident_handle_metadata(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: &str,
+    handled_at: &str,
+    action: &str,
+    resolution_summary: &str,
+    auto_action_override: Option<&str>,
+    freeze_settlement: bool,
+    freeze_delivery: bool,
+    create_dispute_suggestion: bool,
+    actor_user_id: &str,
+    existing_incident: &repo::FairnessIncidentRecord,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> Value {
+    json!({
+        "handling": {
+            "endpoint": "POST /api/v1/ops/fairness-incidents/{id}/handle",
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "handled_at": handled_at,
+            "action": action,
+            "resolution_summary": resolution_summary,
+            "auto_action_override": auto_action_override,
+            "freeze_settlement": freeze_settlement,
+            "freeze_delivery": freeze_delivery,
+            "create_dispute_suggestion": create_dispute_suggestion,
+            "operator_user_id": actor_user_id,
+            "operator_role": current_role(headers),
+            "tenant_id": header(headers, "x-tenant-id"),
+            "step_up_challenge_id": step_up_challenge_id,
+            "step_up_token_present": step_up_token_present,
+            "previous_status": existing_incident.fairness_incident_status.clone(),
+            "business_mutation_executed": false,
+        },
+        "linked_action_plan": {
+            "status": if auto_action_override.is_some()
+                || freeze_settlement
+                || freeze_delivery
+                || create_dispute_suggestion
+            {
+                "suggestion_recorded"
+            } else {
+                "no_linked_action"
+            },
+            "auto_action_override": auto_action_override,
+            "freeze_settlement": freeze_settlement,
+            "freeze_delivery": freeze_delivery,
+            "create_dispute_suggestion": create_dispute_suggestion,
+            "execution_mode": "suggestion_only",
+        }
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_fairness_incident_handle_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: String,
+    actor_user_id: &str,
+    action: &str,
+    resolution_summary: &str,
+    auto_action_override: Option<&str>,
+    freeze_settlement: bool,
+    freeze_delivery: bool,
+    create_dispute_suggestion: bool,
+    action_plan_status: &str,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+    existing_incident: &repo::FairnessIncidentRecord,
+    handled_incident: &repo::FairnessIncidentRecord,
+) -> AuditEvent {
+    let ref_id = handled_incident
+        .ref_id
+        .clone()
+        .or_else(|| handled_incident.fairness_incident_id.clone());
+    let mut event = AuditEvent::business(
+        "risk",
+        handled_incident.ref_type.as_str(),
+        ref_id,
+        "risk.fairness_incident.handle",
+        action,
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id,
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "fairness_incident_id": handled_incident.fairness_incident_id.clone(),
+                "order_id": handled_incident.order_id.clone(),
+                "incident_type": handled_incident.incident_type.clone(),
+                "severity": handled_incident.severity.clone(),
+                "lifecycle_stage": handled_incident.lifecycle_stage.clone(),
+                "status_before": existing_incident.fairness_incident_status.clone(),
+                "status_after": handled_incident.fairness_incident_status.clone(),
+                "closed_at": handled_incident.closed_at.clone(),
+                "resolution_summary": resolution_summary,
+                "auto_action_override": auto_action_override,
+                "freeze_settlement": freeze_settlement,
+                "freeze_delivery": freeze_delivery,
+                "create_dispute_suggestion": create_dispute_suggestion,
+                "action_plan_status": action_plan_status,
+                "step_up_token_present": step_up_token_present,
+                "business_mutation_executed": false,
+            }),
+        },
+    );
+    event.sensitivity_level = "high".to_string();
+    event
+}
+
 fn state_client(state: &AppState) -> Result<db::Client, (StatusCode, Json<ErrorResponse>)> {
     state.db.client().map_err(map_db_error)
 }
@@ -5483,6 +5950,44 @@ fn normalize_external_fact_confirm_reason(
         ));
     }
     Ok(reason.to_string())
+}
+
+fn normalize_fairness_incident_action(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let normalized = match raw.trim() {
+        "ack" | "acknowledge" | "review" => "acknowledge",
+        "escalate" | "escalated" => "escalate",
+        "close" | "resolve" | "resolved" => "close",
+        other => {
+            return Err(bad_request(
+                request_id,
+                format!("action must be one of: acknowledge, escalate, close; got `{other}`"),
+            ));
+        }
+    };
+    Ok(normalized.to_string())
+}
+
+fn normalize_fairness_incident_resolution_summary(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let resolution_summary = raw.trim();
+    if resolution_summary.is_empty() {
+        return Err(bad_request(
+            request_id,
+            "resolution_summary is required for fairness incident handle",
+        ));
+    }
+    if resolution_summary.len() > 1000 {
+        return Err(bad_request(
+            request_id,
+            "resolution_summary must be shorter than 1001 characters",
+        ));
+    }
+    Ok(resolution_summary.to_string())
 }
 
 fn normalize_anchor_retry_reason(

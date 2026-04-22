@@ -16,4 +16,5 @@
 - `audit-consistency-lookup.md`：`AUD-011` 一致性联查接口的宿主机调用、正式 `refType`、DB / 审计回查与运行态边界。
 - `audit-consistency-reconcile.md`：`AUD-012` 一致性修复 dry-run 控制面的权限、step-up、`ops.chain_projection_gap` 预演建议、DB / 审计回查与“无执行副作用”边界。
 - `audit-external-facts.md`：`AUD-019` 外部事实查询 / 确认控制面的权限、step-up、`ops.external_fact_receipt` 回查与“不直接改业务主状态”边界。
+- `audit-fairness-incidents.md`：`AUD-020` 公平性事件查询 / 处理控制面的权限、step-up、`risk.fairness_incident` 回查与“只记录联动建议、不直接改业务主状态”边界。
 - `audit-trade-monitor.md`：`AUD-018` 交易链监控总览 / checkpoints 的宿主机调用、tenant+order scope、`trade_lifecycle_checkpoint / external_fact / fairness / projection_gap / chain_anchor` 回查与运行态边界。

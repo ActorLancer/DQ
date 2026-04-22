@@ -340,6 +340,56 @@ pub struct OpsExternalFactConfirmView {
 }
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct FairnessIncidentQuery {
+    pub order_id: Option<String>,
+    pub incident_type: Option<String>,
+    pub severity: Option<String>,
+    pub fairness_incident_status: Option<String>,
+    pub assigned_role_key: Option<String>,
+    pub assigned_user_id: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl FairnessIncidentQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FairnessIncidentPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<FairnessIncidentView>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct OpsFairnessIncidentHandleRequest {
+    pub action: String,
+    pub resolution_summary: String,
+    pub auto_action_override: Option<String>,
+    pub freeze_settlement: Option<bool>,
+    pub freeze_delivery: Option<bool>,
+    pub create_dispute_suggestion: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsFairnessIncidentHandleView {
+    pub fairness_incident: FairnessIncidentView,
+    pub action: String,
+    pub step_up_bound: bool,
+    pub status: String,
+    pub action_plan_status: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
 pub struct ChainProjectionGapQuery {
     pub aggregate_type: Option<String>,
     pub aggregate_id: Option<String>,
