@@ -204,26 +204,88 @@ pub async fn list_sync_tasks(
     let limit = query.limit.unwrap_or(50).clamp(1, 200) as i64;
     let rows = client
         .query(
-            "SELECT
-               index_sync_task_id::text,
-               entity_scope,
-               entity_id::text,
-               document_version::bigint,
-               target_backend,
-               target_index,
-               source_event_id::text,
-               sync_status,
-               retry_count,
-               last_error_code,
-               last_error_message,
-               to_char(scheduled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               to_char(completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
-               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
-             FROM search.index_sync_task
-             WHERE ($1::text IS NULL OR entity_scope = $1)
-               AND ($2::text IS NULL OR sync_status = $2)
-             ORDER BY scheduled_at DESC, updated_at DESC
+            "WITH latest_exception AS (
+               SELECT DISTINCT ON (e.index_sync_task_id)
+                      e.index_sync_task_id,
+                      e.index_sync_exception_id::text,
+                      e.exception_type,
+                      e.exception_status,
+                      e.error_code,
+                      e.error_message,
+                      e.retryable,
+                      e.dead_letter_event_id::text,
+                      to_char(e.detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS detected_at,
+                      to_char(e.resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS resolved_at
+                 FROM search.index_sync_exception e
+                ORDER BY e.index_sync_task_id, e.detected_at DESC, e.updated_at DESC
+             ),
+             open_exception_count AS (
+               SELECT
+                 e.index_sync_task_id,
+                 COUNT(*)::integer AS open_exception_count
+               FROM search.index_sync_exception e
+               WHERE e.exception_status = 'open'
+               GROUP BY e.index_sync_task_id
+             )
+             SELECT
+               t.index_sync_task_id::text,
+               t.entity_scope,
+               t.entity_id::text,
+               t.document_version::bigint,
+               t.target_backend,
+               t.target_index,
+               alias.active_index_name,
+               t.source_event_id::text,
+               t.sync_status,
+               t.retry_count,
+               t.last_error_code,
+               t.last_error_message,
+               t.reconcile_status,
+               to_char(t.last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               t.dead_letter_event_id::text,
+               COALESCE(exc_count.open_exception_count, 0),
+               exc.index_sync_exception_id,
+               exc.exception_type,
+               exc.exception_status,
+               exc.error_code,
+               exc.error_message,
+               COALESCE(exc.retryable, false),
+               exc.detected_at,
+               exc.resolved_at,
+               CASE
+                 WHEN t.entity_scope = 'seller' THEN sdoc.document_version::bigint
+                 ELSE pdoc.document_version::bigint
+               END,
+               CASE
+                 WHEN t.entity_scope = 'seller' THEN sdoc.index_sync_status
+                 ELSE pdoc.index_sync_status
+               END,
+               CASE
+                 WHEN t.entity_scope = 'seller'
+                   THEN to_char(sdoc.indexed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 ELSE to_char(pdoc.indexed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+               END,
+               to_char(t.scheduled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(t.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(t.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM search.index_sync_task t
+             LEFT JOIN search.index_alias_binding alias
+               ON alias.entity_scope = t.entity_scope
+              AND alias.backend_type = t.target_backend
+             LEFT JOIN search.product_search_document pdoc
+               ON t.entity_scope = 'product'
+              AND pdoc.product_id = t.entity_id
+             LEFT JOIN search.seller_search_document sdoc
+               ON t.entity_scope = 'seller'
+              AND sdoc.org_id = t.entity_id
+             LEFT JOIN latest_exception exc
+               ON exc.index_sync_task_id = t.index_sync_task_id
+             LEFT JOIN open_exception_count exc_count
+               ON exc_count.index_sync_task_id = t.index_sync_task_id
+             WHERE ($1::text IS NULL OR t.entity_scope = $1)
+               AND ($2::text IS NULL OR t.sync_status = $2)
+             ORDER BY t.scheduled_at DESC, t.updated_at DESC
              LIMIT $3",
             &[&query.entity_scope, &query.sync_status, &limit],
         )
@@ -239,15 +301,31 @@ pub async fn list_sync_tasks(
             document_version: row.get(3),
             target_backend: row.get(4),
             target_index: row.get(5),
-            source_event_id: row.get(6),
-            sync_status: row.get(7),
-            retry_count: row.get(8),
-            last_error_code: row.get(9),
-            last_error_message: row.get(10),
-            scheduled_at: row.get(11),
-            started_at: row.get(12),
-            completed_at: row.get(13),
-            updated_at: row.get(14),
+            active_index_name: row.get(6),
+            source_event_id: row.get(7),
+            sync_status: row.get(8),
+            retry_count: row.get(9),
+            last_error_code: row.get(10),
+            last_error_message: row.get(11),
+            reconcile_status: row.get(12),
+            last_reconciled_at: row.get(13),
+            dead_letter_event_id: row.get(14),
+            open_exception_count: row.get(15),
+            latest_exception_id: row.get(16),
+            latest_exception_type: row.get(17),
+            latest_exception_status: row.get(18),
+            latest_exception_error_code: row.get(19),
+            latest_exception_error_message: row.get(20),
+            latest_exception_retryable: row.get(21),
+            latest_exception_detected_at: row.get(22),
+            latest_exception_resolved_at: row.get(23),
+            projection_document_version: row.get(24),
+            projection_index_sync_status: row.get(25),
+            projection_indexed_at: row.get(26),
+            scheduled_at: row.get(27),
+            started_at: row.get(28),
+            completed_at: row.get(29),
+            updated_at: row.get(30),
         })
         .collect())
 }

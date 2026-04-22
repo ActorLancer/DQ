@@ -308,6 +308,13 @@ async fn cleanup_seed_graph(
     }
     let _ = client
         .execute(
+            "DELETE FROM search.index_sync_exception
+             WHERE entity_id IN ($1::text::uuid, $2::text::uuid)",
+            &[&ids.product_id, &ids.org_id],
+        )
+        .await;
+    let _ = client
+        .execute(
             "DELETE FROM search.index_sync_task WHERE entity_id IN ($1::text::uuid, $2::text::uuid)",
             &[&ids.product_id, &ids.org_id],
         )
@@ -915,6 +922,7 @@ async fn search_api_and_ops_db_smoke() {
     let req_reindex_missing_idem = format!("req-search-reindex-missing-idem-{suffix}");
     let req_reindex = format!("req-search-reindex-{suffix}");
     let req_sync = format!("req-search-sync-{suffix}");
+    let req_sync_failed = format!("req-search-sync-failed-{suffix}");
     let req_rank_list = format!("req-search-ranking-list-{suffix}");
     let req_rank_patch = format!("req-search-ranking-patch-{suffix}");
     let req_alias = format!("req-search-alias-{suffix}");
@@ -1271,6 +1279,22 @@ async fn search_api_and_ops_db_smoke() {
             return Err("reindex system log missing".to_string());
         }
 
+        let projection_state = client
+            .query_one(
+                "SELECT
+                   document_version::bigint,
+                   index_sync_status,
+                   to_char(indexed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 FROM search.product_search_document
+                 WHERE product_id = $1::text::uuid",
+                &[&ids.product_id],
+            )
+            .await
+            .map_err(|err| format!("load product search projection state failed: {err}"))?;
+        let projection_document_version: i64 = projection_state.get(0);
+        let projection_index_sync_status: String = projection_state.get(1);
+        let projection_indexed_at: Option<String> = projection_state.get(2);
+
         let sync_resp = app
             .clone()
             .oneshot(
@@ -1289,11 +1313,77 @@ async fn search_api_and_ops_db_smoke() {
         let sync_items = sync_json["data"]
             .as_array()
             .ok_or_else(|| "sync response data missing".to_string())?;
-        if !sync_items
+        let sync_item = sync_items
             .iter()
-            .any(|item| item["entity_id"].as_str() == Some(ids.product_id.as_str()))
+            .find(|item| item["entity_id"].as_str() == Some(ids.product_id.as_str()))
+            .ok_or_else(|| format!("sync task list missing queued product task: {sync_json}"))?;
+        if sync_item["active_index_name"].as_str() != Some(alias_binding.active_index_name.as_str()) {
+            return Err(format!(
+                "queued sync active_index_name mismatch: expected={} actual={}",
+                alias_binding.active_index_name,
+                sync_item["active_index_name"]
+            ));
+        }
+        if sync_item["reconcile_status"].as_str() != Some("pending_check") {
+            return Err(format!("queued sync reconcile_status mismatch: {sync_json}"));
+        }
+        if sync_item["last_reconciled_at"] != Value::Null {
+            return Err(format!("queued sync last_reconciled_at should be null: {sync_json}"));
+        }
+        if sync_item["dead_letter_event_id"] != Value::Null {
+            return Err(format!("queued sync dead_letter_event_id should be null: {sync_json}"));
+        }
+        if sync_item["open_exception_count"].as_i64() != Some(0) {
+            return Err(format!("queued sync open_exception_count mismatch: {sync_json}"));
+        }
+        if sync_item["latest_exception_id"] != Value::Null
+            || sync_item["latest_exception_type"] != Value::Null
+            || sync_item["latest_exception_status"] != Value::Null
+            || sync_item["latest_exception_error_code"] != Value::Null
+            || sync_item["latest_exception_error_message"] != Value::Null
+            || sync_item["latest_exception_detected_at"] != Value::Null
+            || sync_item["latest_exception_resolved_at"] != Value::Null
         {
-            return Err(format!("sync task list missing queued product task: {sync_json}"));
+            return Err(format!(
+                "queued sync latest_exception summary should be empty: {sync_json}"
+            ));
+        }
+        if sync_item["latest_exception_retryable"].as_bool() != Some(false) {
+            return Err(format!(
+                "queued sync latest_exception_retryable mismatch: {sync_json}"
+            ));
+        }
+        if sync_item["projection_document_version"].as_i64() != Some(projection_document_version) {
+            return Err(format!(
+                "queued sync projection_document_version mismatch: expected={projection_document_version} actual={}",
+                sync_item["projection_document_version"]
+            ));
+        }
+        if sync_item["projection_index_sync_status"].as_str()
+            != Some(projection_index_sync_status.as_str())
+        {
+            return Err(format!(
+                "queued sync projection_index_sync_status mismatch: expected={} actual={}",
+                projection_index_sync_status,
+                sync_item["projection_index_sync_status"]
+            ));
+        }
+        match projection_indexed_at.as_deref() {
+            Some(indexed_at) => {
+                if sync_item["projection_indexed_at"].as_str() != Some(indexed_at) {
+                    return Err(format!(
+                        "queued sync projection_indexed_at mismatch: expected={indexed_at} actual={}",
+                        sync_item["projection_indexed_at"]
+                    ));
+                }
+            }
+            None => {
+                if sync_item["projection_indexed_at"] != Value::Null {
+                    return Err(format!(
+                        "queued sync projection_indexed_at should be null: {sync_json}"
+                    ));
+                }
+            }
         }
         if count_access_audit(&client, &req_sync, "search_sync_query")
             .await
@@ -1312,6 +1402,189 @@ async fn search_api_and_ops_db_smoke() {
             != 1
         {
             return Err("search sync system log missing".to_string());
+        }
+
+        let failed_task = client
+            .query_one(
+                "INSERT INTO search.index_sync_task (
+                   entity_scope,
+                   entity_id,
+                   document_version,
+                   target_backend,
+                   target_index,
+                   sync_status,
+                   retry_count,
+                   last_error_code,
+                   last_error_message,
+                   completed_at,
+                   reconcile_status,
+                   last_reconciled_at
+                 ) VALUES (
+                   'product',
+                   $1::text::uuid,
+                   $2,
+                   'opensearch',
+                   $3,
+                   'failed',
+                   2,
+                   'SEARCH_INDEX_FAILED',
+                   $4,
+                   now(),
+                   'drift_detected',
+                   now()
+                 )
+                 RETURNING index_sync_task_id::text",
+                &[
+                    &ids.product_id,
+                    &projection_document_version,
+                    &alias_binding.active_index_name,
+                    &format!("search sync task failure {suffix}"),
+                ],
+            )
+            .await
+            .map_err(|err| format!("seed failed search sync task failed: {err}"))?;
+        let failed_task_id: String = failed_task.get(0);
+        client
+            .execute(
+                "INSERT INTO search.index_sync_exception (
+                   index_sync_task_id,
+                   entity_scope,
+                   entity_id,
+                   document_version,
+                   target_backend,
+                   target_index,
+                   exception_type,
+                   exception_status,
+                   failure_stage,
+                   error_code,
+                   error_message,
+                   retryable,
+                   metadata
+                 ) VALUES (
+                   $1::text::uuid,
+                   'product',
+                   $2::text::uuid,
+                   $3,
+                   'opensearch',
+                   $4,
+                   'sync_failed',
+                   'open',
+                   'index_write',
+                   'SEARCH_INDEX_FAILED',
+                   $5,
+                   true,
+                   jsonb_build_object('seed', $6)
+                 )",
+                &[
+                    &failed_task_id,
+                    &ids.product_id,
+                    &projection_document_version,
+                    &alias_binding.active_index_name,
+                    &format!("search sync exception {suffix}"),
+                    &suffix,
+                ],
+            )
+            .await
+            .map_err(|err| format!("seed search sync exception failed: {err}"))?;
+
+        let failed_sync_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/ops/search/sync?entity_scope=product&sync_status=failed&limit=20")
+                    .header("authorization", &admin_auth)
+                    .header("x-request-id", &req_sync_failed)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build failed sync request: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call failed sync endpoint failed: {err}"))?;
+        assert_eq!(failed_sync_resp.status(), StatusCode::OK);
+        let failed_sync_json = response_json(failed_sync_resp).await?;
+        let failed_sync_items = failed_sync_json["data"]
+            .as_array()
+            .ok_or_else(|| "failed sync response data missing".to_string())?;
+        let failed_sync_item = failed_sync_items
+            .iter()
+            .find(|item| item["index_sync_task_id"].as_str() == Some(failed_task_id.as_str()))
+            .ok_or_else(|| {
+                format!("failed sync task missing from ops view: {failed_sync_json}")
+            })?;
+        if failed_sync_item["active_index_name"].as_str()
+            != Some(alias_binding.active_index_name.as_str())
+        {
+            return Err(format!(
+                "failed sync active_index_name mismatch: expected={} actual={}",
+                alias_binding.active_index_name,
+                failed_sync_item["active_index_name"]
+            ));
+        }
+        if failed_sync_item["reconcile_status"].as_str() != Some("drift_detected") {
+            return Err(format!(
+                "failed sync reconcile_status mismatch: {failed_sync_json}"
+            ));
+        }
+        if failed_sync_item["open_exception_count"].as_i64() != Some(1) {
+            return Err(format!(
+                "failed sync open_exception_count mismatch: {failed_sync_json}"
+            ));
+        }
+        if failed_sync_item["latest_exception_type"].as_str() != Some("sync_failed")
+            || failed_sync_item["latest_exception_status"].as_str() != Some("open")
+            || failed_sync_item["latest_exception_error_code"].as_str()
+                != Some("SEARCH_INDEX_FAILED")
+            || failed_sync_item["latest_exception_error_message"].as_str()
+                != Some(format!("search sync exception {suffix}").as_str())
+            || failed_sync_item["latest_exception_retryable"].as_bool() != Some(true)
+        {
+            return Err(format!(
+                "failed sync latest_exception summary mismatch: {failed_sync_json}"
+            ));
+        }
+        if failed_sync_item["latest_exception_id"] == Value::Null
+            || failed_sync_item["latest_exception_detected_at"] == Value::Null
+        {
+            return Err(format!(
+                "failed sync latest_exception timing fields missing: {failed_sync_json}"
+            ));
+        }
+        if failed_sync_item["latest_exception_resolved_at"] != Value::Null {
+            return Err(format!(
+                "failed sync latest_exception_resolved_at should be null: {failed_sync_json}"
+            ));
+        }
+        if failed_sync_item["dead_letter_event_id"] != Value::Null {
+            return Err(format!(
+                "failed sync dead_letter_event_id should be null for seeded exception: {failed_sync_json}"
+            ));
+        }
+        if failed_sync_item["projection_document_version"].as_i64()
+            != Some(projection_document_version)
+            || failed_sync_item["projection_index_sync_status"].as_str()
+                != Some(projection_index_sync_status.as_str())
+        {
+            return Err(format!(
+                "failed sync projection state mismatch: {failed_sync_json}"
+            ));
+        }
+        if count_access_audit(&client, &req_sync_failed, "search_sync_query")
+            .await
+            .map_err(|err| format!("count failed sync access audit failed: {err}"))?
+            != 1
+        {
+            return Err("failed search sync access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_sync_failed,
+            "search ops lookup executed: GET /api/v1/ops/search/sync",
+        )
+        .await
+        .map_err(|err| format!("count failed sync system log failed: {err}"))?
+            != 1
+        {
+            return Err("failed search sync system log missing".to_string());
         }
 
         let ranking_list_resp = app

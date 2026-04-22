@@ -236,3 +236,49 @@
   - 无。`SEARCHREC-006` 要求的 Redis 搜索缓存、正式 key 命名、弱一致抖动收敛与真实失效入口已同时覆盖前台搜索、ops 手工失效、ranking/alias 运维写动作与 `search-indexer` worker 成功路径。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+### BATCH-253（计划中）
+- 任务：`SEARCHREC-007` 实现搜索同步作业表与异常记录表
+- 状态：计划中
+- 说明：按 `SEARCHREC-007` 冻结口径复核后，当前 `search.index_sync_task` 已承载最小同步状态，但尚未形成正式“作业表 + 异常记录表 + ops 联查字段”闭环；本批将补齐搜索同步异常记录表、任务对账状态字段、worker 失败/成功回写、`GET /api/v1/ops/search/sync` 的正式联查视图，并把 dead-letter / retry / alias authority 相关状态统一沉淀到搜索域自己的状态落点。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，不提前进入推荐任务。
+### BATCH-253（待审批）
+- 任务：`SEARCHREC-007` 实现搜索同步作业表与异常记录表
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-007`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-006` 已形成 `PostgreSQL projection -> Kafka -> search-indexer -> OpenSearch -> Redis -> PostgreSQL final check` 搜索主链、正式 alias authority 与缓存失效基线，本批在该基线上把搜索同步作业/异常状态收口到正式表与 ops 联查视图。
+- 完成情况：
+  - `docs/数据库设计/V1/upgrade/083_search_sync_exception_alignment.sql`、`docs/数据库设计/V1/downgrade/083_search_sync_exception_alignment.sql`、`db/migrations/v1/manifest.csv`、`db/migrations/v1/checksums.sha256`：新增 `083` 迁移，扩展 `search.index_sync_task.reconcile_status / last_reconciled_at / dead_letter_event_id`，新增 `search.index_sync_exception` 正式异常记录表，并为历史失败任务做最小 backfill；本地 PostgreSQL 已实际执行 upgrade SQL，并补记 `public.schema_migration_history(version='083')`。
+  - `workers/search-indexer/src/main.rs`：worker 失败时不再只停留在 `last_error_*`，而是同步写入/更新 `search.index_sync_exception`；成功补偿同一实体时会关闭 open exception；dead-letter 形成后会把 `dead_letter_event_id` 回写到 `search.index_sync_task` 与 open exception；任务状态同步推进 `reconcile_status` 与 `last_reconciled_at`。
+  - `apps/platform-core/src/modules/search/domain/mod.rs`、`repo/mod.rs`：`GET /api/v1/ops/search/sync` 的 `SearchSyncTaskView` 扩展为正式 ops 视图，新增 `active_index_name`、`reconcile_status`、`dead_letter_event_id`、`open_exception_count`、`latest_exception_*`、`projection_*` 字段；查询联查 `search.index_alias_binding`、搜索投影表和最新异常摘要，不再只返回基础任务字段。
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs`：`search_api_and_ops_db_smoke` 新增两段真实断言，分别验证 queued 任务返回 projection/alias/reconcile 落点，以及 failed 任务返回 `latest_exception_*` 摘要、`open_exception_count` 与 ops 读审计；同时把测试清理扩展到 `search.index_sync_exception`。
+  - `packages/openapi/search.yaml`、`docs/02-openapi/search.yaml`、`docs/04-runbooks/search-reindex.md`、`docs/05-test-cases/search-rec-cases.md`：同步 `SearchSyncTaskView` 新字段、异常回查 SQL 与 007 验证口径，确保 API 契约、runbook 与测试清单不漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo check -p search-indexer`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 手工服务级验证：
+    - `cargo build -p platform-core-bin`
+    - 以 `APP_MODE=staging`、`IAM_JWT_PARSER=keycloak_claims`、`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 启动 `target/debug/platform-core-bin`
+    - `curl "http://127.0.0.1:18080/api/v1/ops/search/sync?entity_scope=product&sync_status=failed&limit=5"`，随后用 `psql` 回查 `search.index_sync_task / search.index_sync_exception / audit.access_audit / ops.system_log`
+- 验证结果：
+  - `search_api_and_ops_db_smoke` 通过：真实验证 queued 任务返回 `active_index_name / reconcile_status=pending_check / open_exception_count=0 / projection_*`，并验证 failed 任务返回 `latest_exception_type=sync_failed`、`latest_exception_error_code=SEARCH_INDEX_FAILED`、`latest_exception_retryable=true`、`reconcile_status=drift_detected`；两次 ops 查询都回查到 `audit.access_audit + ops.system_log`。
+  - `search_indexer_db_smoke` 通过：成功路径确认 open exception 被关闭；失败路径确认 `search.index_sync_exception` 写入、`ops.dead_letter_event + dtp.dead-letter` 保持成立，且 `search.index_sync_task.reconcile_status='drift_detected'`、`dead_letter_event_id` 已回写。
+  - `cargo test -p platform-core` 全量通过（`326 passed`，`1 ignored`）；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过。
+  - 手工 `curl` 联调通过：实际服务返回 `active_index_name`、`reconcile_status`、`open_exception_count`、`latest_exception_*`、`projection_*` 全套新字段；`psql` 回查确认同一 `index_sync_task_id` 的 `reconcile_status=drift_detected`、open exception 状态、`ops.system_log` 与 `audit.access_audit(target_type='search_sync_query')` 一致。过程中先发现旧二进制未重编导致响应缺字段，随后重建 `platform-core-bin` 并改用宿主机可达的 `KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 重跑，确认当前实现的服务级结果正确。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-007`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`、`6. 搜索投影设计`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：`GET /api/v1/ops/search/sync` 搜索运维语义
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`：搜索同步状态必须形成作业表、异常记录与 ops 查看闭环
+  - `A08-搜索Alias权威源与阶段边界冲突.md`：alias authority 与同步状态需要统一落在结构化权威源
+  - `数据交易平台-全集成基线-V1.md`：`ops.search_sync.read / ops.search_sync.reconcile`、同步状态视图与错误摘要要求
+- 覆盖的任务清单条目：`SEARCHREC-007`
+- 未覆盖项：
+  - 无。`SEARCHREC-007` 要求的搜索同步作业表、异常记录表、retry/reconcile/ops 查看与 alias authority 状态落点已同时覆盖 schema、worker、副作用回写、ops 视图和服务级联调。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

@@ -24,6 +24,8 @@
 - `GET /api/v1/catalog/search` 在 `local / demo` 允许经 `PostgreSQL search projection candidate -> PostgreSQL final check` 返回结果，并显式返回 `backend=postgresql`。
 - `GET /api/v1/catalog/search` 当前正式要求 `Authorization: Bearer <access_token>`，且两次相同查询应能观察到 `cache_hit=false -> true`。
 - `POST /api/v1/ops/search/reindex` 必须写入 `search.index_sync_task(sync_status='queued')`。
+- `GET /api/v1/ops/search/sync` 必须返回 `active_index_name / reconcile_status / open_exception_count / projection_*` 等正式状态落点，而不是只返回基础任务字段。
+- `GET /api/v1/ops/search/sync` 在失败样本上必须能看到 `latest_exception_*` 摘要，且与 `search.index_sync_exception` 一致。
 - `POST /api/v1/ops/search/reindex` 必须要求 `ops.search_reindex.execute + X-Idempotency-Key + X-Step-Up-Token`，并写入 `audit.audit_event(action_name='search.reindex.queue')`、`audit.access_audit(target_type='search_reindex')`、`ops.system_log`。
 - `POST /api/v1/ops/search/cache/invalidate` 必须推进相关 `datab:v1:search:catalog:version:{scope}` 并删除 Redis 搜索缓存。
 - `POST /api/v1/ops/search/cache/invalidate` 必须要求 `ops.search_cache.invalidate + X-Idempotency-Key`，且不得伪造 step-up。
@@ -36,6 +38,8 @@
 - 搜索运维控制面必须使用搜索域错误码：`SEARCH_QUERY_INVALID`、`SEARCH_BACKEND_UNAVAILABLE`、`SEARCH_RESULT_STALE`，以及权限专属 `SEARCH_REINDEX_FORBIDDEN / SEARCH_ALIAS_SWITCH_FORBIDDEN / SEARCH_CACHE_INVALIDATE_FORBIDDEN`。
 - `search-indexer` 必须以统一事件 envelope 的 `event_id` 做 consumer 幂等，并把幂等记录写入 `ops.consumer_idempotency_record`。
 - `search-indexer` 处理失败时，必须先落 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter`，再决定是否提交 offset。
+- `search-indexer` 处理失败时，必须同时写入 `search.index_sync_exception`，并把 `search.index_sync_task.reconcile_status / dead_letter_event_id` 回写到正式状态表。
+- `search-indexer` 成功补偿同一实体后，必须关闭该实体的 open exception，避免 ops 视图持续显示脏异常。
 - `search-indexer` 的测试不得只用手工 seed OpenSearch 证明通过，必须验证 worker 侧真实副作用、失败隔离与 reprocess 路径。
 - 搜索回归命令：
   - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`

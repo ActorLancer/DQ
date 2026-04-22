@@ -182,6 +182,9 @@ components:
         - target_backend
         - sync_status
         - retry_count
+        - reconcile_status
+        - open_exception_count
+        - latest_exception_retryable
         - scheduled_at
         - updated_at
       properties:
@@ -202,6 +205,9 @@ components:
         target_index:
           type: string
           nullable: true
+        active_index_name:
+          type: string
+          nullable: true
         source_event_id:
           type: string
           format: uuid
@@ -214,6 +220,51 @@ components:
           type: string
           nullable: true
         last_error_message:
+          type: string
+          nullable: true
+        reconcile_status:
+          type: string
+          enum: [pending_check, clean, drift_detected]
+        last_reconciled_at:
+          type: string
+          nullable: true
+        dead_letter_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        open_exception_count:
+          type: integer
+        latest_exception_id:
+          type: string
+          format: uuid
+          nullable: true
+        latest_exception_type:
+          type: string
+          nullable: true
+        latest_exception_status:
+          type: string
+          nullable: true
+        latest_exception_error_code:
+          type: string
+          nullable: true
+        latest_exception_error_message:
+          type: string
+          nullable: true
+        latest_exception_retryable:
+          type: boolean
+        latest_exception_detected_at:
+          type: string
+          nullable: true
+        latest_exception_resolved_at:
+          type: string
+          nullable: true
+        projection_document_version:
+          type: integer
+          nullable: true
+        projection_index_sync_status:
+          type: string
+          nullable: true
+        projection_indexed_at:
           type: string
           nullable: true
         scheduled_at:

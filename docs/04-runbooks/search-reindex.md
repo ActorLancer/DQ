@@ -108,6 +108,15 @@ curl -sS "http://127.0.0.1:18080/api/v1/ops/search/sync?entity_scope=product&syn
   -H 'X-Request-Id: req-search-sync-local'
 ```
 
+重点回查字段：
+
+- `active_index_name`
+- `reconcile_status`
+- `open_exception_count`
+- `latest_exception_error_code`
+- `projection_document_version`
+- `projection_index_sync_status`
+
 5. 先对同一搜索条件执行两次目录搜索，确认第一次 `cache_hit=false`、第二次 `cache_hit=true`：
 
 ```bash
@@ -184,10 +193,31 @@ SELECT entity_scope,
        target_backend,
        target_index,
        sync_status,
-       retry_count
+       reconcile_status,
+       retry_count,
+       dead_letter_event_id::text
 FROM search.index_sync_task
 WHERE entity_id = '<product_uuid>'::uuid
 ORDER BY scheduled_at DESC
+LIMIT 5;
+```
+
+同步异常：
+
+```sql
+SELECT index_sync_task_id::text,
+       entity_scope,
+       entity_id::text,
+       exception_type,
+       exception_status,
+       error_code,
+       retryable,
+       dead_letter_event_id::text,
+       detected_at,
+       resolved_at
+FROM search.index_sync_exception
+WHERE entity_id = '<product_uuid>'::uuid
+ORDER BY detected_at DESC
 LIMIT 5;
 ```
 

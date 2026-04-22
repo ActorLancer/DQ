@@ -203,6 +203,7 @@ async fn process_kafka_payload(
         Err(err) => {
             let dead_letter_event_id =
                 ensure_dead_letter_event(&client, &envelope, &err, &cfg.topic_search_sync).await?;
+            attach_dead_letter_to_failed_tasks(&client, event_id, &dead_letter_event_id).await?;
             publish_dead_letter_message(
                 producer,
                 &cfg.topic_search_sync,
@@ -658,6 +659,7 @@ async fn process_entity(
         Ok(()) => {
             mark_projection_success(&client, entity_scope, entity_id).await?;
             invalidate_search_cache(cfg, entity_scope, &document.body).await?;
+            resolve_task_exceptions(&client, entity_scope, entity_id).await?;
             mark_task_completed(&client, &task_id).await?;
             info!(
                 entity_scope = %entity_scope,
@@ -669,6 +671,20 @@ async fn process_entity(
         }
         Err(err) => {
             mark_projection_failed(&client, entity_scope, entity_id, &err).await?;
+            record_task_exception(
+                &client,
+                &task_id,
+                entity_scope,
+                entity_id,
+                document.document_version,
+                target_index,
+                source_event_id,
+                "sync_failed",
+                "index_write",
+                "SEARCH_INDEX_FAILED",
+                &err,
+            )
+            .await?;
             mark_task_failed(&client, &task_id, &err).await?;
             Err(err)
         }
@@ -805,8 +821,10 @@ async fn mark_task_processing(
                      started_at = now(),
                      retry_count = retry_count + 1,
                      updated_at = now(),
+                     reconcile_status = 'pending_check',
                      last_error_code = NULL,
-                     last_error_message = NULL
+                     last_error_message = NULL,
+                     dead_letter_event_id = NULL
                  WHERE index_sync_task_id = $1::text::uuid",
                 &[&task_id],
             )
@@ -860,8 +878,11 @@ async fn mark_task_completed(
              SET sync_status = 'completed',
                  completed_at = now(),
                  updated_at = now(),
+                 reconcile_status = 'clean',
+                 last_reconciled_at = now(),
                  last_error_code = NULL,
-                 last_error_message = NULL
+                 last_error_message = NULL,
+                 dead_letter_event_id = NULL
              WHERE index_sync_task_id = $1::text::uuid",
             &[&task_id],
         )
@@ -881,6 +902,8 @@ async fn mark_task_failed(
              SET sync_status = 'failed',
                  completed_at = now(),
                  updated_at = now(),
+                 reconcile_status = 'drift_detected',
+                 last_reconciled_at = now(),
                  last_error_code = 'SEARCH_INDEX_FAILED',
                  last_error_message = $2
              WHERE index_sync_task_id = $1::text::uuid",
@@ -888,6 +911,169 @@ async fn mark_task_failed(
         )
         .await
         .map_err(|err| format!("mark search sync task failed failed: {err}"))?;
+    Ok(())
+}
+
+async fn record_task_exception(
+    client: &(impl GenericClient + Sync),
+    task_id: &str,
+    entity_scope: &str,
+    entity_id: &str,
+    document_version: i64,
+    target_index: &str,
+    source_event_id: Option<&str>,
+    exception_type: &str,
+    failure_stage: &str,
+    error_code: &str,
+    error_message: &str,
+) -> Result<(), String> {
+    let existing = client
+        .query_opt(
+            "SELECT index_sync_exception_id::text
+             FROM search.index_sync_exception
+             WHERE index_sync_task_id = $1::text::uuid
+               AND exception_status = 'open'
+             ORDER BY detected_at DESC, updated_at DESC
+             LIMIT 1",
+            &[&task_id],
+        )
+        .await
+        .map_err(|err| format!("load open search sync exception failed: {err}"))?;
+    if let Some(row) = existing {
+        let exception_id: String = row.get(0);
+        client
+            .execute(
+                "UPDATE search.index_sync_exception
+                 SET failure_stage = $2,
+                     error_code = $3,
+                     error_message = $4,
+                     retryable = true,
+                     metadata = metadata || jsonb_build_object('updated_by', $5),
+                     detected_at = now(),
+                     resolved_at = NULL,
+                     updated_at = now()
+                 WHERE index_sync_exception_id = $1::text::uuid",
+                &[
+                    &exception_id,
+                    &failure_stage,
+                    &error_code,
+                    &error_message,
+                    &SERVICE_NAME,
+                ],
+            )
+            .await
+            .map_err(|err| format!("update search sync exception failed: {err}"))?;
+        return Ok(());
+    }
+
+    client
+        .execute(
+            "INSERT INTO search.index_sync_exception (
+               index_sync_task_id,
+               entity_scope,
+               entity_id,
+               document_version,
+               target_backend,
+               target_index,
+               source_event_id,
+               exception_type,
+               exception_status,
+               failure_stage,
+               error_code,
+               error_message,
+               retryable,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2,
+               $3::text::uuid,
+               $4,
+               'opensearch',
+               $5,
+               $6::text::uuid,
+               $7,
+               'open',
+               $8,
+               $9,
+               $10,
+               true,
+               jsonb_build_object('recorded_by', $11)
+             )",
+            &[
+                &task_id,
+                &entity_scope,
+                &entity_id,
+                &document_version,
+                &target_index,
+                &source_event_id,
+                &exception_type,
+                &failure_stage,
+                &error_code,
+                &error_message,
+                &SERVICE_NAME,
+            ],
+        )
+        .await
+        .map_err(|err| format!("insert search sync exception failed: {err}"))?;
+    Ok(())
+}
+
+async fn resolve_task_exceptions(
+    client: &(impl GenericClient + Sync),
+    entity_scope: &str,
+    entity_id: &str,
+) -> Result<(), String> {
+    client
+        .execute(
+            "UPDATE search.index_sync_exception
+             SET exception_status = 'resolved',
+                 resolved_at = now(),
+                 retryable = false,
+                 updated_at = now()
+             WHERE entity_scope = $1
+               AND entity_id = $2::text::uuid
+               AND exception_status = 'open'",
+            &[&entity_scope, &entity_id],
+        )
+        .await
+        .map_err(|err| format!("resolve search sync exceptions failed: {err}"))?;
+    Ok(())
+}
+
+async fn attach_dead_letter_to_failed_tasks(
+    client: &(impl GenericClient + Sync),
+    source_event_id: &str,
+    dead_letter_event_id: &str,
+) -> Result<(), String> {
+    client
+        .execute(
+            "UPDATE search.index_sync_task
+             SET dead_letter_event_id = $2::text::uuid,
+                 reconcile_status = 'drift_detected',
+                 last_reconciled_at = now(),
+                 updated_at = now()
+             WHERE source_event_id = $1::text::uuid
+               AND sync_status = 'failed'",
+            &[&source_event_id, &dead_letter_event_id],
+        )
+        .await
+        .map_err(|err| format!("attach dead letter to search sync task failed: {err}"))?;
+    client
+        .execute(
+            "UPDATE search.index_sync_exception
+             SET dead_letter_event_id = $2::text::uuid,
+                 failure_stage = COALESCE(failure_stage, $3),
+                 updated_at = now()
+             WHERE source_event_id = $1::text::uuid
+               AND exception_status = 'open'",
+            &[
+                &source_event_id,
+                &dead_letter_event_id,
+                &FAILURE_STAGE_CONSUMER_HANDLER,
+            ],
+        )
+        .await
+        .map_err(|err| format!("attach dead letter to search sync exception failed: {err}"))?;
     Ok(())
 }
 
@@ -1357,6 +1543,13 @@ mod tests {
     async fn cleanup_event_artifacts(client: &Client, event_id: &str) {
         let _ = client
             .execute(
+                "DELETE FROM search.index_sync_exception
+                 WHERE source_event_id = $1::text::uuid",
+                &[&event_id],
+            )
+            .await;
+        let _ = client
+            .execute(
                 "DELETE FROM ops.consumer_idempotency_record
                  WHERE consumer_name = $1
                    AND event_id = $2::text::uuid",
@@ -1390,6 +1583,13 @@ mod tests {
     async fn cleanup_graph(client: &Client, cfg: &WorkerConfig, seed: &SeedGraph) {
         let _ = delete_opensearch_document(cfg, "product", &seed.product_id).await;
         let _ = delete_opensearch_document(cfg, "seller", &seed.org_id).await;
+        let _ = client
+            .execute(
+                "DELETE FROM search.index_sync_exception
+                 WHERE entity_id IN ($1::text::uuid, $2::text::uuid)",
+                &[&seed.product_id, &seed.org_id],
+            )
+            .await;
         let _ = client
             .execute(
                 "DELETE FROM search.index_sync_task
@@ -1735,6 +1935,19 @@ mod tests {
             .await
             .expect("load success idempotency row");
         assert_eq!(success_idempotency.get::<_, String>(0), "processed");
+        let resolved_exception_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM search.index_sync_exception
+                 WHERE entity_scope = 'product'
+                   AND entity_id = $1::text::uuid
+                   AND exception_status = 'open'",
+                &[&seed.product_id],
+            )
+            .await
+            .expect("count open exceptions after success")
+            .get(0);
+        assert_eq!(resolved_exception_count, 0);
 
         let duplicate_result = process_kafka_payload(
             &db,
@@ -1839,6 +2052,48 @@ mod tests {
             .expect("count failed search sync tasks")
             .get(0);
         assert!(failed_task_count >= 1);
+        let failure_exception = client
+            .query_one(
+                "SELECT
+                   exception_type,
+                   exception_status,
+                   error_code,
+                   retryable,
+                   dead_letter_event_id::text
+                 FROM search.index_sync_exception
+                 WHERE source_event_id = $1::text::uuid
+                 ORDER BY detected_at DESC, updated_at DESC
+                 LIMIT 1",
+                &[&failure_event_id],
+            )
+            .await
+            .expect("load search sync exception");
+        assert_eq!(failure_exception.get::<_, String>(0), "sync_failed");
+        assert_eq!(failure_exception.get::<_, String>(1), "open");
+        assert_eq!(failure_exception.get::<_, String>(2), "SEARCH_INDEX_FAILED");
+        assert!(failure_exception.get::<_, bool>(3));
+        assert_eq!(
+            failure_exception.get::<_, Option<String>>(4).as_deref(),
+            Some(dead_letter_event_id.as_str())
+        );
+        let failed_task_state = client
+            .query_one(
+                "SELECT
+                   reconcile_status,
+                   dead_letter_event_id::text
+                 FROM search.index_sync_task
+                 WHERE source_event_id = $1::text::uuid
+                 ORDER BY updated_at DESC
+                 LIMIT 1",
+                &[&failure_event_id],
+            )
+            .await
+            .expect("load failed sync task state");
+        assert_eq!(failed_task_state.get::<_, String>(0), "drift_detected");
+        assert_eq!(
+            failed_task_state.get::<_, Option<String>>(1).as_deref(),
+            Some(dead_letter_event_id.as_str())
+        );
 
         cleanup_event_artifacts(&client, &success_event_id).await;
         cleanup_event_artifacts(&client, &failure_event_id).await;
