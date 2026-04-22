@@ -477,6 +477,29 @@ async fn cleanup_graph(client: &Client, ids: &SeedIds) {
         .await;
 }
 
+async fn update_product_status_and_refresh_projection(
+    client: &Client,
+    product_id: &str,
+    status: &str,
+) -> Result<(), Error> {
+    client
+        .execute(
+            "UPDATE catalog.product
+             SET status = $2,
+                 updated_at = now()
+             WHERE product_id = $1::text::uuid",
+            &[&product_id, &status],
+        )
+        .await?;
+    client
+        .execute(
+            "SELECT search.refresh_product_search_document_by_id($1::text::uuid)",
+            &[&product_id],
+        )
+        .await?;
+    Ok(())
+}
+
 async fn seed_opensearch_documents(ids: &SeedIds, suffix: &str) -> Result<(), String> {
     let endpoint = std::env::var("OPENSEARCH_ENDPOINT")
         .unwrap_or_else(|_| "http://127.0.0.1:9200".to_string());
@@ -2211,6 +2234,153 @@ async fn recommendation_get_api_db_smoke() {
             return Err("recommendation access audit result id mismatch".to_string());
         }
 
+        Ok(())
+    }
+    .await;
+
+    cleanup_opensearch_documents(&ids).await;
+    cleanup_graph(&client, &ids).await;
+
+    if let Err(message) = outcome {
+        panic!("{message}");
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn recommendation_filters_frozen_product_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let _env_lock = RECOMMEND_ENV_TEST_LOCK.lock().expect("lock recommend env");
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis()
+        .to_string();
+    let ids = seed_graph(&client, &suffix)
+        .await
+        .expect("seed recommendation graph");
+    seed_opensearch_documents(&ids, &suffix)
+        .await
+        .expect("seed recommendation opensearch docs");
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "staging");
+
+    let app = crate::with_live_test_state(router()).await;
+    let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
+    let request_id_before = format!("req-recommend-freeze-before-{suffix}");
+    let request_id_after = format!("req-recommend-freeze-after-{suffix}");
+
+    let outcome: Result<(), String> = async {
+        let before_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/recommendations?placement_code=product_detail_bundle&subject_scope=organization&subject_org_id={}&context_entity_scope=product&context_entity_id={}&limit=3",
+                        ids.org_id,
+                        ids.product_ids[0]
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &request_id_before)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build pre-freeze recommendation request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call pre-freeze recommendation endpoint failed: {err}"))?;
+        let before_json = response_json(before_response).await?;
+        if !before_json["data"]["items"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item["entity_id"].as_str() == Some(ids.product_ids[1].as_str())))
+        {
+            return Err(format!(
+                "pre-freeze recommendation missing expected bundle product {}: {before_json}",
+                ids.product_ids[1]
+            ));
+        }
+
+        // Keep the OpenSearch document intact while freezing in PostgreSQL to prove final business gating.
+        update_product_status_and_refresh_projection(&client, &ids.product_ids[1], "frozen")
+            .await
+            .map_err(|err| format!("freeze product and refresh projection failed: {err}"))?;
+        let projection_row = client
+            .query_one(
+                "SELECT listing_status, visibility_status, visible_to_search
+                 FROM search.product_search_document
+                 WHERE product_id = $1::text::uuid",
+                &[&ids.product_ids[1]],
+            )
+            .await
+            .map_err(|err| format!("load search projection after freeze failed: {err}"))?;
+        if projection_row.get::<_, String>(0) != "frozen"
+            || projection_row.get::<_, String>(1) != "frozen"
+            || projection_row.get::<_, bool>(2)
+        {
+            return Err(format!(
+                "search projection did not flip to frozen/invisible after status update: listing_status={} visibility_status={} visible_to_search={}",
+                projection_row.get::<_, String>(0),
+                projection_row.get::<_, String>(1),
+                projection_row.get::<_, bool>(2),
+            ));
+        }
+
+        let after_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/recommendations?placement_code=product_detail_bundle&subject_scope=organization&subject_org_id={}&context_entity_scope=product&context_entity_id={}&limit=4",
+                        ids.org_id,
+                        ids.product_ids[0]
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &request_id_after)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build post-freeze recommendation request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call post-freeze recommendation endpoint failed: {err}"))?;
+        let after_json = response_json(after_response).await?;
+        if after_json["data"]["items"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item["entity_id"].as_str() == Some(ids.product_ids[1].as_str())))
+        {
+            return Err(format!(
+                "frozen product should be filtered out of recommendation results: {after_json}"
+            ));
+        }
+        let recommendation_result_id = after_json["data"]["recommendation_result_id"]
+            .as_str()
+            .ok_or_else(|| format!("post-freeze recommendation_result_id missing: {after_json}"))?;
+        let frozen_item_count = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM recommend.recommendation_result_item
+                 WHERE recommendation_result_id = $1::text::uuid
+                   AND entity_id = $2::text::uuid",
+                &[&recommendation_result_id, &ids.product_ids[1]],
+            )
+            .await
+            .map_err(|err| format!("count frozen recommendation_result_item failed: {err}"))?
+            .get::<_, i64>(0);
+        if frozen_item_count != 0 {
+            return Err(format!(
+                "frozen product should not be written into recommendation_result_item rows: count={frozen_item_count}"
+            ));
+        }
         Ok(())
     }
     .await;

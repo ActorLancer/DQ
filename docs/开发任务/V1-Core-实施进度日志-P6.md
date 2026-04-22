@@ -826,3 +826,47 @@
   - 无。`SEARCHREC-020` 要求的 SEARCHREC consumer 幂等、双层 DLQ、offset 提交纪律和 reprocess 路径已通过两个 worker smoke、一个 reprocess smoke、runbook/test-case/TODO/实施日志追溯全部固定。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；既有 `TODO-SEARCHREC-CONSUMER-001` 已在本批关闭。
+### BATCH-264（计划中）
+- 任务：`SEARCHREC-015` 为搜索与推荐补齐一致性与 worker 可靠性测试
+- 状态：计划中
+- 说明：按 `SEARCHREC-015` 冻结口径复核后，现有 SEARCHREC smoke 已分别覆盖统一 Bearer / 权限点 / `X-Idempotency-Key` / `X-Step-Up-Token` / 审计 / `SEARCH_*` 错误码、搜索运维 alias/reindex/cache、推荐 ops/rebuild，以及 `search-indexer / recommendation-aggregator` 的 consumer 幂等、双层 DLQ 与 reprocess，但仍缺少 task 明确要求的两条业务一致性场景：商品下架后搜索结果消失、冻结后推荐结果不可见。本批将在现有 smoke 基线之上补两条真实 DB smoke，并把“重建索引后 alias 生效”的读链证明收进搜索 smoke，形成 `SEARCHREC-015` 的综合验收闭环。
+- 追溯：继续沿修正后的 `SEARCHREC` 顺序推进；当前只处理搜索/推荐一致性测试与 worker 可靠性验收，不提前合并 `SEARCHREC-016/017` 的 OpenAPI 归档与测试文档冻结。
+### BATCH-264（待审批）
+- 任务：`SEARCHREC-015` 为搜索与推荐补齐一致性与 worker 可靠性测试
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-015`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-019` 已补齐 SEARCHREC 统一鉴权、Step-Up、审计与错误码口径；`SEARCHREC-020` 已补齐 `search-indexer / recommendation-aggregator` 的 consumer 幂等、双层 DLQ 与 reprocess 验收。本批依赖全部满足，可进入 `SEARCHREC-015` 正式验收。
+- 实际变更：
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs`：新增 `search_visibility_and_alias_consistency_db_smoke`，直接在新 physical index 写入 alias-marker 文档，通过 `POST /api/v1/ops/search/aliases/switch` 把 read alias 切到该索引，真实证明搜索读链已切换到新的 OpenSearch alias；随后把同一商品的 PostgreSQL 权威状态改为 `delisted` 并刷新 `search.product_search_document`，再次查询时确认旧 OpenSearch 命中会被 PostgreSQL 最终业务校验过滤，不会继续出现在返回结果中。
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs`：补充测试辅助函数，统一负责向指定 OpenSearch physical index 写入商品文档、修改商品状态并刷新搜索投影，避免把 “手工 seed 文档” 误当作正式 worker 闭环替代。
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：新增 `recommendation_filters_frozen_product_db_smoke`，先证明 `product_detail_bundle` 推荐位在 `staging` 下会返回目标商品，再把该商品 PostgreSQL 权威状态改为 `frozen` 并刷新搜索投影，确认第二次推荐结果已经剔除该商品，且新的 `recommend.recommendation_result_item` 不会再落到被冻结商品上。
+  - `docs/05-test-cases/search-rec-cases.md`：同步补充 `SEARCHREC-015` 的冻结测试口径，明确 alias 切换后读链必须命中新索引、OpenSearch 旧命中必须经过 PostgreSQL 最终校验过滤，以及推荐在商品 `frozen / delisted / rejected` 后不得继续返回或落库。
+- 验证命令：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_visibility_and_alias_consistency_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_filters_frozen_product_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `search_visibility_and_alias_consistency_db_smoke` 通过：真实证明 alias 切换后搜索读链已命中新 physical index，同时在 OpenSearch 残留旧文档的情况下，PostgreSQL 最终校验仍会把已 `delisted` 商品过滤出结果集。
+  - `recommendation_filters_frozen_product_db_smoke` 通过：真实证明推荐候选即使仍可命中旧商品文档，返回前仍会按 PostgreSQL 权威状态把 `frozen` 商品剔除，且第二次结果不会继续写入该商品的 `recommendation_result_item`。
+  - `search_api_and_ops_db_smoke`、`recommendation_api_full_runtime_db_smoke`、`search_indexer_db_smoke`、`recommendation_aggregator_db_smoke` 与 `audit_dead_letter_reprocess_db_smoke` 全部通过，说明 alias/reindex、统一鉴权、Step-Up、审计链、consumer 幂等、双层 DLQ 与 reprocess 验收在新增一致性场景下无回归。
+  - `cargo test -p platform-core` 全量回归结果为 `355 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 也通过，未产生新的 `.sqlx` 漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-015`
+  - `商品搜索、排序与索引同步设计.md`：OpenSearch 候选召回 + PostgreSQL 最终校验、alias/rebuild 运维闭环
+  - `商品推荐与个性化发现设计.md`：推荐候选召回 + PostgreSQL 最终校验、冻结商品不可见
+  - `商品搜索、排序与索引同步接口协议正式版.md`、`商品推荐与个性化发现接口协议正式版.md`：统一鉴权、Step-Up、审计与错误码约束
+  - `search-rec-cases.md`：SEARCHREC 搜索/推荐一致性与 worker 可靠性验收口径
+- 覆盖的任务清单条目：`SEARCHREC-015`
+- 未覆盖项：
+  - 无。`SEARCHREC-015` 要求的搜索/推荐一致性场景、alias 生效证明、统一鉴权/Step-Up/审计/错误码回归，以及 worker 幂等、双层 DLQ 与 reprocess 验收已通过代码、测试文档、实施日志和真实服务验证全部固定。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批仅补齐既定测试闭环，没有引入新的冻结缺口。

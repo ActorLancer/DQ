@@ -438,6 +438,76 @@ async fn seed_opensearch_documents(ids: &SeedIds, suffix: &str) -> Result<(), St
     Ok(())
 }
 
+async fn seed_product_document_in_index(
+    index_name: &str,
+    ids: &SeedIds,
+    marker: &str,
+) -> Result<(), String> {
+    let endpoint = opensearch_endpoint();
+    let client = reqwest::Client::new();
+    let product_doc = json!({
+        "entity_scope": "product",
+        "id": ids.product_id,
+        "seller_id": ids.org_id,
+        "name": format!("search-alias-{marker}"),
+        "title": format!("search-alias-{marker}"),
+        "subtitle": format!("search alias subtitle {marker}"),
+        "description": format!("search alias marker {marker}"),
+        "industry": "industrial_manufacturing",
+        "status": "listed",
+        "review_status": "approved",
+        "visibility_status": "visible",
+        "visible_to_search": true,
+        "price_amount": 88.0,
+        "quality_score": 0.92,
+        "seller_reputation_score": 0.0,
+        "hotness_score": 0.0,
+        "updated_at": "2026-04-21T00:00:00.000Z"
+    });
+
+    let response = client
+        .put(format!(
+            "{}/{}/_doc/{}?refresh=wait_for",
+            endpoint.trim_end_matches('/'),
+            index_name,
+            ids.product_id
+        ))
+        .json(&product_doc)
+        .send()
+        .await
+        .map_err(|err| format!("seed opensearch alias probe doc failed: {err}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "seed opensearch alias probe doc status={}",
+            response.status()
+        ));
+    }
+    Ok(())
+}
+
+async fn update_product_status_and_refresh_projection(
+    client: &Client,
+    product_id: &str,
+    status: &str,
+) -> Result<(), Error> {
+    client
+        .execute(
+            "UPDATE catalog.product
+             SET status = $2,
+                 updated_at = now()
+             WHERE product_id = $1::text::uuid",
+            &[&product_id, &status],
+        )
+        .await?;
+    client
+        .execute(
+            "SELECT search.refresh_product_search_document_by_id($1::text::uuid)",
+            &[&product_id],
+        )
+        .await?;
+    Ok(())
+}
+
 async fn configure_product_projection_ranking(
     client: &Client,
     ids: &SeedIds,
@@ -1926,6 +1996,234 @@ async fn search_api_and_ops_db_smoke() {
     delete_index(&temp_index).await;
     cleanup_opensearch_documents(&ids).await;
     cleanup_seed_graph(&client, &ids, &step_up_ids, &ranking_seed).await;
+    if let Err(message) = outcome {
+        panic!("{message}");
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn search_visibility_and_alias_consistency_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let _env_lock = SEARCH_ENV_TEST_LOCK.lock().expect("lock search env");
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis()
+        .to_string();
+    let ids = seed_minimum_graph(&client, &suffix)
+        .await
+        .expect("seed minimum graph");
+    let alias_binding = lookup_product_alias_binding(&client)
+        .await
+        .expect("load product alias binding");
+    let temp_index = format!("product_search_v1_searchrec015_{suffix}");
+    let alias_marker = format!("alias-proof-{suffix}");
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "staging");
+    let app = crate::with_live_test_state(router()).await;
+    let admin_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["platform_admin"]);
+    let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
+    let initial_request_id = format!("req-searchrec015-search-initial-{suffix}");
+    let alias_request_id = format!("req-searchrec015-alias-switch-{suffix}");
+    let alias_search_request_id = format!("req-searchrec015-search-alias-{suffix}");
+    let delisted_search_request_id = format!("req-searchrec015-search-delisted-{suffix}");
+    let mut step_up_ids = Vec::new();
+
+    let outcome: Result<(), String> = async {
+        seed_opensearch_documents(&ids, &suffix).await?;
+        ensure_index_exists(&temp_index).await?;
+        seed_product_document_in_index(&temp_index, &ids, &alias_marker).await?;
+
+        let initial_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&page=1&page_size=10",
+                        suffix
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &initial_request_id)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build initial search request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call initial search endpoint failed: {err}"))?;
+        let initial_json = response_json(initial_response).await?;
+        if !initial_json["data"]["items"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item["entity_id"].as_str() == Some(ids.product_id.as_str())))
+        {
+            return Err(format!(
+                "initial search result missing seeded product: {initial_json}"
+            ));
+        }
+
+        let alias_step_up = seed_verified_step_up_challenge(
+            &client,
+            &ids.operator_user_id,
+            "ops.search_alias.manage",
+            "search_scope",
+            None,
+            &format!("searchrec015-alias-{suffix}"),
+        )
+        .await
+        .map_err(|err| format!("seed alias step-up failed: {err}"))?;
+        step_up_ids.push(alias_step_up.clone());
+        let alias_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/ops/search/aliases/switch")
+                    .header("authorization", &admin_auth)
+                    .header("content-type", "application/json")
+                    .header("x-request-id", &alias_request_id)
+                    .header("x-idempotency-key", format!("idem-searchrec015-alias-{suffix}"))
+                    .header("x-step-up-token", &alias_step_up)
+                    .body(Body::from(
+                        json!({
+                            "entity_scope": "product",
+                            "next_index_name": temp_index
+                        })
+                        .to_string(),
+                    ))
+                    .map_err(|err| format!("build alias switch request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call alias switch endpoint failed: {err}"))?;
+        let alias_json = response_json(alias_response).await?;
+        if alias_json["data"]["active_index_name"].as_str() != Some(temp_index.as_str()) {
+            return Err(format!("alias switch response mismatch: {alias_json}"));
+        }
+        let alias_targets_after_switch = alias_targets(&alias_binding.read_alias).await?;
+        if !alias_targets_after_switch
+            .iter()
+            .any(|index| index == &temp_index)
+        {
+            return Err(format!(
+                "read alias did not point to rebuilt index after switch: {alias_targets_after_switch:?}"
+            ));
+        }
+
+        let alias_search_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&page=1&page_size=5",
+                        alias_marker
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &alias_search_request_id)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build alias search request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call alias search endpoint failed: {err}"))?;
+        let alias_search_json = response_json(alias_search_response).await?;
+        if alias_search_json["data"]["backend"].as_str() != Some("opensearch") {
+            return Err(format!(
+                "alias search should still use opensearch backend: {alias_search_json}"
+            ));
+        }
+        if !alias_search_json["data"]["items"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item["entity_id"].as_str() == Some(ids.product_id.as_str())))
+        {
+            return Err(format!(
+                "alias-backed search result missing seeded product: {alias_search_json}"
+            ));
+        }
+
+        // Keep the OpenSearch document searchable while delisting in PostgreSQL to prove the final PG gate.
+        update_product_status_and_refresh_projection(&client, &ids.product_id, "delisted")
+            .await
+            .map_err(|err| format!("delist product and refresh projection failed: {err}"))?;
+        let projection_row = client
+            .query_one(
+                "SELECT listing_status, visibility_status, visible_to_search
+                 FROM search.product_search_document
+                 WHERE product_id = $1::text::uuid",
+                &[&ids.product_id],
+            )
+            .await
+            .map_err(|err| format!("load search projection after delist failed: {err}"))?;
+        if projection_row.get::<_, String>(0) != "delisted"
+            || projection_row.get::<_, String>(1) != "delisted"
+            || projection_row.get::<_, bool>(2)
+        {
+            return Err(format!(
+                "search projection did not flip to delisted/invisible after status update: listing_status={} visibility_status={} visible_to_search={}",
+                projection_row.get::<_, String>(0),
+                projection_row.get::<_, String>(1),
+                projection_row.get::<_, bool>(2),
+            ));
+        }
+
+        let delisted_search_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&page=1&page_size=6",
+                        alias_marker
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &delisted_search_request_id)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build delisted search request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call delisted search endpoint failed: {err}"))?;
+        let delisted_search_json = response_json(delisted_search_response).await?;
+        if delisted_search_json["data"]["backend"].as_str() != Some("opensearch") {
+            return Err(format!(
+                "delisted search should still use opensearch backend: {delisted_search_json}"
+            ));
+        }
+        if delisted_search_json["data"]["items"]
+            .as_array()
+            .is_some_and(|items| items
+                .iter()
+                .any(|item| item["entity_id"].as_str() == Some(ids.product_id.as_str())))
+        {
+            return Err(format!(
+                "delisted product should be filtered by PostgreSQL final check: {delisted_search_json}"
+            ));
+        }
+        Ok(())
+    }
+    .await;
+
+    restore_product_alias_binding(&client, &alias_binding, &temp_index).await;
+    delete_index(&temp_index).await;
+    cleanup_opensearch_documents(&ids).await;
+    cleanup_seed_graph(
+        &client,
+        &ids,
+        &step_up_ids,
+        &lookup_product_ranking_profile(&client)
+            .await
+            .expect("load ranking profile"),
+    )
+    .await;
     if let Err(message) = outcome {
         panic!("{message}");
     }

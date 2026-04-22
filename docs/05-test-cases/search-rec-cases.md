@@ -22,6 +22,8 @@
 - `search-indexer` 成功同步后会推进 `datab:v1:search:catalog:version:{scope}` 并删除相关 `datab:v1:search:catalog:*` 候选缓存，再回写 `search.index_sync_task`。
 - `GET /api/v1/catalog/search` 在 `staging` 必须经 `OpenSearch candidate -> PostgreSQL final check` 返回结果，并显式返回 `backend=opensearch`。
 - `GET /api/v1/catalog/search` 在 `local / demo` 允许经 `PostgreSQL search projection candidate -> PostgreSQL final check` 返回结果，并显式返回 `backend=postgresql`。
+- `GET /api/v1/catalog/search` 必须证明读链真实受 alias 切换影响；`POST /api/v1/ops/search/aliases/switch` 成功后，后续查询必须从新的 read alias 命中文档，而不是继续读取旧 physical index。
+- 当 OpenSearch 中仍残留旧商品文档，但 PostgreSQL 权威状态已变为 `delisted / frozen / rejected` 等不可见状态时，`GET /api/v1/catalog/search` 仍必须在最终业务校验阶段把该商品过滤掉，不能直接信任候选命中。
 - `GET /api/v1/catalog/search` 当前正式要求 `Authorization: Bearer <access_token>`，且两次相同查询应能观察到 `cache_hit=false -> true`。
 - `POST /api/v1/ops/search/reindex` 必须写入 `search.index_sync_task(sync_status='queued')`。
 - `GET /api/v1/ops/search/sync` 必须返回 `active_index_name / reconcile_status / open_exception_count / projection_*` 等正式状态落点，而不是只返回基础任务字段。
@@ -44,6 +46,7 @@
 - 搜索回归命令：
   - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
   - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_visibility_and_alias_consistency_db_smoke -- --nocapture`
   - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
   - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
 
@@ -57,6 +60,7 @@
 - `home_featured` 在演示种子完成后必须固定返回五条标准链路官方商品样例，顺序为 `S1 -> S2 -> S3 -> S4 -> S5`；`recommend.placement_definition.metadata.fixed_samples` 必须与 `developer.test_application(metadata.primary_product_id)` 保持一致。
 - 首页五场景样例请求的 `items[].explanation_codes` 必须包含 `placement:fixed_sample` 与对应 `scenario:S1..S5`，且 `recommendation_request.candidate_source_summary ->> 'placement_sample' = '5'`。
 - 推荐返回前必须过滤掉 PostgreSQL 最终不可见对象，不能直接信任 OpenSearch 命中。
+- 当候选召回仍能命中旧商品文档，但 PostgreSQL 权威状态已改为 `frozen / delisted / rejected` 时，`GET /api/v1/recommendations` 必须在最终业务校验阶段把该商品过滤掉，且新的 `recommendation_result_item` 不得继续落入该不可见商品。
 - 推荐缓存必须写入 `datab:v1:recommend:*`，曝光后应能看到 `datab:v1:recommend:seen:*` 已看集合。
 - `APP_MODE=local` 下，同一推荐请求两次命中必须观察到 `cache_hit=false -> true`，并且 `recommendation_request.request_attrs ->> 'candidate_backend'`、`recommendation_result.metadata ->> 'candidate_backend'` 必须为 `postgresql_local_minimal`。
 - `placement_code=search_zero_result_fallback` 在 `APP_MODE=local` 下必须返回非空结果，并能在响应 `explanation_codes` 或 `recommendation_result_item.feature_snapshot` 中回查 `fallback:zero_result`。
@@ -82,5 +86,6 @@
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_get_api_db_smoke -- --nocapture`
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_home_featured_standard_scenarios_db_smoke -- --nocapture`
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_filters_frozen_product_db_smoke -- --nocapture`
   - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
   - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
