@@ -924,3 +924,107 @@
 - 备注：
   - 首轮手工 smoke 因 `psql` 默认未启用 `ON_ERROR_STOP`，在 SQL 种子失败后仍继续向 Kafka 注入消息，导致 append-only `audit.audit_event / ops.system_log` 出现重复 request id 留痕；该问题已定位为脚本执行方式，而非 Go handler 重复写入，随后用新的 `req-aud014b-*` 和 `psql -v ON_ERROR_STOP=1` 重新验证并取得干净结果。
   - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+### BATCH-228（计划中）
+- 任务：`AUD-015` 初始化 `services/fabric-event-listener/`（Go）
+- 状态：计划中
+- 说明：在 `AUD-014` 已把 `fabric-adapter` 收口到四类摘要 handler 之后，当前批次按 `CSV > Markdown > technical_reference > 其他文档` 继续推进正式 Fabric callback 主链。冻结边界收束为：在 Go 侧初始化 `fabric-event-listener`，消费 commit status / chaincode event 回执，形成 `dtp.fabric.callbacks` 正式回执消息，并把外部事实回执回写到 PostgreSQL 权威对象中，为后续 `AUD-016 / AUD-017` 的 CA admin 与真实 `fabric-test-network / Gateway / chaincode` 交互铺底；本批不反向定义主业务状态，不新增旁路 topic，也不把 README 占位当作完成证据。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-015`，完成后再进入 `AUD-016`。
+### BATCH-228（待审批）
+- 任务：`AUD-015` 初始化 `services/fabric-event-listener/`（Go）
+- 状态：待审批
+- 说明：
+  - 已按冻结口径落地 `services/fabric-event-listener/` 正式 Go 进程，当前 local 模式以“已提交 source receipt -> mock commit callback”形式跑通 callback 主链，不新增旁路 topic，也不把 `fabric-event-listener` 反向做成业务主状态机。
+  - 正式输出固定为 `dtp.fabric.callbacks`，并真实回写：
+    - `ops.external_fact_receipt`
+    - `audit.audit_event`
+    - `ops.system_log`
+    - `chain.chain_anchor`
+    - `audit.anchor_batch`（仅证据批次根）
+  - callback 统一补齐并持久化了冻结要求的字段：
+    - `provider_code`
+    - `provider_request_id`
+    - `callback_event_id`
+    - `event_version`
+    - `provider_status`
+    - `provider_occurred_at`
+    - `payload_hash`
+- 实现摘要：
+  - `services/fabric-event-listener/`：
+    - 新增 Go module、`cmd/fabric-event-listener` 运行入口、配置装载、Kafka callback publisher、mock callback provider、轮询处理器与 PostgreSQL store。
+    - listener 轮询 `ops.external_fact_receipt(fact_type in ('fabric_submit_receipt','fabric_anchor_submit_receipt'), receipt_status='submitted')` 且未标记 `listener_callback_event_id` 的 source receipt，生成确定性 `fabric.commit_confirmed / fabric.commit_failed` callback envelope。
+    - callback envelope 正式发布到 `dtp.fabric.callbacks`，并把 `callback_event_id / provider_request_id / provider_status / payload_hash / source_receipt_id / submission_kind / chain_anchor_id` 等字段贯穿到 Kafka payload 与 PostgreSQL metadata。
+    - 成功 callback 会把 `chain.chain_anchor.status='anchored'`、`reconcile_status='matched'`，并在 anchor batch 场景同步把 `audit.anchor_batch.status='anchored'`；失败 callback 会把 `chain.chain_anchor.status='failed'`、`reconcile_status='pending_check'`。
+    - source receipt 会被标记 `listener_callback_event_id / listener_callback_status / listener_callback_payload_hash / listener_service_name`，避免重复轮询。
+  - 运行入口与留痕：
+    - 新增 `scripts/fabric-event-listener-bootstrap.sh`、`scripts/fabric-event-listener-test.sh`、`scripts/fabric-event-listener-run.sh`，统一复用 `scripts/go-env.sh` 和 `third_party/external-deps/go`。
+    - 更新 `Makefile`，新增 `fabric-event-listener-bootstrap / test / run` 目标。
+  - 文档与验收：
+    - 新增 `docs/04-runbooks/fabric-event-listener.md`，落盘 bootstrap / test / run、mock callback smoke、Kafka / DB 回查与清理步骤。
+    - 更新 `docs/04-runbooks/fabric-local.md`、`fabric-debug.md`、`README.md`，把 `AUD-015` 的 callback 主链纳入正式运行说明。
+    - 更新 `docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`，新增 `AUD-CASE-021`，把 `dtp.fabric.callbacks`、callback metadata、`chain_anchor / anchor_batch` 状态变化纳入正式验收矩阵。
+    - 更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛到包含 `AUD-015` 的最新状态。
+- 验证步骤：
+  1. `find services/fabric-event-listener -name '*.go' -print0 | xargs -0 gofmt -w`
+  2. `bash ./scripts/fabric-event-listener-bootstrap.sh`
+  3. `bash ./scripts/fabric-event-listener-test.sh`
+  4. `bash -lc 'source /home/luna/Documents/DataB/scripts/go-env.sh && cd /home/luna/Documents/DataB/services/fabric-event-listener && go build ./...'`
+  5. 真实运行态 smoke：
+     - 保持 `./scripts/fabric-adapter-run.sh` 运行，由 `dtp.audit.anchor / dtp.fabric.requests` 先生成 source receipt
+     - 用 `psql -v ON_ERROR_STOP=1` 准备 `chain.chain_anchor + audit.anchor_batch` 最小对象
+     - 向 `dtp.audit.anchor` 注入 `audit.anchor_requested`
+     - 向 `dtp.fabric.requests` 注入 `fabric.proof_submit_requested(summary_type=order_summary)`
+     - 先把 order summary 的 source receipt 标记 `mock_callback_status=failed`，再启动 `./scripts/fabric-event-listener-run.sh`
+     - 用 `kcat` 回查 `dtp.fabric.callbacks`
+     - 用 `psql` 回查 `ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor / audit.anchor_batch`
+  6. `cargo fmt --all`
+  7. `cargo check -p platform-core`
+  8. `cargo test -p platform-core`
+  9. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  10. `./scripts/check-query-compile.sh`
+  11. `./scripts/check-topic-topology.sh`
+- 验证结果：
+  - Go 侧 `gofmt`、`go test ./...`、`go build ./...` 全部通过。
+  - 真实运行态 smoke 通过：
+    - `fabric-adapter -> source receipt -> fabric-event-listener -> dtp.fabric.callbacks -> PostgreSQL` 主链真实跑通。
+    - 新样本 `req-aud015b-anchor-kcat` 产生：
+      - `ops.external_fact_receipt.fact_type='fabric_anchor_commit_receipt'`
+      - `receipt_status='confirmed'`
+      - `metadata.callback_event_id='fabric-callback-77a69199cffaa71d'`
+      - `provider_status='confirmed'`
+    - 新样本 `req-aud015b-order-kcat` 产生：
+      - `ops.external_fact_receipt.fact_type='fabric_commit_receipt'`
+      - `receipt_status='failed'`
+      - `metadata.callback_event_id='fabric-callback-35853156513da26b'`
+      - `provider_status='failed'`
+    - `audit.audit_event(action_name='fabric.event_listener.callback')` 对两个 request id 各落 `1` 条，结果分别为 `confirmed / failed`。
+    - `ops.system_log(message_text='fabric event listener published callback')` 对两个 request id 各落 `1` 条，`structured_payload.event_type` 分别为 `fabric.commit_confirmed / fabric.commit_failed`。
+    - `dtp.fabric.callbacks` 中可回查到对应 callback envelope，且 `callback_event_id / provider_request_id / payload_hash / source_receipt_id` 齐备。
+    - 成功链 `chain.chain_anchor.status='anchored'`、`reconcile_status='matched'`，`audit.anchor_batch.status='anchored'`；失败链 `chain.chain_anchor.status='failed'`、`reconcile_status='pending_check'`。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅有仓库既存 `unused_*` warning，无新增编译失败。
+  - `cargo test -p platform-core` 通过：`290` 个测试通过，既存 `iam_party_access_flow_live` 继续保持 ignored。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-topic-topology.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-015`
+  - `技术选型正式版.md`：Go 负责 Fabric 外围适配与事件监听边界
+  - `链上链下技术架构与能力边界稿.md`：listener 负责 callback / chaincode event，不负责主业务状态
+  - `全量领域模型与对象关系说明.md`：链上摘要 / 证据批次根 / 回执证明聚合
+  - `事件模型与Topic清单正式版.md`、`kafka-topics.md`、`async-chain-write.md`：`dtp.fabric.callbacks` 正式回执拓扑
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：Fabric callback / listener 闭环义务
+- 覆盖的任务清单条目：`AUD-015`
+- 未覆盖项：
+  - `fabric-ca-admin` 与 CA 管理边界，留待 `AUD-016`
+  - `mock / fabric-test-network` provider 切换、真实 Gateway / chaincode / test-network 联调，留待 `AUD-017`
+  - `platform-core.consistency` 的正式 callback 消费执行面与更完整 reconcile / projection gap 闭环，留待后续 `AUD` 批次
+  - `ops.consumer_idempotency_record + Redis` 的 Fabric consumer 幂等闭环，留待 `AUD-026`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md` 的 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001`。
+- 备注：
+  - 首轮 listener 联调先撞到两个运行态问题，均已在当前批修正并重新验证：
+    - `ops.external_fact_receipt` 允许空 `order_id / provider_key / request_id / trace_id`，初版扫描逻辑未对空值做 `COALESCE`，已修复。
+    - `jsonb_build_object` 更新 source receipt metadata 时参数未显式 cast，PostgreSQL 无法推断类型，已补全 `::text`。
+  - 真实 smoke 过程中还发现：若测试 `chain.chain_anchor.ref_type='order'` 但 `ref_id` 指向不存在的订单，`fabric-adapter` 会按既有正式逻辑把该 `ref_id` 解析成 `order_id`，从而触发 `ops.external_fact_receipt.order_id` 外键；该现象已按正式口径修正测试数据，不构成冻结文档冲突。
+  - 为隔离本批新样本，已把历史遗留的三条 `submitted` 测试 source receipt 标记为跳过，避免污染 `AUD-015` 的 callback smoke 判定；本批新产生的业务测试数据已清理，`audit.audit_event / ops.system_log` 按 append-only 保留。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。

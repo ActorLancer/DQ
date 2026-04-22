@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up-local down-local up-core up-observability up-mocks up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel fabric-adapter-bootstrap fabric-adapter-test fabric-adapter-run
+.PHONY: up-local down-local up-core up-observability up-mocks up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel fabric-adapter-bootstrap fabric-adapter-test fabric-adapter-run fabric-event-listener-bootstrap fabric-event-listener-test fabric-event-listener-run
 COMPOSE_FILE ?= infra/docker/docker-compose.local.yml
 COMPOSE_ENV_FILE ?= infra/docker/.env.local
 
@@ -75,3 +75,12 @@ fabric-adapter-test:
 
 fabric-adapter-run:
 	./scripts/fabric-adapter-run.sh
+
+fabric-event-listener-bootstrap:
+	./scripts/fabric-event-listener-bootstrap.sh
+
+fabric-event-listener-test:
+	./scripts/fabric-event-listener-test.sh
+
+fabric-event-listener-run:
+	./scripts/fabric-event-listener-run.sh

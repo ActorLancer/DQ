@@ -16,8 +16,9 @@
 - 一致性修复 dry-run：`POST /api/v1/ops/consistency/reconcile`
 - outbox publisher：`ops.outbox_event -> workers/outbox-publisher -> Kafka / ops.outbox_publish_attempt / ops.dead_letter_event`
 - fabric adapter 四类摘要 handler：`dtp.audit.anchor / dtp.fabric.requests -> services/fabric-adapter -> evidence_batch_root / order_summary / authorization_summary / acceptance_summary -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor`
+- fabric callback listener：`services/fabric-event-listener -> dtp.fabric.callbacks -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor / audit.anchor_batch`
 
-后续 Fabric callback、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
+后续 `fabric-ca-admin / fabric-test-network / reconcile` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
 ## 前置条件
 
@@ -64,12 +65,13 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-018` | 一致性联查 | `GET /api/v1/ops/consistency/order/{order_id}` | 返回业务状态、proof/anchor 状态、外部事实状态，以及最近 `ops.outbox_event / ops.dead_letter_event / audit.audit_event`；查询动作写入 `audit.access_audit(target_type='consistency_query')` 与 `ops.system_log` | API 响应、`trade.order_main`、`chain.chain_anchor`、`ops.chain_projection_gap`、`ops.external_fact_receipt`、`ops.outbox_event`、`ops.dead_letter_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-019` | 一致性修复 dry-run | `POST /api/v1/ops/consistency/reconcile` + verified `x-step-up-challenge-id` + `{"ref_type":"order","ref_id":"...","mode":"full","dry_run":true,"reason":"..."}` | 不新增 `reconcile_job` 表、不改写 `ops.chain_projection_gap`，只返回修复建议并写入 `audit.audit_event(action_name='ops.consistency.reconcile.dry_run')`、`audit.access_audit(access_mode='reconcile', target_type='consistency_reconcile')`、`ops.system_log`；同时不得写出 `dtp.consistency.reconcile` 新 outbox 事件 | API 响应、`ops.chain_projection_gap` 仍为原状态、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event(request_id=...)` |
 | `AUD-CASE-020` | Fabric adapter 四类摘要 request consume + receipt write-back | 启动 `./scripts/fabric-adapter-run.sh`，使用 `kcat` 向 `dtp.audit.anchor` 写入 `audit.anchor_requested`，向 `dtp.fabric.requests` 分别写入 `summary_type=order_summary / authorization_summary / acceptance_summary` 的 `fabric.proof_submit_requested` | `services/fabric-adapter` 真实消费两条正式 topic，但在 Go 侧显式分派到 `evidence_batch_root / order_summary / authorization_summary / acceptance_summary` 四类 handler，使用 Go mock provider 生成回执，并把 `submission_kind / contract_name / transaction_name` 写入 `ops.external_fact_receipt.metadata`、`receipt_payload`、`audit.audit_event(action_name='fabric.adapter.submit')`、`ops.system_log(message_text='fabric adapter accepted submit event')`；若 payload 提供 `chain_anchor_id`，则 `chain.chain_anchor.status=submitted` 且 `reconcile_status=pending_check` | Kafka topic 内容、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log`、`chain.chain_anchor`、`cg-fabric-adapter` consumer group |
+| `AUD-CASE-021` | Fabric callback listener consume + callback write-back | 启动 `./scripts/fabric-adapter-run.sh` 与 `./scripts/fabric-event-listener-run.sh`；先通过 `dtp.audit.anchor / dtp.fabric.requests` 生成 source receipt，再把其中一条 source receipt 标记 `mock_callback_status=failed` | `services/fabric-event-listener` 轮询已提交 source receipt，生成 `fabric.commit_confirmed / fabric.commit_failed`，发布到 `dtp.fabric.callbacks`，并把 `provider_code / provider_request_id / callback_event_id / event_version / provider_status / provider_occurred_at / payload_hash` 写回 `ops.external_fact_receipt.metadata`；同时写入 `audit.audit_event(action_name='fabric.event_listener.callback')`、`ops.system_log(message_text='fabric event listener published callback')`，成功链更新 `chain.chain_anchor.status='anchored'` 与 `audit.anchor_batch.status='anchored'`，失败链更新 `chain.chain_anchor.status='failed'` | Kafka `dtp.fabric.callbacks`、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log`、`chain.chain_anchor`、`audit.anchor_batch` |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
-- `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`fabric-test-network / Gateway / chaincode / event-listener / CA admin` 留待 `AUD-015~AUD-017`。
+- `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`AUD-015` 已补齐 `fabric-event-listener` 的 callback 轮询源、Kafka callback 发布与 DB 回写；`fabric-test-network / Gateway / chaincode / CA admin` 留待 `AUD-016~AUD-017`。
 
 ## `AUD-011` 手工一致性联查验证
 
