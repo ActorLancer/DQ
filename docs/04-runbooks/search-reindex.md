@@ -304,6 +304,9 @@ ORDER BY created_at;
 
 ## 当前 V1 口径
 
+- `search.index_alias_binding` 是 product / seller 搜索 alias 的结构化 authority；`read_alias / write_alias / active_index_name` 必须与 ops 接口、初始化脚本和运行时默认值共享同一套答案。
+- `search_sync_jobs_v1` 是辅助运维索引，用于本地初始化与排障回查；它不是 product / seller 搜索 alias authority 的组成部分。
+- `alias switch` 属于当前 `V1` 的最小运维能力；`V3` 只扩展更复杂的灰度切换、自动回滚和策略化切换能力，不再承接“首次提供 alias switch”。
 - 正式 topic：`dtp.search.sync`
 - 正式 worker：`workers/search-indexer`
 - 正式权限点：`portal.search.read`、`ops.search_sync.read`、`ops.search_reindex.execute`、`ops.search_alias.manage`、`ops.search_cache.invalidate`、`ops.search_ranking.read`、`ops.search_ranking.manage`

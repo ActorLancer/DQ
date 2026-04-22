@@ -954,3 +954,46 @@
   - 无。`SEARCHREC-017` 要求的投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底、统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项，已在 test-case 主文档、README 索引和真实 smoke 证据中全部固定。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批只收口测试文档与命令口径，没有新增冻结缺口。
+### BATCH-267（计划中）
+- 任务：`SEARCHREC-021` 收敛搜索 alias 权威源与阶段边界：统一 `product_search_read/write`、`seller_search_read/write` 与 `search.index_alias_binding`，同步初始化脚本、运行默认值、ops 接口与 runbook，明确 alias switch 属于 V1 最小运维能力
+- 状态：计划中
+- 说明：按 `SEARCHREC-021` 与 `A08` 重新复核后，仓库当前多数实现已经切到 `product_search_read/write`、`seller_search_read/write`，但还需要把 `search.index_alias_binding` 的 authority 身份、`search_sync_jobs_v1` 只是辅助索引而非 alias authority、以及 “alias switch 属于 V1 最小运维能力” 这三个结论在 runbook / 本地初始化说明 / 动态验证证据中彻底钉死，避免后续再从脚本或文档侧漂回两套答案。
+- 追溯：继续沿 `SEARCHREC` 阶段尾部推进；当前只处理 alias authority / 阶段边界收口与真实联调验证，不提前进入后续 `WEB` 阶段。
+### BATCH-267（待审批）
+- 任务：`SEARCHREC-021` 收敛搜索 alias 权威源与阶段边界：统一 `product_search_read/write`、`seller_search_read/write` 与 `search.index_alias_binding`，同步初始化脚本、运行默认值、ops 接口与 runbook，明确 alias switch 属于 V1 最小运维能力
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-021`
+- 前置依赖核对结果：`SEARCHREC-007` 已提供 alias switch / reindex / cache invalidate / 审计与搜索 ops 主链；`AUD-022` 已完成统一审计落链；`ENV-017` 已提供本地 PostgreSQL / OpenSearch / Redis / Kafka 运行基线。依赖全部满足，且 `SEARCHREC-018/019/020` 已先收口统一鉴权、consumer 可靠性与文档契约，不存在逆序实现。
+- 实际变更：
+  - `apps/platform-core/src/modules/search/domain/mod.rs`、`apps/platform-core/src/lib.rs`、`apps/platform-core/src/modules/search/repo/mod.rs`、`apps/platform-core/src/modules/recommendation/repo/mod.rs`：把 `product_search_read/write`、`seller_search_read/write`、`search_sync_jobs_v1` 提升为共享常量，统一应用启动自检、搜索仓储和推荐候选召回的默认值来源，避免运行时继续散落多套 alias 字面量。
+  - `infra/opensearch/init-opensearch.sh`：修正本地初始化脚本的三个真实问题。其一，把显式 `_doc/{id}` 写入从 `POST` 改为 `PUT`，恢复 demo 文档初始化；其二，写 alias 绑定时明确 `is_write_index=true`；其三，新增 `rebind_aliases` 与 `sync_alias_binding_authority`，在 bootstrap 后强制把旧索引解绑，并同步 `search.index_alias_binding.read_alias / write_alias / active_index_name`，避免 OpenSearch alias 与 PostgreSQL authority 再次漂移。
+  - `docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/opensearch-local.md`：把 `search.index_alias_binding` 是 product / seller alias authority、`search_sync_jobs_v1` 只是辅助运维索引、`alias switch` 属于 `V1` 最小运维能力这三条边界正式写死，防止后续 runbook 把 `V1` 与 `V3` 职责重新混淆。
+- 验证命令：
+  - `./infra/opensearch/init-opensearch.sh`
+  - `psql 'postgres://datab:datab_local_pass@127.0.0.1:5432/datab' -Atc "SELECT entity_scope || '|' || read_alias || '|' || write_alias || '|' || COALESCE(active_index_name,'') FROM search.index_alias_binding WHERE backend_type='opensearch' ORDER BY entity_scope;"`
+  - `curl -sS http://127.0.0.1:9200/_alias/product_search_read`
+  - `curl -sS http://127.0.0.1:9200/_alias/product_search_write`
+  - `curl -sS http://127.0.0.1:9200/_alias/seller_search_read`
+  - `curl -sS http://127.0.0.1:9200/_alias/seller_search_write`
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_visibility_and_alias_consistency_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `./infra/opensearch/init-opensearch.sh` 通过：脚本已能在本地真实重建 `product_search_v1_bootstrap`、`seller_search_v1_bootstrap`、`search_sync_jobs_v1`，并完成 demo 文档写入，不再因显式 `_doc/{id}` 的 `POST` 调用报错。
+  - `psql` 与四条 alias 回查全部符合冻结口径：`search.index_alias_binding` 当前返回 `product|product_search_read|product_search_write|product_search_v1_bootstrap` 与 `seller|seller_search_read|seller_search_write|seller_search_v1_bootstrap`；OpenSearch 的 `product_search_*`、`seller_search_*` alias 也都只指向各自 bootstrap 索引，且 write alias 明确带有 `is_write_index=true`。这证明 alias authority 已从“脚本/索引状态可能漂移”收口为 PostgreSQL 与 OpenSearch 一致。
+  - `search_api_and_ops_db_smoke` 与 `search_visibility_and_alias_consistency_db_smoke` 全部通过，真实证明搜索读链仍经由正式 alias 工作，ops alias switch / reindex / cache invalidate / 审计链未被本批 alias authority 收口破坏，且 PostgreSQL 最终校验仍能在 OpenSearch 残留命中的情况下过滤失效商品。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；全量回归结果为 `355 passed; 0 failed; 1 ignored`，未引入新的 `.sqlx` 漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-021`
+  - `A08-搜索Alias权威源与阶段边界冲突.md`：alias authority 必须收敛到 `search.index_alias_binding`，并把 `search_sync_jobs_v1` 与 alias authority 边界拆清
+  - `search-reindex.md`、`opensearch-local.md`：reindex / alias switch / 本地初始化运维边界
+  - `057_search_sync_architecture.sql`：`search.index_alias_binding` 结构化 authority 与 `backend_type='opensearch'` 约束
+- 覆盖的任务清单条目：`SEARCHREC-021`
+- 未覆盖项：
+  - 无。`SEARCHREC-021` 要求的 alias authority 统一、初始化脚本真实联调、运行默认值收口、runbook 边界澄清与最小运维能力确认，已通过代码、runbook、OpenSearch / PostgreSQL 回查与搜索 smoke 全部固定。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批只收口既有 alias authority 和阶段边界，没有新增冻结缺口。

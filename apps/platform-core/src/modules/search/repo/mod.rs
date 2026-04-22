@@ -9,8 +9,9 @@ use std::collections::BTreeSet;
 
 use crate::modules::search::domain::{
     AliasSwitchRequest, AliasSwitchResponse, CacheInvalidateRequest, CacheInvalidateResponse,
-    PatchRankingProfileRequest, RankingProfileView, ReindexRequest, ReindexResponse, SearchQuery,
-    SearchResultItem, SearchSyncQuery, SearchSyncTaskView,
+    PRODUCT_SEARCH_READ_ALIAS, PatchRankingProfileRequest, RankingProfileView, ReindexRequest,
+    ReindexResponse, SELLER_SEARCH_READ_ALIAS, SearchQuery, SearchResultItem, SearchSyncQuery,
+    SearchSyncTaskView,
 };
 
 type RepoResult<T> = Result<T, String>;
@@ -1797,12 +1798,12 @@ async fn load_document_version(
 
 fn product_read_alias() -> String {
     std::env::var("INDEX_ALIAS_PRODUCT_SEARCH_READ")
-        .unwrap_or_else(|_| "product_search_read".to_string())
+        .unwrap_or_else(|_| PRODUCT_SEARCH_READ_ALIAS.to_string())
 }
 
 fn seller_read_alias() -> String {
     std::env::var("INDEX_ALIAS_SELLER_SEARCH_READ")
-        .unwrap_or_else(|_| "seller_search_read".to_string())
+        .unwrap_or_else(|_| SELLER_SEARCH_READ_ALIAS.to_string())
 }
 
 fn redis_namespace() -> String {

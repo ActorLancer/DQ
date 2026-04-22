@@ -39,17 +39,31 @@ wait_for_os() {
 
 create_index_with_aliases() {
   local index_name="$1"
-  shift
-  local aliases_json=""
-  local alias_name
-  for alias_name in "$@"; do
-    aliases_json="${aliases_json}\"${alias_name}\":{},"
-  done
-  aliases_json="{${aliases_json%,}}"
+  local read_alias="$2"
+  local write_alias="$3"
+  local aliases_json
+  aliases_json="{\"${read_alias}\":{},\"${write_alias}\":{\"is_write_index\":true}}"
   curl -fsS -X PUT "${OPENSEARCH_ENDPOINT}/${index_name}" \
     -H "Content-Type: application/json" \
     -d "{\"aliases\":${aliases_json}}" >/dev/null
   echo "[ok] index+aliases ready: ${index_name}"
+}
+
+rebind_aliases() {
+  local index_name="$1"
+  local read_alias="$2"
+  local write_alias="$3"
+  curl -fsS -X POST "${OPENSEARCH_ENDPOINT}/_aliases" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"actions\": [
+        {\"remove\": {\"index\": \"*\", \"alias\": \"${read_alias}\"}},
+        {\"remove\": {\"index\": \"*\", \"alias\": \"${write_alias}\"}},
+        {\"add\": {\"index\": \"${index_name}\", \"alias\": \"${read_alias}\"}},
+        {\"add\": {\"index\": \"${index_name}\", \"alias\": \"${write_alias}\", \"is_write_index\": true}}
+      ]
+    }" >/dev/null
+  echo "[ok] aliases rebound: ${index_name} -> ${read_alias}/${write_alias}"
 }
 
 create_index() {
@@ -81,9 +95,39 @@ index_demo_doc() {
   local alias_name="$1"
   local id="$2"
   local payload="$3"
-  curl -fsS -X POST "${OPENSEARCH_ENDPOINT}/${alias_name}/_doc/${id}" \
+  curl -fsS -X PUT "${OPENSEARCH_ENDPOINT}/${alias_name}/_doc/${id}" \
     -H "Content-Type: application/json" \
     -d "${payload}" >/dev/null
+}
+
+sync_alias_binding_authority() {
+  local database_url="${DATABASE_URL:-postgres://datab:datab_local_pass@127.0.0.1:5432/datab}"
+  if ! command -v psql >/dev/null 2>&1; then
+    echo "[warn] psql not found; skipped search.index_alias_binding sync" >&2
+    return 0
+  fi
+  psql "${database_url}" -v ON_ERROR_STOP=1 <<SQL >/dev/null
+UPDATE search.index_alias_binding
+SET read_alias = CASE entity_scope
+      WHEN 'product' THEN '${INDEX_ALIAS_PRODUCT_SEARCH_READ}'
+      WHEN 'seller' THEN '${INDEX_ALIAS_SELLER_SEARCH_READ}'
+      ELSE read_alias
+    END,
+    write_alias = CASE entity_scope
+      WHEN 'product' THEN '${INDEX_ALIAS_PRODUCT_SEARCH_WRITE}'
+      WHEN 'seller' THEN '${INDEX_ALIAS_SELLER_SEARCH_WRITE}'
+      ELSE write_alias
+    END,
+    active_index_name = CASE entity_scope
+      WHEN 'product' THEN '${INDEX_NAME_PRODUCT_SEARCH_BOOTSTRAP}'
+      WHEN 'seller' THEN '${INDEX_NAME_SELLER_SEARCH_BOOTSTRAP}'
+      ELSE active_index_name
+    END,
+    updated_at = now()
+WHERE backend_type = 'opensearch'
+  AND entity_scope IN ('product', 'seller');
+SQL
+  echo "[ok] search.index_alias_binding authority synced"
 }
 
 wait_for_os
@@ -102,11 +146,23 @@ create_index_with_aliases \
   "${INDEX_NAME_PRODUCT_SEARCH_BOOTSTRAP}" \
   "${INDEX_ALIAS_PRODUCT_SEARCH_READ}" \
   "${INDEX_ALIAS_PRODUCT_SEARCH_WRITE}"
+rebind_aliases \
+  "${INDEX_NAME_PRODUCT_SEARCH_BOOTSTRAP}" \
+  "${INDEX_ALIAS_PRODUCT_SEARCH_READ}" \
+  "${INDEX_ALIAS_PRODUCT_SEARCH_WRITE}"
 create_index_with_aliases \
   "${INDEX_NAME_SELLER_SEARCH_BOOTSTRAP}" \
   "${INDEX_ALIAS_SELLER_SEARCH_READ}" \
   "${INDEX_ALIAS_SELLER_SEARCH_WRITE}"
+rebind_aliases \
+  "${INDEX_NAME_SELLER_SEARCH_BOOTSTRAP}" \
+  "${INDEX_ALIAS_SELLER_SEARCH_READ}" \
+  "${INDEX_ALIAS_SELLER_SEARCH_WRITE}"
 create_index "${INDEX_NAME_SEARCH_SYNC_JOBS}"
+
+echo "[info] alias authority defaults: ${INDEX_ALIAS_PRODUCT_SEARCH_READ}/${INDEX_ALIAS_PRODUCT_SEARCH_WRITE} and ${INDEX_ALIAS_SELLER_SEARCH_READ}/${INDEX_ALIAS_SELLER_SEARCH_WRITE} must stay aligned with search.index_alias_binding"
+echo "[info] auxiliary ops index: ${INDEX_NAME_SEARCH_SYNC_JOBS} (not part of alias authority)"
+sync_alias_binding_authority
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 index_demo_doc "${INDEX_ALIAS_PRODUCT_SEARCH_WRITE}" "demo-product-001" "{\"id\":\"demo-product-001\",\"tenant_id\":\"t-demo\",\"seller_id\":\"s-demo\",\"name\":\"Demo Product\",\"description\":\"Demo product for local initialization\",\"sku_code\":\"FILE_STD\",\"status\":\"listed\",\"review_status\":\"approved\",\"visibility_status\":\"visible\",\"visible_to_search\":true,\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"

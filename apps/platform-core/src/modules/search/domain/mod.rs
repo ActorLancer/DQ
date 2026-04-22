@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const PRODUCT_SEARCH_READ_ALIAS: &str = "product_search_read";
+pub const PRODUCT_SEARCH_WRITE_ALIAS: &str = "product_search_write";
+pub const SELLER_SEARCH_READ_ALIAS: &str = "seller_search_read";
+pub const SELLER_SEARCH_WRITE_ALIAS: &str = "seller_search_write";
+pub const SEARCH_SYNC_JOBS_INDEX: &str = "search_sync_jobs_v1";
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SearchQuery {
     pub q: Option<String>,

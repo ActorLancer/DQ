@@ -22,6 +22,9 @@
 
 说明：
 
+- `search.index_alias_binding` 是 product / seller 搜索 alias 的结构化 authority；本地初始化脚本、应用默认值、ops 接口和 runbook 都必须服从同一套 `read_alias / write_alias / active_index_name` 答案。
+- `search_sync_jobs_v1` 仅作为辅助运维索引保留，方便本地排障和初始化回查；它不是 product / seller 搜索 alias authority 的一部分。
+- `alias switch` 属于当前 `V1` 的最小运维能力；`V3` 只扩展更复杂的灰度切换、自动回滚与策略化切换。
 - 脚本会清理本地遗留的 `catalog_products_v1_000001`、`seller_profiles_v1_000001`、`search_sync_jobs_v1_000001`，并按当前冻结口径重建 bootstrap 索引与 read/write alias。
 - 搜索同步正式 worker 为 `workers/search-indexer`，默认消费 `dtp.search.sync` 并写入 `product_search_write` / `seller_search_write`。
 

@@ -14,7 +14,9 @@ use crate::modules::recommendation::domain::{
     RecommendationRebuildRequest, RecommendationRebuildResponse, RecommendationResponse,
     TrackClickRequest, TrackExposureRequest,
 };
-use crate::modules::search::domain::SearchResultItem;
+use crate::modules::search::domain::{
+    PRODUCT_SEARCH_READ_ALIAS, SELLER_SEARCH_READ_ALIAS, SearchResultItem,
+};
 use crate::modules::search::repo::{SearchCandidate, hydrate_search_results};
 use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
 
@@ -3498,12 +3500,12 @@ fn hex_sha256(bytes: &[u8]) -> String {
 
 fn product_read_alias() -> String {
     std::env::var("INDEX_ALIAS_PRODUCT_SEARCH_READ")
-        .unwrap_or_else(|_| "product_search_read".to_string())
+        .unwrap_or_else(|_| PRODUCT_SEARCH_READ_ALIAS.to_string())
 }
 
 fn seller_read_alias() -> String {
     std::env::var("INDEX_ALIAS_SELLER_SEARCH_READ")
-        .unwrap_or_else(|_| "seller_search_read".to_string())
+        .unwrap_or_else(|_| SELLER_SEARCH_READ_ALIAS.to_string())
 }
 
 fn normalized_hit_entity_id(hit: &Value, entity_scope: &str) -> Option<String> {

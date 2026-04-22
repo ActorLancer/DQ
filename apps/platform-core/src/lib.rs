@@ -28,6 +28,11 @@ mod app;
 pub mod modules;
 mod shared;
 
+use crate::modules::search::domain::{
+    PRODUCT_SEARCH_READ_ALIAS, PRODUCT_SEARCH_WRITE_ALIAS, SEARCH_SYNC_JOBS_INDEX,
+    SELLER_SEARCH_READ_ALIAS, SELLER_SEARCH_WRITE_ALIAS,
+};
+
 #[derive(Clone)]
 pub struct AppState {
     pub runtime: RuntimeConfig,
@@ -293,16 +298,19 @@ async fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
     }
 
     let required_aliases = [
-        ("INDEX_ALIAS_PRODUCT_SEARCH_READ", "product_search_read"),
-        ("INDEX_ALIAS_PRODUCT_SEARCH_WRITE", "product_search_write"),
-        ("INDEX_ALIAS_SELLER_SEARCH_READ", "seller_search_read"),
-        ("INDEX_ALIAS_SELLER_SEARCH_WRITE", "seller_search_write"),
+        ("INDEX_ALIAS_PRODUCT_SEARCH_READ", PRODUCT_SEARCH_READ_ALIAS),
+        (
+            "INDEX_ALIAS_PRODUCT_SEARCH_WRITE",
+            PRODUCT_SEARCH_WRITE_ALIAS,
+        ),
+        ("INDEX_ALIAS_SELLER_SEARCH_READ", SELLER_SEARCH_READ_ALIAS),
+        ("INDEX_ALIAS_SELLER_SEARCH_WRITE", SELLER_SEARCH_WRITE_ALIAS),
     ];
     let mut resolved_aliases = Vec::with_capacity(required_aliases.len());
     for (key, default_value) in required_aliases {
         resolved_aliases.push(read_required_with_default(key, default_value)?);
     }
-    let required_indices = [("INDEX_NAME_SEARCH_SYNC_JOBS", "search_sync_jobs_v1")];
+    let required_indices = [("INDEX_NAME_SEARCH_SYNC_JOBS", SEARCH_SYNC_JOBS_INDEX)];
     let mut resolved_indices = Vec::with_capacity(required_indices.len());
     for (key, default_value) in required_indices {
         resolved_indices.push(read_required_with_default(key, default_value)?);
