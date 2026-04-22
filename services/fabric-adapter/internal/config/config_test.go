@@ -3,10 +3,12 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestLoadUsesCanonicalFabricDefaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://datab:datab_local_pass@127.0.0.1:5432/datab")
+	t.Setenv("REDIS_URL", "redis://:datab_redis_pass@127.0.0.1:6379/4")
 	t.Setenv("KAFKA_BROKERS", "127.0.0.1:9094")
 	t.Setenv("TOPIC_AUDIT_ANCHOR", "")
 	t.Setenv("TOPIC_FABRIC_REQUESTS", "")
@@ -30,11 +32,18 @@ func TestLoadUsesCanonicalFabricDefaults(t *testing.T) {
 	if got, want := cfg.ProviderMode, "mock"; got != want {
 		t.Fatalf("ProviderMode = %q, want %q", got, want)
 	}
+	if got, want := cfg.RedisNamespace, "datab:v1"; got != want {
+		t.Fatalf("RedisNamespace = %q, want %q", got, want)
+	}
+	if got, want := cfg.ConsumerLockTTL, 15*time.Second; got != want {
+		t.Fatalf("ConsumerLockTTL = %s, want %s", got, want)
+	}
 }
 
 func TestLoadRequiresDatabaseURL(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("FABRIC_ADAPTER_DATABASE_URL", "")
+	t.Setenv("REDIS_URL", "redis://:datab_redis_pass@127.0.0.1:6379/4")
 	t.Setenv("KAFKA_BROKERS", "127.0.0.1:9094")
 
 	if _, err := Load(); err == nil {
@@ -54,6 +63,7 @@ func TestSplitCSVIgnoresEmptyValues(t *testing.T) {
 
 func TestLoadRequiresGatewayMaterialForFabricTestNetworkMode(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://datab:datab_local_pass@127.0.0.1:5432/datab")
+	t.Setenv("REDIS_URL", "redis://:datab_redis_pass@127.0.0.1:6379/4")
 	t.Setenv("KAFKA_BROKERS", "127.0.0.1:9094")
 	t.Setenv("FABRIC_ADAPTER_PROVIDER_MODE", "fabric-test-network")
 	t.Setenv("FABRIC_GATEWAY_ENDPOINT", "")
@@ -66,6 +76,24 @@ func TestLoadRequiresGatewayMaterialForFabricTestNetworkMode(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatalf("expected missing gateway material error")
+	}
+}
+
+func TestLoadBuildsRedisURLFromHostPortPassword(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://datab:datab_local_pass@127.0.0.1:5432/datab")
+	t.Setenv("REDIS_URL", "")
+	t.Setenv("REDIS_HOST", "redis.internal")
+	t.Setenv("REDIS_PORT", "6381")
+	t.Setenv("REDIS_PASSWORD", "secret")
+	t.Setenv("KAFKA_BROKERS", "127.0.0.1:9094")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got, want := cfg.RedisURL, "redis://:secret@redis.internal:6381/4"; got != want {
+		t.Fatalf("RedisURL = %q, want %q", got, want)
 	}
 }
 

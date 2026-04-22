@@ -52,10 +52,13 @@ third_party/external-deps/go
 默认从 `infra/docker/.env.local` 加载：
 
 - `DATABASE_URL`
+- `REDIS_URL`
+- `REDIS_NAMESPACE`
 - `KAFKA_BROKERS` 或 `KAFKA_BOOTSTRAP_SERVERS`
 - `TOPIC_AUDIT_ANCHOR`
 - `TOPIC_FABRIC_REQUESTS`
 - `FABRIC_ADAPTER_CONSUMER_GROUP`
+- `FABRIC_ADAPTER_CONSUMER_LOCK_TTL`
 - `FABRIC_ADAPTER_PROVIDER_MODE`
 - `FABRIC_CHANNEL_NAME`
 - `FABRIC_CHAINCODE_NAME`
@@ -70,7 +73,10 @@ third_party/external-deps/go
 
 - Kafka：`127.0.0.1:9094`
 - PostgreSQL：`postgres://datab:datab_local_pass@127.0.0.1:5432/datab`
+- Redis：`redis://:datab_redis_pass@127.0.0.1:6379/4`
+- Redis namespace：`datab:v1`
 - consumer group：`cg-fabric-adapter`
+- consumer lock TTL：`15s`
 - provider mode：`mock`
 
 如需切到真实链：
@@ -79,7 +85,58 @@ third_party/external-deps/go
 FABRIC_ADAPTER_PROVIDER_MODE=fabric-test-network ./scripts/fabric-adapter-run.sh
 ```
 
-`scripts/fabric-adapter-run.sh` 现在会保留外部传入的 `FABRIC_ADAPTER_PROVIDER_MODE / TOPIC_* / DATABASE_URL / KAFKA_BROKERS / Gateway` 覆盖，不再被 `.env.local` 反向覆盖。
+`scripts/fabric-adapter-run.sh` 现在会保留外部传入的 `FABRIC_ADAPTER_PROVIDER_MODE / TOPIC_* / DATABASE_URL / REDIS_URL / REDIS_NAMESPACE / KAFKA_BROKERS / Gateway` 覆盖，不再被 `.env.local` 反向覆盖。
+
+## 重复投递隔离（AUD-026 TODO 收口）
+
+`fabric-adapter` 现在对每条 canonical event 同时启用两层门禁：
+
+- `Redis` 短锁：`datab:v1:fabric-adapter:consumer-lock:{event_id}`
+- `PostgreSQL` 幂等记录：`ops.consumer_idempotency_record(consumer_name='fabric-adapter', event_id=...)`
+
+正式结果口径：
+
+- 首次成功处理：`result_code='processed'`
+- 已成功 / 已隔离的重复投递：直接跳过，不再重复提交 Fabric，也不再重复写 `ops.external_fact_receipt`
+- 正在处理中的并发重复投递：命中 Redis 短锁后直接跳过，等待首个处理完成或重试
+- 提交 / 回写失败：`result_code='failed'`，Kafka offset 不提交，待后续重新投递
+
+## 重复投递 live smoke
+
+仓库内最小重复投递隔离 smoke：
+
+```bash
+set -a
+source infra/docker/.env.local
+set +a
+
+cd services/fabric-adapter
+
+FABRIC_ADAPTER_RELIABILITY_SMOKE=1 \
+DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/4 \
+go test ./internal/service -run TestProcessorReliabilityLiveSmoke -count=1 -v
+```
+
+该 smoke 会：
+
+1. 使用真实 PostgreSQL 插入最小 `chain.chain_anchor + audit.anchor_batch`
+2. 使用真实 Redis 创建 `fabric-adapter` 短锁
+3. 用同一 `event_id` 并发调用两次 `ProcessMessage`
+4. 验证第二次调用不会重复触发 provider / receipt write-back
+5. 回查：
+   - `ops.consumer_idempotency_record`
+   - `ops.external_fact_receipt`
+   - Redis 短锁存在与释放
+
+预期：
+
+- provider 只被调用 `1` 次
+- `ops.external_fact_receipt` 只新增 `1` 条
+- `ops.consumer_idempotency_record.result_code='processed'`
+- `metadata.lock_backend='redis'`
+- `metadata.lock_key` 命中 `datab:v1:fabric-adapter:consumer-lock:{event_id}`
+- 处理完成后 Redis 短锁被释放
 
 ## 消息处理占位（AUD-014）
 
@@ -250,6 +307,27 @@ ORDER BY chain_anchor_id;
   - `authorization_summary / authorization_digest / SubmitAuthorizationDigest`
   - `acceptance_summary / acceptance_digest / SubmitAcceptanceDigest`
 - 四条 `chain.chain_anchor` 都被更新为 `status='submitted'`、`reconcile_status='pending_check'`
+
+如果同一条 canonical event 被人工重复注入，额外回查：
+
+```sql
+SELECT consumer_name,
+       event_id::text,
+       result_code,
+       metadata ->> 'lock_backend' AS lock_backend,
+       metadata ->> 'lock_key' AS lock_key,
+       metadata ->> 'provider_reference' AS provider_reference
+FROM ops.consumer_idempotency_record
+WHERE consumer_name = 'fabric-adapter'
+  AND event_id = '<event_id>'::uuid;
+```
+
+预期：
+
+- 同一 `event_id` 只保留 `1` 条 `ops.consumer_idempotency_record`
+- `lock_backend='redis'`
+- `lock_key` 命中 `datab:v1:fabric-adapter:consumer-lock:<event_id>`
+- 若首条处理成功，`result_code='processed'`
 
 5. 清理测试业务数据：
 

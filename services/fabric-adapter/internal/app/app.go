@@ -19,6 +19,12 @@ func Run(ctx context.Context, cfg adapterconfig.Config, logger *slog.Logger) err
 	}
 	defer persist.Close()
 
+	locker, err := service.NewRedisShortLock(ctx, cfg.RedisURL, cfg.RedisNamespace, cfg.ConsumerLockTTL)
+	if err != nil {
+		return err
+	}
+	defer locker.Close()
+
 	submitter, err := provider.NewSubmissionProvider(cfg)
 	if err != nil {
 		return err
@@ -26,7 +32,7 @@ func Run(ctx context.Context, cfg adapterconfig.Config, logger *slog.Logger) err
 	if closer, ok := submitter.(io.Closer); ok {
 		defer closer.Close()
 	}
-	processor := service.NewProcessor(cfg.ServiceName, persist, submitter, logger)
+	processor := service.NewProcessor(cfg.ServiceName, persist, submitter, locker, logger)
 	consumer := adapterkafka.NewConsumer(cfg, processor.ProcessMessage, logger)
 
 	logger.Info(
@@ -36,6 +42,8 @@ func Run(ctx context.Context, cfg adapterconfig.Config, logger *slog.Logger) err
 		"consumer_group", cfg.ConsumerGroup,
 		"audit_anchor_topic", cfg.AuditAnchorTopic,
 		"fabric_requests_topic", cfg.FabricRequestsTopic,
+		"redis_namespace", cfg.RedisNamespace,
+		"consumer_lock_ttl", cfg.ConsumerLockTTL.String(),
 		"provider_mode", cfg.ProviderMode,
 		"chaincode_name", cfg.ChaincodeName,
 		"channel_name", cfg.ChannelName,

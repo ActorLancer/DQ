@@ -92,7 +92,10 @@ services:
       FABRIC_REQUEST_TOPIC: dtp.fabric.requests
       FABRIC_CALLBACK_TOPIC: dtp.fabric.callbacks
       FABRIC_ADAPTER_CONSUMER_GROUP: ${FABRIC_ADAPTER_CONSUMER_GROUP:-cg-fabric-adapter}
+      FABRIC_ADAPTER_CONSUMER_LOCK_TTL: ${FABRIC_ADAPTER_CONSUMER_LOCK_TTL:-15s}
       KAFKA_BROKERS: kafka:9092
+      REDIS_URL: redis://:${REDIS_PASSWORD:-datab_redis_pass}@redis:6379/4
+      REDIS_NAMESPACE: ${REDIS_NAMESPACE:-datab:v1}
     depends_on:
       kafka:
         condition: service_healthy

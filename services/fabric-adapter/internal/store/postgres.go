@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,6 +34,149 @@ func New(ctx context.Context, databaseURL string, serviceName string) (*Store, e
 
 func (store *Store) Close() {
 	store.pool.Close()
+}
+
+func (store *Store) LoadProcessingState(
+	ctx context.Context,
+	eventID string,
+) (string, bool, error) {
+	row := store.pool.QueryRow(
+		ctx,
+		`SELECT result_code
+		   FROM ops.consumer_idempotency_record
+		  WHERE consumer_name = $1
+		    AND event_id = $2::text::uuid`,
+		store.serviceName,
+		eventID,
+	)
+
+	var resultCode string
+	if err := row.Scan(&resultCode); err != nil {
+		if err == pgx.ErrNoRows {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("load ops.consumer_idempotency_record: %w", err)
+	}
+	return resultCode, true, nil
+}
+
+func (store *Store) BeginProcessing(
+	ctx context.Context,
+	envelope model.CanonicalEnvelope,
+	sourceTopic string,
+	lockKey string,
+) (bool, error) {
+	state, exists, err := store.LoadProcessingState(ctx, envelope.EventID)
+	if err != nil {
+		return false, err
+	}
+	if exists && (state == "processed" || state == "dead_lettered") {
+		return false, nil
+	}
+
+	metadataJSON, err := marshalJSON(map[string]any{
+		"source_topic": sourceTopic,
+		"request_id":   nullableStringValue(envelope.RequestID),
+		"trace_id":     nullableStringValue(envelope.TraceID),
+		"lock_backend": "redis",
+		"lock_key":     lockKey,
+		"updated_at":   time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	if exists {
+		_, err = store.pool.Exec(
+			ctx,
+			`UPDATE ops.consumer_idempotency_record
+			    SET result_code = 'processing',
+			        processed_at = now(),
+			        metadata = coalesce(metadata, '{}'::jsonb) || $4::jsonb
+			  WHERE consumer_name = $1
+			    AND event_id = $2::text::uuid`,
+			store.serviceName,
+			envelope.EventID,
+			string(metadataJSON),
+		)
+		if err != nil {
+			return false, fmt.Errorf("update ops.consumer_idempotency_record: %w", err)
+		}
+		return true, nil
+	}
+
+	_, err = store.pool.Exec(
+		ctx,
+		`INSERT INTO ops.consumer_idempotency_record (
+		   consumer_name,
+		   event_id,
+		   aggregate_type,
+		   aggregate_id,
+		   trace_id,
+		   result_code,
+		   metadata
+		 ) VALUES (
+		   $1,
+		   $2::text::uuid,
+		   $3,
+		   $4::text::uuid,
+		   $5,
+		   'processing',
+		   $6::jsonb
+		 )`,
+		store.serviceName,
+		envelope.EventID,
+		envelope.AggregateType,
+		envelope.AggregateID,
+		nullableString(envelope.TraceID),
+		string(metadataJSON),
+	)
+	if err != nil {
+		return false, fmt.Errorf("insert ops.consumer_idempotency_record: %w", err)
+	}
+	return true, nil
+}
+
+func (store *Store) UpdateProcessingResult(
+	ctx context.Context,
+	envelope model.CanonicalEnvelope,
+	resultCode string,
+	errorMessage string,
+	extraMetadata map[string]any,
+) error {
+	metadata := map[string]any{
+		"updated_at": time.Now().UTC().Format(time.RFC3339Nano),
+		"request_id": nullableStringValue(envelope.RequestID),
+		"trace_id":   nullableStringValue(envelope.TraceID),
+	}
+	if strings.TrimSpace(errorMessage) != "" {
+		metadata["last_error"] = errorMessage
+	}
+	for key, value := range extraMetadata {
+		metadata[key] = value
+	}
+	metadataJSON, err := marshalJSON(metadata)
+	if err != nil {
+		return err
+	}
+
+	_, err = store.pool.Exec(
+		ctx,
+		`UPDATE ops.consumer_idempotency_record
+		    SET result_code = $3,
+		        processed_at = now(),
+		        metadata = coalesce(metadata, '{}'::jsonb) || $4::jsonb
+		  WHERE consumer_name = $1
+		    AND event_id = $2::text::uuid`,
+		store.serviceName,
+		envelope.EventID,
+		resultCode,
+		string(metadataJSON),
+	)
+	if err != nil {
+		return fmt.Errorf("update ops.consumer_idempotency_record result: %w", err)
+	}
+	return nil
 }
 
 func (store *Store) PersistSubmission(
@@ -373,6 +517,13 @@ func nullableString(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func nullableStringValue(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
 }
 
 func valueOrEmpty(envelope model.CanonicalEnvelope, key string) string {

@@ -6,7 +6,7 @@
 - `search-reindex.md`：`AUD-022 / AUD-026` 搜索运维控制面与 `search-indexer` worker 的 Bearer 鉴权、step-up、Redis 缓存失效、OpenSearch alias 切换、排序配置更新、consumer 幂等、双层 DLQ、dry-run reprocess 与审计回查。
 - `recommendation-runtime.md`：`SEARCHREC / AUD-026` 推荐主链路、`recommendation-aggregator` worker、副作用、consumer 幂等、双层 DLQ、dry-run reprocess 与缓存失效回归。
 - `fabric-local.md`：Fabric 本地网络、Gateway、anchor / callback 联调。
-- `fabric-adapter.md`：`AUD-013 / AUD-014` Go 版 `fabric-adapter` 的 bootstrap / test / run、四类摘要 handler、Kafka canonical smoke、回执回写与排障。
+- `fabric-adapter.md`：`AUD-013 / AUD-014 / AUD-026` Go 版 `fabric-adapter` 的 bootstrap / test / run、四类摘要 handler、Redis 短锁 + `ops.consumer_idempotency_record` 重复投递隔离、Kafka canonical smoke、回执回写与排障。
 - `fabric-event-listener.md`：`AUD-015` Go 版 `fabric-event-listener` 的 bootstrap / test / run、mock callback 链路、`dtp.fabric.callbacks`、外部事实回执回写与排障。
 - `fabric-ca-admin.md`：`AUD-016` Go 版 `fabric-ca-admin` 的 bootstrap / test / run、`fabric-identities / certificates` 执行面、step-up 串联、`ops.external_fact_receipt / audit.audit_event / ops.system_log` 回查与排障。
 - `audit-replay.md`：`AUD-005` replay dry-run 控制面的权限、step-up、回查与故障处理。

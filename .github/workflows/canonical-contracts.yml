@@ -1,0 +1,15 @@
+name: canonical-contracts
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  canonical-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain deps
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep
+      - name: Run canonical static checker
+        run: CANONICAL_CHECK_MODE=static bash ./scripts/check-canonical-contracts.sh

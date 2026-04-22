@@ -12,6 +12,9 @@ type Config struct {
 	ServiceName         string
 	AppEnv              string
 	DatabaseURL         string
+	RedisURL            string
+	RedisNamespace      string
+	ConsumerLockTTL     time.Duration
 	KafkaBrokers        []string
 	ConsumerGroup       string
 	AuditAnchorTopic    string
@@ -36,6 +39,9 @@ func Load() (Config, error) {
 		ServiceName:         firstNonEmpty(os.Getenv("FABRIC_ADAPTER_SERVICE_NAME"), "fabric-adapter"),
 		AppEnv:              firstNonEmpty(os.Getenv("APP_ENV"), "local"),
 		DatabaseURL:         firstNonEmpty(os.Getenv("DATABASE_URL"), os.Getenv("FABRIC_ADAPTER_DATABASE_URL")),
+		RedisURL:            firstNonEmpty(os.Getenv("REDIS_URL"), defaultRedisURL()),
+		RedisNamespace:      firstNonEmpty(os.Getenv("REDIS_NAMESPACE"), "datab:v1"),
+		ConsumerLockTTL:     parseDurationEnv("FABRIC_ADAPTER_CONSUMER_LOCK_TTL", 15*time.Second),
 		KafkaBrokers:        splitCSV(firstNonEmpty(os.Getenv("KAFKA_BROKERS"), os.Getenv("KAFKA_BOOTSTRAP_SERVERS"), "127.0.0.1:9094")),
 		ConsumerGroup:       firstNonEmpty(os.Getenv("FABRIC_ADAPTER_CONSUMER_GROUP"), "cg-fabric-adapter"),
 		AuditAnchorTopic:    firstNonEmpty(os.Getenv("TOPIC_AUDIT_ANCHOR"), "dtp.audit.anchor"),
@@ -57,6 +63,12 @@ func Load() (Config, error) {
 
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
+	}
+	if cfg.RedisURL == "" {
+		return Config{}, fmt.Errorf("REDIS_URL is required")
+	}
+	if cfg.RedisNamespace == "" {
+		return Config{}, fmt.Errorf("REDIS_NAMESPACE is required")
 	}
 	if len(cfg.KafkaBrokers) == 0 {
 		return Config{}, fmt.Errorf("KAFKA_BROKERS or KAFKA_BOOTSTRAP_SERVERS is required")
@@ -138,4 +150,11 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func defaultRedisURL() string {
+	host := firstNonEmpty(os.Getenv("REDIS_HOST"), "127.0.0.1")
+	port := firstNonEmpty(os.Getenv("REDIS_PORT"), "6379")
+	password := firstNonEmpty(os.Getenv("REDIS_PASSWORD"), "datab_redis_pass")
+	return fmt.Sprintf("redis://:%s@%s:%s/4", password, host, port)
 }

@@ -1865,3 +1865,81 @@
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 - 备注：
   - `POST /api/v1/billing/{order_id}/bridge-events/process` 仍保留为显式人工桥接入口，但它不再具备“扫描 pending outbox”的隐式工作队列语义；当前已被收口为“只消费正式 publish authority 已成功发布的 bridge 事件”的受控补桥路径。
+### BATCH-245（计划中）
+- 任务：`SEARCHREC-001` 初始化 `workers/search-indexer/`
+- 状态：计划中
+- 说明：顺序执行已从 `AUD` 阶段进入 `SEARCHREC`。重新核对 `SEARCHREC-001` 后确认，`workers/search-indexer`、`dtp.search.sync` consumer、OpenSearch 写入、`search.index_sync_task` 回写与 SEARCHREC consumer 可靠性闭环在后续 `AUD-022 / AUD-026` 中已经形成当前实现基线，但 `SEARCHREC-001` 自身要求的“`staging / production` 强制 OpenSearch、`local / demo` 允许 PG 搜索投影 fallback，且启动条件边界必须明确”尚未被正式冻结。现状中 `platform-core` 启动自检仍无条件要求 OpenSearch alias / index 存在，`local-startup.md` 仍把 fallback 写成“后续实现批次目标”，这会让 `local / demo` 模式与冻结口径继续分叉。本批将优先收口搜索候选源运行模式配置、启动自检边界、`search-indexer`/runbook/test-case 文档说明与最小验证，先把 SEARCHREC 正式模式和 fallback 模式的入口条件冻结下来，不在当前批次越界实现 `SEARCHREC-004` 的完整搜索 API fallback。
+- 追溯：已重新核对 `CSV / Markdown`、`商品搜索、排序与索引同步设计.md` 5~6、`商品搜索、排序与索引同步接口协议正式版.md` 1~9、`A07-搜索同步链路与搜索接口闭环缺口.md`、`A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`，以及通用冻结文档 `服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`、`审计、证据链与回放设计.md`、`双层权威模型与链上链下一致性设计.md`、`链上链下技术架构与能力边界稿.md`、`日志、可观测性与告警设计.md`、`审计、证据链与回放接口协议正式版.md`、`一致性与事件接口协议正式版.md`、`fabric-local.md`、`kafka-topics.md`、`async-chain-write.md`、`072_canonical_outbox_route_policy.sql`、`074_event_topology_route_extensions.sql`、`infra/docker/docker-compose.local.yml`，并复查 `workers/search-indexer/**`、`apps/platform-core/src/modules/search/**`、`docs/04-runbooks/search-reindex.md`、`docs/05-test-cases/search-rec-cases.md`、`workers/README.md`、`local-startup.md`。当前确认的正式完成标准是：`search-indexer` 继续以 `dtp.search.sync` 为唯一正式 topic 写 OpenSearch，`search.index_sync_task` 只作为状态/重建记录表；同时 `local / demo` 与 `staging / production` 的搜索候选源模式和启动条件必须被代码与文档一致固定，不能再让本地启动无条件强依赖 OpenSearch 初始化。
+### BATCH-245（待审批）
+- 任务：`SEARCHREC-001` 初始化 `workers/search-indexer/`
+- 状态：待审批
+- 完成情况：
+  - `apps/platform-core/crates/config/src/lib.rs`：新增 `SearchCandidateBackendMode(opensearch|pg_fallback)`，把搜索候选源模式纳入统一运行时配置；默认仍走 `opensearch`，但 `local / demo` 可显式切到 `pg_fallback`，`staging` 则被显式禁止切到 `pg_fallback`，从配置层冻结了正式模式与 fallback 模式边界。
+  - `apps/platform-core/src/lib.rs`：`startup_self_check` 改为只在 `SEARCH_CANDIDATE_BACKEND_MODE=opensearch` 时强制校验 OpenSearch alias / index；`pg_fallback` 模式下继续校验 Kafka / MinIO 等共性依赖，但不再把 OpenSearch 初始化当本地启动硬前置。
+  - `workers/search-indexer/README.md`、`workers/README.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/README.md`：把 `SEARCHREC-001` 的正式 mode matrix、`dtp.search.sync` 唯一 topic、`search-indexer` 在 `opensearch` 模式下的正式职责，以及 `local / demo` 切到 `pg_fallback` 时不再要求启动 worker 的边界全部落盘。
+  - `docs/05-test-cases/search-rec-cases.md`、`docs/05-test-cases/README.md`、`docs/开发准备/配置项与密钥管理清单.md`、`infra/docker/docker-compose.apps.local.example.yml`：同步冻结 `SEARCH_CANDIDATE_BACKEND_MODE` 配置名、两种运行模式的验收命令与 compose 示例，避免后续继续把 fallback 写成口头目标。
+  - `apps/notification-worker/src/config.rs`：由于共享 `RuntimeConfig` 新增字段，顺手把 `notification-worker` 的手工初始化切回 `RuntimeConfig::from_env()`，消除 workspace 级编译回归；这不改变通知链路语义，只是保证本批新增的共享配置字段不会破坏既有进程构建。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `cargo test -p config -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `cargo check -p notification-worker`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-001`
+  - `商品搜索、排序与索引同步设计.md`：5~6 节
+  - `商品搜索、排序与索引同步接口协议正式版.md`：1~9 节
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+  - `A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`
+- 覆盖的任务清单条目：`SEARCHREC-001`
+- 未覆盖项：
+  - `GET /api/v1/catalog/search` 的完整 `PG fallback candidate -> PostgreSQL final check` 查询实现仍由 `SEARCHREC-004` 承接；本批只收口运行模式、启动边界与 `search-indexer` 的正式 worker 定位，不越界合并后续 API 任务。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - 本批的真实缺口不在 `search-indexer` 主链本身，而在“fallback 已被文档要求，但启动边界仍按强制 OpenSearch 写死”的漂移。当前已把这条漂移收敛到统一配置、启动自检与 runbook/test-case；后续 `SEARCHREC-004` 可直接复用同一 `SEARCH_CANDIDATE_BACKEND_MODE` 继续完成查询层 fallback。
+### BATCH-246（计划中）
+- 任务：`AUD` 阶段复核与 TODO 收口
+- 状态：计划中
+- 说明：按用户要求先暂停 `SEARCHREC`，不继续推进 `SEARCHREC-002+`。当前批次改为完整复核 `AUD-001~031` 的已交付功能、runbook、OpenAPI、test-case 与 TODO 台账，不把“已有代码/文档存在”直接视为完成。复核重点放在仍标记为 `accepted` 的 `TODO-AUD-*` 项：确认 `AUD-027~031` 是否已足以关闭 `OpenAPI / test-case / writer / canonical event` 历史 gap，并补齐 `fabric-adapter` 自身尚未完成的 `ops.consumer_idempotency_record + Redis` 短锁重复投递隔离，实现真实 Go 侧 consumer reliability，而不是继续依赖口头约束。
+- 追溯：已重新核对 `CSV / Markdown`、`审计、证据链与回放设计.md`、`双层权威模型与链上链下一致性设计.md`、`链上链下技术架构与能力边界稿.md`、`日志、可观测性与告警设计.md`、`审计 / 一致性接口协议正式版`、`fabric-local.md`、`kafka-topics.md`、`async-chain-write.md`、`072/074`、`infra/docker/docker-compose.local.yml`，以及 `modules/audit/**`、`services/fabric-adapter/**`、`workers/outbox-publisher/**`、`docs/04-runbooks/**`、`docs/05-test-cases/**` 与 `V1-Core-TODO与预留清单.md`。当前确认的正式完成标准是：`AUD` 阶段全部 task 维持完成态，且所有 `AUD` 作用域内 `accepted` TODO 都要么被证实已完成并关闭，要么补真实实现后关闭，不再把未闭环缺口留给后续阶段。
+### BATCH-246（待审批）
+- 任务：`AUD` 阶段复核与 TODO 收口
+- 状态：待审批
+- 当前任务编号：`AUD-REVIEW`
+- 前置依赖核对结果：`AUD-001~031` 已全部完成并本地留痕；工作区在切回复核前为干净状态，`SEARCHREC` 已按用户要求暂停。当前批次不新增新阶段任务，只复核并收口 `AUD` 历史 TODO。
+- 完成情况：
+  - `services/fabric-adapter/internal/config/config.go`、`config_test.go`：新增 `REDIS_URL`、`REDIS_NAMESPACE`、`FABRIC_ADAPTER_CONSUMER_LOCK_TTL` 正式运行时入口，默认使用 Redis DB `4` 作为 `fabric-adapter` 短锁空间。
+  - `services/fabric-adapter/internal/service/redis_lock.go`：新增真实 Redis 短锁实现，统一 key 规范 `datab:v1:fabric-adapter:consumer-lock:{event_id}`。
+  - `services/fabric-adapter/internal/store/postgres.go`、`internal/service/processor.go`、`processor_test.go`：把 `ops.consumer_idempotency_record` 接入 `fabric-adapter` consumer 处理门禁，补齐 `processing / processed / failed` 状态更新、重复投递跳过与 provider / persist 失败回写；单测新增 duplicate / in-flight / failed 三类分支。
+  - `services/fabric-adapter/internal/service/processor_live_smoke_test.go`：新增 `TestProcessorReliabilityLiveSmoke`，以真实 PostgreSQL + Redis 对同一 `event_id` 并发调用两次 `ProcessMessage`，验证 provider 只执行一次、`ops.external_fact_receipt` 只写一条、Redis 短锁存在并释放。
+  - `scripts/fabric-adapter-run.sh`、`infra/docker/docker-compose.apps.local.example.yml`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/04-runbooks/redis-keys.md`：补齐 `fabric-adapter` 的 Redis 入口、TTL 与 key 规范，不再把 Go 侧 Redis 短锁留在代码隐含默认值里。
+  - `docs/04-runbooks/fabric-adapter.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`、`docs/04-runbooks/README.md`：新增 `fabric-adapter` 重复投递隔离说明与 `AUD-CASE-020A`，把 `Redis` 短锁 + `ops.consumer_idempotency_record` 固化为正式验收项，并修正文档里错误的 repo 根目录 Go 复现命令。
+  - `scripts/check-canonical-contracts.sh`、`.github/workflows/canonical-contracts.yml`、`docs/05-test-cases/README.md`、`.github/workflows/README.md`：补齐 `TEST-028` 的 canonical smoke / contract checker，本地 `full` 模式串行执行 `check-openapi-schema.sh + check-topic-topology.sh + smoke-local.sh`，CI 侧以 `static` 模式执行静态子集。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：关闭 `TODO-AUD-OPENAPI-001`、`TODO-AUD-TEST-001`、`TODO-AUD-FABRIC-001`、`TODO-AUD-WRITER-001`、`TODO-AUD-EVENT-001`、`TODO-TEST-CANONICAL-001`、`TODO-PROC-BIL-001`，并删除仅用于模板展示的示例记录。
+- 复核结论：
+  - `TODO-AUD-WRITER-001`：经检索 `catalog / billing / search` 已无该条 TODO 所描述的 ad-hoc `INSERT audit.audit_event` 分叉；`AUD-029` 的 `audit-authority-writer.md` 已冻结统一 writer 与 `support.evidence_object -> audit.evidence_*` 桥接边界，可关闭。
+  - `TODO-AUD-EVENT-001`：`AUD-030 / AUD-031` 已通过 `canonical-event-authority.md`、`canonical-event-authority-cases.md`、Billing bridge published-only 边界与现有 smoke 冻结 canonical envelope / route authority / publish attempt / 无旁路消费，可关闭。
+  - `TODO-AUD-OPENAPI-001`、`TODO-AUD-TEST-001`：`AUD-027 / AUD-028` 以及 `AUD-025+` 剩余控制面均已落盘并纳入 README 索引、`check-openapi-schema.sh`、runbook 与验收矩阵，不再保留后续缺口。
+  - `TODO-AUD-FABRIC-001`：本批已补真实实现与 live smoke，不再保留 at-least-once 噪音缺口。
+  - `TODO-TEST-CANONICAL-001`：本批已补齐本地 / CI 共用的 canonical checker 入口，不再仅靠 `check-topic-topology.sh` 或零散 runbook 说明证明正式 topic / OpenAPI / consumer group 边界。
+  - `TODO-PROC-BIL-001`：`BIL-001~005` 在 `P3` 已逐条按冻结文档完成一致性复核，`TRADE-030` 在 `P1` 也按依赖链和冻结口径补齐；期间记录的返工项已在对应批次修完，因此不再保留“历史偏移但未追溯”的流程治理缺口。
+- 验证：
+  1. `cd services/fabric-adapter && go test ./...`
+  2. `set -a; source infra/docker/.env.local; set +a; FABRIC_ADAPTER_RELIABILITY_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/4 go test ./internal/service -run TestProcessorReliabilityLiveSmoke -count=1 -v`
+  3. `cargo fmt --all`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `cargo check -p outbox-publisher`
+  7. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p outbox-publisher outbox_publisher_db_smoke -- --nocapture`
+  8. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  9. `./scripts/check-query-compile.sh`
+  10. `./scripts/check-openapi-schema.sh`
+  11. `./scripts/check-topic-topology.sh`
+  12. `./scripts/check-fabric-local.sh`
+  13. `ENV_FILE=infra/docker/.env.local ./scripts/check-canonical-contracts.sh`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
