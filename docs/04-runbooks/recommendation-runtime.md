@@ -27,7 +27,7 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
    - `audit.access_audit(target_type='recommendation_result')`
    - `ops.system_log(message_text='recommendation lookup executed: GET /api/v1/recommendations')`
 2. 读取 `recommend.placement_definition` / `recommend.ranking_profile`
-3. OpenSearch 多路召回 + PG cohort/bundle/similarity 补充
+3. `APP_MODE=staging` 走 OpenSearch 多路召回 + PG cohort/bundle/similarity 补充；`APP_MODE=local` 走 PostgreSQL 搜索投影驱动的最小候选策略（最新上架、同类目、同卖方、热销、零结果兜底）
 4. PostgreSQL 最终业务校验
 5. 写 `recommendation_request / recommendation_result / recommendation_result_item`
 6. `POST /track/exposure` / `/track/click`
@@ -111,6 +111,8 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - 推荐位补丁生效后，`recommend.placement_definition.default_ranking_profile_key / metadata` 必须已更新，且 `datab:v1:recommend:*` 与 `datab:v1:recommend:seen:*:{placement_code}` 相关 Redis key 应被失效。
 - `recommend.placement_definition.default_ranking_profile_key` 必须能在 `recommend.ranking_profile.profile_key` 中解析到有效配置。
 - `GET /api/v1/recommendations` 后必须能在 `audit.access_audit` 中回查 `target_type='recommendation_result'`，并在 `ops.system_log` 中回查 `recommendation lookup executed: GET /api/v1/recommendations`。
+- `APP_MODE=local` 下，`recommend.recommendation_request.request_attrs ->> 'candidate_backend'` 与 `recommend.recommendation_result.metadata ->> 'candidate_backend'` 必须为 `postgresql_local_minimal`，且同一查询两次命中应观察到 `cache_hit=false -> true`。
+- `placement_code=search_zero_result_fallback` 在 `APP_MODE=local` 下必须返回非空候选，且至少一个 `recommendation_result_item.feature_snapshot -> 'recall_sources'` 或响应 `explanation_codes` 能证明 `fallback:zero_result` 已参与兜底。
 - `POST /api/v1/recommendations/track/exposure`、`POST /api/v1/recommendations/track/click` 后必须能在 `audit.audit_event` 中回查 `recommendation.exposure.track / recommendation.click.track`，在 `audit.access_audit` 中回查 `target_type='recommendation_behavior'`，并在 `ops.system_log` 中回查 `recommendation behavior tracked: POST ...`。
 - `POST /api/v1/ops/recommendation/rebuild` 后必须能在 `audit.audit_event` 中回查 `recommendation.rebuild.execute`，在 `audit.access_audit` 中回查 `target_type='recommendation_rebuild'` 和 `step_up_challenge_id`，并在 `ops.system_log` 中回查 `recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild`。
 - 推荐重建触发 `scope=all/features/subject_profile/cohort/signals/similarity/bundle` 时，必须真实重刷 `recommend.subject_profile_snapshot`、`recommend.cohort_popularity`、`search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation` 中对应派生表；`scope=cache` 或 `purge_cache=true` 时，必须真实删除 `datab:v1:recommend:*` 与命中的 `datab:v1:recommend:seen:*`。
@@ -124,7 +126,12 @@ WHERE aggregate_type = 'recommend.behavior_event'
 
 ```bash
 RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  APP_MODE=staging \
   cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture
+
+RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 \
+  cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture
 
 SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \

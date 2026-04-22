@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use config::RuntimeMode;
 use db::{Client, GenericClient};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,21 @@ struct RankingProfile {
     metadata: Value,
     created_at: String,
     updated_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CandidateBackend {
+    OpenSearch,
+    PostgresqlLocalMinimal,
+}
+
+impl CandidateBackend {
+    fn as_str(&self) -> &'static str {
+        match self {
+            CandidateBackend::OpenSearch => "opensearch",
+            CandidateBackend::PostgresqlLocalMinimal => "postgresql_local_minimal",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +134,7 @@ struct RecommendationReference {
 
 pub async fn serve_recommendation(
     client: &Client,
+    runtime_mode: &RuntimeMode,
     query: &RecommendationQuery,
     request_id: Option<&str>,
     trace_id: Option<&str>,
@@ -130,7 +147,8 @@ pub async fn serve_recommendation(
     let placement = load_active_placement(&tx, &query.placement_code).await?;
     let ranking_profile = load_effective_ranking_profile(&tx, &placement).await?;
     let limit = recommendation_limit(query.limit);
-    let cache_key = recommendation_cache_key(query)?;
+    let candidate_backend = candidate_backend_for_runtime(runtime_mode);
+    let cache_key = recommendation_cache_key(query, candidate_backend)?;
     let mut cache_hit = false;
     let mut snapshot = match load_candidate_cache(&cache_key).await? {
         Some(snapshot) => {
@@ -138,9 +156,15 @@ pub async fn serve_recommendation(
             snapshot
         }
         None => {
-            let generated =
-                generate_candidate_snapshot(&tx, query, &placement, &ranking_profile, limit)
-                    .await?;
+            let generated = generate_candidate_snapshot(
+                &tx,
+                runtime_mode,
+                query,
+                &placement,
+                &ranking_profile,
+                limit,
+            )
+            .await?;
             store_candidate_cache(&cache_key, &generated).await?;
             generated
         }
@@ -149,8 +173,15 @@ pub async fn serve_recommendation(
     let seen_entities = load_seen_entities(query, &placement.placement_code).await?;
     let hydrated = hydrate_candidates(&tx, &snapshot, &seen_entities, limit).await?;
     let ranked = if hydrated.is_empty() {
-        snapshot =
-            generate_fallback_snapshot(&tx, query, &placement, &ranking_profile, limit).await?;
+        snapshot = generate_fallback_snapshot(
+            &tx,
+            runtime_mode,
+            query,
+            &placement,
+            &ranking_profile,
+            limit,
+        )
+        .await?;
         cache_hit = false;
         hydrate_candidates(&tx, &snapshot, &seen_entities, limit).await?
     } else {
@@ -170,6 +201,8 @@ pub async fn serve_recommendation(
         &placement,
         &ranking_profile,
         &snapshot.strategy_version,
+        candidate_backend,
+        runtime_mode,
         &final_items,
         cache_hit,
         request_id,
@@ -830,11 +863,20 @@ async fn load_effective_ranking_profile(
 
 async fn generate_candidate_snapshot(
     client: &(impl GenericClient + Sync),
+    runtime_mode: &RuntimeMode,
     query: &RecommendationQuery,
     placement: &PlacementDefinition,
     ranking_profile: &RankingProfile,
     limit: u32,
 ) -> RepoResult<CandidateSnapshot> {
+    if matches!(
+        candidate_backend_for_runtime(runtime_mode),
+        CandidateBackend::PostgresqlLocalMinimal
+    ) {
+        return generate_local_candidate_snapshot(client, query, placement, ranking_profile, limit)
+            .await;
+    }
+
     let recall_sources = parse_recall_sources(&placement.candidate_policy_json);
     let context = load_context_entity(client, query).await?;
     let subject_profile = load_subject_profile(client, query).await?;
@@ -897,11 +939,26 @@ async fn generate_candidate_snapshot(
 
 async fn generate_fallback_snapshot(
     client: &(impl GenericClient + Sync),
+    runtime_mode: &RuntimeMode,
     query: &RecommendationQuery,
     placement: &PlacementDefinition,
     ranking_profile: &RankingProfile,
     limit: u32,
 ) -> RepoResult<CandidateSnapshot> {
+    if matches!(
+        candidate_backend_for_runtime(runtime_mode),
+        CandidateBackend::PostgresqlLocalMinimal
+    ) {
+        return generate_local_zero_result_snapshot(
+            client,
+            query,
+            placement,
+            ranking_profile,
+            limit,
+        )
+        .await;
+    }
+
     let mut merged = HashMap::new();
     merge_recall_candidates(
         &mut merged,
@@ -930,6 +987,107 @@ async fn generate_fallback_snapshot(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     candidates.truncate((limit * 4) as usize);
+    Ok(CandidateSnapshot {
+        strategy_version: strategy_version(ranking_profile),
+        candidates,
+    })
+}
+
+fn candidate_backend_for_runtime(runtime_mode: &RuntimeMode) -> CandidateBackend {
+    match runtime_mode {
+        RuntimeMode::Local => CandidateBackend::PostgresqlLocalMinimal,
+        RuntimeMode::Staging | RuntimeMode::Demo => CandidateBackend::OpenSearch,
+    }
+}
+
+async fn generate_local_candidate_snapshot(
+    client: &(impl GenericClient + Sync),
+    query: &RecommendationQuery,
+    placement: &PlacementDefinition,
+    ranking_profile: &RankingProfile,
+    limit: u32,
+) -> RepoResult<CandidateSnapshot> {
+    let context = load_context_entity(client, query).await?;
+    let mut merged: HashMap<String, RecallCandidate> = HashMap::new();
+    let fetch_limit = (limit.max(6) * 4) as usize;
+
+    if let Some(context) = context.as_ref() {
+        merge_recall_candidates(
+            &mut merged,
+            recall_same_category_projection(client, placement, context, fetch_limit).await?,
+        );
+        merge_recall_candidates(
+            &mut merged,
+            recall_same_seller_projection(client, placement, context, fetch_limit).await?,
+        );
+    }
+    merge_recall_candidates(
+        &mut merged,
+        recall_new_arrival_projection(client, placement, fetch_limit).await?,
+    );
+    merge_recall_candidates(
+        &mut merged,
+        recall_popular_projection(client, placement, fetch_limit).await?,
+    );
+
+    if placement.placement_code == "search_zero_result_fallback" {
+        merge_recall_candidates(
+            &mut merged,
+            recall_zero_result_projection(client, placement, context.as_ref(), fetch_limit).await?,
+        );
+    }
+
+    if merged.is_empty() {
+        merge_recall_candidates(
+            &mut merged,
+            recall_zero_result_projection(client, placement, context.as_ref(), fetch_limit).await?,
+        );
+    }
+
+    candidate_snapshot_from_merged(merged, fetch_limit, ranking_profile)
+}
+
+async fn generate_local_zero_result_snapshot(
+    client: &(impl GenericClient + Sync),
+    query: &RecommendationQuery,
+    placement: &PlacementDefinition,
+    ranking_profile: &RankingProfile,
+    limit: u32,
+) -> RepoResult<CandidateSnapshot> {
+    let context = load_context_entity(client, query).await?;
+    let fetch_limit = (limit.max(6) * 4) as usize;
+    let mut merged = HashMap::new();
+
+    merge_recall_candidates(
+        &mut merged,
+        recall_zero_result_projection(client, placement, context.as_ref(), fetch_limit).await?,
+    );
+
+    candidate_snapshot_from_merged(merged, fetch_limit, ranking_profile)
+}
+
+fn candidate_snapshot_from_merged(
+    merged: HashMap<String, RecallCandidate>,
+    fetch_limit: usize,
+    ranking_profile: &RankingProfile,
+) -> RepoResult<CandidateSnapshot> {
+    let mut candidates = merged
+        .into_values()
+        .map(|candidate| CandidateSeed {
+            entity_scope: candidate.entity_scope,
+            entity_id: candidate.entity_id,
+            raw_score: candidate.raw_score,
+            recall_sources: candidate.recall_sources.into_iter().collect(),
+            explanation_codes: candidate.explanation_codes.into_iter().collect(),
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        right
+            .raw_score
+            .partial_cmp(&left.raw_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    candidates.truncate(fetch_limit);
     Ok(CandidateSnapshot {
         strategy_version: strategy_version(ranking_profile),
         candidates,
@@ -1020,6 +1178,8 @@ async fn persist_recommendation_result(
     placement: &PlacementDefinition,
     ranking_profile: &RankingProfile,
     strategy_version: &str,
+    candidate_backend: CandidateBackend,
+    runtime_mode: &RuntimeMode,
     ranked: &[RankedCandidate],
     cache_hit: bool,
     request_id: Option<&str>,
@@ -1084,7 +1244,9 @@ async fn persist_recommendation_result(
                 &json!({
                     "placement_name": placement.placement_name,
                     "actor_role": actor_role,
-                    "cache_hit": cache_hit
+                    "cache_hit": cache_hit,
+                    "candidate_backend": candidate_backend.as_str(),
+                    "runtime_mode": runtime_mode.as_str()
                 }),
                 &candidate_source_summary,
                 &trace_id,
@@ -1139,7 +1301,9 @@ async fn persist_recommendation_result(
                 &json!({
                     "cache_hit": cache_hit,
                     "candidate_sources": candidate_source_summary,
-                    "actor_role": actor_role
+                    "actor_role": actor_role,
+                    "candidate_backend": candidate_backend.as_str(),
+                    "runtime_mode": runtime_mode.as_str()
                 }),
             ],
         )
@@ -1190,6 +1354,8 @@ async fn persist_recommendation_result(
                         "strategy_version": strategy_version,
                         "raw_score": item.raw_score,
                         "final_score": item.final_score,
+                        "candidate_backend": candidate_backend.as_str(),
+                        "runtime_mode": runtime_mode.as_str(),
                         "quality_score": item.search_item.quality_score,
                         "reputation_score": item.search_item.reputation_score,
                         "hotness_score": item.search_item.hotness_score,
@@ -1315,6 +1481,341 @@ async fn load_subject_profile(
         preferred_tags: row.get(1),
         preferred_delivery_modes: row.get(2),
     }))
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ProjectionProductSort {
+    Latest,
+    Hotness,
+    Quality,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ProjectionProductFilter<'a> {
+    category: Option<&'a str>,
+    seller_org_id: Option<&'a str>,
+    exclude_product_id: Option<&'a str>,
+}
+
+async fn recall_same_category_projection(
+    client: &(impl GenericClient + Sync),
+    placement: &PlacementDefinition,
+    context: &ContextEntity,
+    limit: usize,
+) -> RepoResult<Vec<RecallCandidate>> {
+    if !placement_supports_products(&placement.placement_scope) {
+        return Ok(Vec::new());
+    }
+    let Some(category) = context.category.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let candidates = fetch_projection_product_candidates(
+        client,
+        placement,
+        ProjectionProductFilter {
+            category: Some(category),
+            seller_org_id: None,
+            exclude_product_id: Some(context.entity_id.as_str()),
+        },
+        ProjectionProductSort::Quality,
+        limit,
+        0.9,
+        "similar",
+    )
+    .await?;
+    Ok(annotate_candidates(
+        candidates,
+        &["local:minimal", "local:same_category"],
+    ))
+}
+
+async fn recall_same_seller_projection(
+    client: &(impl GenericClient + Sync),
+    placement: &PlacementDefinition,
+    context: &ContextEntity,
+    limit: usize,
+) -> RepoResult<Vec<RecallCandidate>> {
+    if !placement_supports_products(&placement.placement_scope) {
+        return Ok(Vec::new());
+    }
+    let Some(seller_org_id) = context.seller_org_id.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let candidates = fetch_projection_product_candidates(
+        client,
+        placement,
+        ProjectionProductFilter {
+            category: None,
+            seller_org_id: Some(seller_org_id),
+            exclude_product_id: Some(context.entity_id.as_str()),
+        },
+        ProjectionProductSort::Latest,
+        limit,
+        0.88,
+        "seller_related",
+    )
+    .await?;
+    Ok(annotate_candidates(
+        candidates,
+        &["local:minimal", "local:same_seller"],
+    ))
+}
+
+async fn recall_new_arrival_projection(
+    client: &(impl GenericClient + Sync),
+    placement: &PlacementDefinition,
+    limit: usize,
+) -> RepoResult<Vec<RecallCandidate>> {
+    if !placement_supports_products(&placement.placement_scope) {
+        return Ok(Vec::new());
+    }
+    let candidates = fetch_projection_product_candidates(
+        client,
+        placement,
+        ProjectionProductFilter {
+            category: None,
+            seller_org_id: None,
+            exclude_product_id: None,
+        },
+        ProjectionProductSort::Latest,
+        limit,
+        0.76,
+        "new_arrival",
+    )
+    .await?;
+    Ok(annotate_candidates(candidates, &["local:minimal"]))
+}
+
+async fn recall_popular_projection(
+    client: &(impl GenericClient + Sync),
+    placement: &PlacementDefinition,
+    limit: usize,
+) -> RepoResult<Vec<RecallCandidate>> {
+    let mut candidates = Vec::new();
+    for entity_scope in placement_entity_scopes(&placement.placement_scope) {
+        if entity_scope == "seller" {
+            candidates.extend(annotate_candidates(
+                fetch_projection_seller_candidates(client, limit, 0.75, "popular").await?,
+                &["local:minimal"],
+            ));
+        } else {
+            candidates.extend(annotate_candidates(
+                fetch_projection_product_candidates(
+                    client,
+                    placement,
+                    ProjectionProductFilter {
+                        category: None,
+                        seller_org_id: None,
+                        exclude_product_id: None,
+                    },
+                    ProjectionProductSort::Hotness,
+                    limit,
+                    0.8,
+                    "popular",
+                )
+                .await?,
+                &["local:minimal"],
+            ));
+        }
+    }
+    Ok(candidates)
+}
+
+async fn recall_zero_result_projection(
+    client: &(impl GenericClient + Sync),
+    placement: &PlacementDefinition,
+    context: Option<&ContextEntity>,
+    limit: usize,
+) -> RepoResult<Vec<RecallCandidate>> {
+    let mut merged = HashMap::new();
+    if let Some(context) = context {
+        merge_recall_candidates(
+            &mut merged,
+            annotate_candidates(
+                recall_same_category_projection(client, placement, context, limit).await?,
+                &["fallback:zero_result"],
+            ),
+        );
+        merge_recall_candidates(
+            &mut merged,
+            annotate_candidates(
+                recall_same_seller_projection(client, placement, context, limit).await?,
+                &["fallback:zero_result"],
+            ),
+        );
+    }
+    merge_recall_candidates(
+        &mut merged,
+        annotate_candidates(
+            recall_popular_projection(client, placement, limit).await?,
+            &["fallback:zero_result"],
+        ),
+    );
+    merge_recall_candidates(
+        &mut merged,
+        annotate_candidates(
+            recall_new_arrival_projection(client, placement, limit).await?,
+            &["fallback:zero_result"],
+        ),
+    );
+    Ok(merged.into_values().collect())
+}
+
+async fn fetch_projection_product_candidates(
+    client: &(impl GenericClient + Sync),
+    placement: &PlacementDefinition,
+    filter: ProjectionProductFilter<'_>,
+    sort: ProjectionProductSort,
+    limit: usize,
+    base_score: f64,
+    source: &str,
+) -> RepoResult<Vec<RecallCandidate>> {
+    let product_scope_clause = projection_product_scope_clause(&placement.placement_scope);
+    let order_clause = projection_product_order_clause(sort);
+    let rows = client
+        .query(
+            &format!(
+                "SELECT
+                   d.product_id::text,
+                   COALESCE(d.quality_score::float8, 0),
+                   COALESCE(d.seller_reputation_score::float8, 0),
+                   COALESCE(d.hotness_score::float8, 0)
+                 FROM search.product_search_document d
+                 WHERE d.listing_status = 'listed'
+                   AND COALESCE(d.visible_to_search, false)
+                   AND ($1::text IS NULL OR d.category = $1)
+                   AND ($2::text IS NULL OR d.org_id = $2::text::uuid)
+                   AND ($3::text IS NULL OR d.product_id <> $3::text::uuid)
+                   {product_scope_clause}
+                 ORDER BY {order_clause}
+                 LIMIT $4"
+            ),
+            &[
+                &filter.category,
+                &filter.seller_org_id,
+                &filter.exclude_product_id,
+                &(limit.min(50) as i32),
+            ],
+        )
+        .await
+        .map_err(|err| format!("load local recommendation product candidates failed: {err}"))?;
+    Ok(rows
+        .into_iter()
+        .enumerate()
+        .map(|(index, row)| {
+            recall_candidate(
+                "product",
+                row.get::<usize, String>(0),
+                projection_candidate_score(
+                    base_score,
+                    index,
+                    row.get::<usize, f64>(1),
+                    row.get::<usize, f64>(2),
+                    row.get::<usize, f64>(3),
+                ),
+                source,
+            )
+        })
+        .collect())
+}
+
+async fn fetch_projection_seller_candidates(
+    client: &(impl GenericClient + Sync),
+    limit: usize,
+    base_score: f64,
+    source: &str,
+) -> RepoResult<Vec<RecallCandidate>> {
+    let rows = client
+        .query(
+            "SELECT
+               ssd.org_id::text,
+               COALESCE(ssd.reputation_score::float8, 0),
+               GREATEST(COALESCE(ssd.listing_product_count::float8, 0) / 20.0, 0)
+             FROM search.seller_search_document ssd
+             JOIN core.organization org ON org.org_id = ssd.org_id
+             WHERE org.status NOT IN ('suspended', 'frozen')
+             ORDER BY COALESCE(ssd.listing_product_count::float8, 0) DESC,
+                      COALESCE(ssd.reputation_score::float8, 0) DESC,
+                      ssd.source_updated_at DESC
+             LIMIT $1",
+            &[&(limit.min(50) as i32)],
+        )
+        .await
+        .map_err(|err| format!("load local recommendation seller candidates failed: {err}"))?;
+    Ok(rows
+        .into_iter()
+        .enumerate()
+        .map(|(index, row)| {
+            recall_candidate(
+                "seller",
+                row.get::<usize, String>(0),
+                projection_candidate_score(
+                    base_score,
+                    index,
+                    0.0,
+                    row.get::<usize, f64>(1),
+                    row.get::<usize, f64>(2),
+                ),
+                source,
+            )
+        })
+        .collect())
+}
+
+fn annotate_candidates(
+    mut candidates: Vec<RecallCandidate>,
+    explanation_codes: &[&str],
+) -> Vec<RecallCandidate> {
+    for candidate in &mut candidates {
+        for code in explanation_codes {
+            candidate.explanation_codes.insert((*code).to_string());
+        }
+    }
+    candidates
+}
+
+fn projection_candidate_score(
+    base_score: f64,
+    index: usize,
+    quality: f64,
+    reputation: f64,
+    hotness: f64,
+) -> f64 {
+    base_score
+        + parse_numeric_signal(quality) * 0.08
+        + parse_numeric_signal(reputation) * 0.05
+        + parse_numeric_signal(hotness) * 0.07
+        + score_decay(index) * 0.05
+}
+
+fn parse_numeric_signal(value: f64) -> f64 {
+    if value > 1.0 {
+        (value / 100.0).clamp(0.0, 1.0)
+    } else {
+        value.clamp(0.0, 1.0)
+    }
+}
+
+fn projection_product_scope_clause(placement_scope: &str) -> &'static str {
+    match placement_scope {
+        "service" => "AND d.product_type = 'service'",
+        "product" => "AND COALESCE(d.product_type, '') <> 'service'",
+        _ => "",
+    }
+}
+
+fn projection_product_order_clause(sort: ProjectionProductSort) -> &'static str {
+    match sort {
+        ProjectionProductSort::Latest => {
+            "source_updated_at DESC, COALESCE(hotness_score::float8, 0) DESC"
+        }
+        ProjectionProductSort::Hotness => {
+            "COALESCE(hotness_score::float8, 0) DESC, source_updated_at DESC"
+        }
+        ProjectionProductSort::Quality => {
+            "COALESCE(quality_score::float8, 0) DESC, COALESCE(hotness_score::float8, 0) DESC, source_updated_at DESC"
+        }
+    }
 }
 
 async fn recall_popular(
@@ -2195,8 +2696,12 @@ async fn store_candidate_cache(cache_key: &str, snapshot: &CandidateSnapshot) ->
     Ok(())
 }
 
-fn recommendation_cache_key(query: &RecommendationQuery) -> RepoResult<String> {
+fn recommendation_cache_key(
+    query: &RecommendationQuery,
+    candidate_backend: CandidateBackend,
+) -> RepoResult<String> {
     let scene = json!({
+        "candidate_backend": candidate_backend.as_str(),
         "placement_code": query.placement_code,
         "subject_scope": query.subject_scope,
         "subject_org_id": query.subject_org_id,

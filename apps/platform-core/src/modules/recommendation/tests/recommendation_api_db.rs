@@ -10,10 +10,39 @@ use db::{Client, Error, GenericClient, NoTls, connect};
 use redis::AsyncCommands;
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Mutex;
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
     std::env::var("RECOMMEND_DB_SMOKE").ok().as_deref() == Some("1")
+}
+
+static RECOMMEND_ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+struct ScopedEnvVar {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl ScopedEnvVar {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var(key).ok();
+        // SAFETY: test-only mutation guarded by RECOMMEND_ENV_TEST_LOCK.
+        unsafe { std::env::set_var(key, value) };
+        Self { key, previous }
+    }
+}
+
+impl Drop for ScopedEnvVar {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.as_deref() {
+            // SAFETY: test-only mutation guarded by RECOMMEND_ENV_TEST_LOCK.
+            unsafe { std::env::set_var(self.key, previous) };
+        } else {
+            // SAFETY: test-only mutation guarded by RECOMMEND_ENV_TEST_LOCK.
+            unsafe { std::env::remove_var(self.key) };
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -837,6 +866,7 @@ async fn recommendation_api_full_runtime_db_smoke() {
     if !live_db_enabled() {
         return;
     }
+    let _env_lock = RECOMMEND_ENV_TEST_LOCK.lock().expect("lock recommend env");
     let Ok(dsn) = std::env::var("DATABASE_URL") else {
         return;
     };
@@ -856,6 +886,7 @@ async fn recommendation_api_full_runtime_db_smoke() {
     seed_opensearch_documents(&ids, &suffix)
         .await
         .expect("seed opensearch docs");
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "staging");
     let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
     let admin_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["platform_admin"]);
     let get_request_id = format!("recommend-get-{suffix}");
@@ -1657,6 +1688,7 @@ async fn recommendation_get_api_db_smoke() {
     if !live_db_enabled() {
         return;
     }
+    let _env_lock = RECOMMEND_ENV_TEST_LOCK.lock().expect("lock recommend env");
     let Ok(dsn) = std::env::var("DATABASE_URL") else {
         return;
     };
@@ -1676,6 +1708,7 @@ async fn recommendation_get_api_db_smoke() {
     seed_opensearch_documents(&ids, &suffix)
         .await
         .expect("seed recommendation opensearch docs");
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "staging");
 
     let app = crate::with_live_test_state(router()).await;
     let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
@@ -1850,6 +1883,253 @@ async fn recommendation_get_api_db_smoke() {
     .await;
 
     cleanup_opensearch_documents(&ids).await;
+    cleanup_graph(&client, &ids).await;
+
+    if let Err(message) = outcome {
+        panic!("{message}");
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn recommendation_local_minimal_candidate_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let _env_lock = RECOMMEND_ENV_TEST_LOCK.lock().expect("lock recommend env");
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis()
+        .to_string();
+    let ids = seed_graph(&client, &suffix)
+        .await
+        .expect("seed recommendation local graph");
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "local");
+    let _opensearch_endpoint = ScopedEnvVar::set("OPENSEARCH_ENDPOINT", "http://127.0.0.1:1");
+
+    let app = crate::with_live_test_state(router()).await;
+    let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
+    let home_request_id_1 = format!("req-recommend-local-home-1-{suffix}");
+    let home_request_id_2 = format!("req-recommend-local-home-2-{suffix}");
+    let bundle_request_id = format!("req-recommend-local-bundle-{suffix}");
+    let zero_request_id = format!("req-recommend-local-zero-{suffix}");
+
+    let outcome: Result<(), String> = async {
+        let home_response_1 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id={}&limit=3",
+                        ids.org_id
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &home_request_id_1)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build first local recommendation request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call first local recommendation endpoint failed: {err}"))?;
+        let home_status_1 = home_response_1.status();
+        let home_json_1 = response_json(home_response_1).await?;
+        if home_status_1 != StatusCode::OK {
+            return Err(format!(
+                "first local recommendation unexpected status={home_status_1}: {home_json_1}"
+            ));
+        }
+        if home_json_1["data"]["cache_hit"].as_bool() != Some(false) {
+            return Err(format!(
+                "first local recommendation should be cache miss: {home_json_1}"
+            ));
+        }
+        let home_items = home_json_1["data"]["items"]
+            .as_array()
+            .ok_or_else(|| format!("local recommendation items missing: {home_json_1}"))?;
+        if home_items.is_empty() {
+            return Err(format!(
+                "local recommendation should return minimal candidates: {home_json_1}"
+            ));
+        }
+        let home_request_row = client
+            .query_one(
+                "SELECT
+                   request_attrs ->> 'candidate_backend',
+                   request_attrs ->> 'runtime_mode'
+                 FROM recommend.recommendation_request
+                 WHERE recommendation_request_id = $1::text::uuid",
+                &[&home_json_1["data"]["recommendation_request_id"]
+                    .as_str()
+                    .ok_or_else(|| {
+                        format!("local recommendation_request_id missing: {home_json_1}")
+                    })?],
+            )
+            .await
+            .map_err(|err| format!("load local recommendation request metadata failed: {err}"))?;
+        if home_request_row.get::<_, Option<String>>(0).as_deref()
+            != Some("postgresql_local_minimal")
+        {
+            return Err("local recommendation request backend mismatch".to_string());
+        }
+        if home_request_row.get::<_, Option<String>>(1).as_deref() != Some("local") {
+            return Err("local recommendation request runtime mismatch".to_string());
+        }
+        let home_result_row = client
+            .query_one(
+                "SELECT
+                   metadata ->> 'candidate_backend',
+                   metadata ->> 'runtime_mode'
+                 FROM recommend.recommendation_result
+                 WHERE recommendation_result_id = $1::text::uuid",
+                &[&home_json_1["data"]["recommendation_result_id"]
+                    .as_str()
+                    .ok_or_else(|| {
+                        format!("local recommendation_result_id missing: {home_json_1}")
+                    })?],
+            )
+            .await
+            .map_err(|err| format!("load local recommendation result metadata failed: {err}"))?;
+        if home_result_row.get::<_, Option<String>>(0).as_deref()
+            != Some("postgresql_local_minimal")
+        {
+            return Err("local recommendation result backend mismatch".to_string());
+        }
+        if home_result_row.get::<_, Option<String>>(1).as_deref() != Some("local") {
+            return Err("local recommendation result runtime mismatch".to_string());
+        }
+        if count_access_audit(&client, &home_request_id_1, "recommendation_result")
+            .await
+            .map_err(|err| format!("count local recommendation access audit failed: {err}"))?
+            != 1
+        {
+            return Err("local recommendation access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &home_request_id_1,
+            "recommendation lookup executed: GET /api/v1/recommendations",
+        )
+        .await
+        .map_err(|err| format!("count local recommendation system log failed: {err}"))?
+            != 1
+        {
+            return Err("local recommendation system log missing".to_string());
+        }
+
+        let home_response_2 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id={}&limit=3",
+                        ids.org_id
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &home_request_id_2)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build second local recommendation request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call second local recommendation endpoint failed: {err}"))?;
+        let home_json_2 = response_json(home_response_2).await?;
+        if home_json_2["data"]["cache_hit"].as_bool() != Some(true) {
+            return Err(format!(
+                "second local recommendation should be cache hit: {home_json_2}"
+            ));
+        }
+
+        let bundle_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/recommendations?placement_code=product_detail_bundle&subject_scope=organization&subject_org_id={}&context_entity_scope=product&context_entity_id={}&limit=3",
+                        ids.org_id,
+                        ids.product_ids[0]
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &bundle_request_id)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build local bundle recommendation request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call local bundle recommendation endpoint failed: {err}"))?;
+        let bundle_status = bundle_response.status();
+        let bundle_json = response_json(bundle_response).await?;
+        if bundle_status != StatusCode::OK {
+            return Err(format!(
+                "local bundle recommendation unexpected status={bundle_status}: {bundle_json}"
+            ));
+        }
+        let bundle_items = bundle_json["data"]["items"]
+            .as_array()
+            .ok_or_else(|| format!("local bundle recommendation items missing: {bundle_json}"))?;
+        if !bundle_items
+            .iter()
+            .any(|item| item["entity_id"].as_str() == Some(ids.product_ids[1].as_str()))
+        {
+            return Err(format!(
+                "local same-seller recommendation missing service candidate {}: {bundle_json}",
+                ids.product_ids[1]
+            ));
+        }
+
+        let zero_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/recommendations?placement_code=search_zero_result_fallback&subject_scope=organization&subject_org_id={}&context_entity_scope=product&context_entity_id={}&limit=3",
+                        ids.org_id,
+                        ids.product_ids[0]
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &zero_request_id)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build local zero-result recommendation request failed: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call local zero-result recommendation endpoint failed: {err}"))?;
+        let zero_status = zero_response.status();
+        let zero_json = response_json(zero_response).await?;
+        if zero_status != StatusCode::OK {
+            return Err(format!(
+                "local zero-result recommendation unexpected status={zero_status}: {zero_json}"
+            ));
+        }
+        let zero_items = zero_json["data"]["items"].as_array().ok_or_else(|| {
+            format!("local zero-result recommendation items missing: {zero_json}")
+        })?;
+        if zero_items.is_empty() {
+            return Err(format!(
+                "local zero-result recommendation should not be empty: {zero_json}"
+            ));
+        }
+        if !zero_items.iter().any(|item| {
+            item["explanation_codes"]
+                .as_array()
+                .is_some_and(|codes| codes.iter().any(|code| code.as_str() == Some("fallback:zero_result")))
+        }) {
+            return Err(format!(
+                "local zero-result recommendation missing fallback explanation code: {zero_json}"
+            ));
+        }
+
+        Ok(())
+    }
+    .await;
+
     cleanup_graph(&client, &ids).await;
 
     if let Err(message) = outcome {

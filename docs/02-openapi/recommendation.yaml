@@ -375,7 +375,7 @@ components:
 paths:
   /api/v1/recommendations:
     get:
-      summary: multi-source recommendation with OpenSearch recall and PostgreSQL final validation
+      summary: multi-source recommendation with staging OpenSearch recall or local PostgreSQL minimal recall, plus PostgreSQL final validation
       security:
         - BearerAuth: []
       parameters:

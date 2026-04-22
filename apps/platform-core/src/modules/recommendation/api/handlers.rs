@@ -67,6 +67,7 @@ pub(in crate::modules::recommendation) async fn get_recommendations(
             .unwrap_or_else(|| "unknown".to_string());
     let response = repo::serve_recommendation(
         &client,
+        &state.runtime.mode,
         &query,
         Some(request_id.as_str()),
         Some(trace_id.as_str()),

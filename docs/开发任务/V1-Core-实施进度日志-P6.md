@@ -565,3 +565,69 @@
   - 无。`SEARCHREC-009` 要求的推荐结果读取接口、Bearer 权限链、查询校验、PostgreSQL 最终放行、读侧审计和服务级联调已同时覆盖代码、测试、OpenAPI、runbook 与真实回查。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+### BATCH-259（计划中）
+- 任务：`SEARCHREC-013` 为 local 模式准备最小候选召回策略：最新上架、同类目、同卖方、热销、零结果兜底
+- 状态：计划中
+- 说明：按 `SEARCHREC-013` 冻结口径重新核对后，当前推荐读链仍默认以 OpenSearch 多路召回为主，缺少类似搜索模块 `local -> PostgreSQL projection fallback` 的运行模式分支；这会导致本地模式在 OpenSearch 缺失或故障时无法稳定验证推荐主链，也无法证明“最新上架、同类目、同卖方、热销、零结果兜底”的最小候选策略已成立。本批只处理 `GET /api/v1/recommendations` 在 `APP_MODE=local` 下的候选召回后端、缓存隔离、结果留痕与验证，不提前合并 `SEARCHREC-014` 的演示推荐位样例，也不改动 staging 主链的 OpenSearch 正式口径。
+- 追溯：继续沿 `SEARCHREC` 顺序推进；当前仅为 local 模式补齐 PostgreSQL 投影驱动的最小推荐候选召回链，并保留 `staging -> OpenSearch`、`PostgreSQL 最终业务校验`、Redis 缓存和前台 Bearer 审计链既有实现。
+### BATCH-259（待审批）
+- 任务：`SEARCHREC-013` 为 local 模式准备最小候选召回策略：最新上架、同类目、同卖方、热销、零结果兜底
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-013`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-009` 至 `SEARCHREC-012` 已提供推荐读取、曝光/点击、推荐位配置与 rebuild 正式基线，本批在此基础上只补 `APP_MODE=local` 的最小候选召回后端，不改动 staging 主链的 OpenSearch 正式口径。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-013` 的冻结描述、依赖和 DoD，且后续 `SEARCHREC-015` 受 `019/020` 依赖阻塞，本批只处理 013。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL truth + OpenSearch recall + Redis cache + Kafka behavior + PostgreSQL final validation` 的正式边界，并确认 local 模式允许以 PostgreSQL 投影做开发态兜底，但不能替代 staging 主链。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`：确认 V1 推荐位与候选召回至少覆盖热门、新上架、详情页相似/同卖方、搜索零结果兜底。
+  - `docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认 `GET /api/v1/recommendations` 仍只暴露统一读取契约，最小 local 召回不引入新接口字段。
+  - `docs/开发任务/问题修复任务/A09-推荐主链路与行为流契约缺口.md`：确认推荐域正式收口仍是 `PostgreSQL 主存 + OpenSearch 召回 + Redis 缓存 + Kafka 行为流 + PostgreSQL 最终校验`；本批只是补本地 runtime fallback，不打开新的权威源。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：确认需要把 local 最小召回、缓存命中和零结果兜底回查同步写入运行文档和验收矩阵。
+  - `apps/platform-core/src/modules/recommendation/**`、`apps/platform-core/src/modules/search/**`：复核现有推荐仓储没有 runtime mode 分支，而搜索模块已有 `RuntimeMode::Local | Demo => PostgreSQL` 的候选后端切换实现，可作为参考而不能直接视为推荐已完成。
+- 完成情况：
+  - `apps/platform-core/src/modules/recommendation/repo/mod.rs`：引入推荐候选后端枚举，新增 `candidate_backend_for_runtime()`，把 `serve_recommendation()` 切为显式接收 `RuntimeMode`；`APP_MODE=local` 下改走 `postgresql_local_minimal` 候选链，使用 PostgreSQL 搜索投影生成最小候选集合，覆盖同类目、同卖方、最新上架、热销和零结果兜底；`APP_MODE=staging/demo` 保持 OpenSearch 主链不变。推荐缓存 key 现在把 `candidate_backend` 纳入 hash，避免 staging 与 local 共享错误快照。
+  - 同文件内补齐 local 投影召回函数：`recall_same_category_projection`、`recall_same_seller_projection`、`recall_new_arrival_projection`、`recall_popular_projection`、`recall_zero_result_projection`，并通过 `local:minimal`、`local:same_category`、`local:same_seller`、`fallback:zero_result` 等 explanation code 保留可回查痕迹；结果落库时把 `candidate_backend/runtime_mode` 写入 `recommendation_request.request_attrs`、`recommendation_result.metadata` 和 `recommendation_result_item.feature_snapshot`。
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`：读取接口把 `state.runtime.mode` 传入仓储层，正式接通 runtime-mode 选择。
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：新增环境锁与 `ScopedEnvVar`，避免测试之间相互污染 `APP_MODE`；既有 `recommendation_get_api_db_smoke`、`recommendation_api_full_runtime_db_smoke` 明确锁为 `APP_MODE=staging`，继续验证 OpenSearch 主链；新增 `recommendation_local_minimal_candidate_db_smoke`，在 `APP_MODE=local + OPENSEARCH_ENDPOINT=http://127.0.0.1:1` 下验证 local 最小召回、`cache_hit=false -> true`、`candidate_backend=postgresql_local_minimal` 元数据和 `fallback:zero_result` 说明码。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：补充 local 模式的 PostgreSQL 最小召回边界、`candidate_backend/runtime_mode` 回查点、零结果兜底验证点和新增回归命令。
+  - `packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`：把 `GET /api/v1/recommendations` 摘要同步为“staging OpenSearch / local PostgreSQL minimal recall + PostgreSQL final validation”，避免契约文字继续漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_get_api_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 手工服务级验证：
+    - 以 `APP_MODE=local`、`APP_PORT=8096`、`OPENSEARCH_ENDPOINT=http://127.0.0.1:1`、`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`、`KAFKA_BROKERS=127.0.0.1:9094`、`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 启动 `cargo run -p platform-core`
+    - `psql` 写入 1 个卖方组织、1 个 buyer principal、2 个商品（1 个 `data_product`、1 个 `service`），并执行 `search.refresh_product_search_document_by_id()`、`search.refresh_seller_search_document_by_id()`
+    - 使用 mock JWT 的 `Authorization: Bearer` 依次调用：
+      - `GET /api/v1/recommendations?placement_code=home_featured...` 两次，验证 `cache_hit=false -> true`
+      - `GET /api/v1/recommendations?placement_code=product_detail_bundle...context_entity_id=<product_0>`，验证同卖方 service 候选可见
+      - `GET /api/v1/recommendations?placement_code=search_zero_result_fallback...context_entity_id=<product_0>`，验证零结果兜底 explanation code
+    - `psql` 回查 `recommendation_request.request_attrs`、`recommendation_result.metadata`、`recommendation_result_item.feature_snapshot`、`audit.access_audit`、`ops.system_log`
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过。
+  - staging smoke 通过：`recommendation_get_api_db_smoke` 和 `recommendation_api_full_runtime_db_smoke` 均在显式 `APP_MODE=staging` 下通过，证明本批没有把既有 OpenSearch 主链误改成 local fallback。
+  - local smoke 首轮失败真实暴露了 SQL 漏洞：`search.seller_search_document` 不存在 `status` 列；修正为 `JOIN core.organization` 读取卖方状态后，`recommendation_local_minimal_candidate_db_smoke` 通过，确认 `APP_MODE=local + OPENSEARCH_ENDPOINT=http://127.0.0.1:1` 下仍能返回推荐、二次命中 Redis 缓存，并回查到 `candidate_backend=postgresql_local_minimal` 与 `fallback:zero_result`。
+  - `cargo test -p platform-core` 最终全量通过（`348 passed; 0 failed; 1 ignored`）。并行先跑 `cargo test` 与 `cargo sqlx prepare` 时曾命中旧 `.sqlx` cache 的 `SQLX_OFFLINE` 失败，按正确顺序刷新 `.sqlx` 后重跑通过，说明本批没有留下离线 query cache 漂移。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，query cache 已刷新。
+  - 手工 local 联调通过：
+    - `manual-local-home-1` 返回 `cache_hit=false`，`manual-local-home-2` 返回 `cache_hit=true`
+    - `manual-local-bundle` 返回了手工种子的 `service` 商品 `be70406d-ecd8-4f61-8849-a04b641d456f`
+    - `manual-local-zero` 响应与 `recommendation_result_item.explanation_codes` 均带有 `fallback:zero_result`
+    - `psql` 回查四个请求的 `recommendation_request.request_attrs ->> 'candidate_backend'`、`recommendation_result.metadata ->> 'candidate_backend'` 全为 `postgresql_local_minimal`，`runtime_mode` 全为 `local`
+    - `audit.access_audit` 和 `ops.system_log` 四个请求各 1 条，读侧审计链保持有效
+  - 手工清理结果：`recommendation_request`、`catalog.product`、`catalog.data_asset` 等业务对象已删除；由于 `audit.access_audit` append-only guard 会阻断删除后对 `accessor_user_id/accessor_org_id` 的回写，手工联调 principal 无法直接物理删除，已登记为 `TODO-SEARCHREC-CLEANUP-001` 非阻塞技术债。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-013`
+  - `商品推荐与个性化发现设计.md`：V1 推荐位、候选召回与搜索零结果兜底
+  - `商品推荐与个性化发现接口协议正式版.md`：`GET /api/v1/recommendations` 正式读契约
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐 runtime 边界与 PostgreSQL 最终放行
+  - `recommendation-runtime.md`、`search-rec-cases.md`：local 模式最小召回、缓存命中与零结果兜底验收点
+- 覆盖的任务清单条目：`SEARCHREC-013`
+- 未覆盖项：
+  - 无。`SEARCHREC-013` 要求的 local 最小候选召回策略、缓存隔离、零结果兜底、真实 API/DB 审计回查与 staging 主链保护已同时覆盖代码、测试、runbook、OpenAPI 摘要与手工联调证据。
+- 新增 TODO / 预留项：
+  - 新增非阻塞技术债 `TODO-SEARCHREC-CLEANUP-001`：append-only 审计引用会阻断 local 手工联调 principal 的物理删除，后续需要补齐与审计兼容的 principal 清理策略。

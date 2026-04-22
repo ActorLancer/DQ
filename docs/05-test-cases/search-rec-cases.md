@@ -53,9 +53,11 @@
 - `recommend.ranking_profile` 必须至少包含 `recommend_v1_default / recommend_v1_detail / recommend_v1_bundle / recommend_v1_seller`，并能被 placement 的 `default_ranking_profile_key` 正确引用。
 - `recommend.behavior_event` 的基础行为模型至少要覆盖 `recommendation_panel_viewed / recommendation_item_exposed / recommendation_item_clicked`，并在写入曝光/点击后真实推进 `recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity`。
 - `ops.event_route_policy` 中 `recommend.behavior_event / recommend.behavior_recorded` 的 canonical topic 必须唯一收口到 `dtp.recommend.behavior`，且不再依赖旧的 `trg_recommend_behavior_event_outbox` 自动派生 topic。
-- `GET /api/v1/recommendations` 必须要求 `Authorization: Bearer <access_token>`，走 `OpenSearch recall + PostgreSQL final check + recommendation_result` 落库闭环，并写 `audit.access_audit(target_type='recommendation_result') + ops.system_log`。
+- `GET /api/v1/recommendations` 必须要求 `Authorization: Bearer <access_token>`；`staging` 走 `OpenSearch recall + PostgreSQL final check + recommendation_result` 落库闭环，`local` 必须退化为 PostgreSQL 搜索投影驱动的最小候选策略（最新上架、同类目、同卖方、热销、零结果兜底），并写 `audit.access_audit(target_type='recommendation_result') + ops.system_log`。
 - 推荐返回前必须过滤掉 PostgreSQL 最终不可见对象，不能直接信任 OpenSearch 命中。
 - 推荐缓存必须写入 `datab:v1:recommend:*`，曝光后应能看到 `datab:v1:recommend:seen:*` 已看集合。
+- `APP_MODE=local` 下，同一推荐请求两次命中必须观察到 `cache_hit=false -> true`，并且 `recommendation_request.request_attrs ->> 'candidate_backend'`、`recommendation_result.metadata ->> 'candidate_backend'` 必须为 `postgresql_local_minimal`。
+- `placement_code=search_zero_result_fallback` 在 `APP_MODE=local` 下必须返回非空结果，并能在响应 `explanation_codes` 或 `recommendation_result_item.feature_snapshot` 中回查 `fallback:zero_result`。
 - `POST /api/v1/recommendations/track/exposure` 必须要求 `Authorization: Bearer <access_token>`、非空 `X-Idempotency-Key`，写 `recommendation_panel_viewed` 与 `recommendation_item_exposed`，并在 `audit.audit_event + audit.access_audit(target_type='recommendation_behavior') + ops.system_log` 中留下痕迹。
 - `POST /api/v1/recommendations/track/click` 必须要求 `Authorization: Bearer <access_token>`、非空 `X-Idempotency-Key`，写点击事件，并把 canonical outbox topic 固定到 `dtp.recommend.behavior`；重复请求必须表现为幂等去重而不是再次写事件。
 - `recommendation-aggregator` 消费 `dtp.recommend.behavior` 后，必须更新 `search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation`。
@@ -72,5 +74,7 @@
 - `recommendation-aggregator` 处理失败时，必须进入 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter` 双层隔离，且不得在失败后直接提交 offset。
 - 推荐行为流测试不得只断言 `ops.outbox_event` 有行存在，还必须验证 consumer 侧派生状态、副作用、DLQ 与 `POST /api/v1/ops/dead-letters/{id}/reprocess` 路径。
 - 推荐回归命令：
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_get_api_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
   - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
   - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
