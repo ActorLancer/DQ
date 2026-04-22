@@ -102,6 +102,34 @@ paths:
           description: bad request
         "403":
           description: forbidden
+  /api/v1/audit/packages/export:
+    post:
+      summary: export one audit evidence package
+      description: >
+        Creates one audit evidence package for an `order` or `dispute_case`, persists the
+        exported package object into MinIO, records `audit.evidence_package`, and writes
+        `audit.audit_event`, `audit.access_audit`, and `ops.system_log`. This is a high-risk
+        control-plane action and requires `audit.package.export` plus `x-step-up-token` or a
+        verified `x-step-up-challenge-id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditPackageExportRequest"
+      responses:
+        "200":
+          description: audit evidence package exported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPackageExportResponse"
+        "400":
+          description: bad request
+        "403":
+          description: forbidden
+        "404":
+          description: target not found
 components:
   schemas:
     AuditTrace:
@@ -215,3 +243,112 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/OrderAuditView"
+    EvidenceManifest:
+      type: object
+      required:
+        - manifest_scope
+        - ref_type
+        - manifest_hash
+        - item_count
+      properties:
+        evidence_manifest_id:
+          type: string
+        manifest_scope:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+        manifest_hash:
+          type: string
+        item_count:
+          type: integer
+        storage_uri:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+    EvidencePackage:
+      type: object
+      required:
+        - package_type
+        - ref_type
+        - retention_class
+        - legal_hold_status
+      properties:
+        evidence_package_id:
+          type: string
+        package_type:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+        evidence_manifest_id:
+          type: string
+        package_digest:
+          type: string
+        storage_uri:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        retention_class:
+          type: string
+        legal_hold_status:
+          type: string
+        metadata:
+          type: object
+    AuditPackageExportRequest:
+      type: object
+      required: [ref_type, ref_id, reason]
+      properties:
+        ref_type:
+          type: string
+          description: one of `order`, `case`, or `dispute_case`
+        ref_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        masked_level:
+          type: string
+          enum: [summary, masked, unmasked]
+        package_type:
+          type: string
+    AuditPackageExportView:
+      type: object
+      required:
+        - evidence_package
+        - evidence_manifest
+        - audit_trace_count
+        - evidence_item_count
+        - legal_hold_status
+        - step_up_bound
+      properties:
+        evidence_package:
+          $ref: "#/components/schemas/EvidencePackage"
+        evidence_manifest:
+          $ref: "#/components/schemas/EvidenceManifest"
+        audit_trace_count:
+          type: integer
+        evidence_item_count:
+          type: integer
+        legal_hold_status:
+          type: string
+        step_up_bound:
+          type: boolean
+    AuditPackageExportResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AuditPackageExportView"

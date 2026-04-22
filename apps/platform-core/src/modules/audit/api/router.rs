@@ -1,5 +1,5 @@
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, post};
 
 use crate::AppState;
 
@@ -12,4 +12,8 @@ pub fn router() -> Router<AppState> {
             get(handlers::get_order_audit_traces),
         )
         .route("/api/v1/audit/traces", get(handlers::get_audit_traces))
+        .route(
+            "/api/v1/audit/packages/export",
+            post(handlers::export_audit_package),
+        )
 }

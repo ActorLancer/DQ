@@ -9,6 +9,7 @@ pub use audit_kit::{
 };
 
 use crate::modules::audit::dto::AuditTraceView;
+use crate::modules::audit::dto::{EvidenceManifestView, EvidencePackageView};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct AuditTraceQuery {
@@ -76,4 +77,23 @@ pub struct OrderAuditView {
     pub page: u32,
     pub page_size: u32,
     pub traces: Vec<AuditTraceView>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct AuditPackageExportRequest {
+    pub ref_type: String,
+    pub ref_id: String,
+    pub reason: String,
+    pub masked_level: Option<String>,
+    pub package_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuditPackageExportView {
+    pub evidence_package: EvidencePackageView,
+    pub evidence_manifest: EvidenceManifestView,
+    pub audit_trace_count: i64,
+    pub evidence_item_count: i64,
+    pub legal_hold_status: String,
+    pub step_up_bound: bool,
 }

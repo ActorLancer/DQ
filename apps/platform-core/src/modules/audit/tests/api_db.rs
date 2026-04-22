@@ -1,9 +1,13 @@
 use crate::modules::audit::api::router;
+use crate::modules::audit::application::{EvidenceWriteCommand, record_evidence_snapshot};
 use crate::modules::order::repo::write_trade_audit_event;
+use crate::modules::storage::application::fetch_object_bytes;
+use crate::modules::storage::application::put_object_bytes;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use db::{Client, Error, GenericClient, NoTls, connect};
-use serde_json::Value;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
@@ -51,6 +55,41 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn rejects_package_export_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/packages/export")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud004-forbidden")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"ref_type":"order","ref_id":"10000000-0000-0000-0000-000000000001","reason":"forbidden"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn package_export_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/packages/export")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud004-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"ref_type":"order","ref_id":"10000000-0000-0000-0000-000000000001","reason":"missing step-up"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -79,6 +118,7 @@ async fn audit_trace_api_db_smoke() {
     let order_request_id = format!("req-aud003-order-{suffix}");
     let trace_request_id = format!("req-aud003-traces-{suffix}");
     let tenant_request_id = format!("req-aud003-tenant-{suffix}");
+    let export_request_id = format!("req-aud004-export-{suffix}");
     let trace_id = format!("trace-aud003-{suffix}");
 
     write_trade_audit_event(
@@ -236,7 +276,329 @@ async fn audit_trace_api_db_smoke() {
         .get(0);
     assert_eq!(log_count, 3);
 
+    let audit_user_id = seed_user(&client, &seed.buyer_org_id, &suffix)
+        .await
+        .expect("seed audit export user");
+    let challenge_id = seed_verified_step_up_challenge(&client, &audit_user_id, &seed.order_id)
+        .await
+        .expect("seed verified step-up challenge");
+    let source_bucket = std::env::var("BUCKET_EVIDENCE_PACKAGES")
+        .unwrap_or_else(|_| "evidence-packages".to_string());
+    let source_key = format!("audit-source/orders/{}/{}.json", seed.order_id, suffix);
+    let source_uri = format!("s3://{source_bucket}/{source_key}");
+    let source_bytes = serde_json::to_vec(&json!({
+        "seed": "aud004",
+        "order_id": seed.order_id,
+        "suffix": suffix,
+    }))
+    .expect("serialize source evidence");
+    put_object_bytes(
+        &source_bucket,
+        &source_key,
+        source_bytes.clone(),
+        Some("application/json"),
+    )
+    .await
+    .expect("upload source evidence object");
+    let source_hash = format!("{:x}", Sha256::digest(source_bytes.as_slice()));
+    let evidence_snapshot = record_evidence_snapshot(
+        &client,
+        &EvidenceWriteCommand {
+            item_type: "order_snapshot".to_string(),
+            ref_type: "order".to_string(),
+            ref_id: Some(seed.order_id.clone()),
+            object_uri: source_uri.clone(),
+            object_hash: source_hash,
+            content_type: Some("application/json".to_string()),
+            size_bytes: Some(source_bytes.len() as i64),
+            source_system: "audit.test".to_string(),
+            storage_mode: "minio".to_string(),
+            retention_policy_id: None,
+            worm_enabled: false,
+            legal_hold_status: "none".to_string(),
+            created_by: Some(audit_user_id.clone()),
+            metadata: json!({
+                "seed": "aud004",
+                "source": "integration_test",
+            }),
+            manifest_scope: "order_export_seed".to_string(),
+            manifest_ref_type: "order".to_string(),
+            manifest_ref_id: Some(seed.order_id.clone()),
+            manifest_storage_uri: Some(source_uri.clone()),
+            manifest_metadata: json!({
+                "seed": "aud004",
+                "order_id": seed.order_id,
+            }),
+            legacy_bridge: None,
+        },
+    )
+    .await
+    .expect("record export seed evidence snapshot");
+    assert!(
+        evidence_snapshot
+            .evidence_manifest
+            .evidence_manifest_id
+            .is_some()
+    );
+
+    let export_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/audit/packages/export")
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &export_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &challenge_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "ref_type": "order",
+                        "ref_id": seed.order_id,
+                        "reason": "regulator check export",
+                        "masked_level": "masked"
+                    })
+                    .to_string(),
+                ))
+                .expect("export request"),
+        )
+        .await
+        .expect("call audit package export");
+    let export_status = export_resp.status();
+    let export_body = to_bytes(export_resp.into_body(), usize::MAX)
+        .await
+        .expect("read export body");
+    assert_eq!(
+        export_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&export_body)
+    );
+    let export_json: Value = serde_json::from_slice(&export_body).expect("decode export body");
+    let evidence_package_id = export_json["data"]["evidence_package"]["evidence_package_id"]
+        .as_str()
+        .expect("evidence_package_id")
+        .to_string();
+    let evidence_manifest_id = export_json["data"]["evidence_manifest"]["evidence_manifest_id"]
+        .as_str()
+        .expect("evidence_manifest_id")
+        .to_string();
+    let storage_uri = export_json["data"]["evidence_package"]["storage_uri"]
+        .as_str()
+        .expect("storage uri");
+    assert_eq!(export_json["data"]["step_up_bound"].as_bool(), Some(true));
+    assert_eq!(
+        export_json["data"]["legal_hold_status"].as_str(),
+        Some("none")
+    );
+    assert!(
+        export_json["data"]["evidence_item_count"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
+
+    let (bucket_name, object_key) = parse_s3_uri(storage_uri);
+    let fetched_export = fetch_object_bytes(&bucket_name, &object_key)
+        .await
+        .expect("fetch exported package object");
+    let fetched_export_json: Value =
+        serde_json::from_slice(&fetched_export.bytes).expect("decode exported package");
+    assert_eq!(
+        fetched_export_json["reason"].as_str(),
+        Some("regulator check export")
+    );
+    assert_eq!(
+        fetched_export_json["target"]["order_id"].as_str(),
+        Some(seed.order_id.as_str())
+    );
+
+    let export_row = client
+        .query_one(
+            "SELECT evidence_manifest_id::text,
+                    package_digest,
+                    storage_uri,
+                    package_type,
+                    masked_level,
+                    access_mode,
+                    legal_hold_status
+             FROM audit.evidence_package
+             WHERE evidence_package_id = $1::text::uuid",
+            &[&evidence_package_id],
+        )
+        .await
+        .expect("query evidence package row");
+    let db_manifest_id: Option<String> = export_row.get(0);
+    let db_storage_uri: Option<String> = export_row.get(2);
+    let db_package_type: String = export_row.get(3);
+    let db_masked_level: Option<String> = export_row.get(4);
+    let db_access_mode: String = export_row.get(5);
+    let db_legal_hold_status: String = export_row.get(6);
+    assert_eq!(
+        db_manifest_id.as_deref(),
+        Some(evidence_manifest_id.as_str())
+    );
+    assert_eq!(db_storage_uri.as_deref(), Some(storage_uri));
+    assert_eq!(db_package_type, "order_evidence_package");
+    assert_eq!(db_masked_level.as_deref(), Some("masked"));
+    assert_eq!(db_access_mode, "export");
+    assert_eq!(db_legal_hold_status, "none");
+
+    let export_audit_row = client
+        .query_one(
+            "SELECT COUNT(*)::bigint,
+                    max(metadata ->> 'reason'),
+                    max(metadata ->> 'masked_level')
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = 'audit.package.export'
+               AND ref_type = 'order'
+               AND ref_id = $2::text::uuid",
+            &[&export_request_id, &seed.order_id],
+        )
+        .await
+        .expect("count export audit event");
+    let export_audit_count: i64 = export_audit_row.get(0);
+    let export_audit_reason: Option<String> = export_audit_row.get(1);
+    let export_audit_masked_level: Option<String> = export_audit_row.get(2);
+    assert_eq!(export_audit_count, 1);
+    assert_eq!(
+        export_audit_reason.as_deref(),
+        Some("regulator check export")
+    );
+    assert_eq!(export_audit_masked_level.as_deref(), Some("masked"));
+
+    let export_access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = $1
+               AND access_mode = 'export'
+               AND step_up_challenge_id = $2::text::uuid",
+            &[&export_request_id, &challenge_id],
+        )
+        .await
+        .expect("count export access audit")
+        .get(0);
+    assert_eq!(export_access_count, 1);
+
+    let export_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = $1
+               AND message_text = 'audit package export executed: POST /api/v1/audit/packages/export'",
+            &[&export_request_id],
+        )
+        .await
+        .expect("count export system logs")
+        .get(0);
+    assert_eq!(export_log_count, 1);
+
+    let manifest_item_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.evidence_manifest_item
+             WHERE evidence_manifest_id = $1::text::uuid",
+            &[&evidence_manifest_id],
+        )
+        .await
+        .expect("count export manifest items")
+        .get(0);
+    assert!(manifest_item_count >= 2);
+
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&challenge_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+            &[&audit_user_id],
+        )
+        .await;
     cleanup_business_rows(&client, &seed).await;
+}
+
+async fn seed_verified_step_up_challenge(
+    client: &Client,
+    user_id: &str,
+    order_id: &str,
+) -> Result<String, Error> {
+    client
+        .query_one(
+            "INSERT INTO iam.step_up_challenge (
+               user_id,
+               challenge_type,
+               target_action,
+               target_ref_type,
+               target_ref_id,
+               challenge_status,
+               expires_at,
+               completed_at,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'mock_otp',
+               'audit.package.export',
+               'order',
+               $2::text::uuid,
+               'verified',
+               now() + interval '10 minutes',
+               now(),
+               '{\"seed\":\"aud004\"}'::jsonb
+             )
+             RETURNING step_up_challenge_id::text",
+            &[&user_id, &order_id],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
+async fn seed_user(client: &Client, org_id: &str, suffix: &str) -> Result<String, Error> {
+    client
+        .query_one(
+            "INSERT INTO core.user_account (
+               org_id,
+               login_id,
+               display_name,
+               user_type,
+               status,
+               mfa_status,
+               email,
+               attrs
+             ) VALUES (
+               $1::text::uuid,
+               $2,
+               $3,
+               'human',
+               'active',
+               'verified',
+               $4,
+               '{}'::jsonb
+             )
+             RETURNING user_id::text",
+            &[
+                &org_id,
+                &format!("aud004-user-{suffix}"),
+                &format!("AUD004 User {suffix}"),
+                &format!("aud004-{suffix}@example.com"),
+            ],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
+fn parse_s3_uri(uri: &str) -> (String, String) {
+    let without_scheme = uri.trim_start_matches("s3://");
+    let mut parts = without_scheme.splitn(2, '/');
+    let bucket = parts.next().unwrap_or_default().to_string();
+    let key = parts.next().unwrap_or_default().to_string();
+    (bucket, key)
 }
 
 async fn seed_order_graph(client: &Client, suffix: &str) -> Result<SeedGraph, Error> {

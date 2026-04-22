@@ -1,4 +1,6 @@
-use audit_kit::{AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem};
+use audit_kit::{
+    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage,
+};
 use db::{Error, GenericClient, Row};
 use serde_json::{Map, Value};
 
@@ -47,7 +49,7 @@ INSERT INTO audit.audit_event (
   $1, $2, $3, $4, $5::text::uuid, $6, $7::text::uuid, $8::text::uuid, $9::text::uuid,
   $10::text::uuid, $11::text::uuid, $12::text::uuid, $13, $14, $15, $16, $17, $18::inet, $19,
   $20, $21, $22, $23, $24::text::uuid, $25, $26, $27, $28, $29::text::uuid, $30, $31, $32,
-  $33, $34::timestamptz, $35::timestamptz, $36::jsonb
+  $33, COALESCE($34::timestamptz, now()), COALESCE($35::timestamptz, now()), $36::jsonb
 )
 "#;
 
@@ -131,6 +133,48 @@ RETURNING
   item_digest,
   ordinal_no,
   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+"#;
+
+pub const INSERT_EVIDENCE_PACKAGE_SQL: &str = r#"
+INSERT INTO audit.evidence_package (
+  evidence_package_id,
+  package_type,
+  ref_type,
+  ref_id,
+  evidence_manifest_id,
+  package_digest,
+  storage_uri,
+  created_by,
+  retention_class,
+  masked_level,
+  access_mode,
+  legal_hold_status
+) VALUES (
+  $1::text::uuid,
+  $2,
+  $3,
+  $4::text::uuid,
+  $5::text::uuid,
+  $6,
+  $7,
+  $8::text::uuid,
+  $9,
+  $10,
+  $11,
+  $12
+)
+RETURNING
+  evidence_package_id::text,
+  package_type,
+  ref_type,
+  ref_id::text,
+  evidence_manifest_id::text,
+  package_digest,
+  storage_uri,
+  created_by::text,
+  to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  retention_class,
+  legal_hold_status
 "#;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -289,6 +333,55 @@ pub struct AccessAuditInsert {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EvidencePackageInsert {
+    pub evidence_package_id: Option<String>,
+    pub package_type: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub evidence_manifest_id: Option<String>,
+    pub package_digest: Option<String>,
+    pub storage_uri: Option<String>,
+    pub created_by: Option<String>,
+    pub retention_class: String,
+    pub masked_level: String,
+    pub access_mode: String,
+    pub legal_hold_status: String,
+    pub metadata: Value,
+}
+
+impl From<&EvidencePackage> for EvidencePackageInsert {
+    fn from(package: &EvidencePackage) -> Self {
+        let masked_level = package
+            .metadata
+            .get("masked_level")
+            .and_then(|value| value.as_str())
+            .unwrap_or("summary")
+            .to_string();
+        let access_mode = package
+            .metadata
+            .get("access_mode")
+            .and_then(|value| value.as_str())
+            .unwrap_or("export")
+            .to_string();
+        Self {
+            evidence_package_id: package.evidence_package_id.clone(),
+            package_type: package.package_type.clone(),
+            ref_type: package.ref_type.clone(),
+            ref_id: package.ref_id.clone(),
+            evidence_manifest_id: package.evidence_manifest_id.clone(),
+            package_digest: package.package_digest.clone(),
+            storage_uri: package.storage_uri.clone(),
+            created_by: package.created_by.clone(),
+            retention_class: package.retention_class.clone(),
+            masked_level,
+            access_mode,
+            legal_hold_status: package.legal_hold_status.clone(),
+            metadata: metadata_value(package.metadata.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SystemLogInsert {
     pub service_name: String,
     pub log_level: String,
@@ -355,6 +448,86 @@ pub fn metadata_object(raw: Value) -> Map<String, Value> {
 
 pub fn metadata_value(raw: Value) -> Value {
     Value::Object(metadata_object(raw))
+}
+
+pub async fn insert_audit_event(
+    client: &(impl GenericClient + Sync),
+    event: &AuditEvent,
+) -> Result<(), Error> {
+    let insert = AuditEventInsert::from(event);
+    client
+        .execute(
+            INSERT_AUDIT_EVENT_SQL,
+            &[
+                &insert.event_schema_version,
+                &insert.event_class,
+                &insert.domain_name,
+                &insert.ref_type,
+                &insert.ref_id,
+                &insert.actor_type,
+                &insert.actor_id,
+                &insert.actor_org_id,
+                &insert.session_id,
+                &insert.trusted_device_id,
+                &insert.application_id,
+                &insert.parent_audit_id,
+                &insert.action_name,
+                &insert.result_code,
+                &insert.error_code,
+                &insert.request_id,
+                &insert.trace_id,
+                &insert.source_ip,
+                &insert.client_fingerprint,
+                &insert.tx_hash,
+                &insert.evidence_hash,
+                &insert.payload_digest,
+                &insert.auth_assurance_level,
+                &insert.step_up_challenge_id,
+                &insert.before_state_digest,
+                &insert.after_state_digest,
+                &insert.previous_event_hash,
+                &insert.event_hash,
+                &insert.evidence_manifest_id,
+                &insert.anchor_policy,
+                &insert.retention_class,
+                &insert.legal_hold_status,
+                &insert.sensitivity_level,
+                &insert.ingested_at,
+                &insert.event_time,
+                &insert.metadata,
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
+pub async fn insert_evidence_package(
+    client: &(impl GenericClient + Sync),
+    package: &EvidencePackage,
+) -> Result<EvidencePackage, Error> {
+    let insert = EvidencePackageInsert::from(package);
+    let row = client
+        .query_one(
+            INSERT_EVIDENCE_PACKAGE_SQL,
+            &[
+                &insert.evidence_package_id,
+                &insert.package_type,
+                &insert.ref_type,
+                &insert.ref_id,
+                &insert.evidence_manifest_id,
+                &insert.package_digest,
+                &insert.storage_uri,
+                &insert.created_by,
+                &insert.retention_class,
+                &insert.masked_level,
+                &insert.access_mode,
+                &insert.legal_hold_status,
+            ],
+        )
+        .await?;
+    let mut stored = parse_evidence_package_row(&row);
+    stored.metadata = insert.metadata;
+    Ok(stored)
 }
 
 pub async fn load_order_audit_scope(
@@ -546,6 +719,23 @@ pub async fn record_system_log(
         )
         .await?;
     Ok(())
+}
+
+fn parse_evidence_package_row(row: &Row) -> EvidencePackage {
+    EvidencePackage {
+        evidence_package_id: row.get(0),
+        package_type: row.get(1),
+        ref_type: row.get(2),
+        ref_id: row.get(3),
+        evidence_manifest_id: row.get(4),
+        package_digest: row.get(5),
+        storage_uri: row.get(6),
+        created_by: row.get(7),
+        created_at: row.get(8),
+        retention_class: row.get(9),
+        legal_hold_status: row.get(10),
+        metadata: Value::Object(Map::new()),
+    }
 }
 
 fn storage_metadata(event: &AuditEvent) -> Value {

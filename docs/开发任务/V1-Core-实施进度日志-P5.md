@@ -163,3 +163,74 @@
 - 备注：
   - 本批没有发现 `CSV / Markdown / technical_reference / schema / 现有代码` 之间的冲突，不触发暂停条件。
   - 读取行为的正式审计域为 `audit.access_audit`，普通运行日志仅作为 `ops.system_log` 观测辅助，不替代审计权威源。
+### BATCH-217（计划中）
+- 任务：AUD-004 证据包导出接口
+- 状态：计划中
+- 说明：在 `AUD-002` 的统一 `EvidenceItem / EvidenceManifest` authority model 与 `AUD-003` 的审计联查读取控制面基础上，当前批次补齐 `POST /api/v1/audit/packages/export`。实现将覆盖平台级 `audit.package.export` 权限、导出理由必填、`x-step-up-token / x-step-up-challenge-id` 校验、`audit.evidence_package` + MinIO 导出对象双写、正式 `audit.audit_event + audit.access_audit + ops.system_log` 三层留痕，以及 `packages/openapi/audit.yaml` / `docs/02-openapi/audit.yaml` 的同步契约更新，并通过真实 API + DB + MinIO smoke 证明导出包不是空壳记录。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-004`，完成后再进入 `AUD-005`。
+### BATCH-217（待审批）
+- 任务：`AUD-004` 证据包导出接口
+- 状态：待审批
+- 当前任务编号：`AUD-004`
+- 前置依赖核对结果：`AUD-001` 统一 `AuditEvent` authority model、`AUD-002` 统一 `EvidenceItem / EvidenceManifest` authority model、`AUD-003` 订单审计联查与全局 trace API 已本地提交完成；导出接口所依赖的 `audit.evidence_*` authority model、审计联查读取控制面与 OpenAPI 归档基线已满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-004` DoD 为 `POST /api/v1/audit/packages/export` 的接口、DTO、权限、审计、错误码与最小测试完成，且实现不得偏离 OpenAPI。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL + MinIO + Redis + Keycloak/IAM + 观测栈` 在 `AUD` 高风险控制面中的职责边界，确认导出必须是真对象写入，不允许只留日志或占位记录。
+  - `docs/原始PRD/审计、证据链与回放设计.md`：确认导出包必须服务订单/案件证据联查，高风险动作必须要求理由、权限、step-up 与正式审计。
+  - `docs/数据库设计/接口协议/审计、证据链与回放接口协议正式版.md`：确认 `POST /api/v1/audit/packages/export` 的请求字段、`audit.package.export` 权限、`reason` 必填、step-up 绑定与最小错误口径。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：确认导出包覆盖 order / case 及其关联审计、证据、legal hold 摘要对象。
+  - `docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`：确认导出控制面必须落到正式 router + OpenAPI，而不是只写 README / 草稿。
+  - `docs/开发任务/问题修复任务/A06-Audit-Kit-统一模型漂移.md`：确认 `EvidencePackage` 必须复用统一 authority model，不能额外发明第二套 DTO / writer。
+  - `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`、`infra/docker/docker-compose.local.yml`：确认本批不新增 topic/route authority，导出仍是 `platform-core` 内部高风险控制面，不通过旁路 worker。
+  - `docs/数据库设计/V1/upgrade/050_audit_search_dev_ops.sql`、`docs/数据库设计/V1/upgrade/055_audit_hardening.sql`：确认 `audit.evidence_package` 的正式字段为结构化列，不存在 `metadata` 列；运行态验证中也已回查本地库结构与文档一致，导出附加信息应保存在 `audit.audit_event / audit.access_audit / evidence_manifest.metadata` 等正式审计对象中。
+  - `apps/platform-core/src/modules/audit/**`、`packages/openapi/**`、`docs/02-openapi/**`、`scripts/check-openapi-schema.sh`：确认现有实现仅覆盖读取控制面，导出接口仍未正式落地。
+- 实现要点：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `POST /api/v1/audit/packages/export`，要求 `x-request-id`、平台级 `audit.package.export` 权限、`reason` 必填、`x-step-up-token / x-step-up-challenge-id` 至少其一，且 `x-step-up-challenge-id` 必须绑定当前 actor、状态 `verified`、未过期，并兼容现网已有 `audit.evidence.export` challenge action。
+  - 导出目标支持 `order / case(dispute_case)`；读取 `trade.order_main` 或 `support.dispute_case` 的正式快照，并串联 `audit.audit_event`、`audit.evidence_manifest / item`、历史 `support.evidence_object`、`audit.legal_hold` 生成统一证据包 JSON，按 `masked_level=summary|masked|unmasked` 做最小披露。
+  - `apps/platform-core/src/modules/storage/application/object_store.rs` 既有 MinIO writer 被真实复用：导出包对象写入 `s3://evidence-packages/exports/{ref_type}/{ref_id}/package-{id}.json`，失败时回滚 DB 事务并删除临时对象。
+  - `apps/platform-core/src/modules/audit/repo/mod.rs`：新增 `insert_evidence_package` 正式 writer；实现按 `audit.evidence_package` 真实结构列写入，不再假定存在 `metadata` 列，同时保留统一 `EvidencePackage` 响应对象中的 `metadata` 供 API 返回使用。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：扩展路由级权限/step-up 校验，并新增带 `AUD_DB_SMOKE=1` 的真实导出链路测试，覆盖 `MinIO` 对象上传与回读、`audit.evidence_package`、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`audit.evidence_manifest_item` 回查。
+  - `packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`、README、`scripts/check-openapi-schema.sh`：补齐导出路径、请求/响应 schema 与文档落盘。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core modules::audit -- --nocapture`
+  4. `cargo test -p platform-core`
+  5. `AUD_DB_SMOKE=1 cargo test -p platform-core modules::audit::tests::api_db::audit_trace_api_db_smoke -- --nocapture`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `./scripts/check-openapi-schema.sh`
+  9. 真实 HTTP 联调：`DATABASE_URL=... APP_PORT=18080 cargo run -p platform-core-bin` + `curl -X POST http://127.0.0.1:18080/api/v1/audit/packages/export ...`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core modules::audit -- --nocapture` 通过；新增导出路由校验和 DB smoke 全部通过。
+  - `cargo test -p platform-core` 通过：`268 passed; 0 failed`，确认本批改动未回归既有业务主链。
+  - `AUD_DB_SMOKE=1 cargo test -p platform-core modules::audit::tests::api_db::audit_trace_api_db_smoke -- --nocapture` 通过；真实完成导出包对象上传、`audit.evidence_package` / `audit.audit_event` / `audit.access_audit` / `ops.system_log` 回查，以及 MinIO 对象读取验证。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线查询缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+  - 真实 HTTP 联调通过：显式以 `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_PORT=18080 cargo run -p platform-core-bin` 启动服务后，执行 `curl -X POST http://127.0.0.1:18080/api/v1/audit/packages/export` 返回 `200`，并回查到：
+    - `audit.evidence_package`：`package_type=order_evidence_package`、`masked_level=masked`、`access_mode=export`
+    - `audit.audit_event`：`action_name=audit.package.export`，`metadata.reason='curl export verification'`
+    - `audit.access_audit`：`access_mode=export`
+    - `ops.system_log`：`audit package export executed: POST /api/v1/audit/packages/export`
+  - 运行态修正证明：真实 `AUD_DB_SMOKE` 暴露了两个实现偏差，已在本批修正并复验通过：
+    - 导出 smoke 原先直接引用不存在的 `core.user_account`，现改为先种最小用户再创建 `iam.step_up_challenge`。
+    - `audit.evidence_package` 运行态 schema 不存在 `metadata` 列，现已按正式结构化列落库，并把附加导出信息放入 `audit.audit_event / audit.access_audit / evidence_manifest.metadata`。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-004`
+  - `审计、证据链与回放设计.md`：导出包、高风险动作、最小披露和正式审计要求
+  - `审计、证据链与回放接口协议正式版.md`：`/api/v1/audit/packages/export` 的请求、权限、理由与 step-up 口径
+  - `全量领域模型与对象关系说明.md`：order / dispute_case 与证据/审计/hold 聚合边界
+  - `050_audit_search_dev_ops.sql`、`055_audit_hardening.sql`：`audit.evidence_package`、`audit.evidence_manifest`、`audit.access_audit`、`audit.audit_event` 正式 schema
+  - `A04`、`A06`：导出控制面契约落地与统一 authority model 收口
+- 覆盖的任务清单条目：`AUD-004`
+- 未覆盖项：
+  - legal hold 控制面、replay / reconcile、dead letter reprocess 与一致性修复高风险接口，留待 `AUD-005+`。
+  - Fabric 锚定、回执、外部事实与双层权威联查，留待后续 `AUD` 批次。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 收敛为“`AUD-003 / AUD-004` 已交付查询 + 导出控制面，后续仅跟踪 replay / legal hold / ops 控制面缺口”。
+- 备注：
+  - 本批没有发现需要人工确认的 `CSV / Markdown / technical_reference` 冲突，不触发暂停条件。
+  - 手工清理验证时，尝试删除已被 append-only `audit.audit_event` 引用的 `iam.step_up_challenge` 会触发 FK 的 `SET NULL -> UPDATE audit.audit_event`，被 append-only trigger 正常拒绝；因此高风险动作验证产生的 challenge 记录按运行态现状保留，不把审计域强行改造成可回写对象。

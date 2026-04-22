@@ -1,4 +1,6 @@
-use audit_kit::{AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem};
+use audit_kit::{
+    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -139,6 +141,41 @@ impl From<&EvidenceManifestItem> for EvidenceManifestItemView {
             item_digest: item.item_digest.clone(),
             ordinal_no: item.ordinal_no,
             created_at: item.created_at.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvidencePackageView {
+    pub evidence_package_id: Option<String>,
+    pub package_type: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub evidence_manifest_id: Option<String>,
+    pub package_digest: Option<String>,
+    pub storage_uri: Option<String>,
+    pub created_by: Option<String>,
+    pub created_at: Option<String>,
+    pub retention_class: String,
+    pub legal_hold_status: String,
+    pub metadata: serde_json::Value,
+}
+
+impl From<&EvidencePackage> for EvidencePackageView {
+    fn from(package: &EvidencePackage) -> Self {
+        Self {
+            evidence_package_id: package.evidence_package_id.clone(),
+            package_type: package.package_type.clone(),
+            ref_type: package.ref_type.clone(),
+            ref_id: package.ref_id.clone(),
+            evidence_manifest_id: package.evidence_manifest_id.clone(),
+            package_digest: package.package_digest.clone(),
+            storage_uri: package.storage_uri.clone(),
+            created_by: package.created_by.clone(),
+            created_at: package.created_at.clone(),
+            retention_class: package.retention_class.clone(),
+            legal_hold_status: package.legal_hold_status.clone(),
+            metadata: package.metadata.clone(),
         }
     }
 }

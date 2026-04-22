@@ -75,7 +75,8 @@ cmp -s "$ops_file" "$docs_ops_file" || {
 audit_file="$OPENAPI_DIR/audit.yaml"
 for path in \
   "/api/v1/audit/orders/{id}" \
-  "/api/v1/audit/traces"; do
+  "/api/v1/audit/traces" \
+  "/api/v1/audit/packages/export"; do
   grep -q "$path" "$audit_file" || {
     echo "[error] $audit_file missing path: $path" >&2
     exit 1
