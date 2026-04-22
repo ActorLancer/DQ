@@ -1106,7 +1106,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /api/v1/billing/{order_id}/bridge-events/process:
     post:
-      summary: Materialize pending billing bridge events for one order
+      summary: Materialize published billing bridge events for one order
       tags: [Billing]
       parameters:
         - in: path
@@ -1137,7 +1137,7 @@ paths:
               $ref: "#/components/schemas/BillingBridgeProcessRequest"
       responses:
         "200":
-          description: Pending bridge events processed or ignored
+          description: Published bridge events processed or ignored
           content:
             application/json:
               schema:

@@ -2,7 +2,7 @@ groups:
   - name: platform-minimal-alerts
     rules:
       - alert: ServiceDown
-        expr: up{job=~"platform-core|notification-worker|mock-payment-provider|kafka-exporter|postgres-exporter|redis-exporter|minio-exporter|opensearch-exporter"} == 0
+        expr: up{job=~"platform-core|notification-worker|outbox-publisher|mock-payment-provider|kafka-exporter|postgres-exporter|redis-exporter|minio-exporter|opensearch-exporter"} == 0
         for: 2m
         labels:
           severity: warning
@@ -18,6 +18,15 @@ groups:
         annotations:
           summary: "Notification retry backlog detected"
           description: "notification-worker retry queue depth remains above zero for more than 5 minutes."
+
+      - alert: OutboxPublisherPendingBacklog
+        expr: outbox_publisher_pending_events > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox publisher backlog detected"
+          description: "outbox-publisher still reports pending outbox events after 5 minutes."
 
       - alert: KafkaConsumerLagBacklog
         expr: kafka_consumergroup_lag_sum > 1000

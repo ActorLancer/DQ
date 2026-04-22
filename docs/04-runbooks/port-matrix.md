@@ -25,6 +25,7 @@
 | Loki | `3100` | `http://127.0.0.1:3100` | `N/A` | `N/A` |
 | Tempo | `3200` | `http://127.0.0.1:3200` | `N/A` | `N/A` |
 | Mock Payment（`mocks/demo`） | `8089` | `http://127.0.0.1:8089` | `N/A` | `N/A` |
+| outbox-publisher | `8098` | `http://127.0.0.1:8098` | `N/A` | `N/A` |
 
 ## 初始 Bucket 矩阵
 

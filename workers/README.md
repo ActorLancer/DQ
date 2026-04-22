@@ -24,3 +24,9 @@ cargo run -p search-indexer
 ```bash
 cargo run -p recommendation-aggregator
 ```
+
+- `workers/outbox-publisher` 为当前 `AUD-009` 之后的正式 canonical outbox publisher 落位，运行命令：
+
+```bash
+KAFKA_BROKERS=127.0.0.1:9094 APP_PORT=8098 cargo run -p outbox-publisher
+```

@@ -11,6 +11,7 @@
 - anchor batch 查看 / 重试：`GET /api/v1/audit/anchor-batches`、`POST /api/v1/audit/anchor-batches/{id}/retry`
 - canonical outbox 查询：`GET /api/v1/ops/outbox`
 - dead letter 查询：`GET /api/v1/ops/dead-letters`
+- outbox publisher：`ops.outbox_event -> workers/outbox-publisher -> Kafka / ops.outbox_publish_attempt / ops.dead_letter_event`
 
 后续 Fabric callback、dead letter reprocess、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
@@ -44,6 +45,8 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-012` | failed batch retry | `POST /api/v1/audit/anchor-batches/{id}/retry` + verified `x-step-up-challenge-id` | 仅允许 `status=failed`；成功后 `audit.anchor_batch.status=retry_requested`，并写出 canonical outbox `audit.anchor_requested -> dtp.audit.anchor` | API 响应、`audit.anchor_batch`、`ops.outbox_event(target_topic='dtp.audit.anchor')`、`audit.audit_event(action_name='audit.anchor.retry')`、`audit.access_audit(access_mode='retry')`、`ops.system_log` |
 | `AUD-CASE-013` | canonical outbox 查询 | `GET /api/v1/ops/outbox?target_topic=dtp.search.sync&event_type=search.product.changed` | 返回 `ops.outbox_event` 分页结果，并包含最新 `ops.outbox_publish_attempt`；查询动作写入 `audit.access_audit + ops.system_log` | API 响应、`ops.outbox_event`、`ops.outbox_publish_attempt`、`audit.access_audit(access_mode='masked')`、`ops.system_log` |
 | `AUD-CASE-014` | dead letter + SEARCHREC 幂等联查 | `GET /api/v1/ops/dead-letters?failure_stage=consumer_handler` | 返回 `ops.dead_letter_event` 分页结果，并挂出 `ops.consumer_idempotency_record`，可定位 `search-indexer` 或 `recommendation-aggregator` 的失败隔离记录 | API 响应、`ops.dead_letter_event`、`ops.consumer_idempotency_record`、`audit.access_audit(access_mode='masked')`、`ops.system_log` |
+| `AUD-CASE-015` | outbox publisher 发布成功 | 写入一条 `ops.outbox_event(status=pending,target_topic=dtp.outbox.domain-events)`，运行 `cargo test -p outbox-publisher outbox_publisher_db_smoke -- --nocapture` | `workers/outbox-publisher` 把事件发到 Kafka，`ops.outbox_event.status=published`，并写入 `ops.outbox_publish_attempt(result_code='published')`、`audit.audit_event(action_name='outbox.publisher.publish')`、`ops.system_log(service_name='outbox-publisher')` | Kafka 消息、`ops.outbox_event`、`ops.outbox_publish_attempt`、`audit.audit_event`、`ops.system_log` |
+| `AUD-CASE-016` | outbox publisher 失败隔离 | 写入一条 `ops.outbox_event(status=pending,target_topic=dtp.missing.topic,max_retries=1)`，运行同一 smoke | 事件进入 `ops.dead_letter_event(failure_stage='outbox.publish')`，并向 Kafka `dtp.dead-letter` 发布隔离消息；原 outbox 行变为 `dead_lettered` | `ops.dead_letter_event`、Kafka `dtp.dead-letter`、`ops.outbox_publish_attempt(result_code='dead_lettered')`、`audit.audit_event`、`ops.system_log` |
 
 补充说明：
 

@@ -45,13 +45,28 @@ services:
 
   outbox-publisher:
     profiles: ["apps"]
-    image: alpine:3.20
+    image: rust:1.85-bookworm
     container_name: datab-outbox-publisher
-    command: ["sh", "-c", "touch /tmp/healthy && tail -f /dev/null"]
+    working_dir: /workspace
+    volumes:
+      - ../../:/workspace
+    command:
+      [
+        "sh",
+        "-c",
+        "cargo run -p outbox-publisher"
+      ]
     environment:
-      OUTBOX_DB_URL: postgres://${POSTGRES_USER:-datab}:${POSTGRES_PASSWORD:-datab_local_pass}@postgres:5432/${POSTGRES_DB:-datab}
-      OUTBOX_KAFKA_BROKERS: kafka:9092
-      OUTBOX_TOPIC: dtp.outbox.domain-events
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8098
+      DATABASE_URL: postgres://${POSTGRES_USER:-datab}:${POSTGRES_PASSWORD:-datab_local_pass}@postgres:5432/${POSTGRES_DB:-datab}
+      KAFKA_BROKERS: kafka:9092
+      TOPIC_DEAD_LETTER_EVENTS: ${TOPIC_DEAD_LETTER_EVENTS:-dtp.dead-letter}
+      OUTBOX_PUBLISHER_WORKER_ID: datab-outbox-publisher
+      OUTBOX_PUBLISHER_BATCH_SIZE: ${OUTBOX_PUBLISHER_BATCH_SIZE:-20}
+      OUTBOX_PUBLISHER_POLL_INTERVAL_MS: ${OUTBOX_PUBLISHER_POLL_INTERVAL_MS:-500}
+      OUTBOX_PUBLISHER_TIMEOUT_MS: ${OUTBOX_PUBLISHER_TIMEOUT_MS:-3000}
+      OUTBOX_PUBLISHER_RETRY_BACKOFF_MS: ${OUTBOX_PUBLISHER_RETRY_BACKOFF_MS:-500}
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,12 +74,14 @@ services:
         condition: service_healthy
     networks:
       - datab-local
+    ports:
+      - "${OUTBOX_PUBLISHER_PORT:-8098}:8098"
     healthcheck:
-      test: ["CMD-SHELL", "test -f /tmp/healthy"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8098/health/ready >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 20s
 
   fabric-adapter:
     profiles: ["apps"]

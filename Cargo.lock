@@ -2152,6 +2152,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "outbox-publisher"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "db",
+ "prometheus",
+ "rdkafka",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -22,6 +22,10 @@ scrape_configs:
     static_configs:
       - targets: ["host.docker.internal:8097"]
 
+  - job_name: outbox-publisher
+    static_configs:
+      - targets: ["host.docker.internal:8098"]
+
   - job_name: mock-payment-provider
     metrics_path: /__admin/metrics
     static_configs:

@@ -482,3 +482,66 @@
 - 备注：
   - 本批未发现新的 `CSV / Markdown / technical_reference / schema / runbook / 代码` 冲突，不触发暂停条件。
   - 宿主机手工联调时确认：`platform-core-bin` 若不显式设置 `KAFKA_BROKERS=127.0.0.1:9094` 会回落到 compose 内部 broker 地址，当前已在 `AUD-008` 新增 runbook 中固定宿主机启动口径。
+### BATCH-222（计划中）
+- 任务：`AUD-009` 实现 outbox publisher worker，从数据库读取待发布事件并推送到 Kafka
+- 状态：计划中
+- 说明：在 `AUD-008` 已完成 canonical outbox / dead letter / idempotency / external fact / projection gap 查询基座后，当前批次开始补齐真正的 `outbox -> publisher -> Kafka` 动态闭环。实现将创建正式 `workers/outbox-publisher` Rust worker，按统一 event envelope 与 `ops.event_route_policy` / canonical topic 口径轮询 `ops.outbox_event`、记录 `ops.outbox_publish_attempt`、处理重试与双层 DLQ，并补齐最小健康检查、Prometheus 指标、runbook 与宿主机/compose 运行入口。同时会清理 Billing 把 `ops.outbox_event` 当私有工作队列的默认路径：`/api/v1/billing/{order_id}/bridge-events/process` 不再扫描 `status='pending'` 作为主工作队列，而只保留显式手工桥接 / 回放语义，避免继续把 canonical outbox 状态机污染成业务消费队列。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-009`，完成后再进入 `AUD-010`。
+### BATCH-222（待审批）
+- 任务：`AUD-009` outbox publisher worker
+- 状态：待审批
+- 当前任务编号：`AUD-009`
+- 前置依赖核对结果：`CORE-007`、`CORE-008`、`DB-008`、`ENV-022` 已满足；`AUD-008` 已本地提交完成，`ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record / ops.external_fact_receipt / ops.chain_projection_gap` 查询基座可供当前批次复用。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-009` DoD 是真实 outbox publisher 闭环，不允许继续把通知/Fabric 保留为 `dtp.outbox.domain-events` 的并行入口。
+  - `docs/开发任务/问题修复任务/A01-Kafka-Topic-口径统一.md`、`A02-统一事件-Envelope-与路由权威源.md`、`A04-AUD-Ops-接口与契约落地缺口.md`、`A05-Outbox-Publisher-DLQ-统一闭环缺口.md`：确认 worker 必须只按 canonical topic / event envelope 发布、写 `ops.outbox_publish_attempt`、支持双层死信，并清理模块绕过 publisher 直接消费 `ops.outbox_event` 的旧路径。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL` 是主权威、`Kafka` 是总线、`Redis` 是辅助状态、worker 是外围进程不能反向定义主业务状态。
+  - `docs/原始PRD/双层权威模型与链上链下一致性设计.md`、`docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`、`docs/04-runbooks/kafka-topics.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认正式 topic、route-policy seed 与 `dtp.dead-letter` / `dtp.outbox.domain-events` 的冻结语义。
+  - `apps/platform-core/src/shared/outbox.rs`、`apps/platform-core/src/modules/billing/repo/billing_bridge_repository.rs`、`apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs`、`workers/outbox-publisher/**`、`workers/README.md`、`infra/docker/docker-compose.apps.local.example.yml`、`infra/docker/monitoring/prometheus.yml`、`infra/docker/monitoring/alert-rules.yml`：确认已有代码里 `workers/outbox-publisher` 仍为空，Billing bridge 仍错误把 canonical outbox 当私有工作队列，需在本批一起纠正。
+- 实现摘要：
+  - `Cargo.toml`、`Cargo.lock`、`workers/outbox-publisher/Cargo.toml`、`workers/outbox-publisher/src/main.rs`：新增正式 `outbox-publisher` Rust worker，轮询 `ops.outbox_event(status='pending')`、以 `FOR UPDATE SKIP LOCKED` claim 行、向 Kafka 发布统一 envelope，并为每次尝试写 `ops.outbox_publish_attempt`。
+  - worker 成功路径会把 outbox 行更新为 `published`，失败路径按指数退避回写 `retry_count / available_at / last_error_*`；重试耗尽后把事件标记为 `dead_lettered`，同步写入 `ops.dead_letter_event(failure_stage='outbox.publish')` 并发布 Kafka `dtp.dead-letter` 隔离消息。
+  - worker 追加 `audit.audit_event(outbox.publisher.publish / outbox.publisher.dead_lettered)` 与 `ops.system_log(service_name='outbox-publisher')`，并暴露 `/health/live`、`/health/ready`、`/metrics`；Prometheus 指标包含 `outbox_publisher_publish_attempts_total`、`outbox_publisher_pending_events`、`outbox_publisher_cycle_claimed_events`。
+  - `apps/platform-core/src/modules/billing/repo/billing_bridge_repository.rs`、`apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs`：清理 Billing 直接消费 `status='pending'` outbox 的旧路径，改为只处理已由 publisher 发布完成的 `billing.trigger.bridge`，保留显式人工桥接 / 回放入口，但不再把 canonical outbox 当默认工作队列。
+  - `docs/04-runbooks/outbox-publisher.md`、`docs/04-runbooks/README.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/observability-local.md`、`docs/04-runbooks/port-matrix.md`、`workers/README.md`、`infra/docker/.env.local`、`infra/docker/docker-compose.apps.local.example.yml`、`infra/docker/monitoring/prometheus.yml`、`infra/docker/monitoring/alert-rules.yml`：补齐宿主机/compose 启动口径、端口、Prometheus scrape、告警规则与回查步骤。
+  - `docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`、`packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`：补齐 `AUD-009` 验收矩阵，并把 Billing bridge 描述收敛为“只处理已发布的 bridge events”。
+- 真实验证：
+  1. `cargo fmt --all`
+  2. `cargo check -p outbox-publisher`
+  3. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p outbox-publisher`
+  4. `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil024_billing_trigger_bridge_db_smoke -- --nocapture`
+  5. `cargo check -p platform-core`
+  6. `cargo test -p platform-core`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. `./scripts/check-openapi-schema.sh`
+  10. `./scripts/check-topic-topology.sh`
+  11. 宿主机真实 worker 联调：
+      - `APP_PORT=8098 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p outbox-publisher`
+      - `curl http://127.0.0.1:8098/health/ready`
+      - 手工向 `ops.outbox_event` 插入一条 `dtp.outbox.domain-events` 事件与一条 `dtp.missing.topic` 事件
+      - `psql` 回查 `ops.outbox_event / ops.outbox_publish_attempt / ops.dead_letter_event / audit.audit_event / ops.system_log`
+      - `kafka-console-consumer` 回查 `dtp.outbox.domain-events` 与 `dtp.dead-letter`
+      - `curl http://127.0.0.1:8098/metrics` 与 `curl http://127.0.0.1:9090/api/v1/query?...` 回查 worker 指标
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p outbox-publisher`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-openapi-schema.sh`、`./scripts/check-topic-topology.sh` 全部通过。
+  - `AUD_DB_SMOKE=1 cargo test -p outbox-publisher` 通过：真实覆盖 `published` 与 `dead_lettered` 两条正式路径，验证 `ops.outbox_publish_attempt`、`ops.dead_letter_event`、Kafka `dtp.outbox.domain-events / dtp.dead-letter`、`audit.audit_event` 与 `ops.system_log`。
+  - `TRADE_DB_SMOKE=1 cargo test -p platform-core bil024_billing_trigger_bridge_db_smoke -- --nocapture` 通过：证明 Billing bridge 只消费 `status='published'` 的正式 bridge events，不再把 `pending` outbox 当主工作队列。
+  - 宿主机真实 worker 联调通过：
+    - `/health/ready` 返回 `{\"status\":\"ready\",\"worker_id\":\"outbox-publisher\"}`。
+    - `curl http://127.0.0.1:8098/metrics` 可见 `outbox_publisher_publish_attempts_total{result=\"published\"}`、`{result=\"dead_lettered\"}` 与 `outbox_publisher_pending_events=0`。
+    - Prometheus 在重载后可查询到 `up{job=\"outbox-publisher\"}=1` 与 `outbox_publisher_publish_attempts_total` 指标。
+    - 手工插入 `request_id=req-aud009-manual-ok-1776827697141` 后，`ops.outbox_event.status=published`、`ops.outbox_publish_attempt.result_code=published`，Kafka `dtp.outbox.domain-events` 收到统一 envelope。
+    - 手工插入 `request_id=req-aud009-manual-fail-1776827697141` 后，`ops.outbox_event.status=dead_lettered`、`ops.dead_letter_event.failure_stage=outbox.publish`、`ops.outbox_publish_attempt.result_code=dead_lettered`，Kafka `dtp.dead-letter` 收到隔离消息。
+    - `audit.audit_event` 回查到 `outbox.publisher.publish` 与 `outbox.publisher.dead_lettered`；`ops.system_log` 回查到 `service_name='outbox-publisher'` 的 `published / dead-lettered` 记录，并与同一组 `request_id / trace_id` 对齐。
+  - 手工联调结束后，已清理临时业务测试数据：`ops.outbox_publish_attempt`、`ops.dead_letter_event`、`ops.outbox_event`；`audit.audit_event` 与 `ops.system_log` 作为 append-only 留痕保留。
+- 覆盖的冻结文档条目：`AUD-009`
+- 未覆盖项：
+  - dead letter reprocess 正式控制面，留待 `AUD-010`
+  - consistency/reconcile 控制面与 projection-gap 公共接口，留待 `AUD-011~AUD-012`
+  - Go/Fabric request / callback / CA / listener 正式链路，留待 `AUD-013+`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛到包含 `AUD-009` worker、runbook 与验收矩阵的最新状态。
+- 备注：
+  - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+  - `datab-prometheus` 在配置变更后需要重启/重载才能抓到新增 `outbox-publisher` job；当前已完成重载并验证 `up{job="outbox-publisher"}=1`。

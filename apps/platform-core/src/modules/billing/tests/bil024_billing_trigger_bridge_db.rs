@@ -195,18 +195,17 @@ mod tests {
                     );
                 }
             }
-            let outbox_status: String = client
+            let outbox_row = client
                 .query_one(
-                    "SELECT status FROM ops.outbox_event WHERE outbox_event_id = $1::text::uuid",
+                    "SELECT status, published_at IS NOT NULL
+                       FROM ops.outbox_event
+                      WHERE outbox_event_id = $1::text::uuid",
                     &[&seed.outbox_event_id],
                 )
                 .await
-                .expect("query outbox status")
-                .get(0);
-            match seed.sku_type.as_str() {
-                "API_SUB" | "API_PPU" => assert_eq!(outbox_status, "ignored"),
-                _ => assert_eq!(outbox_status, "processed"),
-            }
+                .expect("query outbox status");
+            assert_eq!(outbox_row.get::<_, String>(0), "published");
+            assert!(outbox_row.get::<_, bool>(1));
         }
 
         let processed_settlement_count: i64 = client
@@ -485,6 +484,16 @@ mod tests {
             .await
             .expect("query bridge outbox")
             .get(0);
+        client
+            .execute(
+                "UPDATE ops.outbox_event
+                    SET status = 'published',
+                        published_at = now()
+                  WHERE outbox_event_id = $1::text::uuid",
+                &[&outbox_event_id],
+            )
+            .await
+            .expect("mark bridge outbox published");
 
         SeedOrder {
             buyer_org_id,

@@ -49,7 +49,7 @@ pub async fn process_billing_bridge_events_for_order(
 ) -> Result<BillingBridgeProcessResult, (StatusCode, Json<ErrorResponse>)> {
     let tx = client.transaction().await.map_err(map_db_error)?;
     ensure_order_exists(&tx, order_id, request_id).await?;
-    let events = load_pending_bridge_events(&tx, order_id, outbox_event_id).await?;
+    let events = load_published_bridge_events(&tx, order_id, outbox_event_id).await?;
 
     let mut result = BillingBridgeProcessResult {
         order_id: order_id.to_string(),
@@ -89,7 +89,6 @@ pub async fn process_billing_bridge_events_for_order(
                     trace_id,
                 )
                 .await?;
-                update_bridge_status(&tx, &event.outbox_event_id, "processed").await?;
                 write_audit_event(
                     &tx,
                     "billing",
@@ -118,7 +117,6 @@ pub async fn process_billing_bridge_events_for_order(
                     .push(billing_event.billing_event_id);
             }
             Ok(BridgeDecision::Ignore { reason_code }) => {
-                update_bridge_status(&tx, &event.outbox_event_id, "ignored").await?;
                 write_audit_event(
                     &tx,
                     "billing",
@@ -165,7 +163,7 @@ async fn ensure_order_exists(
     ))
 }
 
-async fn load_pending_bridge_events(
+async fn load_published_bridge_events(
     client: &(impl GenericClient + Sync),
     order_id: &str,
     outbox_event_id: Option<&str>,
@@ -178,10 +176,11 @@ async fn load_pending_bridge_events(
                  WHERE aggregate_type = 'trade.order_main'
                    AND aggregate_id = $1::text::uuid
                    AND event_type = 'billing.trigger.bridge'
-                   AND status = 'pending'
+                   AND status = 'published'
+                   AND published_at IS NOT NULL
+                   AND target_topic = 'dtp.outbox.domain-events'
                    AND outbox_event_id = $2::text::uuid
-                 ORDER BY created_at ASC, outbox_event_id ASC
-                 FOR UPDATE",
+                 ORDER BY published_at ASC, created_at ASC, outbox_event_id ASC",
                 &[&order_id, &outbox_event_id],
             )
             .await
@@ -194,9 +193,10 @@ async fn load_pending_bridge_events(
                  WHERE aggregate_type = 'trade.order_main'
                    AND aggregate_id = $1::text::uuid
                    AND event_type = 'billing.trigger.bridge'
-                   AND status = 'pending'
-                 ORDER BY created_at ASC, outbox_event_id ASC
-                 FOR UPDATE",
+                   AND status = 'published'
+                   AND published_at IS NOT NULL
+                   AND target_topic = 'dtp.outbox.domain-events'
+                 ORDER BY published_at ASC, created_at ASC, outbox_event_id ASC",
                 &[&order_id],
             )
             .await
@@ -210,23 +210,6 @@ async fn load_pending_bridge_events(
             payload: row.get(1),
         })
         .collect())
-}
-
-async fn update_bridge_status(
-    client: &(impl GenericClient + Sync),
-    outbox_event_id: &str,
-    status: &str,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    client
-        .execute(
-            "UPDATE ops.outbox_event
-             SET status = $2
-             WHERE outbox_event_id = $1::text::uuid",
-            &[&outbox_event_id, &status],
-        )
-        .await
-        .map_err(map_db_error)?;
-    Ok(())
 }
 
 fn derive_bridge_decision(

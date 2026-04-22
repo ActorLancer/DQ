@@ -8,3 +8,4 @@
 - `audit-legal-hold.md`：`AUD-006` legal hold 创建 / 释放控制面的权限、step-up、回查与故障处理。
 - `audit-anchor-batches.md`：`AUD-007` anchor batch 查看 / retry 控制面的权限、step-up、DB / outbox / 审计回查与运行态边界。
 - `audit-ops-outbox-dead-letters.md`：`AUD-008` canonical outbox / dead letter 查询、SEARCHREC consumer 幂等联查、审计留痕与运行态边界。
+- `outbox-publisher.md`：`AUD-009` canonical outbox publisher 的宿主机/compose 启动、Kafka 发布、双层 DLQ、Billing bridge 手工回放边界与 Prometheus 指标。
