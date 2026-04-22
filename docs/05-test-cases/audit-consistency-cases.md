@@ -15,6 +15,7 @@
 - 一致性联查：`GET /api/v1/ops/consistency/{refType}/{refId}`
 - 一致性修复 dry-run：`POST /api/v1/ops/consistency/reconcile`
 - outbox publisher：`ops.outbox_event -> workers/outbox-publisher -> Kafka / ops.outbox_publish_attempt / ops.dead_letter_event`
+- fabric adapter 基础框架：`dtp.audit.anchor / dtp.fabric.requests -> services/fabric-adapter -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor`
 
 后续 Fabric callback、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
@@ -62,11 +63,13 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-017` | SEARCHREC dead letter dry-run 重处理 | `POST /api/v1/ops/dead-letters/{id}/reprocess` + verified `x-step-up-challenge-id` + `{"reason":"...","dry_run":true}` | 仅允许 `reprocess_status=not_reprocessed` 的 SEARCHREC consumer dead letter；返回 `dry_run_ready` 预演计划，不改变 `ops.dead_letter_event.reprocess_status`，并写入 `audit.audit_event(action_name='ops.dead_letter.reprocess.dry_run')`、`audit.access_audit(access_mode='reprocess')`、`ops.system_log` | API 响应、`ops.dead_letter_event`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-018` | 一致性联查 | `GET /api/v1/ops/consistency/order/{order_id}` | 返回业务状态、proof/anchor 状态、外部事实状态，以及最近 `ops.outbox_event / ops.dead_letter_event / audit.audit_event`；查询动作写入 `audit.access_audit(target_type='consistency_query')` 与 `ops.system_log` | API 响应、`trade.order_main`、`chain.chain_anchor`、`ops.chain_projection_gap`、`ops.external_fact_receipt`、`ops.outbox_event`、`ops.dead_letter_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-019` | 一致性修复 dry-run | `POST /api/v1/ops/consistency/reconcile` + verified `x-step-up-challenge-id` + `{"ref_type":"order","ref_id":"...","mode":"full","dry_run":true,"reason":"..."}` | 不新增 `reconcile_job` 表、不改写 `ops.chain_projection_gap`，只返回修复建议并写入 `audit.audit_event(action_name='ops.consistency.reconcile.dry_run')`、`audit.access_audit(access_mode='reconcile', target_type='consistency_reconcile')`、`ops.system_log`；同时不得写出 `dtp.consistency.reconcile` 新 outbox 事件 | API 响应、`ops.chain_projection_gap` 仍为原状态、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event(request_id=...)` |
+| `AUD-CASE-020` | Fabric adapter request consume + receipt write-back | 启动 `./scripts/fabric-adapter-run.sh`，使用 `kcat` 向 `dtp.audit.anchor` 写入 `audit.anchor_requested`、向 `dtp.fabric.requests` 写入 `fabric.proof_submit_requested` | `services/fabric-adapter` 真实消费两条正式 topic，使用 Go mock provider 生成回执，并把提交结果写入 `ops.external_fact_receipt`、`audit.audit_event(action_name='fabric.adapter.submit')`、`ops.system_log(message_text='fabric adapter accepted submit event')`；若 payload 提供 `chain_anchor_id`，则 `chain.chain_anchor.status=submitted` 且 `reconcile_status=pending_check` | Kafka topic 内容、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log`、`chain.chain_anchor`、`cg-fabric-adapter` consumer group |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
+- `AUD-013` 只完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`fabric-test-network / Gateway / chaincode / event-listener / CA admin` 留待 `AUD-014~AUD-017`。
 
 ## `AUD-011` 手工一致性联查验证
 
@@ -191,6 +194,109 @@ WHERE request_id = 'req-aud012-manual'
 - `ops.chain_projection_gap` 仍保持原 `gap_status / resolution_summary`
 - 当前请求不会写出新的 `dtp.consistency.reconcile` outbox 事件
 - `audit.audit_event + audit.access_audit + ops.system_log` 三层留痕齐备
+
+## `AUD-013` 手工 fabric-adapter 验证
+
+1. 启动适配器：
+
+```bash
+set -a
+source infra/docker/.env.local
+set +a
+
+./scripts/fabric-adapter-run.sh
+```
+
+2. 准备最小 `chain_anchor + anchor_batch` 测试对象：
+
+```sql
+INSERT INTO chain.chain_anchor (chain_anchor_id, chain_id, anchor_type, ref_type, ref_id, digest, status)
+VALUES
+  ('11111111-1111-4111-8111-111111111111'::uuid, 'fabric-local', 'audit_anchor_batch', 'anchor_batch', '22222222-2222-4222-8222-222222222222'::uuid, 'aud013-root-1', 'pending'),
+  ('33333333-3333-4333-8333-333333333333'::uuid, 'fabric-local', 'order_summary', 'chain_anchor', NULL, 'aud013-proof-root', 'pending')
+ON CONFLICT (chain_anchor_id) DO NOTHING;
+
+INSERT INTO audit.anchor_batch (
+  anchor_batch_id, batch_scope, chain_id, record_count, batch_root, status, chain_anchor_id, metadata
+) VALUES (
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'audit_event',
+  'fabric-local',
+  1,
+  'aud013-root-1',
+  'retry_requested',
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '{}'::jsonb
+)
+ON CONFLICT (anchor_batch_id) DO NOTHING;
+```
+
+3. 用 `kcat` 注入单条 canonical 事件：
+
+```bash
+cat <<'JSON' | docker run --rm -i --network container:datab-kafka edenhill/kcat:1.7.1 -P -b localhost:9092 -t dtp.audit.anchor
+{"event_id":"aud013-anchor-evt-kcat","event_type":"audit.anchor_requested","event_version":1,"occurred_at":"2026-04-22T04:45:00Z","producer_service":"platform-core.audit","aggregate_type":"audit.anchor_batch","aggregate_id":"22222222-2222-4222-8222-222222222222","request_id":"req-aud013-anchor-kcat","trace_id":"trace-aud013-anchor-kcat","idempotency_key":"idemp-aud013-anchor-kcat","event_schema_version":"v1","authority_scope":"audit_authority","source_of_truth":"postgresql","proof_commit_policy":"async_anchor","payload":{"anchor_batch_id":"22222222-2222-4222-8222-222222222222","batch_scope":"audit_event","chain_id":"fabric-local","record_count":1,"batch_root":"aud013-root-1","anchor_status":"retry_requested"},"anchor_batch_id":"22222222-2222-4222-8222-222222222222","batch_scope":"audit_event","chain_id":"fabric-local","record_count":1,"batch_root":"aud013-root-1","anchor_status":"retry_requested","chain_anchor_id":"11111111-1111-4111-8111-111111111111"}
+JSON
+
+cat <<'JSON' | docker run --rm -i --network container:datab-kafka edenhill/kcat:1.7.1 -P -b localhost:9092 -t dtp.fabric.requests
+{"event_id":"aud013-proof-evt-kcat","event_type":"fabric.proof_submit_requested","event_version":1,"occurred_at":"2026-04-22T04:45:01Z","producer_service":"platform-core.integration","aggregate_type":"chain.chain_anchor","aggregate_id":"33333333-3333-4333-8333-333333333333","request_id":"req-aud013-proof-kcat","trace_id":"trace-aud013-proof-kcat","idempotency_key":"idemp-aud013-proof-kcat","event_schema_version":"v1","authority_scope":"dual_authority","source_of_truth":"postgresql","proof_commit_policy":"async_anchor","payload":{"chain_anchor_id":"33333333-3333-4333-8333-333333333333","chain_id":"fabric-local","summary_type":"order_summary","summary_digest":"aud013-proof-root"},"chain_anchor_id":"33333333-3333-4333-8333-333333333333","chain_id":"fabric-local","summary_type":"order_summary","summary_digest":"aud013-proof-root"}
+JSON
+```
+
+4. 回查结果：
+
+```sql
+SELECT request_id, provider_type, provider_key, provider_reference, receipt_status,
+       receipt_payload ->> 'mode' AS mode,
+       receipt_payload ->> 'chain_id' AS chain_id,
+       metadata ->> 'topic' AS topic
+FROM ops.external_fact_receipt
+WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
+ORDER BY request_id;
+
+SELECT action_name, result_code, request_id, tx_hash
+FROM audit.audit_event
+WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
+ORDER BY event_time;
+
+SELECT message_text, request_id
+FROM ops.system_log
+WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
+  AND message_text = 'fabric adapter accepted submit event'
+ORDER BY created_at;
+
+SELECT chain_anchor_id::text, status, tx_hash, reconcile_status
+FROM chain.chain_anchor
+WHERE chain_anchor_id IN (
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid
+)
+ORDER BY chain_anchor_id;
+
+SELECT request_id, count(*)
+FROM ops.external_fact_receipt
+WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
+GROUP BY request_id
+ORDER BY request_id;
+```
+
+5. 清理：
+
+```sql
+DELETE FROM ops.external_fact_receipt
+WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat');
+
+DELETE FROM audit.anchor_batch
+WHERE anchor_batch_id = '22222222-2222-4222-8222-222222222222'::uuid;
+
+DELETE FROM chain.chain_anchor
+WHERE chain_anchor_id IN (
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '33333333-3333-4333-8333-333333333333'::uuid
+);
+```
+
+`audit.audit_event` 与 `ops.system_log` 保留作为 append-only 留痕。
 
 ## `AUD-005` 手工回放验证
 

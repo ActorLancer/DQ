@@ -781,3 +781,76 @@
   - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
   - 手工联调产生的 `ops.outbox_event / ops.dead_letter_event / ops.external_fact_receipt / ops.chain_projection_gap / chain.chain_anchor / trade.order_main / catalog.*` 业务测试数据已清理。
   - 尝试继续删除手工联调使用的 `core.organization / core.user_account / iam.step_up_challenge` 时，数据库因 `audit.access_audit` append-only trigger 拒绝 `ON DELETE SET NULL` 更新；该最小主体样本因此保留，以免通过强删破坏正式审计引用关系。
+### BATCH-226（计划中）
+- 任务：`AUD-013` 初始化 `services/fabric-adapter/`（Go）
+- 状态：计划中
+- 说明：在 `AUD-012` 已完成只读/干预型 consistency 控制面后，当前批次正式进入 Go/Fabric 链路实现。按 `CSV > Markdown > technical_reference > 其他文档` 重新核对后，本批边界收束为 `fabric-adapter` 的正式基础框架：建立 Go module、Kafka consumer、canonical envelope 解析、`dtp.audit.anchor / dtp.fabric.requests` 单入口、链提交 Provider seam、以及“提交回执基础层”对 `ops.external_fact_receipt + audit.audit_event + ops.system_log` 的正式回写。`AUD-014` 再细化四类摘要消息处理，`AUD-015/016` 再补 listener / CA admin，`AUD-017` 再切 `mock / fabric-test-network` provider。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-013`，完成后再进入 `AUD-014`。
+### BATCH-226（待审批）
+- 任务：`AUD-013` 初始化 `services/fabric-adapter/`（Go）
+- 状态：待审批
+- 实现摘要：
+  - 新增 `services/fabric-adapter/` Go module、`cmd/fabric-adapter` 入口、配置加载、Kafka consumer、canonical envelope 解析、mock provider、PostgreSQL 回执写回层。
+  - `fabric-adapter` 正式消费入口固定为 `dtp.audit.anchor / dtp.fabric.requests`，consumer group 固定为 `cg-fabric-adapter`；不消费 `dtp.outbox.domain-events`。
+  - 当前 provider 以 Go `MockProvider` 返回 deterministic `tx_hash` 与 receipt payload，正式 `fabric-test-network / Gateway / chaincode` provider 留待 `AUD-014~AUD-017`。
+  - 每条消费成功后写入：
+    - `ops.external_fact_receipt`
+    - `audit.audit_event(action_name='fabric.adapter.submit')`
+    - `ops.system_log(message_text='fabric adapter accepted submit event')`
+    - 若消息携带 `chain_anchor_id`，则更新 `chain.chain_anchor.tx_hash / status / reconcile_status`
+  - 新增 Go 工具链脚本：
+    - `scripts/go-env.sh`
+    - `scripts/fabric-adapter-bootstrap.sh`
+    - `scripts/fabric-adapter-test.sh`
+    - `scripts/fabric-adapter-run.sh`
+    - `Makefile` 对应 target
+  - 工具链缓存统一收敛到 `third_party/external-deps/go`，并修复了 `go-env.sh` 的仓库根目录解析，避免误把缓存写到 `services/**`。
+  - 文档同步：
+    - 新增 `docs/04-runbooks/fabric-adapter.md`
+    - 更新 `docs/04-runbooks/README.md`
+    - 更新 `docs/04-runbooks/fabric-local.md`
+    - 更新 `docs/04-runbooks/fabric-debug.md`
+    - 更新 `docs/05-test-cases/audit-consistency-cases.md`
+    - 更新 `docs/05-test-cases/README.md`
+- 验证步骤：
+  1. `find services/fabric-adapter -name '*.go' -print0 | xargs -0 gofmt -w`
+  2. `bash ./scripts/fabric-adapter-test.sh`
+  3. `bash -lc 'source /home/luna/Documents/DataB/scripts/go-env.sh && cd /home/luna/Documents/DataB/services/fabric-adapter && go build ./...'`
+  4. `docker exec datab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic dtp.audit.anchor`
+  5. `docker exec datab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic dtp.fabric.requests`
+  6. 真实运行态联调：`./scripts/fabric-adapter-run.sh` + `kcat` 向 `dtp.audit.anchor / dtp.fabric.requests` 注入 canonical JSON + `psql` 回查
+  7. `docker exec datab-kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group cg-fabric-adapter --describe`
+- 验证结果：
+  - Go 侧 `gofmt`、`go test ./...`、`go build ./...` 全部通过。
+  - `dtp.audit.anchor`、`dtp.fabric.requests` 两个正式 topic 运行态存在，`cg-fabric-adapter` 在真实进程启动后成功创建并消费。
+  - 真实运行态联调通过：
+    - `./scripts/fabric-adapter-run.sh` 启动后，Go 进程打印 `fabric-adapter starting`
+    - 使用 `kcat` 容器向 `dtp.audit.anchor` 注入 `audit.anchor_requested` 后，`ops.external_fact_receipt(request_id='req-aud013-anchor-kcat') = 1`
+    - 使用 `kcat` 容器向 `dtp.fabric.requests` 注入 `fabric.proof_submit_requested` 后，`ops.external_fact_receipt(request_id='req-aud013-proof-kcat') = 1`
+    - `audit.audit_event(request_id in (...), action_name='fabric.adapter.submit') = 2`
+    - `ops.system_log(request_id in (...), message_text='fabric adapter accepted submit event') = 2`
+    - `chain.chain_anchor` 对应测试行被更新为 `status='submitted'`、`reconcile_status='pending_check'`，`tx_hash` 来自 Go mock provider
+    - `ops.external_fact_receipt.receipt_payload.mode = 'mock'`，`metadata.topic` 分别为 `dtp.audit.anchor / dtp.fabric.requests`
+  - 清理结果：
+    - `ops.external_fact_receipt`、`audit.anchor_batch`、`chain.chain_anchor` 测试业务数据已清理
+    - `audit.audit_event` 与 `ops.system_log` append-only 留痕保留
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-013`
+  - `技术选型正式版.md`：Go 负责 Fabric 相关服务
+  - `链上链下技术架构与能力边界稿.md`：Fabric adapter / listener / CA admin 分层边界
+  - `async-chain-write.md`：`dtp.audit.anchor / dtp.fabric.requests -> fabric-adapter -> fabric-event-listener`
+  - `kafka-topics.md`、`074_event_topology_route_extensions.sql`：正式 topic / consumer group / route authority
+- 覆盖的任务清单条目：`AUD-013`
+- 未覆盖项：
+  - 四类摘要消息的正式 handler 细化，留待 `AUD-014`
+  - `fabric-event-listener`、`dtp.fabric.callbacks`、回执回调消费链路，留待 `AUD-015`
+  - `fabric-ca-admin` 与 CA 管理边界，留待 `AUD-016`
+  - `mock / fabric-test-network` provider 切换、真实 Gateway / chaincode / test-network 联调，留待 `AUD-017`
+  - `ops.consumer_idempotency_record + Redis` 的 Fabric consumer 幂等闭环，留待 `AUD-026`
+- 新增 TODO / 预留项：
+  - 新增 `TODO(V1-gap, AUD-013)`：`services/fabric-adapter/internal/service/processor.go`
+  - 已同步登记 `TODO-AUD-FABRIC-001` 到 `docs/开发任务/V1-Core-TODO与预留清单.md`
+  - 同步更新 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 为包含 `AUD-013` 的最新状态
+- 备注：
+  - 手工排障时观察到 `kafka-console-producer.sh` 注入同一 JSON 可能造成重复消息噪音；正式 smoke 已改用 `kcat` 容器，并据此完成单条请求 ID 的唯一性回查。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。

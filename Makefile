@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up-local down-local up-core up-observability up-mocks up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel
+.PHONY: up-local down-local up-core up-observability up-mocks up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel fabric-adapter-bootstrap fabric-adapter-test fabric-adapter-run
 COMPOSE_FILE ?= infra/docker/docker-compose.local.yml
 COMPOSE_ENV_FILE ?= infra/docker/.env.local
 
@@ -66,3 +66,12 @@ fabric-reset:
 
 fabric-channel:
 	./infra/fabric/fabric-channel.sh
+
+fabric-adapter-bootstrap:
+	./scripts/fabric-adapter-bootstrap.sh
+
+fabric-adapter-test:
+	./scripts/fabric-adapter-test.sh
+
+fabric-adapter-run:
+	./scripts/fabric-adapter-run.sh

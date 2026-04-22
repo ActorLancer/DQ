@@ -25,7 +25,8 @@
 
 ## 当前批次边界
 
-- 本批次只冻结 Fabric 请求/回执的事件拓扑、命名和本地排障入口，不代表 `fabric-adapter` / `fabric-event-listener` / `platform-core.consistency` 已完成正式实现。
+- `AUD-013` 已补齐 `fabric-adapter` 的 Go module、Kafka consumer、canonical envelope 解析、mock provider 与 PostgreSQL 回执回写；真实 `fabric-test-network / Gateway / chaincode / event-listener / CA admin` 仍留待 `AUD-014~AUD-017`。
+- 当前 `fabric-adapter` 的实操入口以 `docs/04-runbooks/fabric-adapter.md` 为准。
 - 当前文档结论只能回答“链请求与回执应该怎么走”，不能替代后续代码实现所需的 OpenAPI、回调 DTO、重处理样例与集成测试。
 - 进入 `AUD / integration / consistency` 代码实现批次后，Agent 必须同步补齐：
   - `packages/openapi/audit.yaml`
