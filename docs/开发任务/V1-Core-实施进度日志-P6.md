@@ -328,6 +328,73 @@
   - 无。`SEARCHREC-008` 要求的推荐位、候选来源、排序 profile、曝光/点击事件基础模型与正式契约已落地，并通过 PostgreSQL / OpenSearch / route policy / behavior aggregate 的真实验证闭环收口。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+### BATCH-256（计划中）
+- 任务：`SEARCHREC-010` 实现推荐曝光/点击记录接口 `POST /api/v1/recommendations/track/exposure`、`/click`
+- 状态：计划中
+- 说明：按 `SEARCHREC-010` 冻结口径复核后，推荐行为写链的 PostgreSQL 主存、`recommend.behavior_recorded -> dtp.recommend.behavior` canonical outbox 和 worker 基础消费已存在，但前台接口仍停留在 `x-role` 占位鉴权，且缺少与正式契约一致的 Bearer 权限链、请求校验、行为审计/系统日志留痕和手工 API 证据。本批仅收口曝光/点击写接口，不提前合并 `SEARCHREC-011`、`SEARCHREC-012` 的推荐运营配置与重建接口整改。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，当前只处理推荐曝光/点击行为写接口的正式鉴权、幂等、审计与 `dtp.recommend.behavior` 契约对齐；后续任务再分别收口推荐运营配置、排序配置和重建运维链。
+### BATCH-256（待审批）
+- 任务：`SEARCHREC-010` 实现推荐曝光/点击记录接口 `POST /api/v1/recommendations/track/exposure`、`/click`
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-010`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-009` 已形成推荐基础模型、结果读取接口、`recommend.behavior_recorded -> dtp.recommend.behavior` canonical route policy 与 OpenSearch/Redis/Kafka 运行时基线，本批在此基础上把曝光/点击行为写接口收口为正式 Bearer 鉴权、幂等、审计和 outbox 发布证据闭环。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`：定位 `SEARCHREC-010` 描述、DoD、依赖、`technical_reference` 与最小验收标准。
+  - `docs/开发任务/v1-core-开发任务清单.md`：复核 `SEARCHREC-010` 文字版边界，确认本批只处理曝光/点击接口，不提前合并 011/012。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`：确认推荐行为写链、推荐位与行为事件口径，点击侧允许出现 `seller_recommendation_clicked` 扩展事件。
+  - `docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：核对 `POST /api/v1/recommendations/track/exposure`、`/click` 的 DTO 字段边界。
+  - `docs/开发任务/问题修复任务/A09-推荐主链路与行为流契约缺口.md`：确认推荐行为流正式 topic 唯一为 `dtp.recommend.behavior`，不得回退到按表名自动派生 topic。
+  - `docs/开发任务/问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`：确认本批只需把行为写接口与 canonical outbox 契约收口，consumer 幂等 / DLQ 可靠性由后续任务承接。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`：确认 PostgreSQL 为行为与审计真值源、Kafka 为行为总线、OpenSearch/Redis 为辅助读模型，且 `portal.recommendation.read` 是前台行为接口正式权限点。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/04-runbooks/kafka-topics.md`、`infra/kafka/topics.v1.json`：确认推荐行为链使用 canonical outbox + `outbox-publisher`，目标 topic 固定为 `dtp.recommend.behavior`。
+  - `docs/数据库设计/V1/upgrade/058_recommendation_module.sql`、`073_recommendation_runtime_alignment.sql`：核对 `recommend.behavior_event`、`recommendation_request/result/item`、`ops.event_route_policy` 表结构与 route policy。
+  - `apps/platform-core/src/modules/recommendation/**`、`workers/outbox-publisher/**`、`workers/recommendation-aggregator/**`：复核当前接口、仓储、worker 和已有 smoke，实现时只重构入口层与验证，不推翻已正确的 PG/outbox 基线。
+- 完成情况：
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`：`POST /api/v1/recommendations/track/exposure`、`/click` 改为正式 `Authorization: Bearer <access_token>` 解析，不再依赖 `x-role` 占位；新增请求字段校验、非空 `X-Idempotency-Key` 校验、`RECOMMENDATION_BEHAVIOR_INVALID / RECOMMENDATION_BEHAVIOR_REFERENCE_MISSING / RECOMMENDATION_BEHAVIOR_BACKEND_UNAVAILABLE` 错误码分层，并在成功或幂等重放后统一写 `audit.audit_event(action_name='recommendation.exposure.track' / 'recommendation.click.track') + audit.access_audit(target_type='recommendation_behavior') + ops.system_log`。
+  - `apps/platform-core/src/modules/recommendation/tests/mod.rs`：新增路由级失败用例，覆盖缺失 Bearer、缺失 `portal.recommendation.read`、缺失 `X-Idempotency-Key` 和 exposure payload 非法四条失败路径，确保行为接口不再能通过旧的 `x-role` 旁路放行。
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：`recommendation_api_full_runtime_db_smoke` 改为使用正式 Bearer 请求 GET/exposure/click，真实断言 exposure accepted=3、duplicate deduplicated>0、click accepted=1，并回查 `recommend.behavior_event`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` 与 `ops.outbox_event(target_topic='dtp.recommend.behavior')`；同时新增 `count_audit_events` 辅助断言，避免继续只看 HTTP 200。
+  - `packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`：把 exposure/click 契约更新为正式 Bearer 鉴权接口，显式声明 `X-Idempotency-Key` header、`400/401/403/404/502` 错误响应和行为写侧审计语义，消除与代码实现的漂移。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：补齐推荐行为写接口的正式核对点，明确 Bearer、非空 `X-Idempotency-Key`、`recommendation_behavior` 审计痕迹以及 outbox 发布/重复请求幂等回查要求。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core recommendation_behavior -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 手工服务级验证：
+    - 以 `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab`、`KAFKA_BROKERS=127.0.0.1:9094`、`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 启动 `cargo run -p platform-core`
+    - 以相同数据库与 Kafka 地址启动 `APP_PORT=8098 cargo run -p outbox-publisher`
+    - 使用真实 `Authorization: Bearer <JWT>` 顺序执行：
+      - `GET /api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id=<org_id>&limit=3`
+      - `POST /api/v1/recommendations/track/exposure`
+      - 同一 `X-Idempotency-Key` 再次 `POST /track/exposure` 验证幂等
+      - `POST /api/v1/recommendations/track/click`
+    - `psql` 回查 `recommend.behavior_event`、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event.published_at`
+- 验证结果：
+  - 路由测试通过：缺失 Bearer、无 `portal.recommendation.read`、缺失 `X-Idempotency-Key` 和非法 exposure payload 都会被真实拦截，不再允许行为接口通过 `x-role` 绕过正式权限链。
+  - `recommendation_api_full_runtime_db_smoke` 通过：真实验证 `GET /api/v1/recommendations` 仍可返回结果，`POST /track/exposure` accepted_count=3、duplicate deduplicated_count>0、`POST /track/click` accepted_count=1；并回查 `audit.audit_event(action_name='recommendation.exposure.track' / 'recommendation.click.track')`、`audit.access_audit(target_type='recommendation_behavior')`、`ops.system_log(message_text='recommendation behavior tracked: POST ...')` 与 `ops.outbox_event(target_topic='dtp.recommend.behavior')`。
+  - `cargo test -p platform-core` 全量通过（`338 passed`，`1 ignored`）；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，离线 query cache 已刷新。
+  - 手工联调通过：真实调用返回 `recommendation_request_id=4a0b46fa-f334-4023-911b-1497da2ecafa`、`recommendation_result_id=efefd525-6bc2-43e1-8aa6-a2e78d234c47`；exposure accepted=3、duplicate exposure deduplicated=3、click accepted=1。`psql` 回查确认：
+    - `recommend.behavior_event` 写入 `recommendation_panel_viewed / recommendation_item_exposed / recommendation_item_clicked`
+    - `audit.audit_event` 写入 `recommendation.exposure.track(result_code=accepted|deduplicated)` 与 `recommendation.click.track(result_code=accepted)`
+    - `audit.access_audit(target_type='recommendation_behavior', access_mode='accepted|deduplicated')`
+    - `ops.system_log(message_text='recommendation behavior tracked: POST /api/v1/recommendations/track/exposure|click')`
+    - `ops.outbox_event` 对应 4 条 `recommend.behavior_recorded` 均为 `target_topic='dtp.recommend.behavior'` 且 `published_at IS NOT NULL`
+    - `outbox-publisher` 进程日志同时打印了这些 `dtp.recommend.behavior` 发布记录，证明本批不是只停在写库。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-010`
+  - `商品推荐与个性化发现设计.md`：推荐行为回流、推荐位上下文与行为事件口径
+  - `商品推荐与个性化发现接口协议正式版.md`：exposure/click DTO 与前台接口边界
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐行为流 topic 唯一收口到 `dtp.recommend.behavior`
+  - `A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`：本批只收口写接口与 outbox 契约，不越权改后续 consumer 可靠性任务
+  - `recommendation-runtime.md`、`search-rec-cases.md`：推荐行为接口的权限、审计与回查要求
+- 覆盖的任务清单条目：`SEARCHREC-010`
+- 未覆盖项：
+  - 无。`SEARCHREC-010` 要求的 exposure/click 正式接口、Bearer 权限链、非空 `X-Idempotency-Key` 幂等、行为审计和 `recommend.behavior_recorded -> dtp.recommend.behavior` 契约已同时覆盖代码、测试、OpenAPI、runbook 与服务级证据。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 ### BATCH-255（计划中）
 - 任务：`SEARCHREC-009` 实现推荐结果接口 `GET /api/v1/recommendations`
 - 状态：计划中

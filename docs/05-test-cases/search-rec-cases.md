@@ -56,8 +56,8 @@
 - `GET /api/v1/recommendations` 必须要求 `Authorization: Bearer <access_token>`，走 `OpenSearch recall + PostgreSQL final check + recommendation_result` 落库闭环，并写 `audit.access_audit(target_type='recommendation_result') + ops.system_log`。
 - 推荐返回前必须过滤掉 PostgreSQL 最终不可见对象，不能直接信任 OpenSearch 命中。
 - 推荐缓存必须写入 `datab:v1:recommend:*`，曝光后应能看到 `datab:v1:recommend:seen:*` 已看集合。
-- `POST /api/v1/recommendations/track/exposure` 必须写 `recommendation_panel_viewed` 与 `recommendation_item_exposed`，并支持 `X-Idempotency-Key` 幂等。
-- `POST /api/v1/recommendations/track/click` 必须写点击事件，并把 canonical outbox topic 固定到 `dtp.recommend.behavior`。
+- `POST /api/v1/recommendations/track/exposure` 必须要求 `Authorization: Bearer <access_token>`、非空 `X-Idempotency-Key`，写 `recommendation_panel_viewed` 与 `recommendation_item_exposed`，并在 `audit.audit_event + audit.access_audit(target_type='recommendation_behavior') + ops.system_log` 中留下痕迹。
+- `POST /api/v1/recommendations/track/click` 必须要求 `Authorization: Bearer <access_token>`、非空 `X-Idempotency-Key`，写点击事件，并把 canonical outbox topic 固定到 `dtp.recommend.behavior`；重复请求必须表现为幂等去重而不是再次写事件。
 - `recommendation-aggregator` 消费 `dtp.recommend.behavior` 后，必须更新 `search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation`。
 - 推荐行为导致热度变化后，必须刷新搜索投影并补写 `search.index_sync_task(sync_status='queued')`。
 - `GET /api/v1/ops/recommendation/placements` 与 `PATCH /api/v1/ops/recommendation/placements/{placement_code}` 必须与 `recommend.placement_definition` 一致。

@@ -92,13 +92,12 @@ mod route_tests {
     }
 
     #[tokio::test]
-    async fn recommendation_write_requires_idempotency_key() {
+    async fn rejects_recommendation_behavior_without_bearer() {
         let app = crate::with_stub_test_state(router());
         let request = Request::builder()
             .method("POST")
             .uri("/api/v1/recommendations/track/click")
             .header("content-type", "application/json")
-            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "recommendation_request_id":"00000000-0000-0000-0000-000000000000",
@@ -106,6 +105,94 @@ mod route_tests {
                   "recommendation_result_item_id":"00000000-0000-0000-0000-000000000000",
                   "entity_scope":"product",
                   "entity_id":"00000000-0000-0000-0000-000000000000"
+                }"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn rejects_recommendation_behavior_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/recommendations/track/click")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["developer"],
+                ),
+            )
+            .header("x-idempotency-key", "recommend-click-test")
+            .body(Body::from(
+                r#"{
+                  "recommendation_request_id":"00000000-0000-0000-0000-000000000000",
+                  "recommendation_result_id":"00000000-0000-0000-0000-000000000000",
+                  "recommendation_result_item_id":"00000000-0000-0000-0000-000000000000",
+                  "entity_scope":"product",
+                  "entity_id":"00000000-0000-0000-0000-000000000000"
+                }"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn recommendation_behavior_requires_idempotency_key() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/recommendations/track/click")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["buyer_operator"],
+                ),
+            )
+            .body(Body::from(
+                r#"{
+                  "recommendation_request_id":"00000000-0000-0000-0000-000000000000",
+                  "recommendation_result_id":"00000000-0000-0000-0000-000000000000",
+                  "recommendation_result_item_id":"00000000-0000-0000-0000-000000000000",
+                  "entity_scope":"product",
+                  "entity_id":"00000000-0000-0000-0000-000000000000"
+                }"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_recommendation_behavior_with_invalid_payload() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/recommendations/track/exposure")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["buyer_operator"],
+                ),
+            )
+            .header("x-idempotency-key", "recommend-exposure-test")
+            .body(Body::from(
+                r#"{
+                  "recommendation_request_id":"00000000-0000-0000-0000-000000000000",
+                  "recommendation_result_id":"00000000-0000-0000-0000-000000000000",
+                  "placement_code":"home_featured",
+                  "items":[]
                 }"#,
             ))
             .expect("request");

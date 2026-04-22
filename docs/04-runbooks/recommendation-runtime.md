@@ -31,6 +31,11 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
 4. PostgreSQL 最终业务校验
 5. 写 `recommendation_request / recommendation_result / recommendation_result_item`
 6. `POST /track/exposure` / `/track/click`
+   - Bearer 鉴权 + `portal.recommendation.read`
+   - 非空 `X-Idempotency-Key`
+   - `audit.audit_event(action_name='recommendation.exposure.track' / 'recommendation.click.track')`
+   - `audit.access_audit(target_type='recommendation_behavior')`
+   - `ops.system_log(message_text='recommendation behavior tracked: POST ...')`
 7. 写 `recommend.behavior_event`
 8. canonical outbox 生成 `recommend.behavior_recorded`
 9. topic 固定为 `dtp.recommend.behavior`
@@ -105,6 +110,7 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - `ops.event_route_policy` 中 `recommend.behavior_event / recommend.behavior_recorded` 必须存在。
 - `recommend.placement_definition.default_ranking_profile_key` 必须能在 `recommend.ranking_profile.profile_key` 中解析到有效配置。
 - `GET /api/v1/recommendations` 后必须能在 `audit.access_audit` 中回查 `target_type='recommendation_result'`，并在 `ops.system_log` 中回查 `recommendation lookup executed: GET /api/v1/recommendations`。
+- `POST /api/v1/recommendations/track/exposure`、`POST /api/v1/recommendations/track/click` 后必须能在 `audit.audit_event` 中回查 `recommendation.exposure.track / recommendation.click.track`，在 `audit.access_audit` 中回查 `target_type='recommendation_behavior'`，并在 `ops.system_log` 中回查 `recommendation behavior tracked: POST ...`。
 - `recommend.behavior_event` 写入 `recommendation_item_exposed / recommendation_item_clicked` 后，`recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity` 必须同步更新。
 - `search.index_sync_task` 会因推荐行为热度更新而出现新的 `queued` 任务。
 - Redis 推荐缓存前缀：`datab:v1:recommend:*`

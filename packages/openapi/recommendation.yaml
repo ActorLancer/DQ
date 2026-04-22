@@ -3,9 +3,12 @@ info:
   title: Recommendation API
   version: v1
   description: >
-    `SEARCHREC-009` 已落地推荐读取主链路的正式契约。`GET /api/v1/recommendations`
-    必须要求 `Authorization: Bearer <access_token>`，执行 `OpenSearch recall +
-    PostgreSQL final validation`，并写入 `audit.access_audit` 与 `ops.system_log`。
+    `SEARCHREC-009` 与 `SEARCHREC-010` 已把推荐读取与行为写接口收口到正式契约。
+    `GET /api/v1/recommendations`、`POST /api/v1/recommendations/track/exposure`、
+    `POST /api/v1/recommendations/track/click` 都必须要求
+    `Authorization: Bearer <access_token>`；行为写接口还必须携带非空
+    `X-Idempotency-Key`，并写 `audit.audit_event`、`audit.access_audit` 与
+    `ops.system_log`。
 servers:
   - url: http://127.0.0.1:8080
 components:
@@ -461,6 +464,16 @@ paths:
   /api/v1/recommendations/track/exposure:
     post:
       summary: record recommendation panel and item exposure with idempotency
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: required idempotency key for exposure tracking
       requestBody:
         required: true
         content:
@@ -480,9 +493,49 @@ paths:
                     type: boolean
                   data:
                     $ref: "#/components/schemas/BehaviorTrackResponse"
+        "400":
+          description: invalid exposure payload or empty idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: caller lacks `portal.recommendation.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: referenced recommendation request/result/result_item is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Redis or other recommendation write-side dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/recommendations/track/click:
     post:
       summary: record recommendation click with idempotency
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: required idempotency key for click tracking
       requestBody:
         required: true
         content:
@@ -502,6 +555,36 @@ paths:
                     type: boolean
                   data:
                     $ref: "#/components/schemas/BehaviorTrackResponse"
+        "400":
+          description: invalid click payload or empty idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: caller lacks `portal.recommendation.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: referenced recommendation request/result/result_item is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Redis or other recommendation write-side dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/recommendation/placements:
     get:
       summary: list recommendation placements

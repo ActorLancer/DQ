@@ -1,3 +1,4 @@
+use audit_kit::{AuditContext, AuditEvent};
 use auth::{JwtParser, KeycloakClaimsJwtParser, MockJwtParser, SessionSubject, extract_bearer};
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -24,6 +25,11 @@ use crate::modules::recommendation::service::{
 const RECOMMENDATION_QUERY_INVALID_ERROR: &str = "RECOMMENDATION_QUERY_INVALID";
 const RECOMMENDATION_BACKEND_UNAVAILABLE_ERROR: &str = "RECOMMENDATION_BACKEND_UNAVAILABLE";
 const RECOMMENDATION_RESULT_UNAVAILABLE_ERROR: &str = "RECOMMENDATION_RESULT_UNAVAILABLE";
+const RECOMMENDATION_BEHAVIOR_INVALID_ERROR: &str = "RECOMMENDATION_BEHAVIOR_INVALID";
+const RECOMMENDATION_BEHAVIOR_REFERENCE_MISSING_ERROR: &str =
+    "RECOMMENDATION_BEHAVIOR_REFERENCE_MISSING";
+const RECOMMENDATION_BEHAVIOR_BACKEND_UNAVAILABLE_ERROR: &str =
+    "RECOMMENDATION_BEHAVIOR_BACKEND_UNAVAILABLE";
 
 pub(in crate::modules::recommendation) async fn get_recommendations(
     State(state): State<AppState>,
@@ -89,27 +95,60 @@ pub(in crate::modules::recommendation) async fn post_track_exposure(
     headers: HeaderMap,
     Json(payload): Json<TrackExposureRequest>,
 ) -> Result<Json<ApiResponse<BehaviorTrackResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_placeholder_permission(
+    let request_id = request_id(&headers);
+    let subject = require_read_permission(
         &headers,
         RecommendationPermission::PortalRead,
         "recommendation exposure track",
+        &request_id,
     )?;
-    require_idempotency_key(&headers, "recommendation exposure track")?;
-    let header_trace_id = header(&headers, "x-trace-id");
-    let effective_trace_id = payload.trace_id.clone().or(header_trace_id);
-    let client = state_client(&state)?;
+    validate_track_exposure_request(&payload, &request_id)?;
+    let idempotency_key =
+        required_idempotency_key(&headers, "recommendation exposure track", &request_id)?;
+    let effective_trace_id = payload
+        .trace_id
+        .clone()
+        .unwrap_or_else(|| trace_id(&headers, Some(request_id.clone())));
+    let client = state_client_with_request_id(&state, &request_id)?;
+    let accessor_role_key =
+        first_matching_role(&subject.roles, RecommendationPermission::PortalRead)
+            .unwrap_or_else(|| "unknown".to_string());
     let response = repo::record_exposure(
         &client,
         &payload,
-        header(&headers, "x-request-id").as_deref(),
-        effective_trace_id.as_deref(),
-        header(&headers, "x-idempotency-key")
-            .as_deref()
-            .unwrap_or_default(),
-        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        Some(request_id.as_str()),
+        Some(effective_trace_id.as_str()),
+        idempotency_key.as_str(),
+        accessor_role_key.as_str(),
     )
     .await
-    .map_err(map_recommendation_error)?;
+    .map_err(|message| map_recommendation_behavior_error(&request_id, &message))?;
+
+    record_recommendation_behavior_side_effects(
+        &client,
+        &subject,
+        RecommendationPermission::PortalRead,
+        "recommendation.exposure.track",
+        behavior_result_code(&response),
+        "POST /api/v1/recommendations/track/exposure",
+        json!({
+            "placement_code": payload.placement_code,
+            "recommendation_request_id": payload.recommendation_request_id,
+            "recommendation_result_id": payload.recommendation_result_id,
+            "item_count": payload.items.len(),
+            "items": payload.items.iter().map(|item| json!({
+                "recommendation_result_item_id": item.recommendation_result_item_id,
+                "entity_scope": item.entity_scope,
+                "entity_id": item.entity_id,
+            })).collect::<Vec<_>>(),
+        }),
+        &response,
+        idempotency_key.as_str(),
+        &request_id,
+        &effective_trace_id,
+    )
+    .await?;
+
     Ok(ApiResponse::ok(response))
 }
 
@@ -118,27 +157,56 @@ pub(in crate::modules::recommendation) async fn post_track_click(
     headers: HeaderMap,
     Json(payload): Json<TrackClickRequest>,
 ) -> Result<Json<ApiResponse<BehaviorTrackResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    require_placeholder_permission(
+    let request_id = request_id(&headers);
+    let subject = require_read_permission(
         &headers,
         RecommendationPermission::PortalRead,
         "recommendation click track",
+        &request_id,
     )?;
-    require_idempotency_key(&headers, "recommendation click track")?;
-    let header_trace_id = header(&headers, "x-trace-id");
-    let effective_trace_id = payload.trace_id.clone().or(header_trace_id);
-    let client = state_client(&state)?;
+    validate_track_click_request(&payload, &request_id)?;
+    let idempotency_key =
+        required_idempotency_key(&headers, "recommendation click track", &request_id)?;
+    let effective_trace_id = payload
+        .trace_id
+        .clone()
+        .unwrap_or_else(|| trace_id(&headers, Some(request_id.clone())));
+    let client = state_client_with_request_id(&state, &request_id)?;
+    let accessor_role_key =
+        first_matching_role(&subject.roles, RecommendationPermission::PortalRead)
+            .unwrap_or_else(|| "unknown".to_string());
     let response = repo::record_click(
         &client,
         &payload,
-        header(&headers, "x-request-id").as_deref(),
-        effective_trace_id.as_deref(),
-        header(&headers, "x-idempotency-key")
-            .as_deref()
-            .unwrap_or_default(),
-        header(&headers, "x-role").as_deref().unwrap_or("unknown"),
+        Some(request_id.as_str()),
+        Some(effective_trace_id.as_str()),
+        idempotency_key.as_str(),
+        accessor_role_key.as_str(),
     )
     .await
-    .map_err(map_recommendation_error)?;
+    .map_err(|message| map_recommendation_behavior_error(&request_id, &message))?;
+
+    record_recommendation_behavior_side_effects(
+        &client,
+        &subject,
+        RecommendationPermission::PortalRead,
+        "recommendation.click.track",
+        behavior_result_code(&response),
+        "POST /api/v1/recommendations/track/click",
+        json!({
+            "recommendation_request_id": payload.recommendation_request_id,
+            "recommendation_result_id": payload.recommendation_result_id,
+            "recommendation_result_item_id": payload.recommendation_result_item_id,
+            "entity_scope": payload.entity_scope,
+            "entity_id": payload.entity_id,
+        }),
+        &response,
+        idempotency_key.as_str(),
+        &request_id,
+        &effective_trace_id,
+    )
+    .await?;
+
     Ok(ApiResponse::ok(response))
 }
 
@@ -451,6 +519,110 @@ fn validate_recommendation_query(
     Ok(())
 }
 
+fn validate_track_exposure_request(
+    payload: &TrackExposureRequest,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    validate_non_empty(
+        &payload.recommendation_request_id,
+        "recommendation_request_id",
+        request_id,
+    )?;
+    validate_uuid(
+        &payload.recommendation_request_id,
+        "recommendation_request_id",
+        request_id,
+    )?;
+    validate_non_empty(
+        &payload.recommendation_result_id,
+        "recommendation_result_id",
+        request_id,
+    )?;
+    validate_uuid(
+        &payload.recommendation_result_id,
+        "recommendation_result_id",
+        request_id,
+    )?;
+    validate_non_empty(&payload.placement_code, "placement_code", request_id)?;
+    if payload.items.is_empty() {
+        return Err(recommendation_behavior_bad_request(
+            request_id,
+            "items must contain at least one exposure candidate".to_string(),
+        ));
+    }
+    for (index, item) in payload.items.iter().enumerate() {
+        let item_field = format!("items[{index}]");
+        validate_entity_scope(
+            &item.entity_scope,
+            format!("{item_field}.entity_scope").as_str(),
+            request_id,
+        )?;
+        validate_non_empty(
+            &item.entity_id,
+            format!("{item_field}.entity_id").as_str(),
+            request_id,
+        )?;
+        validate_uuid(
+            &item.entity_id,
+            format!("{item_field}.entity_id").as_str(),
+            request_id,
+        )?;
+        if let Some(result_item_id) = item.recommendation_result_item_id.as_deref() {
+            validate_non_empty(
+                result_item_id,
+                format!("{item_field}.recommendation_result_item_id").as_str(),
+                request_id,
+            )?;
+            validate_uuid(
+                result_item_id,
+                format!("{item_field}.recommendation_result_item_id").as_str(),
+                request_id,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_track_click_request(
+    payload: &TrackClickRequest,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    validate_non_empty(
+        &payload.recommendation_request_id,
+        "recommendation_request_id",
+        request_id,
+    )?;
+    validate_uuid(
+        &payload.recommendation_request_id,
+        "recommendation_request_id",
+        request_id,
+    )?;
+    validate_non_empty(
+        &payload.recommendation_result_id,
+        "recommendation_result_id",
+        request_id,
+    )?;
+    validate_uuid(
+        &payload.recommendation_result_id,
+        "recommendation_result_id",
+        request_id,
+    )?;
+    validate_non_empty(
+        &payload.recommendation_result_item_id,
+        "recommendation_result_item_id",
+        request_id,
+    )?;
+    validate_uuid(
+        &payload.recommendation_result_item_id,
+        "recommendation_result_item_id",
+        request_id,
+    )?;
+    validate_entity_scope(&payload.entity_scope, "entity_scope", request_id)?;
+    validate_non_empty(&payload.entity_id, "entity_id", request_id)?;
+    validate_uuid(&payload.entity_id, "entity_id", request_id)?;
+    Ok(())
+}
+
 async fn record_recommendation_lookup_side_effects(
     client: &db::Client,
     subject: &SessionSubject,
@@ -512,6 +684,115 @@ async fn record_recommendation_lookup_side_effects(
     Ok(())
 }
 
+async fn record_recommendation_behavior_side_effects(
+    client: &db::Client,
+    subject: &SessionSubject,
+    permission: RecommendationPermission,
+    action_name: &str,
+    result_code: &str,
+    endpoint: &str,
+    details: Value,
+    response: &BehaviorTrackResponse,
+    idempotency_key: &str,
+    request_id: &str,
+    trace_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let accessor_role_key = first_matching_role(&subject.roles, permission);
+    let ref_id = response.behavior_event_ids.first().cloned();
+    let mut audit_event = AuditEvent::business(
+        "recommendation",
+        "recommendation_behavior",
+        ref_id.clone(),
+        action_name,
+        result_code,
+        AuditContext {
+            auth_assurance_level: Some("aal1".to_string()),
+            metadata: json!({
+                "endpoint": endpoint,
+                "permission_code": permission.permission_code(),
+                "tenant_id": subject.tenant_id,
+                "roles": subject.roles,
+                "idempotency_key": idempotency_key,
+                "details": details,
+                "behavior_event_ids": response.behavior_event_ids,
+                "accepted_count": response.accepted_count,
+                "deduplicated_count": response.deduplicated_count,
+                "outbox_enqueued_count": response.outbox_enqueued_count,
+            }),
+            ..AuditContext::minimal(
+                request_id.to_string(),
+                trace_id.to_string(),
+                subject.user_id.clone(),
+                subject.tenant_id.clone(),
+            )
+        },
+    );
+    audit_event.sensitivity_level = "normal".to_string();
+    audit_repo::insert_audit_event(client, &audit_event)
+        .await
+        .map_err(|err| map_db_error_with_request_id(err, request_id))?;
+
+    let access_audit_id = audit_repo::record_access_audit(
+        client,
+        &AccessAuditInsert {
+            accessor_user_id: Some(subject.user_id.clone()),
+            accessor_role_key: accessor_role_key.clone(),
+            access_mode: result_code.to_string(),
+            target_type: "recommendation_behavior".to_string(),
+            target_id: ref_id.clone(),
+            masked_view: false,
+            breakglass_reason: None,
+            step_up_challenge_id: None,
+            request_id: Some(request_id.to_string()),
+            trace_id: Some(trace_id.to_string()),
+            metadata: json!({
+                "endpoint": endpoint,
+                "permission_code": permission.permission_code(),
+                "tenant_id": subject.tenant_id,
+                "roles": subject.roles,
+                "idempotency_key": idempotency_key,
+                "details": details,
+                "behavior_event_ids": response.behavior_event_ids,
+                "accepted_count": response.accepted_count,
+                "deduplicated_count": response.deduplicated_count,
+                "outbox_enqueued_count": response.outbox_enqueued_count,
+            }),
+        },
+    )
+    .await
+    .map_err(|err| map_db_error_with_request_id(err, request_id))?;
+
+    audit_repo::record_system_log(
+        client,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.to_string()),
+            trace_id: Some(trace_id.to_string()),
+            message_text: format!("recommendation behavior tracked: {endpoint}"),
+            structured_payload: json!({
+                "module": "recommendation",
+                "endpoint": endpoint,
+                "permission_code": permission.permission_code(),
+                "access_audit_id": access_audit_id,
+                "role": accessor_role_key,
+                "action_name": action_name,
+                "result_code": result_code,
+                "idempotency_key": idempotency_key,
+                "details": details,
+                "behavior_event_ids": response.behavior_event_ids,
+                "accepted_count": response.accepted_count,
+                "deduplicated_count": response.deduplicated_count,
+                "outbox_enqueued_count": response.outbox_enqueued_count,
+            }),
+        },
+    )
+    .await
+    .map_err(|err| map_db_error_with_request_id(err, request_id))?;
+
+    Ok(())
+}
+
 fn require_idempotency_key(
     headers: &HeaderMap,
     action: &str,
@@ -527,6 +808,34 @@ fn require_idempotency_key(
             request_id: header(headers, "x-request-id"),
         }),
     ))
+}
+
+fn required_idempotency_key(
+    headers: &HeaderMap,
+    action: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let Some(idempotency_key) = header(headers, "x-idempotency-key") else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: RECOMMENDATION_BEHAVIOR_INVALID_ERROR.to_string(),
+                message: format!("x-idempotency-key is required for {action}"),
+                request_id: Some(request_id.to_string()),
+            }),
+        ));
+    };
+    if idempotency_key.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: RECOMMENDATION_BEHAVIOR_INVALID_ERROR.to_string(),
+                message: format!("x-idempotency-key cannot be empty for {action}"),
+                request_id: Some(request_id.to_string()),
+            }),
+        ));
+    }
+    Ok(idempotency_key)
 }
 
 fn require_step_up_placeholder(
@@ -598,6 +907,34 @@ fn validate_uuid(
     Ok(())
 }
 
+fn validate_non_empty(
+    raw: &str,
+    field_name: &str,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if raw.trim().is_empty() {
+        return Err(recommendation_behavior_bad_request(
+            request_id,
+            format!("{field_name} is required"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_entity_scope(
+    raw: &str,
+    field_name: &str,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "product" | "seller" => Ok(()),
+        other => Err(recommendation_behavior_bad_request(
+            request_id,
+            format!("{field_name} must be one of: product, seller; got `{other}`"),
+        )),
+    }
+}
+
 fn recommendation_bad_request(
     request_id: &str,
     message: String,
@@ -606,6 +943,20 @@ fn recommendation_bad_request(
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {
             code: RECOMMENDATION_QUERY_INVALID_ERROR.to_string(),
+            message,
+            request_id: Some(request_id.to_string()),
+        }),
+    )
+}
+
+fn recommendation_behavior_bad_request(
+    request_id: &str,
+    message: String,
+) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            code: RECOMMENDATION_BEHAVIOR_INVALID_ERROR.to_string(),
             message,
             request_id: Some(request_id.to_string()),
         }),
@@ -676,6 +1027,55 @@ fn map_recommendation_error(message: String) -> (StatusCode, Json<ErrorResponse>
             request_id: None,
         }),
     )
+}
+
+fn map_recommendation_behavior_error(
+    request_id: &str,
+    message: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    let lower = message.to_ascii_lowercase();
+    let (status, code) = if lower.contains("required")
+        || lower.contains("valid uuid")
+        || lower.contains("must be")
+        || lower.contains("does not match")
+    {
+        (
+            StatusCode::BAD_REQUEST,
+            RECOMMENDATION_BEHAVIOR_INVALID_ERROR,
+        )
+    } else if lower.contains("reference missing") {
+        (
+            StatusCode::NOT_FOUND,
+            RECOMMENDATION_BEHAVIOR_REFERENCE_MISSING_ERROR,
+        )
+    } else if lower.contains("opensearch") || lower.contains("redis") {
+        (
+            StatusCode::BAD_GATEWAY,
+            RECOMMENDATION_BEHAVIOR_BACKEND_UNAVAILABLE_ERROR,
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::OpsInternal.as_str(),
+        )
+    };
+
+    (
+        status,
+        Json(ErrorResponse {
+            code: code.to_string(),
+            message: message.to_string(),
+            request_id: Some(request_id.to_string()),
+        }),
+    )
+}
+
+fn behavior_result_code(response: &BehaviorTrackResponse) -> &'static str {
+    if response.deduplicated_count > 0 && response.accepted_count == 0 {
+        "deduplicated"
+    } else {
+        "accepted"
+    }
 }
 
 fn map_recommendation_read_error(

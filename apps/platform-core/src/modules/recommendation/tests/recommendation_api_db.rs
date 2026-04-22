@@ -428,6 +428,23 @@ async fn count_access_audit(
         .map(|row| row.get(0))
 }
 
+async fn count_audit_events(
+    client: &Client,
+    request_id: &str,
+    action_name: &str,
+) -> Result<i64, Error> {
+    client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = $2",
+            &[&request_id, &action_name],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
 async fn count_system_logs(client: &Client, request_id: &str, message: &str) -> Result<i64, Error> {
     client
         .query_one(
@@ -747,6 +764,14 @@ async fn recommendation_api_full_runtime_db_smoke() {
         .await
         .expect("seed opensearch docs");
     let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
+    let get_request_id = format!("recommend-get-{suffix}");
+    let get_trace_id = format!("recommend-get-trace-{suffix}");
+    let exposure_request_id = format!("recommend-exposure-{suffix}");
+    let exposure_trace_id = format!("recommend-exposure-trace-{suffix}");
+    let click_request_id = format!("recommend-click-{suffix}");
+    let click_trace_id = format!("recommend-click-trace-{suffix}");
+    let exposure_idempotency_key = format!("recommend-exposure-{suffix}");
+    let click_idempotency_key = format!("recommend-click-{suffix}");
 
     let app = crate::with_live_test_state(router()).await;
     let response = app
@@ -759,6 +784,8 @@ async fn recommendation_api_full_runtime_db_smoke() {
                     ids.org_id
                 ))
                 .header("authorization", &buyer_auth)
+                .header("x-request-id", &get_request_id)
+                .header("x-trace-id", &get_trace_id)
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -806,15 +833,23 @@ async fn recommendation_api_full_runtime_db_smoke() {
                 .method("POST")
                 .uri("/api/v1/recommendations/track/exposure")
                 .header("content-type", "application/json")
-                .header("x-role", "buyer_operator")
-                .header("x-idempotency-key", format!("recommend-exposure-{suffix}"))
-                .header("x-request-id", format!("recommend-req-{suffix}"))
+                .header("authorization", &buyer_auth)
+                .header("x-idempotency-key", &exposure_idempotency_key)
+                .header("x-request-id", &exposure_request_id)
+                .header("x-trace-id", &exposure_trace_id)
                 .body(Body::from(exposure_payload.to_string()))
                 .expect("exposure request"),
         )
         .await
         .expect("exposure response");
-    assert_eq!(response.status(), StatusCode::OK);
+    let exposure_status = response.status();
+    let exposure_json = response_json(response).await.expect("exposure json");
+    assert_eq!(exposure_status, StatusCode::OK, "{exposure_json}");
+    assert_eq!(exposure_json["data"]["accepted_count"].as_u64(), Some(3));
+    assert_eq!(
+        exposure_json["data"]["outbox_enqueued_count"].as_u64(),
+        Some(3)
+    );
 
     let duplicate_response = app
         .clone()
@@ -823,15 +858,26 @@ async fn recommendation_api_full_runtime_db_smoke() {
                 .method("POST")
                 .uri("/api/v1/recommendations/track/exposure")
                 .header("content-type", "application/json")
-                .header("x-role", "buyer_operator")
-                .header("x-idempotency-key", format!("recommend-exposure-{suffix}"))
-                .header("x-request-id", format!("recommend-req-{suffix}"))
+                .header("authorization", &buyer_auth)
+                .header("x-idempotency-key", &exposure_idempotency_key)
+                .header("x-request-id", &exposure_request_id)
+                .header("x-trace-id", &exposure_trace_id)
                 .body(Body::from(exposure_payload.to_string()))
                 .expect("duplicate exposure request"),
         )
         .await
         .expect("duplicate exposure response");
-    assert_eq!(duplicate_response.status(), StatusCode::OK);
+    let duplicate_status = duplicate_response.status();
+    let duplicate_json = response_json(duplicate_response)
+        .await
+        .expect("duplicate exposure json");
+    assert_eq!(duplicate_status, StatusCode::OK, "{duplicate_json}");
+    assert_eq!(duplicate_json["data"]["accepted_count"].as_u64(), Some(0));
+    assert!(
+        duplicate_json["data"]["deduplicated_count"]
+            .as_u64()
+            .is_some_and(|count| count >= 1)
+    );
 
     let click_payload = json!({
       "recommendation_request_id": recommendation_request_id,
@@ -848,15 +894,23 @@ async fn recommendation_api_full_runtime_db_smoke() {
                 .method("POST")
                 .uri("/api/v1/recommendations/track/click")
                 .header("content-type", "application/json")
-                .header("x-role", "buyer_operator")
-                .header("x-idempotency-key", format!("recommend-click-{suffix}"))
-                .header("x-request-id", format!("recommend-click-req-{suffix}"))
+                .header("authorization", &buyer_auth)
+                .header("x-idempotency-key", &click_idempotency_key)
+                .header("x-request-id", &click_request_id)
+                .header("x-trace-id", &click_trace_id)
                 .body(Body::from(click_payload.to_string()))
                 .expect("click request"),
         )
         .await
         .expect("click response");
-    assert_eq!(click_response.status(), StatusCode::OK);
+    let click_status = click_response.status();
+    let click_json = response_json(click_response).await.expect("click json");
+    assert_eq!(click_status, StatusCode::OK, "{click_json}");
+    assert_eq!(click_json["data"]["accepted_count"].as_u64(), Some(1));
+    assert_eq!(
+        click_json["data"]["outbox_enqueued_count"].as_u64(),
+        Some(1)
+    );
 
     let placements_response = app
         .clone()
@@ -976,7 +1030,130 @@ async fn recommendation_api_full_runtime_db_smoke() {
         .await
         .expect("outbox row count");
     let outbox_count: i64 = outbox_row.get(0);
-    assert!(outbox_count >= 3);
+    assert!(outbox_count >= 4);
+
+    let exposure_audit_count = count_audit_events(
+        &client,
+        &exposure_request_id,
+        "recommendation.exposure.track",
+    )
+    .await
+    .expect("count exposure audit events");
+    assert_eq!(exposure_audit_count, 2);
+    let exposure_access_count =
+        count_access_audit(&client, &exposure_request_id, "recommendation_behavior")
+            .await
+            .expect("count exposure access audit");
+    assert_eq!(exposure_access_count, 2);
+    let exposure_log_count = count_system_logs(
+        &client,
+        &exposure_request_id,
+        "recommendation behavior tracked: POST /api/v1/recommendations/track/exposure",
+    )
+    .await
+    .expect("count exposure system log");
+    assert_eq!(exposure_log_count, 2);
+
+    let click_audit_count =
+        count_audit_events(&client, &click_request_id, "recommendation.click.track")
+            .await
+            .expect("count click audit events");
+    assert_eq!(click_audit_count, 1);
+    let click_access_count =
+        count_access_audit(&client, &click_request_id, "recommendation_behavior")
+            .await
+            .expect("count click access audit");
+    assert_eq!(click_access_count, 1);
+    let click_log_count = count_system_logs(
+        &client,
+        &click_request_id,
+        "recommendation behavior tracked: POST /api/v1/recommendations/track/click",
+    )
+    .await
+    .expect("count click system log");
+    assert_eq!(click_log_count, 1);
+
+    let exposure_audit_row = client
+        .query_one(
+            "SELECT
+               result_code,
+               metadata ->> 'endpoint',
+               metadata ->> 'permission_code',
+               metadata ->> 'idempotency_key'
+             FROM audit.audit_event
+             WHERE request_id = $1
+             ORDER BY event_time ASC, audit_id ASC
+             LIMIT 1",
+            &[&exposure_request_id],
+        )
+        .await
+        .expect("load exposure audit row");
+    assert_eq!(exposure_audit_row.get::<_, String>(0), "accepted");
+    assert_eq!(
+        exposure_audit_row.get::<_, Option<String>>(1).as_deref(),
+        Some("POST /api/v1/recommendations/track/exposure")
+    );
+    assert_eq!(
+        exposure_audit_row.get::<_, Option<String>>(2).as_deref(),
+        Some("portal.recommendation.read")
+    );
+    assert_eq!(
+        exposure_audit_row.get::<_, Option<String>>(3).as_deref(),
+        Some(exposure_idempotency_key.as_str())
+    );
+
+    let duplicate_exposure_audit_row = client
+        .query_one(
+            "SELECT
+               result_code,
+               metadata ->> 'idempotency_key'
+             FROM audit.audit_event
+             WHERE request_id = $1
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT 1",
+            &[&exposure_request_id],
+        )
+        .await
+        .expect("load duplicate exposure audit row");
+    assert_eq!(
+        duplicate_exposure_audit_row.get::<_, String>(0),
+        "deduplicated"
+    );
+    assert_eq!(
+        duplicate_exposure_audit_row
+            .get::<_, Option<String>>(1)
+            .as_deref(),
+        Some(exposure_idempotency_key.as_str())
+    );
+
+    let click_audit_row = client
+        .query_one(
+            "SELECT
+               result_code,
+               metadata ->> 'endpoint',
+               metadata ->> 'permission_code',
+               metadata ->> 'idempotency_key'
+             FROM audit.audit_event
+             WHERE request_id = $1
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT 1",
+            &[&click_request_id],
+        )
+        .await
+        .expect("load click audit row");
+    assert_eq!(click_audit_row.get::<_, String>(0), "accepted");
+    assert_eq!(
+        click_audit_row.get::<_, Option<String>>(1).as_deref(),
+        Some("POST /api/v1/recommendations/track/click")
+    );
+    assert_eq!(
+        click_audit_row.get::<_, Option<String>>(2).as_deref(),
+        Some("portal.recommendation.read")
+    );
+    assert_eq!(
+        click_audit_row.get::<_, Option<String>>(3).as_deref(),
+        Some(click_idempotency_key.as_str())
+    );
 
     cleanup_opensearch_documents(&ids).await;
     cleanup_graph(&client, &ids).await;
