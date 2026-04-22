@@ -45,7 +45,6 @@
 
 当前已落地平台角色：
 
-- `platform_admin`
 - `platform_audit_security`
 
 ## 宿主机启动

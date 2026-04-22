@@ -29,9 +29,6 @@
   - `platform_admin`
   - `platform_audit_security`
   - `platform_risk_settlement`
-  - `consistency_operator`
-  - `audit_admin`
-  - `node_ops_admin`
 - 已落地租户角色：
   - `tenant_admin`
   - `tenant_audit_readonly`

@@ -1438,21 +1438,21 @@ WHERE request_id IN ('req-aud021-manual-dry-run', 'req-aud021-manual-execute')
 
 ```bash
 curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?order_id=<order_id>" \
-  -H 'x-role: developer_admin' \
+  -H 'x-role: tenant_developer' \
   -H 'x-user-id: <developer_user_id>' \
   -H 'x-tenant-id: <tenant_org_id>' \
   -H 'x-request-id: req-aud024-manual-order' \
   -H 'x-trace-id: trace-aud024-manual'
 
 curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?event_id=<outbox_event_id>" \
-  -H 'x-role: developer_admin' \
+  -H 'x-role: tenant_developer' \
   -H 'x-user-id: <developer_user_id>' \
   -H 'x-tenant-id: <tenant_org_id>' \
   -H 'x-request-id: req-aud024-manual-event' \
   -H 'x-trace-id: trace-aud024-manual'
 
 curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?tx_hash=<tx_hash>" \
-  -H 'x-role: developer_admin' \
+  -H 'x-role: tenant_developer' \
   -H 'x-user-id: <developer_user_id>' \
   -H 'x-tenant-id: <tenant_org_id>' \
   -H 'x-request-id: req-aud024-manual-tx' \

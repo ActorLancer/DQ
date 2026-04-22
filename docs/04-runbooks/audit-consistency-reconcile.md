@@ -114,7 +114,7 @@ WHERE request_id = 'req-aud012-manual'
 
 2. 返回 `403`
 
-- 先确认角色属于 `platform_admin / platform_audit_security / consistency_operator / node_ops_admin / audit_admin`
+- 先确认角色属于 `platform_admin / platform_audit_security`
 - 再确认 `iam.step_up_challenge.challenge_status='verified'` 且未过期
 
 3. 返回 `404`

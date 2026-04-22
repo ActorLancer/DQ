@@ -1591,3 +1591,46 @@
   - 本批没有新增 Go / Fabric 执行面代码；`AUD-024` 按冻结口径属于 `platform-core` 的开发者联查控制面。Go 服务 `fabric-adapter / fabric-event-listener / fabric-ca-admin` 继续作为链提交、callback、CA 操作的外围写入层，本接口只读取它们回写到 PostgreSQL 的正式对象。
   - smoke 首次失败不是文档冲突，而是测试断言误把种子订单的 `payment_status='paid'` 写成 `unpaid`；修正断言后，正式链路与 DB 回查全部通过。
   - 当前实现兼容 `tenant_developer / developer_admin / platform_admin / platform_audit_security` 读取角色，以覆盖既有 seed 与全集成文档中的已存在角色漂移；tenant 侧仍强制 `x-tenant-id + buyer/seller order scope`，没有放宽对象边界。
+### BATCH-238（计划中）
+- 任务：`AUD-025` 审计与 ops 最小权限矩阵收口
+- 状态：计划中
+- 说明：按最新人工裁决，当前批次不采用“把文档收窄到现有 seed”的收口方式，而采用 `B+ authority 分层收口`。正式 authority 固定为：`060_seed_authz_v1.sql` 作为唯一正式角色集合、`docs/权限设计/角色权限矩阵正式版.md + 菜单权限映射表.md + 接口权限校验清单.md` 作为唯一正式权限分配与页面/接口职责、`070_seed_role_permissions_v1.sql` 作为可执行镜像、代码/runbook/test 作为派生层不得反向定义角色。当前实现目标是：补齐 `070` 与本地 seed 对文档矩阵的缺口，清理 `audit/api/handlers.rs` 中旧别名角色硬编码，把鉴权逻辑收口成“正式权限点 + 正式核心角色 + 受控兼容别名”，并同步把 runbook / test-case / 任务文档中的 `developer_admin / audit_admin / node_ops_admin / consistency_operator / platform_auditor` 等旧示例切回 `060` 的 12 个正式核心角色。
+- 追溯：已重新核对 `CSV / Markdown`、`A03-统一事务模板-落地真实审计与Outbox-Writer.md`、`A04-AUD-Ops-接口与契约落地缺口.md`、`060_seed_authz_v1.sql`、`070_seed_role_permissions_v1.sql`、`角色权限矩阵正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`audit/api/handlers.rs`、`search/service.rs`、`developer-trace.md`、`audit-consistency-reconcile.md`、`audit-trade-monitor.md`、`audit-consistency-cases.md`。当前确认的正式完成标准是：最小权限矩阵在 seed / 本地 DB / 代码 / runbook / test-case / 任务文档六层一致；正式角色仍只保留 `060` 的 12 个核心角色；`developer.trace.read`、`ops.consistency.*`、`ops.outbox.read`、`ops.dead_letter.*`、`audit.anchor.*`、`ops.search_sync.read`、`ops.search_cache.invalidate` 等权限点按冻结文档分层收口；至少一条真实 API/DB 联调证明权限与 step-up 口径已按正式矩阵生效。
+### BATCH-238（待审批）
+- 任务：`AUD-025` 审计与 ops 最小权限矩阵收口
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/api/{handlers,mod}.rs`、`tests/{mod,api_db}.rs`：把审计与 ops 控制面的授权逻辑收口到 `AuditPermission` 权限点，新增 `permission_code / canonical_role_key / is_allowed`，正式矩阵只认 `060_seed_authz_v1.sql` 的核心角色；`developer_admin / audit_admin / node_ops_admin / consistency_operator / platform_auditor` 仅保留为受控兼容别名，并在读取 `x-role` 时立即归一化，避免继续把旧岗位别名当成正式 authority。
+  - `apps/platform-core/src/modules/search/{service.rs,tests/mod.rs}`：补齐 `ops.search_sync.read`、`ops.search_cache.invalidate` 对 `platform_audit_security` 的正式授权，并新增矩阵单测，确保搜索运维控制面与冻结权限文档一致。
+  - `docs/数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql`：把 `developer.trace.read`、`ops.consistency.read`、`ops.consistency.reconcile`、`ops.outbox.read`、`ops.dead_letter.read`、`ops.dead_letter.reprocess`、`audit.anchor.read`、`audit.anchor.manage`、`ops.search_sync.read`、`ops.search_cache.invalidate` 补齐到与权限设计文档一致的可执行 seed；本地 PostgreSQL 已重新执行该 seed 并做只读 SQL 回查。
+  - `docs/权限设计/菜单权限映射表.md`、`docs/04-runbooks/{developer-trace,audit-consistency-reconcile,audit-observability,audit-trade-monitor,search-reindex}.md`、`docs/05-test-cases/audit-consistency-cases.md`：清理 `developer_admin / audit_admin / node_ops_admin / consistency_operator / platform_auditor` 等旧示例，统一成正式核心角色；同时把搜索运维页与 `developer.trace.read` 相关菜单描述修回正式矩阵口径，不再让 authority 文档内部继续分叉。
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：为 `AUD-025` 补充 authority 分层约束，明确 `060` 是正式角色集合、权限设计文档是正式分配 authority、`070` 是可执行镜像，代码 / runbook / test 不得再自创第三套角色口径。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既有 `unused_*` warning，无新增编译错误。
+  - `cargo test -p platform-core modules::audit::tests -- --nocapture` 通过，新增 `audit_permission_matrix_matches_core_roles_and_distinct_points` 与 `legacy_audit_role_aliases_only_survive_as_compatibility_mapping`，并覆盖 `audit_consistency_reconcile_db_smoke`、`audit_dead_letter_reprocess_db_smoke`、`developer_trace_api_db_smoke` 等真实 AUD 控制面 DB smoke。
+  - `cargo test -p platform-core modules::search::tests -- --nocapture` 通过，`search_api_and_ops_db_smoke` 与 `search_ops_matrix_matches_formal_roles` 证明搜索运维控制面已按正式矩阵放行 `platform_audit_security` 的同步状态/缓存失效读写边界。
+  - `cargo test -p platform-core` 通过：`319 passed; 0 failed; 1 ignored`。
+  - `DATABASE_URL=postgresql://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新工作区 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `psql 'postgresql://datab:datab_local_pass@127.0.0.1:5432/datab' -f docs/数据库设计/V1/upgrade/070_seed_role_permissions_v1.sql` 已执行，通过把本地 `authz.role_permission` 种子补齐到最新 authority。
+  - `psql` 只读回查通过：`developer.trace.read -> platform_audit_security,tenant_developer`，`ops.consistency.read / ops.consistency.reconcile / ops.outbox.read / ops.dead_letter.read / ops.dead_letter.reprocess / audit.anchor.read / audit.anchor.manage / ops.search_sync.read / ops.search_cache.invalidate -> platform_admin,platform_audit_security`，与冻结权限矩阵一致。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-025`
+  - `060_seed_authz_v1.sql`
+  - `070_seed_role_permissions_v1.sql`
+  - `角色权限矩阵正式版.md`
+  - `菜单权限映射表.md`
+  - `接口权限校验清单.md`
+  - `A03-统一事务模板-落地真实审计与Outbox-Writer.md`
+  - `A04-AUD-Ops-接口与契约落地缺口.md`
+- 覆盖的任务清单条目：`AUD-025`
+- 未覆盖项：
+  - `AUD-026+` 的剩余高风险控制面与后续动作
+  - 非 AUD 模块里仍存在的历史别名角色痕迹，留给对应领域任务按其冻结口径继续收口
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-025` 的冻结目标是审计与 ops 控制面的正式权限矩阵收口，不是新增链交互服务。Go 与 Fabric 的真实交互继续保持 `AUD-013 ~ AUD-017` 已落地的 `fabric-adapter / fabric-event-listener / fabric-ca-admin / chaincode` 分层。
+  - 旧别名角色没有被恢复为正式角色，只降级为 `audit/api/handlers.rs` 中的过渡兼容映射，用于消化历史 header/文档漂移；正式 bearer/seed/runbook/test 已全部切回 `060` 的 12 个核心角色。
+  - `cargo sqlx prepare --workspace` 与本地 `psql` 回查需要宿主机数据库访问，沙箱内被 `Operation not permitted` 拦截；切到宿主机执行后通过，属于环境权限差异，不是冻结文档冲突。

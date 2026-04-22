@@ -4485,7 +4485,7 @@ struct ReplayReport {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AuditPermission {
+pub(in crate::modules::audit) enum AuditPermission {
     DeveloperTraceRead,
     TraceRead,
     OpsObservabilityRead,
@@ -4515,138 +4515,134 @@ enum AuditPermission {
     AnchorManage,
 }
 
-fn is_allowed(role: &str, permission: AuditPermission) -> bool {
-    match permission {
-        AuditPermission::DeveloperTraceRead => matches!(
-            role,
-            "tenant_developer" | "developer_admin" | "platform_admin" | "platform_audit_security"
-        ),
-        AuditPermission::TraceRead => matches!(
-            role,
-            "tenant_admin"
-                | "tenant_audit_readonly"
-                | "platform_admin"
-                | "platform_auditor"
-                | "platform_audit_security"
-                | "platform_reviewer"
-                | "platform_risk_settlement"
-                | "audit_admin"
-                | "subject_reviewer"
-                | "product_reviewer"
-                | "compliance_reviewer"
-                | "risk_operator"
-                | "data_custody_admin"
-                | "regulator_readonly"
-                | "regulator_observer"
-        ),
-        AuditPermission::OpsObservabilityRead => matches!(
-            role,
-            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
-        ),
-        AuditPermission::OpsLogQuery | AuditPermission::OpsLogExport => matches!(
-            role,
-            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
-        ),
-        AuditPermission::OpsTraceRead => matches!(
-            role,
-            "platform_admin"
-                | "platform_audit_security"
-                | "node_ops_admin"
-                | "audit_admin"
-                | "tenant_developer"
-        ),
-        AuditPermission::OpsAlertRead => matches!(
-            role,
-            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
-        ),
-        AuditPermission::OpsIncidentRead | AuditPermission::OpsSloRead => matches!(
-            role,
-            "platform_admin" | "platform_audit_security" | "node_ops_admin" | "audit_admin"
-        ),
-        AuditPermission::OpsTradeMonitorRead => matches!(
-            role,
-            "tenant_admin"
-                | "tenant_audit_readonly"
-                | "platform_admin"
-                | "platform_audit_security"
-                | "platform_risk_settlement"
-                | "consistency_operator"
-                | "node_ops_admin"
-                | "audit_admin"
-        ),
-        AuditPermission::OpsOutboxRead => matches!(
-            role,
-            "platform_admin"
-                | "platform_audit_security"
-                | "consistency_operator"
-                | "node_ops_admin"
-        ),
-        AuditPermission::OpsDeadLetterRead => matches!(
-            role,
-            "platform_admin"
-                | "platform_audit_security"
-                | "consistency_operator"
-                | "node_ops_admin"
-                | "audit_admin"
-        ),
-        AuditPermission::OpsExternalFactRead => matches!(
-            role,
-            "platform_admin" | "platform_audit_security" | "platform_risk_settlement"
-        ),
-        AuditPermission::OpsExternalFactManage => {
-            matches!(role, "platform_admin" | "platform_audit_security")
+impl AuditPermission {
+    pub(in crate::modules::audit) fn permission_code(self) -> &'static str {
+        match self {
+            AuditPermission::DeveloperTraceRead => "developer.trace.read",
+            AuditPermission::TraceRead => "audit.trace.read",
+            AuditPermission::OpsObservabilityRead => "ops.observability.read",
+            AuditPermission::OpsLogQuery => "ops.log.query",
+            AuditPermission::OpsLogExport => "ops.log.export",
+            AuditPermission::OpsTraceRead => "ops.trace.read",
+            AuditPermission::OpsAlertRead => "ops.alert.read",
+            AuditPermission::OpsIncidentRead => "ops.incident.read",
+            AuditPermission::OpsSloRead => "ops.slo.read",
+            AuditPermission::OpsTradeMonitorRead => "ops.trade_monitor.read",
+            AuditPermission::OpsOutboxRead => "ops.outbox.read",
+            AuditPermission::OpsDeadLetterRead => "ops.dead_letter.read",
+            AuditPermission::OpsExternalFactRead => "ops.external_fact.read",
+            AuditPermission::OpsExternalFactManage => "ops.external_fact.manage",
+            AuditPermission::RiskFairnessIncidentRead => "risk.fairness_incident.read",
+            AuditPermission::RiskFairnessIncidentHandle => "risk.fairness_incident.handle",
+            AuditPermission::OpsProjectionGapRead => "ops.projection_gap.read",
+            AuditPermission::OpsProjectionGapManage => "ops.projection_gap.manage",
+            AuditPermission::OpsConsistencyRead => "ops.consistency.read",
+            AuditPermission::OpsConsistencyReconcile => "ops.consistency.reconcile",
+            AuditPermission::OpsDeadLetterReprocess => "ops.dead_letter.reprocess",
+            AuditPermission::PackageExport => "audit.package.export",
+            AuditPermission::ReplayExecute => "audit.replay.execute",
+            AuditPermission::ReplayRead => "audit.replay.read",
+            AuditPermission::LegalHoldManage => "audit.legal_hold.manage",
+            AuditPermission::AnchorRead => "audit.anchor.read",
+            AuditPermission::AnchorManage => "audit.anchor.manage",
         }
-        AuditPermission::RiskFairnessIncidentRead => matches!(
-            role,
-            "platform_admin" | "platform_audit_security" | "platform_risk_settlement"
-        ),
-        AuditPermission::RiskFairnessIncidentHandle => {
-            matches!(role, "platform_admin" | "platform_risk_settlement")
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(in crate::modules::audit) fn requires_step_up(self) -> bool {
+        matches!(
+            self,
+            AuditPermission::OpsLogExport
+                | AuditPermission::OpsExternalFactManage
+                | AuditPermission::RiskFairnessIncidentHandle
+                | AuditPermission::OpsProjectionGapManage
+                | AuditPermission::OpsConsistencyReconcile
+                | AuditPermission::OpsDeadLetterReprocess
+                | AuditPermission::PackageExport
+                | AuditPermission::ReplayExecute
+                | AuditPermission::LegalHoldManage
+                | AuditPermission::AnchorManage
+        )
+    }
+
+    fn allowed_roles(self) -> &'static [&'static str] {
+        match self {
+            AuditPermission::DeveloperTraceRead => &["tenant_developer", "platform_audit_security"],
+            AuditPermission::TraceRead => &[
+                "tenant_admin",
+                "tenant_audit_readonly",
+                "platform_admin",
+                "platform_audit_security",
+                "platform_reviewer",
+                "platform_risk_settlement",
+                "regulator_readonly",
+            ],
+            AuditPermission::OpsObservabilityRead
+            | AuditPermission::OpsLogQuery
+            | AuditPermission::OpsLogExport
+            | AuditPermission::OpsTraceRead
+            | AuditPermission::OpsAlertRead
+            | AuditPermission::OpsIncidentRead
+            | AuditPermission::OpsSloRead => &["platform_audit_security"],
+            AuditPermission::OpsTradeMonitorRead => &[
+                "tenant_admin",
+                "tenant_audit_readonly",
+                "platform_admin",
+                "platform_audit_security",
+                "platform_risk_settlement",
+            ],
+            AuditPermission::OpsOutboxRead
+            | AuditPermission::OpsDeadLetterRead
+            | AuditPermission::OpsConsistencyRead
+            | AuditPermission::OpsConsistencyReconcile
+            | AuditPermission::OpsDeadLetterReprocess
+            | AuditPermission::AnchorRead
+            | AuditPermission::AnchorManage => &["platform_admin", "platform_audit_security"],
+            AuditPermission::OpsExternalFactRead | AuditPermission::RiskFairnessIncidentRead => &[
+                "platform_admin",
+                "platform_audit_security",
+                "platform_risk_settlement",
+            ],
+            AuditPermission::OpsExternalFactManage
+            | AuditPermission::OpsProjectionGapRead
+            | AuditPermission::OpsProjectionGapManage => {
+                &["platform_admin", "platform_audit_security"]
+            }
+            AuditPermission::RiskFairnessIncidentHandle => {
+                &["platform_admin", "platform_risk_settlement"]
+            }
+            AuditPermission::PackageExport
+            | AuditPermission::ReplayExecute
+            | AuditPermission::ReplayRead
+            | AuditPermission::LegalHoldManage => &["platform_audit_security"],
         }
-        AuditPermission::OpsProjectionGapRead | AuditPermission::OpsProjectionGapManage => {
-            matches!(role, "platform_admin" | "platform_audit_security")
-        }
-        AuditPermission::OpsConsistencyRead => matches!(
-            role,
-            "platform_admin"
-                | "platform_audit_security"
-                | "consistency_operator"
-                | "node_ops_admin"
-                | "audit_admin"
-        ),
-        AuditPermission::OpsConsistencyReconcile => matches!(
-            role,
-            "platform_admin"
-                | "platform_audit_security"
-                | "consistency_operator"
-                | "node_ops_admin"
-                | "audit_admin"
-        ),
-        AuditPermission::OpsDeadLetterReprocess => matches!(
-            role,
-            "platform_admin"
-                | "platform_audit_security"
-                | "consistency_operator"
-                | "node_ops_admin"
-                | "audit_admin"
-        ),
-        AuditPermission::PackageExport => matches!(
-            role,
-            "platform_admin" | "platform_auditor" | "platform_audit_security" | "audit_admin"
-        ),
-        AuditPermission::ReplayExecute
-        | AuditPermission::ReplayRead
-        | AuditPermission::LegalHoldManage
-        | AuditPermission::AnchorRead
-        | AuditPermission::AnchorManage => matches!(
-            role,
-            "platform_admin" | "platform_auditor" | "platform_audit_security" | "audit_admin"
-        ),
     }
 }
 
+pub(in crate::modules::audit) fn canonical_role_key(role: &str) -> &str {
+    match role {
+        "developer_admin" => "tenant_developer",
+        "audit_admin" | "platform_auditor" | "consistency_operator" | "node_ops_admin" => {
+            "platform_audit_security"
+        }
+        "subject_reviewer" | "product_reviewer" | "compliance_reviewer" => "platform_reviewer",
+        "risk_operator" => "platform_risk_settlement",
+        "regulator_observer" => "regulator_readonly",
+        "data_custody_admin" => "platform_admin",
+        _ => role,
+    }
+}
+
+pub(in crate::modules::audit) fn is_allowed(role: &str, permission: AuditPermission) -> bool {
+    let normalized_role = canonical_role_key(role);
+    permission.allowed_roles().contains(&normalized_role)
+}
+
 fn is_tenant_scoped_role(role: &str) -> bool {
-    matches!(role, "tenant_admin" | "tenant_audit_readonly")
+    matches!(
+        canonical_role_key(role),
+        "tenant_admin" | "tenant_audit_readonly"
+    )
 }
 
 fn require_permission(
@@ -4662,7 +4658,10 @@ fn require_permission(
         StatusCode::FORBIDDEN,
         Json(ErrorResponse {
             code: ErrorCode::IamUnauthorized.as_str().to_string(),
-            message: format!("{action} is forbidden for current role"),
+            message: format!(
+                "{action} is forbidden for current role ({})",
+                permission.permission_code()
+            ),
             request_id: header(headers, "x-request-id"),
         }),
     ))
@@ -7079,7 +7078,7 @@ fn build_developer_trace_snapshot(order_snapshot: &Value, matched_snapshot: &Val
 }
 
 fn is_developer_tenant_scoped_role(role: &str) -> bool {
-    matches!(role, "tenant_developer" | "developer_admin")
+    matches!(canonical_role_key(role), "tenant_developer")
 }
 
 fn ensure_developer_trace_scope(
@@ -9039,7 +9038,8 @@ fn export_bucket_name() -> String {
 }
 
 fn current_role(headers: &HeaderMap) -> String {
-    header(headers, "x-role").unwrap_or_else(|| "unknown".to_string())
+    let raw_role = header(headers, "x-role").unwrap_or_else(|| "unknown".to_string());
+    canonical_role_key(raw_role.as_str()).to_string()
 }
 
 fn parse_uuid_header(headers: &HeaderMap, key: &str) -> Option<String> {

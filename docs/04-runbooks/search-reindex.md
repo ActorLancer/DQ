@@ -14,6 +14,8 @@
 
 - 所有写接口都要求 `X-Idempotency-Key`
 - `reindex / aliases/switch / ranking-profiles/{id}` 还要求 `X-Step-Up-Token`
+- `ops.search_reindex.execute / ops.search_alias.manage / ops.search_ranking.manage` 当前只开放 `platform_admin`
+- `ops.search_sync.read / ops.search_cache.invalidate` 当前开放 `platform_admin + platform_audit_security`
 - V1 当前 `X-Step-Up-Token` 承载已验证 `iam.step_up_challenge.step_up_challenge_id`
 - 服务端会真实回查 `iam.step_up_challenge.user_id / challenge_status / target_action / target_ref_type / target_ref_id`
 - 成功写操作会真实写入 `audit.audit_event + audit.access_audit + ops.system_log`

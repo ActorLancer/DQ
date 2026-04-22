@@ -78,6 +78,13 @@ INSERT INTO authz.role_permission (role_key, permission_code) VALUES
 ('platform_admin','security.key.read'),
 ('platform_admin','security.key.revoke'),
 ('platform_admin','security.key_envelope.manage'),
+('platform_admin','audit.anchor.manage'),
+('platform_admin','audit.anchor.read'),
+('platform_admin','ops.consistency.read'),
+('platform_admin','ops.consistency.reconcile'),
+('platform_admin','ops.dead_letter.read'),
+('platform_admin','ops.dead_letter.reprocess'),
+('platform_admin','ops.outbox.read'),
 ('platform_audit_security','audit.access.read'),
 ('platform_audit_security','audit.anchor.manage'),
 ('platform_audit_security','audit.anchor.read'),
@@ -132,6 +139,8 @@ INSERT INTO authz.role_permission (role_key, permission_code) VALUES
 ('platform_audit_security','ops.observability.read'),
 ('platform_audit_security','ops.outbox.read'),
 ('platform_audit_security','ops.outbox.relay'),
+('platform_audit_security','ops.search_cache.invalidate'),
+('platform_audit_security','ops.search_sync.read'),
 ('platform_audit_security','ops.slo.manage'),
 ('platform_audit_security','ops.slo.read'),
 ('platform_audit_security','ops.trace.read'),
@@ -300,7 +309,8 @@ INSERT INTO authz.role_permission (role_key, permission_code) VALUES
 ('tenant_developer','developer.mock_payment.read'),
 ('tenant_developer','developer.mock_payment.simulate'),
 ('tenant_developer','developer.test_asset.read'),
-('tenant_developer','developer.trace.read')
+('tenant_developer','developer.trace.read'),
+('platform_audit_security','developer.trace.read')
 ON CONFLICT DO NOTHING;
 
 DO $$

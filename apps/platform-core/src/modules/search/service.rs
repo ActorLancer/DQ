@@ -58,6 +58,10 @@ fn role_has_permission(role: &str, permission: SearchPermission) -> bool {
                 | SearchPermission::RankingRead
                 | SearchPermission::RankingManage
         ),
+        "platform_audit_security" => matches!(
+            permission,
+            SearchPermission::SyncRead | SearchPermission::CacheInvalidate
+        ),
         _ => false,
     }
 }

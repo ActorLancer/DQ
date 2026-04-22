@@ -22,6 +22,7 @@ pub(super) fn authorization_header(user_id: &str, tenant_id: &str, roles: &[&str
 mod route_tests {
     use super::authorization_header;
     use crate::modules::search::api::router;
+    use crate::modules::search::service::{SearchPermission, is_allowed, needs_step_up};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
@@ -76,5 +77,20 @@ mod route_tests {
             .expect("request");
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn search_ops_matrix_matches_formal_roles() {
+        let admin_roles = vec!["platform_admin".to_string()];
+        let audit_roles = vec!["platform_audit_security".to_string()];
+
+        assert!(is_allowed(&admin_roles, SearchPermission::SyncRead));
+        assert!(is_allowed(&admin_roles, SearchPermission::ReindexExecute));
+        assert!(is_allowed(&audit_roles, SearchPermission::SyncRead));
+        assert!(is_allowed(&audit_roles, SearchPermission::CacheInvalidate));
+        assert!(!is_allowed(&audit_roles, SearchPermission::ReindexExecute));
+        assert!(!is_allowed(&audit_roles, SearchPermission::AliasManage));
+        assert!(!needs_step_up(SearchPermission::CacheInvalidate));
+        assert!(needs_step_up(SearchPermission::ReindexExecute));
     }
 }

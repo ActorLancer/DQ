@@ -1,5 +1,6 @@
 mod api_db;
 
+use crate::modules::audit::api::{AuditPermission, canonical_role_key, is_allowed};
 use crate::modules::audit::dto::{
     AuditTraceView, EvidenceItemView, EvidenceManifestItemView, EvidenceManifestView,
 };
@@ -184,4 +185,104 @@ fn evidence_views_preserve_export_replay_legal_hold_and_history_bridge_fields() 
         Some("item-bridge-1")
     );
     assert_eq!(manifest_item_view.item_digest, "object-hash-1");
+}
+
+#[test]
+fn audit_permission_matrix_matches_core_roles_and_distinct_points() {
+    assert_eq!(
+        AuditPermission::DeveloperTraceRead.permission_code(),
+        "developer.trace.read"
+    );
+    assert_eq!(
+        AuditPermission::OpsConsistencyReconcile.permission_code(),
+        "ops.consistency.reconcile"
+    );
+    assert_eq!(
+        AuditPermission::AnchorManage.permission_code(),
+        "audit.anchor.manage"
+    );
+    assert!(!AuditPermission::DeveloperTraceRead.requires_step_up());
+    assert!(AuditPermission::OpsConsistencyReconcile.requires_step_up());
+    assert!(AuditPermission::AnchorManage.requires_step_up());
+
+    assert!(is_allowed(
+        "tenant_developer",
+        AuditPermission::DeveloperTraceRead
+    ));
+    assert!(is_allowed(
+        "platform_audit_security",
+        AuditPermission::DeveloperTraceRead
+    ));
+    assert!(!is_allowed(
+        "platform_admin",
+        AuditPermission::DeveloperTraceRead
+    ));
+    assert!(is_allowed(
+        "platform_admin",
+        AuditPermission::OpsConsistencyReconcile
+    ));
+    assert!(is_allowed(
+        "platform_audit_security",
+        AuditPermission::OpsConsistencyReconcile
+    ));
+    assert!(!is_allowed(
+        "tenant_admin",
+        AuditPermission::OpsConsistencyReconcile
+    ));
+    assert!(is_allowed("platform_admin", AuditPermission::OpsOutboxRead));
+    assert!(is_allowed(
+        "platform_audit_security",
+        AuditPermission::OpsDeadLetterReprocess
+    ));
+    assert!(is_allowed("platform_admin", AuditPermission::AnchorManage));
+    assert!(!is_allowed(
+        "platform_admin",
+        AuditPermission::PackageExport
+    ));
+    assert!(is_allowed(
+        "platform_audit_security",
+        AuditPermission::PackageExport
+    ));
+}
+
+#[test]
+fn legacy_audit_role_aliases_only_survive_as_compatibility_mapping() {
+    assert_eq!(canonical_role_key("developer_admin"), "tenant_developer");
+    assert_eq!(canonical_role_key("audit_admin"), "platform_audit_security");
+    assert_eq!(
+        canonical_role_key("consistency_operator"),
+        "platform_audit_security"
+    );
+    assert_eq!(
+        canonical_role_key("platform_auditor"),
+        "platform_audit_security"
+    );
+    assert_eq!(
+        canonical_role_key("node_ops_admin"),
+        "platform_audit_security"
+    );
+    assert_eq!(canonical_role_key("subject_reviewer"), "platform_reviewer");
+    assert_eq!(
+        canonical_role_key("risk_operator"),
+        "platform_risk_settlement"
+    );
+    assert_eq!(
+        canonical_role_key("regulator_observer"),
+        "regulator_readonly"
+    );
+
+    assert!(is_allowed(
+        "developer_admin",
+        AuditPermission::DeveloperTraceRead
+    ));
+    assert!(is_allowed("audit_admin", AuditPermission::PackageExport));
+    assert!(is_allowed(
+        "consistency_operator",
+        AuditPermission::OpsConsistencyRead
+    ));
+    assert!(is_allowed("node_ops_admin", AuditPermission::OpsOutboxRead));
+    assert!(!is_allowed(
+        "developer_admin",
+        AuditPermission::PackageExport
+    ));
 }

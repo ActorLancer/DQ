@@ -20,10 +20,9 @@
 ## 权限与 scope
 
 - 正式权限：`developer.trace.read`
-- 当前实现兼容开发者角色种子 `tenant_developer / developer_admin`
-- 平台联调角色兼容：
+- 正式核心角色：
+  - `tenant_developer`
   - `platform_audit_security`
-  - `platform_admin`
 - tenant 侧必须同时满足：
   - 提供 `x-tenant-id`
   - 命中订单 buyer/seller scope
@@ -65,7 +64,7 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 
 ```bash
 curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?order_id=<order_id>" \
-  -H 'x-role: developer_admin' \
+  -H 'x-role: tenant_developer' \
   -H 'x-user-id: <developer_user_id>' \
   -H 'x-tenant-id: <tenant_org_id>' \
   -H 'x-request-id: req-aud024-order' \
@@ -78,7 +77,7 @@ curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?order_id=<order_id>" \
 
 ```bash
 curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?event_id=<outbox_event_id_or_audit_id>" \
-  -H 'x-role: developer_admin' \
+  -H 'x-role: tenant_developer' \
   -H 'x-user-id: <developer_user_id>' \
   -H 'x-tenant-id: <tenant_org_id>' \
   -H 'x-request-id: req-aud024-event' \
@@ -89,7 +88,7 @@ curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?event_id=<outbox_event_i
 
 ```bash
 curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?tx_hash=<tx_hash>" \
-  -H 'x-role: developer_admin' \
+  -H 'x-role: tenant_developer' \
   -H 'x-user-id: <developer_user_id>' \
   -H 'x-tenant-id: <tenant_org_id>' \
   -H 'x-request-id: req-aud024-tx' \

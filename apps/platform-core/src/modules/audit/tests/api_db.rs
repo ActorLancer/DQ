@@ -655,7 +655,7 @@ mod route_tests {
         let request = Request::builder()
             .method("GET")
             .uri("/api/v1/developer/trace")
-            .header("x-role", "developer_admin")
+            .header("x-role", "tenant_developer")
             .header("x-request-id", "req-aud024-missing-selector")
             .body(Body::empty())
             .expect("request");
@@ -2557,7 +2557,7 @@ async fn developer_trace_api_db_smoke() {
         &client,
         "order",
         &seed.order_id,
-        "developer_admin",
+        "tenant_developer",
         "trade.order.debug.lookup",
         "accepted",
         Some(&seed_request_id),
@@ -2984,7 +2984,7 @@ async fn developer_trace_api_db_smoke() {
                     "/api/v1/developer/trace?order_id={}",
                     seed.order_id
                 ))
-                .header("x-role", "developer_admin")
+                .header("x-role", "tenant_developer")
                 .header("x-user-id", &operator_user_id)
                 .header("x-tenant-id", &seed.buyer_org_id)
                 .header("x-request-id", &order_request_id)
@@ -3023,7 +3023,7 @@ async fn developer_trace_api_db_smoke() {
                 .uri(format!(
                     "/api/v1/developer/trace?event_id={outbox_event_id}"
                 ))
-                .header("x-role", "developer_admin")
+                .header("x-role", "tenant_developer")
                 .header("x-user-id", &operator_user_id)
                 .header("x-tenant-id", &seed.buyer_org_id)
                 .header("x-request-id", &event_request_id)
@@ -3057,7 +3057,7 @@ async fn developer_trace_api_db_smoke() {
             Request::builder()
                 .method("GET")
                 .uri(format!("/api/v1/developer/trace?tx_hash={tx_hash}"))
-                .header("x-role", "developer_admin")
+                .header("x-role", "tenant_developer")
                 .header("x-user-id", &operator_user_id)
                 .header("x-tenant-id", &seed.buyer_org_id)
                 .header("x-request-id", &tx_request_id)
