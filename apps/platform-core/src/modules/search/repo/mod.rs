@@ -145,9 +145,6 @@ pub async fn list_sync_tasks(
 pub async fn queue_reindex_tasks(
     client: &(impl GenericClient + Sync),
     request: &ReindexRequest,
-    request_id: Option<&str>,
-    trace_id: Option<&str>,
-    actor_role: &str,
 ) -> RepoResult<ReindexResponse> {
     let scope = normalized_scope(&request.entity_scope);
     let mode = request.mode.trim().to_ascii_lowercase();
@@ -292,24 +289,6 @@ pub async fn queue_reindex_tasks(
         }
     }
 
-    write_audit_event(
-        client,
-        "search_reindex",
-        request.entity_id.as_deref(),
-        "search.reindex.queue",
-        actor_role,
-        request_id,
-        trace_id,
-        json!({
-            "entity_scope": scope,
-            "mode": mode,
-            "force": request.force.unwrap_or(false),
-            "target_index": request.target_index,
-            "enqueued_count": enqueued_count
-        }),
-    )
-    .await?;
-
     Ok(ReindexResponse {
         entity_scope: scope,
         mode,
@@ -322,9 +301,6 @@ pub async fn queue_reindex_tasks(
 pub async fn switch_alias_binding(
     client: &(impl GenericClient + Sync),
     request: &AliasSwitchRequest,
-    request_id: Option<&str>,
-    trace_id: Option<&str>,
-    actor_role: &str,
 ) -> RepoResult<AliasSwitchResponse> {
     let binding = load_alias_binding(client, &request.entity_scope).await?;
     ensure_index_exists(&request.next_index_name).await?;
@@ -385,22 +361,6 @@ pub async fn switch_alias_binding(
         )
         .await
         .map_err(|err| format!("update search.index_alias_binding failed: {err}"))?;
-
-    write_audit_event(
-        client,
-        "search_alias_binding",
-        Some(&binding.alias_binding_id),
-        "search.alias.switch",
-        actor_role,
-        request_id,
-        trace_id,
-        json!({
-            "entity_scope": binding.entity_scope,
-            "previous_index_name": binding.active_index_name,
-            "next_index_name": request.next_index_name
-        }),
-    )
-    .await?;
 
     Ok(AliasSwitchResponse {
         entity_scope: binding.entity_scope,
@@ -513,9 +473,6 @@ pub async fn patch_ranking_profile(
     client: &(impl GenericClient + Sync),
     id: &str,
     request: &PatchRankingProfileRequest,
-    request_id: Option<&str>,
-    trace_id: Option<&str>,
-    actor_role: &str,
 ) -> RepoResult<RankingProfileView> {
     let row = client
         .query_opt(
@@ -547,22 +504,6 @@ pub async fn patch_ranking_profile(
         .await
         .map_err(|err| format!("update search ranking profile failed: {err}"))?
         .ok_or_else(|| "search ranking profile does not exist".to_string())?;
-
-    write_audit_event(
-        client,
-        "search_ranking_profile",
-        Some(id),
-        "search.ranking_profile.patch",
-        actor_role,
-        request_id,
-        trace_id,
-        json!({
-            "weights_json": request.weights_json,
-            "filter_policy_json": request.filter_policy_json,
-            "status": request.status
-        }),
-    )
-    .await?;
 
     Ok(RankingProfileView {
         ranking_profile_id: row.get(0),
@@ -1015,6 +956,15 @@ async fn load_alias_binding(
     })
 }
 
+pub async fn get_alias_binding_id(
+    client: &(impl GenericClient + Sync),
+    scope: &str,
+) -> RepoResult<String> {
+    load_alias_binding(client, scope)
+        .await
+        .map(|binding| binding.alias_binding_id)
+}
+
 async fn resolve_target_index(
     client: &(impl GenericClient + Sync),
     scope: &str,
@@ -1056,56 +1006,6 @@ async fn load_document_version(
     }
     .map_err(|err| format!("load search projection document version failed: {err}"))?;
     Ok(row.get(0))
-}
-
-async fn write_audit_event(
-    client: &(impl GenericClient + Sync),
-    ref_type: &str,
-    ref_id: Option<&str>,
-    action_name: &str,
-    actor_role: &str,
-    request_id: Option<&str>,
-    trace_id: Option<&str>,
-    metadata: Value,
-) -> RepoResult<()> {
-    client
-        .execute(
-            "INSERT INTO audit.audit_event (
-               domain_name,
-               ref_type,
-               ref_id,
-               actor_type,
-               actor_id,
-               action_name,
-               result_code,
-               request_id,
-               trace_id,
-               metadata
-             ) VALUES (
-               'search',
-               $1,
-               COALESCE($2::text::uuid, gen_random_uuid()),
-               'role',
-               NULL,
-               $3,
-               'success',
-               $4,
-               $5,
-               $6::jsonb || jsonb_build_object('actor_role', $7)
-             )",
-            &[
-                &ref_type,
-                &ref_id,
-                &action_name,
-                &request_id,
-                &trace_id,
-                &metadata,
-                &actor_role,
-            ],
-        )
-        .await
-        .map_err(|err| format!("write search audit event failed: {err}"))?;
-    Ok(())
 }
 
 fn product_read_alias() -> String {

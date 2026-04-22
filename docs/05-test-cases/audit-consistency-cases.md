@@ -1346,8 +1346,48 @@ WHERE request_id IN ('req-aud021-manual-dry-run', 'req-aud021-manual-execute')
 - 审计数据不清理：`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`audit.replay_job`、`audit.replay_result`、`audit.legal_hold`、`audit.anchor_batch`、MinIO replay report 及相关 evidence snapshot 按 append-only 或审计保留规则保留
 - `ops.outbox_event` 若为本次手工 retry 临时产生的待发布记录，只允许按唯一 `request_id` 精确删除；不得宽泛清库
 
+## AUD-022 搜索运维控制面
+
+验收范围：
+
+- `GET /api/v1/ops/search/sync`
+- `POST /api/v1/ops/search/reindex`
+- `POST /api/v1/ops/search/cache/invalidate`
+- `POST /api/v1/ops/search/aliases/switch`
+- `GET /api/v1/ops/search/ranking-profiles`
+- `PATCH /api/v1/ops/search/ranking-profiles/{id}`
+
+正式验收点：
+
+- 统一使用 `Authorization: Bearer <access_token>`，不再接受 `x-role`
+- `reindex / aliases/switch / ranking-profiles/{id}` 必须要求 verified `X-Step-Up-Token`
+- 所有写接口必须要求 `X-Idempotency-Key`
+- `GET /sync`、`GET /ranking-profiles` 必须写入 `audit.access_audit + ops.system_log`
+- 写接口必须写入 `audit.audit_event + audit.access_audit + ops.system_log`
+- `POST /reindex` 必须真实写入 `search.index_sync_task(sync_status='queued')`
+- `POST /cache/invalidate` 必须真实删除 `datab:v1:search:catalog:*`
+- `POST /aliases/switch` 必须真实更新 `search.index_alias_binding.active_index_name` 与 OpenSearch alias target
+- `PATCH /ranking-profiles/{id}` 必须真实更新 `search.ranking_profile`
+- 搜索域错误必须收口到 `SEARCH_QUERY_INVALID / SEARCH_BACKEND_UNAVAILABLE / SEARCH_RESULT_STALE` 与写权限专属 forbid code
+
+自动化验证：
+
+- `IAM_JWT_PARSER=keycloak_claims cargo test -p platform-core route_tests -- --nocapture`
+- `SEARCH_DB_SMOKE=1 IAM_JWT_PARSER=keycloak_claims DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+
+自动化 smoke 覆盖：
+
+- 目录搜索两次，确认 `cache_hit=false -> true`
+- Redis 缓存 key 真实存在后再被 `POST /cache/invalidate` 删除
+- reindex step-up 通过后，`search.index_sync_task` 真实排队
+- `GET /sync` 能回查到刚排队的任务
+- `GET /ranking-profiles` 能列出正式 profile
+- `PATCH /ranking-profiles/{id}` 真实更新数据库
+- `POST /aliases/switch` 真实切换 OpenSearch alias 与 `search.index_alias_binding`
+- 六条路径都回查 `audit.audit_event / audit.access_audit / ops.system_log`
+
 ## 当前未覆盖项
 
-- `AUD-022+` OpenSearch sync/reindex/alias/cache 与后续剩余 AUD 高风险控制面
+- `AUD-023+` 后续剩余 AUD 高风险控制面
 
 进入对应批次后，必须在本文件继续追加，不得把本文件视为 `AUD` 全阶段完成证明。

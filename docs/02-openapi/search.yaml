@@ -1,3 +1,768 @@
-# 当前文件不是 Search OpenAPI 的设计参考。
-# 当前实现阶段的唯一权威源：packages/openapi/search.yaml
-# 待 SEARCHREC 实现稳定并完成实现校验后，再将本文件作为归档副本生成。
+openapi: 3.1.0
+info:
+  title: Search API
+  version: v1
+  description: >
+    `AUD-022` 已落地的 Search / Ops Search 正式契约。搜索运行态统一使用
+    `Authorization: Bearer <access_token>`，高风险搜索运维写操作要求
+    `X-Idempotency-Key`，其中 `reindex / alias switch / ranking profile patch`
+    还要求 `X-Step-Up-Token`。V1 当前 `X-Step-Up-Token` 承载已验证
+    `iam.step_up_challenge.step_up_challenge_id`，服务端会回查
+    `challenge_status=user/target binding`。
+tags:
+  - name: Search
+  - name: SearchOps
+servers:
+  - url: http://127.0.0.1:8080
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    XRequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: Optional caller-supplied request correlation id.
+      schema:
+        type: string
+    XIdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      description: Required on all search ops write endpoints.
+      schema:
+        type: string
+    XStepUpToken:
+      name: X-Step-Up-Token
+      in: header
+      required: true
+      description: >
+        Required on high-risk search ops writes. V1 local/runtime uses the verified
+        `iam.step_up_challenge.step_up_challenge_id` value.
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+          nullable: true
+      examples:
+        invalid:
+          value:
+            code: SEARCH_QUERY_INVALID
+            message: X-Idempotency-Key is required for search reindex execute
+            request_id: req-search-invalid
+        backendUnavailable:
+          value:
+            code: SEARCH_BACKEND_UNAVAILABLE
+            message: opensearch alias switch failed
+            request_id: req-search-backend
+    SearchResultItem:
+      type: object
+      required:
+        - entity_scope
+        - entity_id
+        - score
+        - title
+        - status
+        - delivery_modes
+        - tags
+        - industry_tags
+        - document_version
+        - index_sync_status
+      properties:
+        entity_scope:
+          type: string
+          enum: [product, seller]
+        entity_id:
+          type: string
+          format: uuid
+        score:
+          type: number
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        seller_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        seller_name:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        product_type:
+          type: string
+          nullable: true
+        status:
+          type: string
+        price:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+        delivery_modes:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        industry_tags:
+          type: array
+          items:
+            type: string
+        country_code:
+          type: string
+          nullable: true
+        reputation_score:
+          type: string
+          nullable: true
+        quality_score:
+          type: string
+          nullable: true
+        hotness_score:
+          type: string
+          nullable: true
+        listing_product_count:
+          type: integer
+          nullable: true
+        document_version:
+          type: integer
+        index_sync_status:
+          type: string
+    SearchResponse:
+      type: object
+      required: [entity_scope, total, page, page_size, cache_hit, backend, items]
+      properties:
+        entity_scope:
+          type: string
+          enum: [all, product, service, seller]
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        cache_hit:
+          type: boolean
+        backend:
+          type: string
+          enum: [opensearch]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResultItem"
+    SearchSyncTaskView:
+      type: object
+      required:
+        - index_sync_task_id
+        - entity_scope
+        - entity_id
+        - document_version
+        - target_backend
+        - sync_status
+        - retry_count
+        - scheduled_at
+        - updated_at
+      properties:
+        index_sync_task_id:
+          type: string
+          format: uuid
+        entity_scope:
+          type: string
+          enum: [product, seller]
+        entity_id:
+          type: string
+          format: uuid
+        document_version:
+          type: integer
+        target_backend:
+          type: string
+          enum: [opensearch]
+        target_index:
+          type: string
+          nullable: true
+        source_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        sync_status:
+          type: string
+        retry_count:
+          type: integer
+        last_error_code:
+          type: string
+          nullable: true
+        last_error_message:
+          type: string
+          nullable: true
+        scheduled_at:
+          type: string
+        started_at:
+          type: string
+          nullable: true
+        completed_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+    ReindexRequest:
+      type: object
+      required: [entity_scope, mode]
+      properties:
+        entity_scope:
+          type: string
+          enum: [product, seller, all]
+        entity_id:
+          type: string
+          format: uuid
+          nullable: true
+        mode:
+          type: string
+          enum: [single, batch, full]
+        force:
+          type: boolean
+          nullable: true
+        target_index:
+          type: string
+          nullable: true
+    ReindexResponse:
+      type: object
+      required: [entity_scope, mode, enqueued_count, target_backend]
+      properties:
+        entity_scope:
+          type: string
+        mode:
+          type: string
+        enqueued_count:
+          type: integer
+        target_backend:
+          type: string
+        target_index:
+          type: string
+          nullable: true
+    AliasSwitchRequest:
+      type: object
+      required: [entity_scope, next_index_name]
+      properties:
+        entity_scope:
+          type: string
+          enum: [product, seller]
+        next_index_name:
+          type: string
+    AliasSwitchResponse:
+      type: object
+      required: [entity_scope, read_alias, write_alias, active_index_name]
+      properties:
+        entity_scope:
+          type: string
+        read_alias:
+          type: string
+        write_alias:
+          type: string
+        previous_index_name:
+          type: string
+          nullable: true
+        active_index_name:
+          type: string
+    CacheInvalidateRequest:
+      type: object
+      properties:
+        entity_scope:
+          type: string
+          enum: [all, product, service, seller]
+          nullable: true
+        query_hash:
+          type: string
+          nullable: true
+        purge_all:
+          type: boolean
+          nullable: true
+    CacheInvalidateResponse:
+      type: object
+      required: [deleted_keys]
+      properties:
+        entity_scope:
+          type: string
+          nullable: true
+        deleted_keys:
+          type: integer
+    RankingProfileView:
+      type: object
+      required:
+        - ranking_profile_id
+        - profile_key
+        - entity_scope
+        - backend_type
+        - weights_json
+        - filter_policy_json
+        - status
+        - stage_from
+        - created_at
+        - updated_at
+      properties:
+        ranking_profile_id:
+          type: string
+          format: uuid
+        profile_key:
+          type: string
+        entity_scope:
+          type: string
+          enum: [product, seller]
+        backend_type:
+          type: string
+          enum: [opensearch]
+        weights_json:
+          type: object
+        filter_policy_json:
+          type: object
+        status:
+          type: string
+        stage_from:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    PatchRankingProfileRequest:
+      type: object
+      properties:
+        weights_json:
+          type: object
+          nullable: true
+        filter_policy_json:
+          type: object
+          nullable: true
+        status:
+          type: string
+          nullable: true
+    ApiResponseSearchResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/SearchResponse"
+    ApiResponseSearchSyncTasks:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchSyncTaskView"
+    ApiResponseReindexResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/ReindexResponse"
+    ApiResponseAliasSwitchResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/AliasSwitchResponse"
+    ApiResponseCacheInvalidateResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/CacheInvalidateResponse"
+    ApiResponseRankingProfiles:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RankingProfileView"
+    ApiResponseRankingProfile:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/RankingProfileView"
+paths:
+  /api/v1/catalog/search:
+    get:
+      tags: [Search]
+      summary: catalog search with OpenSearch candidate retrieval and PostgreSQL final check
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XRequestId"
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: entity_scope
+          in: query
+          schema:
+            type: string
+            enum: [all, product, service, seller]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [composite, latest, price_asc, price_desc, quality, reputation, hotness]
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseSearchResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: current subject lacks `portal.search.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: OpenSearch or Redis dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/search/sync:
+    get:
+      tags: [SearchOps]
+      summary: list search sync task status
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XRequestId"
+        - name: entity_scope
+          in: query
+          schema:
+            type: string
+            enum: [product, seller]
+        - name: sync_status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: search sync tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseSearchSyncTasks"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: current subject lacks `ops.search_sync.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/search/reindex:
+    post:
+      tags: [SearchOps]
+      summary: enqueue search reindex tasks
+      description: >
+        Requires `ops.search_reindex.execute`, `X-Idempotency-Key` and a verified
+        `X-Step-Up-Token`. Successful execution writes `search.index_sync_task`,
+        `audit.audit_event`, `audit.access_audit` and `ops.system_log`.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XIdempotencyKey"
+        - $ref: "#/components/parameters/XStepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReindexRequest"
+      responses:
+        "200":
+          description: reindex queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseReindexResponse"
+        "400":
+          description: invalid payload, missing idempotency key or invalid step-up binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: current subject lacks `ops.search_reindex.execute`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: OpenSearch or Redis dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/search/aliases/switch:
+    post:
+      tags: [SearchOps]
+      summary: switch active OpenSearch alias binding
+      description: >
+        Requires `ops.search_alias.manage`, `X-Idempotency-Key` and a verified
+        `X-Step-Up-Token`. Successful execution updates both OpenSearch alias
+        targets and `search.index_alias_binding.active_index_name`.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XIdempotencyKey"
+        - $ref: "#/components/parameters/XStepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AliasSwitchRequest"
+      responses:
+        "200":
+          description: alias switch result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseAliasSwitchResponse"
+        "400":
+          description: invalid payload or invalid step-up binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: current subject lacks `ops.search_alias.manage`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: alias state is stale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: OpenSearch dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/search/cache/invalidate:
+    post:
+      tags: [SearchOps]
+      summary: invalidate cached search candidates in Redis
+      description: >
+        Requires `ops.search_cache.invalidate` and `X-Idempotency-Key`. Successful
+        execution records `audit.audit_event`, `audit.access_audit` and `ops.system_log`.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CacheInvalidateRequest"
+      responses:
+        "200":
+          description: cache invalidation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseCacheInvalidateResponse"
+        "400":
+          description: invalid payload or missing idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: current subject lacks `ops.search_cache.invalidate`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Redis dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/search/ranking-profiles:
+    get:
+      tags: [SearchOps]
+      summary: list ranking profiles
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XRequestId"
+      responses:
+        "200":
+          description: ranking profiles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseRankingProfiles"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: current subject lacks `ops.search_ranking.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/search/ranking-profiles/{id}:
+    patch:
+      tags: [SearchOps]
+      summary: update ranking profile weights and filters
+      description: >
+        Requires `ops.search_ranking.manage`, `X-Idempotency-Key` and a verified
+        `X-Step-Up-Token`. Successful execution updates `search.ranking_profile`
+        and records formal audit/access/system-log side effects.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XIdempotencyKey"
+        - $ref: "#/components/parameters/XStepUpToken"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchRankingProfileRequest"
+      responses:
+        "200":
+          description: updated ranking profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseRankingProfile"
+        "400":
+          description: invalid payload or invalid step-up binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: current subject lacks `ops.search_ranking.manage`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ranking profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ranking profile state is stale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"

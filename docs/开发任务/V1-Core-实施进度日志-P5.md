@@ -1450,3 +1450,55 @@
   - 宿主机联调最初打到旧版 `platform-core-bin` 导致 `404`，已通过显式 `cargo build -p platform-core-bin` 刷新 host binary 后复验通过；判定为本地验证流程问题，而非接口实现缺陷。
   - 手工清理时，尝试删除本次联调用到的 `iam.step_up_challenge` 会触发 `audit.audit_event.step_up_challenge_id -> SET NULL -> UPDATE append-only`，尝试删除 `core.user_account / buyer organization` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`；这两类对象因此按审计依赖保留，不视为业务测试脏数据外泄。其余订单 / 商品 / projection gap 业务测试数据已清理。
   - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。
+### BATCH-235（计划中）
+- 任务：`AUD-022` 搜索同步状态 / 重建 / 别名切换 / 缓存失效 / 排序配置更新接口
+- 状态：计划中
+- 说明：按 `AUD-022` 冻结口径，对现有 `apps/platform-core/src/modules/search/**` 进行正式化改造。当前仓库已有 `GET /api/v1/ops/search/sync`、`POST /api/v1/ops/search/reindex`、`POST /api/v1/ops/search/aliases/switch`、`POST /api/v1/ops/search/cache/invalidate`、`GET/PATCH /api/v1/ops/search/ranking-profiles` 的基础实现，但仍停留在 `x-role`、placeholder `step-up`、缺失正式审计 / `audit.access_audit + ops.system_log`、缺失 `SEARCH_*` 错误码、OpenAPI 过薄的状态。本批将切换到 `Authorization: Bearer` + 正式权限点、必要 `X-Idempotency-Key / X-Step-Up-Token`、搜索域错误码、正式审计与 host smoke，并收口 alias / Redis key / OpenSearch authority 到冻结口径。
+- 追溯：已按 `CSV > Markdown > technical_reference > 其他辅助文档` 重新核对 `AUD-022`、`商品搜索/排序与索引同步设计`、`商品搜索/排序与索引同步接口协议正式版`、`接口权限校验清单`、`A07`、`A08`、`A12`、`A13`、`search-reindex` / `opensearch-local` runbook、`057/060/070` 与现有 `search-indexer / search module / search openapi / search tests` 实现。已确认正式完成标准是：搜索运维控制面必须真实接入 `Authorization + 权限点 + step-up + 审计 + SEARCH_*`，并且不再使用 `x-role` 占位；别名权威源以 `search.index_alias_binding + product/seller_search_read/write` 为准；Redis 真实承担搜索缓存失效，OpenSearch 真实承担 alias 切换与重建目标。
+### BATCH-235（待审批）
+- 任务：`AUD-022` 搜索同步状态 / 重建 / 别名切换 / 缓存失效 / 排序配置更新接口
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/search/api/handlers.rs`、`service.rs`、`repo/mod.rs`：把搜索运维控制面从 `x-role` 切换到 `Authorization: Bearer <access_token>`，补齐正式权限点 `portal.search.read / ops.search_*`、`X-Idempotency-Key`、高风险 `X-Step-Up-Token` 绑定、`iam.step_up_challenge` 真实校验、搜索域 `SEARCH_*` 错误码，以及 `audit.audit_event + audit.access_audit + ops.system_log` 的正式留痕；同时新增 `get_alias_binding_id` 并把 alias 权威源收口到 `search.index_alias_binding + product/seller_search_read/write`。
+  - `apps/platform-core/src/modules/search/tests/mod.rs`、`search_api_db.rs`：路由测试改用真实 bearer token 负例；新增 `search_api_and_ops_db_smoke`，真实串起 PostgreSQL、Redis 与 OpenSearch，覆盖目录搜索 `cache_hit=false -> true`、缓存失效、`search.index_sync_task` 排队、`GET /sync`、`GET/PATCH /ranking-profiles`、`POST /aliases/switch` 及其审计回查。
+  - `packages/openapi/search.yaml`、`docs/02-openapi/search.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`：把 `Search / Ops Search` 从占位升级成正式契约，补齐 Bearer 鉴权、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、请求/响应 schema 与 `SEARCH_*` 错误码说明。
+  - `docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/search-rec-cases.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：补齐 `AUD-022` 的宿主机联调步骤、step-up 使用口径、Redis / OpenSearch / PostgreSQL / 审计回查与验收矩阵。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：无新增 `V1-gap / V2-reserved / V3-reserved`；把 `TODO-AUD-OPENAPI-001`、`TODO-AUD-TEST-001`、`TODO-SEARCHREC-AUTH-001` 推进到 `AUD-022` 已完成、仅剩 `AUD-023+ / SEARCHREC` 后续缺口的最新状态。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既存 `unused_*` warning，无新增编译失败。
+  - `IAM_JWT_PARSER=keycloak_claims cargo test -p platform-core route_tests -- --nocapture` 通过：新增的 Search 路由 Bearer 鉴权 / 权限负例通过，同时确认未回归既有 audit / recommendation 路由测试。
+  - `SEARCH_DB_SMOKE=1 IAM_JWT_PARSER=keycloak_claims DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture` 通过：真实完成搜索缓存命中与失效、reindex 排队、sync 查询、ranking profile 更新、alias 切换，以及 `audit.audit_event / audit.access_audit / ops.system_log` 回查。
+  - `IAM_JWT_PARSER=keycloak_claims cargo test -p platform-core` 通过：`305 passed; 0 failed`，确认 Search 改造未回归其他模块。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+  - 宿主机真实 API smoke 通过：
+    - 先以 `set -a; source infra/docker/.env.local; set +a; KAFKA_BROKERS=127.0.0.1:9094 IAM_JWT_PARSER=keycloak_claims APP_PORT=18080 target/debug/platform-core-bin` 启动最新二进制，修正早期因环境变量未导出导致的旧基线误报。
+    - 使用宿主机 `curl` + bearer token 真实验证 `buyer_operator` 访问 `GET /api/v1/ops/search/sync` 被 `IAM_UNAUTHORIZED` 拒绝。
+    - 使用宿主机 `curl` 真实验证 `GET /api/v1/catalog/search` 两次调用分别返回 `cache_hit=false -> true`，并通过 `redis-cli GET datab:v1:search:catalog:product:<sha256>` 回查缓存键存在。
+    - 使用宿主机 `curl POST /api/v1/ops/search/cache/invalidate` 真实失效缓存，并通过 `redis-cli` 回查缓存键已删除。
+    - 使用宿主机 `curl POST /api/v1/ops/search/reindex` 先验证缺少 `X-Idempotency-Key` 返回 `SEARCH_QUERY_INVALID`，再在 verified `iam.step_up_challenge` 下验证成功入队；随后通过 `psql` 回查 `search.index_sync_task(sync_status='queued')`。
+    - 使用宿主机 `curl GET /api/v1/ops/search/sync`、`GET /api/v1/ops/search/ranking-profiles`、`PATCH /api/v1/ops/search/ranking-profiles/{id}`、`POST /api/v1/ops/search/aliases/switch` 真实完成 OpenSearch alias 切换与 ranking profile 更新，并通过 `psql + curl http://127.0.0.1:9200/_alias/...` 回查 `search.index_alias_binding.active_index_name` 与 alias 目标索引已变化。
+    - 使用 `psql` 回查 `audit.audit_event(action_name=search.reindex.queue / search.cache.invalidate / search.ranking_profile.patch / search.alias.switch)`、`audit.access_audit(target_type=search_reindex / search_cache / search_ranking_profile / search_alias_binding)`、`ops.system_log(message_text='search ops ...')`，并确认高风险写操作上的 `step_up_challenge_id` 与请求头一致。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-022`
+  - `商品搜索、排序与索引同步设计.md`
+  - `商品搜索、排序与索引同步接口协议正式版.md`
+  - `接口权限校验清单.md`
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+  - `A08-搜索Alias权威源与阶段边界冲突.md`
+  - `A12-配置项与资源命名漂移.md`
+  - `A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`
+  - `057_search_sync_architecture.sql`、`060_seed_authz_v1.sql`、`070_seed_role_permissions_v1.sql`
+- 覆盖的任务清单条目：`AUD-022`
+- 未覆盖项：
+  - `AUD-023+` 其余 AUD 高风险控制面
+  - `SEARCHREC` 后续 worker 幂等 / DLQ / reprocess 可靠性闭环
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；仅把既有 TODO 的已完成范围推进到 `AUD-022`。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-022` 按冻结口径属于 `platform-core` 的搜索运维控制面。Go 与 Fabric 的真实交互仍保持 `AUD-013 ~ AUD-017` 已落地的 `fabric-adapter / fabric-event-listener / fabric-ca-admin / chaincode` 分层，不回退到 Rust 直接与 Fabric 通信。
+  - 本批最初 smoke 失败并非实现口径冲突，而是测试断言把统一错误响应误当成 `error.code` 包装，以及把 `audit.access_audit.step_up_challenge_id` 的可空列按非空字符串读取；修正测试后，正式链路与回查全部通过。
+  - 宿主机 smoke 的业务对象、OpenSearch 文档与临时索引已清理；`core.user_account / core.organization` 在尝试删除时会触发 `audit.access_audit` 的 append-only 保护，无法执行 `ON DELETE SET NULL` 更新，因此继续按既有 `AUD` 阶段策略保留最小主体样本，不通过强删破坏审计引用关系。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。
