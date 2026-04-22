@@ -145,6 +145,35 @@ mod tests {
             .expect("query audit")
             .get(0);
         assert!(audit_count >= 1);
+        let route_row = client
+            .query_one(
+                "SELECT target_topic, authority_scope, proof_commit_policy
+                 FROM ops.event_route_policy
+                 WHERE aggregate_type = 'trade.order'
+                   AND event_type = 'trade.order.created'
+                   AND status = 'active'
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1",
+                &[],
+            )
+            .await
+            .expect("query trade.order route policy");
+        let route_target_topic: String = route_row.get(0);
+        let route_authority_scope: String = route_row.get(1);
+        let route_proof_commit_policy: String = route_row.get(2);
+        let outbox_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND aggregate_type = 'trade.order'
+                   AND event_type = 'trade.order.created'",
+                &[&request_id],
+            )
+            .await
+            .expect("count trade order outbox rows")
+            .get(0);
+        assert_eq!(outbox_count, 1);
         let outbox_row = client
             .query_one(
                 "SELECT target_topic, payload
@@ -160,7 +189,7 @@ mod tests {
             .expect("query outbox");
         assert_eq!(
             outbox_row.get::<_, Option<String>>(0).as_deref(),
-            Some("dtp.outbox.domain-events")
+            Some(route_target_topic.as_str())
         );
         let outbox_payload: Value = outbox_row.get(1);
         assert_eq!(
@@ -175,11 +204,31 @@ mod tests {
             outbox_payload["producer_service"].as_str(),
             Some("platform-core.order")
         );
+        assert_eq!(outbox_payload["event_version"].as_i64(), Some(1));
+        assert_eq!(outbox_payload["event_schema_version"].as_str(), Some("v1"));
+        assert_eq!(
+            outbox_payload["authority_scope"].as_str(),
+            Some(route_authority_scope.as_str())
+        );
+        assert_eq!(outbox_payload["source_of_truth"].as_str(), Some("database"));
+        assert_eq!(
+            outbox_payload["proof_commit_policy"].as_str(),
+            Some(route_proof_commit_policy.as_str())
+        );
+        assert_eq!(
+            outbox_payload["request_id"].as_str(),
+            Some(request_id.as_str())
+        );
+        assert_eq!(
+            outbox_payload["idempotency_key"].as_str(),
+            Some(idempotency_key.as_str())
+        );
         assert_eq!(outbox_payload["order_id"].as_str(), Some(order_id.as_str()));
         assert_eq!(
             outbox_payload["payload"]["order_id"].as_str(),
             Some(order_id.as_str())
         );
+        assert!(outbox_payload.get("event_name").is_none());
         assert!(
             outbox_payload["event_id"]
                 .as_str()

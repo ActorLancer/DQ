@@ -390,6 +390,34 @@ mod tests {
         creation_source: &str,
         executor_type: &str,
     ) {
+        let route_row = client
+            .query_one(
+                "SELECT target_topic, authority_scope, proof_commit_policy
+                 FROM ops.event_route_policy
+                 WHERE aggregate_type = 'delivery.delivery_record'
+                   AND event_type = 'delivery.task.auto_created'
+                   AND status = 'active'
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1",
+                &[],
+            )
+            .await
+            .expect("query delivery task auto created route policy");
+        let route_target_topic: String = route_row.get(0);
+        let route_authority_scope: String = route_row.get(1);
+        let route_proof_commit_policy: String = route_row.get(2);
+        let outbox_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE aggregate_id = $1::text::uuid
+                   AND event_type = 'delivery.task.auto_created'",
+                &[&delivery_id],
+            )
+            .await
+            .expect("count delivery task auto created outbox rows")
+            .get(0);
+        assert_eq!(outbox_count, 1);
         let row = client
             .query_one(
                 "SELECT event_type, target_topic, payload
@@ -405,12 +433,23 @@ mod tests {
         assert_eq!(row.get::<_, String>(0), "delivery.task.auto_created");
         assert_eq!(
             row.get::<_, Option<String>>(1).as_deref(),
-            Some("dtp.outbox.domain-events")
+            Some(route_target_topic.as_str())
         );
         let payload: Value = row.get(2);
         assert_eq!(
             payload["event_type"].as_str(),
             Some("delivery.task.auto_created")
+        );
+        assert_eq!(payload["event_version"].as_i64(), Some(1));
+        assert_eq!(payload["event_schema_version"].as_str(), Some("v1"));
+        assert_eq!(
+            payload["authority_scope"].as_str(),
+            Some(route_authority_scope.as_str())
+        );
+        assert_eq!(payload["source_of_truth"].as_str(), Some("database"));
+        assert_eq!(
+            payload["proof_commit_policy"].as_str(),
+            Some(route_proof_commit_policy.as_str())
         );
         assert_eq!(payload["aggregate_id"].as_str(), Some(delivery_id));
         assert_eq!(
@@ -427,6 +466,7 @@ mod tests {
             payload["payload"]["initial_status"].as_str(),
             Some("prepared")
         );
+        assert!(payload.get("event_name").is_none());
     }
 
     async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, db::Error> {

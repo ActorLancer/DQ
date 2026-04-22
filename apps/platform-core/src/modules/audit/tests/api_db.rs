@@ -1789,7 +1789,8 @@ async fn audit_trace_api_db_smoke() {
                     payload ->> 'anchor_status',
                     payload ->> 'previous_anchor_status',
                     payload ->> 'retry_reason',
-                    status
+                    status,
+                    payload
              FROM ops.outbox_event
              WHERE request_id = $1
              ORDER BY created_at DESC, outbox_event_id DESC
@@ -1798,7 +1799,39 @@ async fn audit_trace_api_db_smoke() {
         )
         .await
         .expect("query anchor retry outbox row");
-    assert_eq!(anchor_outbox_row.get::<_, String>(0), "dtp.audit.anchor");
+    let anchor_route_row = client
+        .query_one(
+            "SELECT target_topic, authority_scope, proof_commit_policy
+             FROM ops.event_route_policy
+             WHERE aggregate_type = 'audit.anchor_batch'
+               AND event_type = 'audit.anchor_requested'
+               AND status = 'active'
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1",
+            &[],
+        )
+        .await
+        .expect("query anchor route policy");
+    let anchor_route_target_topic: String = anchor_route_row.get(0);
+    let anchor_route_authority_scope: String = anchor_route_row.get(1);
+    let anchor_route_proof_commit_policy: String = anchor_route_row.get(2);
+    let anchor_outbox_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.outbox_event
+             WHERE request_id = $1
+               AND event_type = 'audit.anchor_requested'
+               AND aggregate_type = 'audit.anchor_batch'",
+            &[&anchor_retry_request_id],
+        )
+        .await
+        .expect("count anchor retry outbox rows")
+        .get(0);
+    assert_eq!(anchor_outbox_count, 1);
+    assert_eq!(
+        anchor_outbox_row.get::<_, String>(0),
+        anchor_route_target_topic
+    );
     assert_eq!(
         anchor_outbox_row.get::<_, String>(1),
         "audit.anchor_requested"
@@ -1818,6 +1851,33 @@ async fn audit_trace_api_db_smoke() {
         Some("retry failed batch after fabric gateway timeout")
     );
     assert_eq!(anchor_outbox_row.get::<_, String>(7), "pending");
+    let anchor_outbox_payload: Value = anchor_outbox_row.get(8);
+    assert_eq!(anchor_outbox_payload["event_version"].as_i64(), Some(1));
+    assert_eq!(
+        anchor_outbox_payload["event_schema_version"].as_str(),
+        Some("v1")
+    );
+    assert_eq!(
+        anchor_outbox_payload["authority_scope"].as_str(),
+        Some(anchor_route_authority_scope.as_str())
+    );
+    assert_eq!(
+        anchor_outbox_payload["source_of_truth"].as_str(),
+        Some("database")
+    );
+    assert_eq!(
+        anchor_outbox_payload["proof_commit_policy"].as_str(),
+        Some(anchor_route_proof_commit_policy.as_str())
+    );
+    assert_eq!(
+        anchor_outbox_payload["request_id"].as_str(),
+        Some(anchor_retry_request_id.as_str())
+    );
+    assert_eq!(
+        anchor_outbox_payload["trace_id"].as_str(),
+        Some(trace_id.as_str())
+    );
+    assert!(anchor_outbox_payload.get("event_name").is_none());
 
     let anchor_audit_count: i64 = client
         .query_one(

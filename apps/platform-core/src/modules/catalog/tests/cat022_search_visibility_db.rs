@@ -326,7 +326,42 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
             return Err("seller index_sync_status mismatch".to_string());
         }
 
+        let route_row = client
+            .query_one(
+                "SELECT target_topic, authority_scope, proof_commit_policy
+                 FROM ops.event_route_policy
+                 WHERE aggregate_type = 'product'
+                   AND event_type = 'search.product.changed'
+                   AND status = 'active'
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1",
+                &[],
+            )
+            .await
+            .map_err(|err| format!("query product search route policy: {err}"))?;
+        let route_target_topic: String = route_row.get(0);
+        let route_authority_scope: String = route_row.get(1);
+        let route_proof_commit_policy: String = route_row.get(2);
+
         for request_id in [&req_create, &req_patch] {
+            let outbox_count: i64 = client
+                .query_one(
+                    "SELECT COUNT(*)::bigint
+                     FROM ops.outbox_event
+                     WHERE request_id = $1
+                       AND event_type = 'search.product.changed'
+                       AND aggregate_type = 'product'
+                       AND aggregate_id = $2::text::uuid",
+                    &[request_id, &product_id],
+                )
+                .await
+                .map_err(|err| format!("count outbox event for {request_id}: {err}"))?
+                .get(0);
+            if outbox_count != 1 {
+                return Err(format!(
+                    "expected exactly one canonical search.product.changed row for {request_id}, got {outbox_count}"
+                ));
+            }
             let row = client
                 .query_one(
                     "SELECT target_topic, payload
@@ -342,7 +377,7 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
                 .await
                 .map_err(|err| format!("query outbox event for {request_id}: {err}"))?;
             let target_topic: Option<String> = row.get(0);
-            if target_topic.as_deref() != Some("dtp.search.sync") {
+            if target_topic.as_deref() != Some(route_target_topic.as_str()) {
                 return Err(format!(
                     "unexpected search.product.changed target topic for {request_id}: {:?}",
                     target_topic
@@ -352,6 +387,26 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
             if payload["event_type"].as_str() != Some("search.product.changed") {
                 return Err(format!("canonical event_type missing for {request_id}"));
             }
+            if payload["event_version"].as_i64() != Some(1) {
+                return Err(format!("event_version mismatch for {request_id}"));
+            }
+            if payload["event_schema_version"].as_str() != Some("v1") {
+                return Err(format!("event_schema_version mismatch for {request_id}"));
+            }
+            if payload["authority_scope"].as_str() != Some(route_authority_scope.as_str()) {
+                return Err(format!("authority_scope mismatch for {request_id}"));
+            }
+            if payload["source_of_truth"].as_str() != Some("database") {
+                return Err(format!("source_of_truth mismatch for {request_id}"));
+            }
+            if payload["proof_commit_policy"].as_str()
+                != Some(route_proof_commit_policy.as_str())
+            {
+                return Err(format!("proof_commit_policy mismatch for {request_id}"));
+            }
+            if payload["request_id"].as_str() != Some(request_id) {
+                return Err(format!("request_id mismatch for {request_id}"));
+            }
             if payload["aggregate_id"].as_str() != Some(product_id.as_str()) {
                 return Err(format!("aggregate_id mismatch for {request_id}"));
             }
@@ -359,6 +414,9 @@ async fn cat022_search_visibility_fields_and_events_db_smoke() {
                 return Err(format!(
                     "nested payload product_id mismatch for {request_id}"
                 ));
+            }
+            if payload.get("event_name").is_some() {
+                return Err(format!("legacy event_name should be absent for {request_id}"));
             }
         }
 

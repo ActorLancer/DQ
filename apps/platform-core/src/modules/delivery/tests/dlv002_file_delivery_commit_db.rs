@@ -222,6 +222,34 @@ mod tests {
             .expect("query audit count")
             .get(0);
         assert_eq!(audit_count, 1);
+        let delivery_route_row = client
+            .query_one(
+                "SELECT target_topic, authority_scope, proof_commit_policy
+                 FROM ops.event_route_policy
+                 WHERE aggregate_type = 'delivery.delivery_record'
+                   AND event_type = 'delivery.committed'
+                   AND status = 'active'
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1",
+                &[],
+            )
+            .await
+            .expect("query delivery committed route policy");
+        let delivery_route_target_topic: String = delivery_route_row.get(0);
+        let delivery_route_authority_scope: String = delivery_route_row.get(1);
+        let delivery_route_proof_commit_policy: String = delivery_route_row.get(2);
+        let delivery_outbox_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'delivery.committed'",
+                &[&request_id],
+            )
+            .await
+            .expect("count delivery committed outbox rows")
+            .get(0);
+        assert_eq!(delivery_outbox_count, 1);
 
         let outbox_row = client
             .query_one(
@@ -237,7 +265,7 @@ mod tests {
             .expect("query outbox row");
         assert_eq!(
             outbox_row.get::<_, Option<String>>(0).as_deref(),
-            Some("dtp.outbox.domain-events")
+            Some(delivery_route_target_topic.as_str())
         );
         let outbox_payload: Value = outbox_row.get(1);
         assert_eq!(
@@ -247,6 +275,21 @@ mod tests {
         assert_eq!(
             outbox_payload["producer_service"].as_str(),
             Some("platform-core.delivery")
+        );
+        assert_eq!(outbox_payload["event_version"].as_i64(), Some(1));
+        assert_eq!(outbox_payload["event_schema_version"].as_str(), Some("v1"));
+        assert_eq!(
+            outbox_payload["authority_scope"].as_str(),
+            Some(delivery_route_authority_scope.as_str())
+        );
+        assert_eq!(outbox_payload["source_of_truth"].as_str(), Some("database"));
+        assert_eq!(
+            outbox_payload["proof_commit_policy"].as_str(),
+            Some(delivery_route_proof_commit_policy.as_str())
+        );
+        assert_eq!(
+            outbox_payload["request_id"].as_str(),
+            Some(request_id.as_str())
         );
         assert_eq!(outbox_payload["delivery_branch"].as_str(), Some("file"));
         assert_eq!(
@@ -261,6 +304,35 @@ mod tests {
             outbox_payload["payload"]["delivery_branch"].as_str(),
             Some("file")
         );
+        assert!(outbox_payload.get("event_name").is_none());
+        let bridge_route_row = client
+            .query_one(
+                "SELECT target_topic, authority_scope, proof_commit_policy
+                 FROM ops.event_route_policy
+                 WHERE aggregate_type = 'trade.order_main'
+                   AND event_type = 'billing.trigger.bridge'
+                   AND status = 'active'
+                 ORDER BY updated_at DESC, created_at DESC
+                 LIMIT 1",
+                &[],
+            )
+            .await
+            .expect("query billing bridge route policy");
+        let bridge_route_target_topic: String = bridge_route_row.get(0);
+        let bridge_route_authority_scope: String = bridge_route_row.get(1);
+        let bridge_route_proof_commit_policy: String = bridge_route_row.get(2);
+        let billing_bridge_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM ops.outbox_event
+                 WHERE request_id = $1
+                   AND event_type = 'billing.trigger.bridge'",
+                &[&request_id],
+            )
+            .await
+            .expect("count billing bridge outbox rows")
+            .get(0);
+        assert_eq!(billing_bridge_count, 1);
         let billing_bridge_row = client
             .query_one(
                 "SELECT target_topic, payload
@@ -275,7 +347,7 @@ mod tests {
             .expect("query billing bridge row");
         assert_eq!(
             billing_bridge_row.get::<_, Option<String>>(0).as_deref(),
-            Some("dtp.outbox.domain-events")
+            Some(bridge_route_target_topic.as_str())
         );
         let billing_bridge_payload: Value = billing_bridge_row.get(1);
         assert_eq!(
@@ -285,6 +357,27 @@ mod tests {
         assert_eq!(
             billing_bridge_payload["producer_service"].as_str(),
             Some("platform-core.delivery")
+        );
+        assert_eq!(billing_bridge_payload["event_version"].as_i64(), Some(1));
+        assert_eq!(
+            billing_bridge_payload["event_schema_version"].as_str(),
+            Some("v1")
+        );
+        assert_eq!(
+            billing_bridge_payload["authority_scope"].as_str(),
+            Some(bridge_route_authority_scope.as_str())
+        );
+        assert_eq!(
+            billing_bridge_payload["source_of_truth"].as_str(),
+            Some("database")
+        );
+        assert_eq!(
+            billing_bridge_payload["proof_commit_policy"].as_str(),
+            Some(bridge_route_proof_commit_policy.as_str())
+        );
+        assert_eq!(
+            billing_bridge_payload["request_id"].as_str(),
+            Some(request_id.as_str())
         );
         assert_eq!(
             billing_bridge_payload["delivery_branch"].as_str(),
@@ -302,6 +395,7 @@ mod tests {
             billing_bridge_payload["payload"]["delivery_branch"].as_str(),
             Some("file")
         );
+        assert!(billing_bridge_payload.get("event_name").is_none());
 
         let notification_rows = client
             .query(

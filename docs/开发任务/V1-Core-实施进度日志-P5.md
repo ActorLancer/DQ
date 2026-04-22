@@ -1783,3 +1783,52 @@
 - 备注：
   - `search` 目前仍直接构造 `AuditEvent::business + insert_audit_event(...)`，这是正式 authority model 的既有正确实现，因此本批未强行改造成另一层 wrapper。
   - `support.evidence_object` 仍保留为历史兼容表，但本批已通过 runbook 与 smoke 复核明确：它只承载 legacy bridge，不再定义正式导出 / replay / legal hold 的主查询口径。
+### BATCH-243（计划中）
+- 任务：`AUD-030` 收敛统一事件 envelope 与路由权威源
+- 状态：计划中
+- 说明：重新核对 `AUD-030` 的冻结要求后确认，当前仓库主链实现已基本切到 `apps/platform-core/src/shared/outbox.rs` 的 canonical outbox writer，并由 `ops.event_route_policy` 解析 route，数据库也已不存在挂到 `common.tg_write_outbox()` 的正式 trigger；但现有验收证据仍偏分散，尚未把“同一业务动作不会重复写出不同协议事件”“正式 envelope 顶层不再携带 `event_name`”“route authority 确实来自 `ops.event_route_policy`”这三件事通过固定 smoke、runbook 与 test-case 显式冻结下来。本批将优先补强 `trade003 / dlv002 / dlv029 / cat022 / audit anchor retry` 现有 smoke 的断言，再补一份 `AUD-030` 专用 runbook / test-case，把 route authority、触发器退役、canonical 顶层字段和无双写验证入口收口成正式留痕。
+- 追溯：已重新核对 `CSV / Markdown`、`事件模型与Topic清单正式版.md` 2.3~2.5、`一致性与事件接口协议正式版.md` 2~4、`双层权威模型与链上链下一致性设计.md` 6.1~7.1、`A02-统一事件-Envelope-与路由权威源.md`，以及通用冻结文档 `服务清单与服务边界正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`、`审计、证据链与回放设计.md`、`双层权威模型与链上链下一致性设计.md`、`链上链下技术架构与能力边界稿.md`、`日志、可观测性与告警设计.md`、`审计、证据链与回放接口协议正式版.md`、`一致性与事件接口协议正式版.md`、`fabric-local.md`、`kafka-topics.md`、`async-chain-write.md`、`072_canonical_outbox_route_policy.sql`、`074_event_topology_route_extensions.sql` 与 `infra/docker/docker-compose.local.yml`。当前确认的正式完成标准是：应用层 canonical outbox writer 与 `ops.event_route_policy` 成为唯一正式事件生产入口；旧 trigger 仅以退役异常函数残留、无任何正式表继续挂载；至少一条真实 smoke 能显式证明 canonical 顶层字段完整、`event_name` 不再作为正式顶层字段、target topic 命中唯一 route policy，且同一业务动作不会重复写出同协议事件。
+### BATCH-243（待审批）
+- 任务：`AUD-030` 收敛统一事件 envelope 与路由权威源
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/order/tests/trade003_create_order_db.rs`、`apps/platform-core/src/modules/catalog/tests/cat022_search_visibility_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv002_file_delivery_commit_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv029_delivery_task_autocreation_db.rs`、`apps/platform-core/src/modules/audit/tests/api_db.rs`：补强现有 canonical smoke，把验收口径从“能查到 outbox 行”提升为“route policy 命中正确 + 同一业务动作同协议事件只写一条 + payload 顶层 canonical 字段完整 + `event_name` 不再存在”。其中：
+    - `trade003` 固定验证 `trade.order.created -> dtp.outbox.domain-events`
+    - `cat022` 固定验证 `search.product.changed -> dtp.search.sync`
+    - `dlv002` 固定验证 `delivery.committed` 与 `billing.trigger.bridge` 各只写一条正式事件
+    - `dlv029` 固定验证 `delivery.task.auto_created -> dtp.outbox.domain-events`
+    - `audit_trace_api_db_smoke` 固定验证 `audit.anchor_requested -> dtp.audit.anchor`
+  - `docs/04-runbooks/canonical-event-authority.md`：新增 `AUD-030` 专用 runbook，正式写明唯一事件生产入口、唯一 route authority、`tg_write_outbox` 退役状态、关键 route seed、五条 smoke 与静态 SQL 回查。
+  - `docs/05-test-cases/canonical-event-authority-cases.md`：新增 `AUD-030` 验收矩阵，冻结五类运行态 case 和一条 trigger 退役静态 case，避免后续再从分散 smoke 中推断 canonical route authority。
+  - `docs/04-runbooks/README.md`、`docs/05-test-cases/README.md`：补充 `AUD-030` 索引，明确 canonical envelope / route authority 已有正式验收文件，而不是隐含在 `AUD-008 / AUD-009` 的 runbook 里。
+- 验证：
+  - 静态 SQL 回查通过：
+    - `information_schema.triggers` 中 `action_statement ILIKE '%tg_write_outbox%'` 结果为 `0 rows`
+    - `pg_get_functiondef(common.tg_write_outbox)` 显示该函数仅 `RAISE EXCEPTION 'common.tg_write_outbox is retired; use ops.event_route_policy + application canonical outbox writer instead'`
+    - `ops.event_route_policy` 中 `trade.order.created`、`search.product.changed`、`delivery.committed`、`delivery.task.auto_created`、`billing.trigger.bridge`、`audit.anchor_requested` 六条关键路由均为 `status='active'`
+  - 任务专项 smoke 通过：
+    - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core trade003_create_order_db_smoke -- --nocapture`
+    - `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat022_search_visibility_fields_and_events_db_smoke -- --nocapture`
+    - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv002_file_delivery_commit_db_smoke -- --nocapture`
+    - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv029_delivery_task_autocreation_db_smoke -- --nocapture`
+    - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_trace_api_db_smoke -- --nocapture`
+  - 通用校验通过：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-030`
+  - `事件模型与Topic清单正式版.md` 2.3~2.5
+  - `一致性与事件接口协议正式版.md` 2~4
+  - `双层权威模型与链上链下一致性设计.md` 6.1~7.1
+  - `A02-统一事件-Envelope-与路由权威源.md`
+- 覆盖的任务清单条目：`AUD-030`
+- 未覆盖项：
+  - 无。当前任务要求的 canonical envelope、route authority、trigger 退役与无双写验收已全部固定到代码断言、runbook 与 test-case。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - `common.tg_write_outbox()` 仍保留函数名仅用于显式失败与历史迁移识别，这不构成正式主链路回退；当前数据库没有任何正式 trigger 继续引用它。
+  - 本批没有改动 canonical writer 主逻辑，真实缺口在于验收证据未被显式冻结。已通过更严的 smoke 断言和专用文档把 `AUD-030` 收口成可重复复核的正式基线。
