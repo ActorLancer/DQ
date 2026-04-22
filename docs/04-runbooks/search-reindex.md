@@ -23,6 +23,8 @@
 
 ## 本地前置
 
+以下运维链路对应 `staging` 正式搜索路径；`local / demo` 的 PostgreSQL fallback 只用于前台搜索读路径验证，不替代本 runbook 中的 `OpenSearch` 运维能力。
+
 载入本地环境：
 
 ```bash
@@ -41,7 +43,7 @@ set +a
 
 ```bash
 cargo build -p platform-core-bin
-APP_PORT=18080 target/debug/platform-core-bin
+APP_MODE=staging APP_PORT=18080 target/debug/platform-core-bin
 ```
 
 启动 `search-indexer`：

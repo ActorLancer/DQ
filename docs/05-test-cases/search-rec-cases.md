@@ -20,7 +20,8 @@
 - 商品变更写入 `search.product.changed`，其 canonical topic 固定为 `dtp.search.sync`。
 - `search-indexer` 消费 `dtp.search.sync` 后，从 PostgreSQL 搜索投影读取最新文档并写入 OpenSearch `write alias`。
 - `search-indexer` 成功同步后会失效 `datab:v1:search:catalog:*` 缓存并回写 `search.index_sync_task`。
-- `GET /api/v1/catalog/search` 必须经 `OpenSearch candidate -> PostgreSQL final check` 返回结果。
+- `GET /api/v1/catalog/search` 在 `staging` 必须经 `OpenSearch candidate -> PostgreSQL final check` 返回结果，并显式返回 `backend=opensearch`。
+- `GET /api/v1/catalog/search` 在 `local / demo` 允许经 `PostgreSQL search projection candidate -> PostgreSQL final check` 返回结果，并显式返回 `backend=postgresql`。
 - `GET /api/v1/catalog/search` 当前正式要求 `Authorization: Bearer <access_token>`，且两次相同查询应能观察到 `cache_hit=false -> true`。
 - `POST /api/v1/ops/search/reindex` 必须写入 `search.index_sync_task(sync_status='queued')`。
 - `POST /api/v1/ops/search/reindex` 必须要求 `ops.search_reindex.execute + X-Idempotency-Key + X-Step-Up-Token`，并写入 `audit.audit_event(action_name='search.reindex.queue')`、`audit.access_audit(target_type='search_reindex')`、`ops.system_log`。
@@ -35,7 +36,9 @@
 - `search-indexer` 必须以统一事件 envelope 的 `event_id` 做 consumer 幂等，并把幂等记录写入 `ops.consumer_idempotency_record`。
 - `search-indexer` 处理失败时，必须先落 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter`，再决定是否提交 offset。
 - `search-indexer` 的测试不得只用手工 seed OpenSearch 证明通过，必须验证 worker 侧真实副作用、失败隔离与 reprocess 路径。
-- 推荐回归命令：
+- 搜索回归命令：
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
   - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
   - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
 

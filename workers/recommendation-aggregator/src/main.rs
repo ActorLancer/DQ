@@ -97,8 +97,9 @@ impl WorkerConfig {
                 .unwrap_or_else(|_| "dtp.dead-letter".to_string()),
             consumer_group: std::env::var("RECOMMENDATION_AGGREGATOR_CONSUMER_GROUP")
                 .unwrap_or_else(|_| "cg-recommendation-aggregator".to_string()),
-            redis_url: std::env::var("REDIS_URL")
-                .unwrap_or_else(|_| "redis://:datab_redis_pass@127.0.0.1:6379/1".to_string()),
+            redis_url: std::env::var("REDIS_URL").unwrap_or_else(|_| {
+                "redis://default:datab_redis_pass@127.0.0.1:6379/1".to_string()
+            }),
             redis_namespace: std::env::var("REDIS_NAMESPACE")
                 .unwrap_or_else(|_| "datab:v1".to_string()),
             product_write_alias: std::env::var("INDEX_ALIAS_PRODUCT_SEARCH_WRITE")
@@ -974,7 +975,7 @@ mod tests {
 
     fn redis_url() -> String {
         std::env::var("REDIS_URL")
-            .unwrap_or_else(|_| "redis://:datab_redis_pass@127.0.0.1:6379/1".to_string())
+            .unwrap_or_else(|_| "redis://default:datab_redis_pass@127.0.0.1:6379/1".to_string())
     }
 
     fn worker_config() -> WorkerConfig {

@@ -7,10 +7,39 @@ use db::{Client, Error, GenericClient, NoTls, connect};
 use redis::AsyncCommands;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::sync::Mutex;
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
     std::env::var("SEARCH_DB_SMOKE").ok().as_deref() == Some("1")
+}
+
+static SEARCH_ENV_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+struct ScopedEnvVar {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl ScopedEnvVar {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var(key).ok();
+        // SAFETY: test-only mutation guarded by SEARCH_ENV_TEST_LOCK.
+        unsafe { std::env::set_var(key, value) };
+        Self { key, previous }
+    }
+}
+
+impl Drop for ScopedEnvVar {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.as_deref() {
+            // SAFETY: test-only mutation guarded by SEARCH_ENV_TEST_LOCK.
+            unsafe { std::env::set_var(self.key, previous) };
+        } else {
+            // SAFETY: test-only mutation guarded by SEARCH_ENV_TEST_LOCK.
+            unsafe { std::env::remove_var(self.key) };
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -543,11 +572,15 @@ fn redis_url() -> String {
             return url;
         }
     }
-    "redis://:datab_redis_pass@127.0.0.1:6379/0".to_string()
+    "redis://default:datab_redis_pass@127.0.0.1:6379/0".to_string()
 }
 
-fn cache_key_for_query(query: &SearchQuery) -> String {
-    let canonical = serde_json::to_string(query).expect("encode search query");
+fn cache_key_for_query(query: &SearchQuery, backend: &str) -> String {
+    let canonical = serde_json::to_string(&json!({
+        "backend": backend,
+        "query": query,
+    }))
+    .expect("encode search query");
     let digest = format!("{:x}", Sha256::digest(canonical.as_bytes()));
     format!("datab:v1:search:catalog:product:{digest}")
 }
@@ -626,11 +659,12 @@ async fn count_system_logs(client: &Client, request_id: &str, message: &str) -> 
         .map(|row| row.get(0))
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn search_api_and_ops_db_smoke() {
     if !live_db_enabled() {
         return;
     }
+    let _env_lock = SEARCH_ENV_TEST_LOCK.lock().expect("lock search env");
     let Ok(dsn) = std::env::var("DATABASE_URL") else {
         return;
     };
@@ -654,6 +688,7 @@ async fn search_api_and_ops_db_smoke() {
         .await
         .expect("load product alias binding");
     let temp_index = format!("product_search_v1_aud022_{suffix}");
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "staging");
     let app = crate::with_live_test_state(router()).await;
     let admin_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["platform_admin"]);
     let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
@@ -680,7 +715,7 @@ async fn search_api_and_ops_db_smoke() {
         page: Some(1),
         page_size: Some(10),
     };
-    let cache_key = cache_key_for_query(&query);
+    let cache_key = cache_key_for_query(&query, "opensearch");
     let updated_weights = json!({
         "quality_score": 0.78,
         "hotness_score": 0.12,
@@ -757,6 +792,11 @@ async fn search_api_and_ops_db_smoke() {
         if search_json_1["data"]["cache_hit"].as_bool() != Some(false) {
             return Err(format!("first search should be cache miss: {search_json_1}"));
         }
+        if search_json_1["data"]["backend"].as_str() != Some("opensearch") {
+            return Err(format!(
+                "staging search should use opensearch backend: {search_json_1}"
+            ));
+        }
 
         let redis_client =
             redis::Client::open(redis_url()).map_err(|err| format!("init redis client failed: {err}"))?;
@@ -792,6 +832,11 @@ async fn search_api_and_ops_db_smoke() {
         let search_json_2 = response_json(search_resp_2).await?;
         if search_json_2["data"]["cache_hit"].as_bool() != Some(true) {
             return Err(format!("second search should be cache hit: {search_json_2}"));
+        }
+        if search_json_2["data"]["backend"].as_str() != Some("opensearch") {
+            return Err(format!(
+                "staging search should keep opensearch backend: {search_json_2}"
+            ));
         }
 
         let cache_resp = app
@@ -1247,6 +1292,152 @@ async fn search_api_and_ops_db_smoke() {
     delete_index(&temp_index).await;
     cleanup_opensearch_documents(&ids).await;
     cleanup_seed_graph(&client, &ids, &step_up_ids, &ranking_seed).await;
+    if let Err(message) = outcome {
+        panic!("{message}");
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn search_catalog_pg_fallback_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let _env_lock = SEARCH_ENV_TEST_LOCK.lock().expect("lock search env");
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis()
+        .to_string();
+    let ids = seed_minimum_graph(&client, &suffix)
+        .await
+        .expect("seed minimum graph");
+    let ranking_seed = lookup_product_ranking_profile(&client)
+        .await
+        .expect("load ranking profile");
+    let _app_mode = ScopedEnvVar::set("APP_MODE", "local");
+    let _opensearch_endpoint = ScopedEnvVar::set("OPENSEARCH_ENDPOINT", "http://127.0.0.1:1");
+    let app = crate::with_live_test_state(router()).await;
+    let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
+
+    let req_search_1 = format!("req-search-pg-fallback-1-{suffix}");
+    let req_search_2 = format!("req-search-pg-fallback-2-{suffix}");
+    let query = SearchQuery {
+        q: Some(suffix.clone()),
+        entity_scope: "product".to_string(),
+        industry: None,
+        tags: Vec::new(),
+        delivery_mode: None,
+        price_min: None,
+        price_max: None,
+        sort: "composite".to_string(),
+        page: Some(1),
+        page_size: Some(10),
+    };
+    let cache_key = cache_key_for_query(&query, "postgresql");
+
+    let outcome: Result<(), String> = async {
+        let search_resp_1 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&page=1&page_size=10",
+                        suffix
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &req_search_1)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build first pg fallback search request: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call first pg fallback search endpoint failed: {err}"))?;
+        assert_eq!(search_resp_1.status(), StatusCode::OK);
+        let search_json_1 = response_json(search_resp_1).await?;
+        let search_items = search_json_1["data"]["items"]
+            .as_array()
+            .ok_or_else(|| "pg fallback search items missing".to_string())?;
+        if !search_items
+            .iter()
+            .any(|item| item["entity_id"].as_str() == Some(ids.product_id.as_str()))
+        {
+            return Err(format!(
+                "pg fallback search result missing seeded product: {search_json_1}"
+            ));
+        }
+        if search_json_1["data"]["backend"].as_str() != Some("postgresql") {
+            return Err(format!(
+                "local search should use postgresql fallback backend: {search_json_1}"
+            ));
+        }
+        if search_json_1["data"]["cache_hit"].as_bool() != Some(false) {
+            return Err(format!(
+                "first pg fallback search should be cache miss: {search_json_1}"
+            ));
+        }
+
+        let redis_client = redis::Client::open(redis_url())
+            .map_err(|err| format!("init redis client failed: {err}"))?;
+        let mut redis_conn = redis_client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|err| format!("connect redis failed: {err}"))?;
+        let cached_value: Option<String> = redis_conn
+            .get(&cache_key)
+            .await
+            .map_err(|err| format!("load pg fallback cached search key failed: {err}"))?;
+        if cached_value.is_none() {
+            return Err(format!(
+                "pg fallback search cache key missing after first search: {cache_key}"
+            ));
+        }
+
+        let search_resp_2 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&page=1&page_size=10",
+                        suffix
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &req_search_2)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build second pg fallback search request: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call second pg fallback search endpoint failed: {err}"))?;
+        assert_eq!(search_resp_2.status(), StatusCode::OK);
+        let search_json_2 = response_json(search_resp_2).await?;
+        if search_json_2["data"]["backend"].as_str() != Some("postgresql") {
+            return Err(format!(
+                "second local search should keep postgresql fallback backend: {search_json_2}"
+            ));
+        }
+        if search_json_2["data"]["cache_hit"].as_bool() != Some(true) {
+            return Err(format!(
+                "second pg fallback search should be cache hit: {search_json_2}"
+            ));
+        }
+
+        Ok(())
+    }
+    .await;
+
+    let redis_client = redis::Client::open(redis_url()).expect("init redis client");
+    if let Ok(mut redis_conn) = redis_client.get_multiplexed_async_connection().await {
+        let _ = redis_conn.del::<_, usize>(&cache_key).await;
+    }
+    cleanup_seed_graph(&client, &ids, &[], &ranking_seed).await;
     if let Err(message) = outcome {
         panic!("{message}");
     }

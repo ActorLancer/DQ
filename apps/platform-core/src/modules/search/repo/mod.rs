@@ -1,3 +1,4 @@
+use config::RuntimeMode;
 use db::GenericClient;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
@@ -24,6 +25,7 @@ pub struct SearchCandidate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchCandidatePage {
     pub query_scope: String,
+    pub backend: String,
     pub total: u64,
     pub hits: Vec<SearchCandidate>,
 }
@@ -37,36 +39,37 @@ struct AliasBinding {
     active_index_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CandidateBackend {
+    OpenSearch,
+    Postgresql,
+}
+
+impl CandidateBackend {
+    fn as_str(self) -> &'static str {
+        match self {
+            CandidateBackend::OpenSearch => "opensearch",
+            CandidateBackend::Postgresql => "postgresql",
+        }
+    }
+}
+
 pub async fn search_catalog_candidates(
+    client: &(impl GenericClient + Sync),
+    runtime_mode: &RuntimeMode,
     query: &SearchQuery,
 ) -> RepoResult<(SearchCandidatePage, bool)> {
-    if let Some(cached) = load_candidate_cache(query).await? {
+    let backend = candidate_backend_for_runtime(runtime_mode);
+    if let Some(cached) = load_candidate_cache(query, backend).await? {
         return Ok((cached, true));
     }
 
-    let page = match normalized_scope(&query.entity_scope).as_str() {
-        "product" | "service" => {
-            let mut page = fetch_scope_candidates(product_read_alias(), "product", query).await?;
-            page.query_scope = normalized_scope(&query.entity_scope);
-            page
-        }
-        "seller" => fetch_scope_candidates(seller_read_alias(), "seller", query).await?,
-        _ => {
-            let product = fetch_scope_candidates(product_read_alias(), "product", query).await?;
-            let seller = fetch_scope_candidates(seller_read_alias(), "seller", query).await?;
-            let mut hits = product.hits;
-            hits.extend(seller.hits);
-            sort_candidates(&mut hits, sort_key(&query.sort));
-            let page_size = query.page_size.unwrap_or(20).clamp(1, 50) as usize;
-            SearchCandidatePage {
-                query_scope: "all".to_string(),
-                total: product.total + seller.total,
-                hits: hits.into_iter().take(page_size).collect(),
-            }
-        }
+    let page = match backend {
+        CandidateBackend::OpenSearch => fetch_candidates_from_opensearch(query).await?,
+        CandidateBackend::Postgresql => fetch_candidates_from_projection(client, query).await?,
     };
 
-    store_candidate_cache(query, &page).await?;
+    store_candidate_cache(query, backend, &page).await?;
     Ok((page, false))
 }
 
@@ -519,7 +522,74 @@ pub async fn patch_ranking_profile(
     })
 }
 
-async fn fetch_scope_candidates(
+fn candidate_backend_for_runtime(runtime_mode: &RuntimeMode) -> CandidateBackend {
+    match runtime_mode {
+        RuntimeMode::Staging => CandidateBackend::OpenSearch,
+        RuntimeMode::Local | RuntimeMode::Demo => CandidateBackend::Postgresql,
+    }
+}
+
+async fn fetch_candidates_from_opensearch(query: &SearchQuery) -> RepoResult<SearchCandidatePage> {
+    match normalized_scope(&query.entity_scope).as_str() {
+        "product" | "service" => {
+            let mut page =
+                fetch_scope_candidates_from_opensearch(product_read_alias(), "product", query)
+                    .await?;
+            page.query_scope = normalized_scope(&query.entity_scope);
+            Ok(page)
+        }
+        "seller" => {
+            fetch_scope_candidates_from_opensearch(seller_read_alias(), "seller", query).await
+        }
+        _ => {
+            let product =
+                fetch_scope_candidates_from_opensearch(product_read_alias(), "product", query)
+                    .await?;
+            let seller =
+                fetch_scope_candidates_from_opensearch(seller_read_alias(), "seller", query)
+                    .await?;
+            Ok(merge_candidate_pages(query, product, seller))
+        }
+    }
+}
+
+async fn fetch_candidates_from_projection(
+    client: &(impl GenericClient + Sync),
+    query: &SearchQuery,
+) -> RepoResult<SearchCandidatePage> {
+    match normalized_scope(&query.entity_scope).as_str() {
+        "product" | "service" => {
+            let mut page = fetch_scope_candidates_from_projection(client, "product", query).await?;
+            page.query_scope = normalized_scope(&query.entity_scope);
+            Ok(page)
+        }
+        "seller" => fetch_scope_candidates_from_projection(client, "seller", query).await,
+        _ => {
+            let product = fetch_scope_candidates_from_projection(client, "product", query).await?;
+            let seller = fetch_scope_candidates_from_projection(client, "seller", query).await?;
+            Ok(merge_candidate_pages(query, product, seller))
+        }
+    }
+}
+
+fn merge_candidate_pages(
+    query: &SearchQuery,
+    product: SearchCandidatePage,
+    seller: SearchCandidatePage,
+) -> SearchCandidatePage {
+    let mut hits = product.hits;
+    hits.extend(seller.hits);
+    sort_candidates(&mut hits, sort_key(&query.sort));
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 50) as usize;
+    SearchCandidatePage {
+        query_scope: "all".to_string(),
+        backend: product.backend,
+        total: product.total + seller.total,
+        hits: hits.into_iter().take(page_size).collect(),
+    }
+}
+
+async fn fetch_scope_candidates_from_opensearch(
     alias: String,
     entity_scope: &str,
     query: &SearchQuery,
@@ -587,6 +657,71 @@ async fn fetch_scope_candidates(
     }
     Ok(SearchCandidatePage {
         query_scope: entity_scope.to_string(),
+        backend: CandidateBackend::OpenSearch.as_str().to_string(),
+        total,
+        hits,
+    })
+}
+
+async fn fetch_scope_candidates_from_projection(
+    client: &(impl GenericClient + Sync),
+    entity_scope: &str,
+    query: &SearchQuery,
+) -> RepoResult<SearchCandidatePage> {
+    let query_term = normalized_query_term(query);
+    let tags_filter = (!query.tags.is_empty()).then(|| query.tags.clone());
+    let delivery_mode = if entity_scope == "seller" {
+        None
+    } else {
+        query.delivery_mode.clone()
+    };
+    let product_type = if entity_scope == "product"
+        && normalized_scope(&query.entity_scope).as_str() == "service"
+    {
+        Some("service".to_string())
+    } else {
+        None
+    };
+    let limit = query.page_size.unwrap_or(20).clamp(1, 50) as i64;
+    let offset =
+        ((query.page.unwrap_or(1).max(1) - 1) * query.page_size.unwrap_or(20).clamp(1, 50)) as i64;
+    let sql = projection_query_sql(entity_scope, sort_key(&query.sort));
+    let rows = client
+        .query(
+            &sql,
+            &[
+                &query_term,
+                &query.industry,
+                &tags_filter,
+                &delivery_mode,
+                &query.price_min,
+                &query.price_max,
+                &product_type,
+                &limit,
+                &offset,
+            ],
+        )
+        .await
+        .map_err(|err| format!("postgres search projection query failed: {err}"))?;
+
+    let total = rows
+        .first()
+        .map(|row| row.get::<usize, i64>(4) as u64)
+        .unwrap_or(0);
+    let hits = rows
+        .into_iter()
+        .map(|row| SearchCandidate {
+            entity_scope: entity_scope.to_string(),
+            entity_id: row.get(0),
+            score: row.get::<usize, f64>(1),
+            sort_value: row.get(2),
+            updated_at: row.get(3),
+        })
+        .collect();
+
+    Ok(SearchCandidatePage {
+        query_scope: entity_scope.to_string(),
+        backend: CandidateBackend::Postgresql.as_str().to_string(),
         total,
         hits,
     })
@@ -864,7 +999,145 @@ async fn fetch_seller_result(
     }))
 }
 
-async fn load_candidate_cache(query: &SearchQuery) -> RepoResult<Option<SearchCandidatePage>> {
+fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
+    let order_by = projection_order_clause(entity_scope, sort_key);
+    let from_clause = if entity_scope == "seller" {
+        "FROM search.seller_search_document d"
+    } else {
+        "FROM search.product_search_document d"
+    };
+    let industry_filter = if entity_scope == "seller" {
+        "AND ($2::text IS NULL OR $2 = ANY(d.industry_tags))"
+    } else {
+        "AND ($2::text IS NULL OR d.industry = $2)"
+    };
+    let tags_filter = if entity_scope == "seller" {
+        "AND ($3::text[] IS NULL OR d.industry_tags && $3::text[])"
+    } else {
+        "AND ($3::text[] IS NULL OR d.tags && $3::text[])"
+    };
+    let product_type_filter = if entity_scope == "seller" {
+        "AND ($7::text IS NULL OR true)".to_string()
+    } else {
+        "AND ($7::text IS NULL OR d.product_type = $7)".to_string()
+    };
+    let delivery_filter = if entity_scope == "seller" {
+        "AND ($4::text IS NULL OR true)".to_string()
+    } else {
+        "AND ($4::text IS NULL OR $4 = ANY(d.delivery_modes))".to_string()
+    };
+    let price_min_filter = if entity_scope == "seller" {
+        "AND ($5::float8 IS NULL OR true)".to_string()
+    } else {
+        "AND ($5::float8 IS NULL OR COALESCE(d.price_amount::float8, 0) >= $5)".to_string()
+    };
+    let price_max_filter = if entity_scope == "seller" {
+        "AND ($6::float8 IS NULL OR true)".to_string()
+    } else {
+        "AND ($6::float8 IS NULL OR COALESCE(d.price_amount::float8, 0) <= $6)".to_string()
+    };
+    let sort_value_expr = projection_sort_value_expr(entity_scope, sort_key);
+
+    format!(
+        "WITH params AS (
+           SELECT CASE
+                    WHEN $1::text IS NULL THEN NULL::tsquery
+                    ELSE websearch_to_tsquery('simple', $1)
+                  END AS ts_query
+         ),
+         scoped AS (
+           SELECT
+             {entity_id_expr} AS entity_id,
+             CASE
+               WHEN params.ts_query IS NULL THEN 0::float8
+               ELSE ts_rank_cd(d.searchable_tsv, params.ts_query)::float8
+             END AS score,
+             {sort_value_expr} AS sort_value,
+             to_char({updated_at_expr} AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS updated_at
+           {from_clause}
+           CROSS JOIN params
+           WHERE (params.ts_query IS NULL OR d.searchable_tsv @@ params.ts_query)
+             {industry_filter}
+             {tags_filter}
+             {delivery_filter}
+             {price_min_filter}
+             {price_max_filter}
+             {product_type_filter}
+         )
+         SELECT
+           entity_id,
+           score,
+           sort_value,
+           updated_at,
+           COUNT(*) OVER()::bigint AS total
+         FROM scoped
+         ORDER BY {order_by}
+         LIMIT $8
+         OFFSET $9",
+        entity_id_expr = if entity_scope == "seller" {
+            "d.org_id::text"
+        } else {
+            "d.product_id::text"
+        },
+        sort_value_expr = sort_value_expr,
+        updated_at_expr = if entity_scope == "seller" {
+            "d.source_updated_at"
+        } else {
+            "d.source_updated_at"
+        },
+        from_clause = from_clause,
+        industry_filter = industry_filter,
+        tags_filter = tags_filter,
+        delivery_filter = delivery_filter,
+        price_min_filter = price_min_filter,
+        price_max_filter = price_max_filter,
+        product_type_filter = product_type_filter,
+        order_by = order_by,
+    )
+}
+
+fn projection_sort_value_expr(entity_scope: &str, sort_key: &str) -> &'static str {
+    match sort_key {
+        "price_asc" | "price_desc" => "COALESCE(d.price_amount::float8, 0)",
+        "quality" => "COALESCE(d.quality_score::float8, 0)",
+        "reputation" if entity_scope == "seller" => "COALESCE(d.reputation_score::float8, 0)",
+        "reputation" => "COALESCE(d.seller_reputation_score::float8, 0)",
+        "hotness" if entity_scope == "seller" => "COALESCE(d.listing_product_count::float8, 0)",
+        "hotness" => "COALESCE(d.hotness_score::float8, 0)",
+        _ => "NULL::float8",
+    }
+}
+
+fn projection_order_clause(entity_scope: &str, sort_key: &str) -> &'static str {
+    match sort_key {
+        "latest" => "updated_at DESC, score DESC, entity_id ASC",
+        "price_asc" => "sort_value ASC NULLS LAST, score DESC, updated_at DESC, entity_id ASC",
+        "price_desc" | "quality" | "reputation" | "hotness" => {
+            "sort_value DESC NULLS LAST, score DESC, updated_at DESC, entity_id ASC"
+        }
+        _ => {
+            if entity_scope == "seller" {
+                "score DESC, updated_at DESC, entity_id ASC"
+            } else {
+                "score DESC, updated_at DESC, entity_id ASC"
+            }
+        }
+    }
+}
+
+fn normalized_query_term(query: &SearchQuery) -> Option<String> {
+    query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+async fn load_candidate_cache(
+    query: &SearchQuery,
+    backend: CandidateBackend,
+) -> RepoResult<Option<SearchCandidatePage>> {
     let redis_url = redis_url();
     let client = redis::Client::open(redis_url.as_str())
         .map_err(|err| format!("redis client init failed: {err}"))?;
@@ -872,7 +1145,7 @@ async fn load_candidate_cache(query: &SearchQuery) -> RepoResult<Option<SearchCa
         Ok(connection) => connection,
         Err(err) => return Err(format!("redis connect failed: {err}")),
     };
-    let key = search_cache_key(query)?;
+    let key = search_cache_key(query, backend)?;
     let value: Option<String> = connection
         .get(key)
         .await
@@ -885,7 +1158,11 @@ async fn load_candidate_cache(query: &SearchQuery) -> RepoResult<Option<SearchCa
     }
 }
 
-async fn store_candidate_cache(query: &SearchQuery, page: &SearchCandidatePage) -> RepoResult<()> {
+async fn store_candidate_cache(
+    query: &SearchQuery,
+    backend: CandidateBackend,
+    page: &SearchCandidatePage,
+) -> RepoResult<()> {
     let redis_url = redis_url();
     let client = redis::Client::open(redis_url.as_str())
         .map_err(|err| format!("redis client init failed: {err}"))?;
@@ -893,7 +1170,7 @@ async fn store_candidate_cache(query: &SearchQuery, page: &SearchCandidatePage) 
         .get_multiplexed_async_connection()
         .await
         .map_err(|err| format!("redis connect failed: {err}"))?;
-    let key = search_cache_key(query)?;
+    let key = search_cache_key(query, backend)?;
     let serialized = serde_json::to_string(page)
         .map_err(|err| format!("encode cached search candidates failed: {err}"))?;
     connection
@@ -1032,12 +1309,15 @@ fn redis_url() -> String {
     let port = std::env::var("REDIS_PORT").unwrap_or_else(|_| "6379".to_string());
     let password =
         std::env::var("REDIS_PASSWORD").unwrap_or_else(|_| "datab_redis_pass".to_string());
-    format!("redis://:{}@{}:{}/0", password, host, port)
+    format!("redis://default:{}@{}:{}/0", password, host, port)
 }
 
-fn search_cache_key(query: &SearchQuery) -> RepoResult<String> {
-    let canonical = serde_json::to_string(query)
-        .map_err(|err| format!("encode search cache fingerprint failed: {err}"))?;
+fn search_cache_key(query: &SearchQuery, backend: CandidateBackend) -> RepoResult<String> {
+    let canonical = serde_json::to_string(&json!({
+        "backend": backend.as_str(),
+        "query": query,
+    }))
+    .map_err(|err| format!("encode search cache fingerprint failed: {err}"))?;
     let digest = format!("{:x}", Sha256::digest(canonical.as_bytes()));
     Ok(format!(
         "{}:search:catalog:{}:{}",

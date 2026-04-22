@@ -29,18 +29,21 @@
 12. Kafka topics 会由 `make up-local` / `make up-core` / `make up-mocks` / `make up-demo` 通过 compose 内一次性 `kafka-topics-init` 自动初始化；如需手动重跑：`./infra/kafka/init-topics.sh`
 13. 初始化 MinIO buckets：`./infra/minio/init-minio.sh`
 14. 初始化 OpenSearch 索引：`./infra/opensearch/init-opensearch.sh`
+    - `staging` 正式搜索链路必需；仅验证 `local / demo` 的 PostgreSQL 搜索投影 fallback 时可跳过
 15. 执行本地 seed：`make seed-local`
 16. 准备五条标准链路演示数据：`fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json`
 
 补充说明：
 
-- 当前本地启动默认仍初始化 `OpenSearch`，这是现阶段的默认联调路径，不代表 `SEARCHREC` 的 fallback 目标已经实现。
-- 进入 `SEARCHREC-001 / SEARCHREC-004` 的后续实现批次后，正式目标应收敛为：`staging / production` 强制 `OpenSearch`，`local / demo` 允许只用 `PostgreSQL` 搜索投影运行，且最终仍由 `PostgreSQL` 做可见性校验。
+- 当前代码已按 `SEARCHREC-001` 收口搜索运行边界：`staging` 强制 `OpenSearch` 作为正式候选源，`local / demo` 允许走 `PostgreSQL` 搜索投影 fallback，且最终仍由 `PostgreSQL` 做可见性校验。
+- 默认本地联调仍建议初始化 `OpenSearch`，因为搜索运维控制面、`search-indexer`、alias / rebuild / sync state 都依赖正式 `OpenSearch` 链路。
+- 如果当前只验证 `local / demo` fallback，可跳过 `OpenSearch` 初始化和 `search-indexer` 启动；但 `Redis` 仍需可用以承载搜索短缓存。
 
 ## 阶段 4：应用
 
 17. 启动主应用（platform-core）：
-   `set -a; source infra/docker/.env.local; set +a; APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+   `set -a; source infra/docker/.env.local; set +a; APP_MODE=staging APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+   - 若验证 `local / demo` fallback，可改为 `APP_MODE=local` 或 `APP_MODE=demo`；此时 `platform-core` 不再要求 OpenSearch alias / index 在启动阶段已就绪
    - `platform-core` 和大部分本地脚本应统一从 `DATABASE_URL` 读取数据库入口，而不是直接读取 `POSTGRES_*`
 18. 按需启动 canonical outbox publisher：
    `set -a; source infra/docker/.env.local; set +a; APP_PORT=8098 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p outbox-publisher`

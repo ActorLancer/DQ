@@ -2797,7 +2797,7 @@ async fn rebuild_bundle_relations(
 
 fn redis_url() -> String {
     std::env::var("REDIS_URL")
-        .unwrap_or_else(|_| "redis://:datab_redis_pass@127.0.0.1:6379/1".to_string())
+        .unwrap_or_else(|_| "redis://default:datab_redis_pass@127.0.0.1:6379/1".to_string())
 }
 
 fn redis_namespace() -> String {

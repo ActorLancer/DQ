@@ -2,7 +2,7 @@ use auth::{
     AuthorizationFacade, MockJwtParser, NoopStepUpGateway, RolePermissionChecker,
     UnifiedAuthorizationFacade,
 };
-use config::{ProviderMode, RuntimeConfig};
+use config::{ProviderMode, RuntimeConfig, RuntimeMode};
 use db::{
     AppDb, DbPool, DbPoolConfig, MySqlDbRuntime, NoopBusinessMutationWriter, OrderRepository,
     OrderRepositoryBackend, TxTemplate, build_order_repository,
@@ -310,8 +310,10 @@ async fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
 
     verify_kafka_topics_exist(&resolved_topics)?;
     verify_minio_buckets_exist(&resolved_buckets).await?;
-    verify_opensearch_aliases_exist(&resolved_aliases).await?;
-    verify_opensearch_indices_exist(&resolved_indices).await?;
+    if requires_opensearch_startup_checks(&cfg.mode) {
+        verify_opensearch_aliases_exist(&resolved_aliases).await?;
+        verify_opensearch_indices_exist(&resolved_indices).await?;
+    }
 
     info!(
         check_id = %new_external_readable_id("boot"),
@@ -410,6 +412,10 @@ async fn verify_opensearch_indices_exist(required_indices: &[String]) -> AppResu
     Ok(())
 }
 
+fn requires_opensearch_startup_checks(mode: &RuntimeMode) -> bool {
+    matches!(mode, RuntimeMode::Staging)
+}
+
 pub async fn run() -> AppResult<()> {
     tracing_subscriber::fmt()
         .with_env_filter("info")
@@ -474,4 +480,17 @@ pub async fn run() -> AppResult<()> {
     launcher
         .run(|| async move { serve(addr, router, tokio::signal::ctrl_c()).await })
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::requires_opensearch_startup_checks;
+    use config::RuntimeMode;
+
+    #[test]
+    fn opensearch_startup_checks_are_only_required_in_staging() {
+        assert!(!requires_opensearch_startup_checks(&RuntimeMode::Local));
+        assert!(!requires_opensearch_startup_checks(&RuntimeMode::Demo));
+        assert!(requires_opensearch_startup_checks(&RuntimeMode::Staging));
+    }
 }

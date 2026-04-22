@@ -1008,7 +1008,7 @@ fn resolve_redis_url() -> String {
     let port = std::env::var("REDIS_PORT").unwrap_or_else(|_| "6379".to_string());
     let password =
         std::env::var("REDIS_PASSWORD").unwrap_or_else(|_| "datab_redis_pass".to_string());
-    format!("redis://:{}@{}:{}/0", password, host, port)
+    format!("redis://default:{}@{}:{}/0", password, host, port)
 }
 
 #[cfg(test)]

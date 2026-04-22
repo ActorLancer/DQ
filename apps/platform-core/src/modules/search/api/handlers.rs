@@ -49,9 +49,10 @@ pub(in crate::modules::search) async fn search_catalog(
     )?;
 
     let client = state_client(&state, &request_id)?;
-    let (candidate_page, cache_hit) = repo::search_catalog_candidates(&query)
-        .await
-        .map_err(|message| map_search_error(&request_id, &message))?;
+    let (candidate_page, cache_hit) =
+        repo::search_catalog_candidates(&client, &state.runtime.mode, &query)
+            .await
+            .map_err(|message| map_search_error(&request_id, &message))?;
     let items = repo::hydrate_search_results(&client, &candidate_page.hits)
         .await
         .map_err(|message| map_search_error(&request_id, &message))?;
@@ -62,7 +63,7 @@ pub(in crate::modules::search) async fn search_catalog(
         page: query.page.unwrap_or(1).max(1),
         page_size: query.page_size.unwrap_or(20).clamp(1, 50),
         cache_hit,
-        backend: "opensearch".to_string(),
+        backend: candidate_page.backend,
         items,
     }))
 }
