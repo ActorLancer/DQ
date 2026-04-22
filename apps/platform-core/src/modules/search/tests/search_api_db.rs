@@ -431,6 +431,140 @@ async fn seed_opensearch_documents(ids: &SeedIds, suffix: &str) -> Result<(), St
     Ok(())
 }
 
+async fn configure_product_projection_ranking(
+    client: &Client,
+    ids: &SeedIds,
+    query_token: &str,
+    label: &str,
+    lexical_repeats: usize,
+    quality_score: f64,
+    reputation_score: f64,
+    hotness_score: f64,
+    source_updated_at: &str,
+) -> Result<(), Error> {
+    let lexical_text = std::iter::repeat(query_token)
+        .take(lexical_repeats)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let title = format!("{lexical_text} {label}");
+    let description = format!("{lexical_text} ranking {label}");
+    let recent_trade_count = (hotness_score * 100.0).round() as i64;
+
+    client
+        .execute(
+            "UPDATE search.product_search_document
+             SET title = $2,
+                 description = $3,
+                 searchable_tsv = to_tsvector(
+                   'simple',
+                   concat_ws(
+                     ' ',
+                     $2,
+                     $3,
+                     array_to_string(COALESCE(tags, '{}'), ' '),
+                     COALESCE(industry, ''),
+                     COALESCE(seller_name, '')
+                   )
+                 ),
+                 quality_score = $4,
+                 seller_reputation_score = $5,
+                 hotness_score = $6,
+                 recent_trade_count = $7,
+                 ranking_features = jsonb_build_object(
+                   'quality_score', $4,
+                   'seller_reputation_score', $5,
+                   'recent_trade_count', $7,
+                   'hotness_score', $6
+                 ),
+                 source_updated_at = $8::timestamptz,
+                 indexed_at = now(),
+                 index_sync_status = 'synced',
+                 updated_at = now()
+             WHERE product_id = $1::text::uuid",
+            &[
+                &ids.product_id,
+                &title,
+                &description,
+                &quality_score,
+                &reputation_score,
+                &hotness_score,
+                &recent_trade_count,
+                &source_updated_at,
+            ],
+        )
+        .await?;
+
+    Ok(())
+}
+
+async fn seed_product_opensearch_document_from_projection(
+    client: &Client,
+    product_id: &str,
+) -> Result<(), String> {
+    let row = client
+        .query_one(
+            "SELECT jsonb_build_object(
+               'entity_scope', 'product',
+               'id', product_id::text,
+               'seller_id', org_id::text,
+               'name', title,
+               'title', title,
+               'subtitle', subtitle,
+               'description', description,
+               'industry', industry,
+               'tags', tags,
+               'delivery_modes', delivery_modes,
+               'status', listing_status,
+               'review_status', review_status,
+               'visibility_status', visibility_status,
+               'visible_to_search', visible_to_search,
+               'price_amount', price_amount,
+               'currency_code', currency_code,
+               'quality_score', quality_score,
+               'seller_reputation_score', seller_reputation_score,
+               'hotness_score', hotness_score,
+               'updated_at', to_char(source_updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             )
+             FROM search.product_search_document
+             WHERE product_id = $1::text::uuid",
+            &[&product_id],
+        )
+        .await
+        .map_err(|err| format!("load product search projection for opensearch seed failed: {err}"))?;
+    let product_doc: Value = row.get(0);
+
+    let response = reqwest::Client::new()
+        .put(format!(
+            "{}/product_search_write/_doc/{}?refresh=wait_for",
+            opensearch_endpoint().trim_end_matches('/'),
+            product_id
+        ))
+        .json(&product_doc)
+        .send()
+        .await
+        .map_err(|err| format!("seed ranked product opensearch doc failed: {err}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "seed ranked product opensearch doc status={}",
+            response.status()
+        ));
+    }
+
+    Ok(())
+}
+
+async fn cleanup_opensearch_product_document(product_id: &str) {
+    let endpoint = opensearch_endpoint();
+    let _ = reqwest::Client::new()
+        .delete(format!(
+            "{}/product_search_write/_doc/{}?refresh=wait_for",
+            endpoint.trim_end_matches('/'),
+            product_id
+        ))
+        .send()
+        .await;
+}
+
 async fn cleanup_opensearch_documents(ids: &SeedIds) {
     let endpoint = opensearch_endpoint();
     let client = reqwest::Client::new();
@@ -604,6 +738,20 @@ fn cache_key_for_query(query: &SearchQuery, backend: &str) -> String {
     .expect("encode search query");
     let digest = format!("{:x}", Sha256::digest(canonical.as_bytes()));
     format!("datab:v1:search:catalog:product:{digest}")
+}
+
+async fn clear_cache_key(key: &str) -> Result<(), String> {
+    let redis_client = redis::Client::open(redis_url())
+        .map_err(|err| format!("init redis client failed: {err}"))?;
+    let mut redis_conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|err| format!("connect redis failed: {err}"))?;
+    redis_conn
+        .del::<_, usize>(key)
+        .await
+        .map_err(|err| format!("delete redis cache key failed: {err}"))?;
+    Ok(())
 }
 
 async fn response_json(response: axum::response::Response) -> Result<Value, String> {
@@ -1531,6 +1679,372 @@ async fn search_catalog_pg_fallback_db_smoke() {
         let _ = redis_conn.del::<_, usize>(&cache_key).await;
     }
     cleanup_seed_graph(&client, &ids, &[], &ranking_seed).await;
+    if let Err(message) = outcome {
+        panic!("{message}");
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn search_catalog_composite_ranking_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let _env_lock = SEARCH_ENV_TEST_LOCK.lock().expect("lock search env");
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let query_token = format!(
+        "ranking{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let alpha_ids = seed_minimum_graph(&client, &format!("{query_token}-alpha"))
+        .await
+        .expect("seed alpha graph");
+    let beta_ids = seed_minimum_graph(&client, &format!("{query_token}-beta"))
+        .await
+        .expect("seed beta graph");
+    let ranking_seed = lookup_product_ranking_profile(&client)
+        .await
+        .expect("load ranking profile");
+
+    let default_weights = json!({
+        "lexical": 0.40,
+        "quality": 0.20,
+        "reputation": 0.15,
+        "freshness": 0.10,
+        "trade": 0.10,
+        "completeness": 0.05
+    });
+    let patched_weights = json!({
+        "lexical": 0.90,
+        "quality": 0.03,
+        "reputation": 0.02,
+        "freshness": 0.01,
+        "trade": 0.01,
+        "completeness": 0.03
+    });
+
+    client
+        .execute(
+            "UPDATE search.ranking_profile
+             SET weights_json = $2::jsonb,
+                 status = 'active',
+                 updated_at = now()
+             WHERE ranking_profile_id = $1::text::uuid",
+            &[&ranking_seed.ranking_profile_id, &default_weights],
+        )
+        .await
+        .expect("reset default ranking weights");
+
+    configure_product_projection_ranking(
+        &client,
+        &alpha_ids,
+        &query_token,
+        "alpha",
+        8,
+        0.55,
+        0.35,
+        0.20,
+        "2025-12-01T00:00:00.000Z",
+    )
+    .await
+    .expect("configure alpha ranking projection");
+    configure_product_projection_ranking(
+        &client,
+        &beta_ids,
+        &query_token,
+        "beta",
+        1,
+        0.60,
+        0.65,
+        0.35,
+        "2026-04-21T00:00:00.000Z",
+    )
+    .await
+    .expect("configure beta ranking projection");
+
+    let buyer_auth = authorization_header(
+        &alpha_ids.operator_user_id,
+        &alpha_ids.org_id,
+        &["buyer_operator"],
+    );
+    let admin_auth = authorization_header(
+        &alpha_ids.operator_user_id,
+        &alpha_ids.org_id,
+        &["platform_admin"],
+    );
+    let query = SearchQuery {
+        q: Some(query_token.clone()),
+        entity_scope: "product".to_string(),
+        industry: None,
+        tags: Vec::new(),
+        delivery_mode: None,
+        price_min: None,
+        price_max: None,
+        sort: "composite".to_string(),
+        page: Some(1),
+        page_size: Some(10),
+    };
+    let opensearch_cache_key = cache_key_for_query(&query, "opensearch");
+    let postgresql_cache_key = cache_key_for_query(&query, "postgresql");
+    let req_search_default = format!("req-search-composite-default-{query_token}");
+    let req_rank_patch = format!("req-search-composite-ranking-patch-{query_token}");
+    let req_search_weighted = format!("req-search-composite-weighted-{query_token}");
+    let req_search_local = format!("req-search-composite-local-{query_token}");
+
+    let mut step_up_ids = Vec::new();
+    let outcome: Result<(), String> = async {
+        seed_product_opensearch_document_from_projection(&client, &alpha_ids.product_id).await?;
+        seed_product_opensearch_document_from_projection(&client, &beta_ids.product_id).await?;
+
+        let _app_mode = ScopedEnvVar::set("APP_MODE", "staging");
+        let app = crate::with_live_test_state(router()).await;
+
+        let search_default_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&sort=composite&page=1&page_size=10",
+                        query_token
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &req_search_default)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build default composite search request: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call default composite search failed: {err}"))?;
+        let search_default_status = search_default_resp.status();
+        let search_default_json = response_json(search_default_resp).await?;
+        if search_default_status != StatusCode::OK {
+            return Err(format!(
+                "default composite search unexpected status={search_default_status}: {search_default_json}"
+            ));
+        }
+        if search_default_json["data"]["backend"].as_str() != Some("opensearch") {
+            return Err(format!(
+                "default composite search should use opensearch backend: {search_default_json}"
+            ));
+        }
+        if search_default_json["data"]["cache_hit"].as_bool() != Some(false) {
+            return Err(format!(
+                "default composite search should be cache miss: {search_default_json}"
+            ));
+        }
+        let default_first = search_default_json["data"]["items"]
+            .as_array()
+            .and_then(|items| items.first())
+            .and_then(|item| item["entity_id"].as_str());
+        if default_first != Some(beta_ids.product_id.as_str()) {
+            return Err(format!(
+                "default balanced composite ranking should prefer fresher and stronger beta candidate: {search_default_json}"
+            ));
+        }
+        if count_access_audit(&client, &req_search_default, "search_catalog")
+            .await
+            .map_err(|err| format!("count default composite access audit failed: {err}"))?
+            != 1
+        {
+            return Err("default composite search access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_search_default,
+            "catalog search lookup executed: GET /api/v1/catalog/search",
+        )
+        .await
+        .map_err(|err| format!("count default composite system log failed: {err}"))?
+            != 1
+        {
+            return Err("default composite search system log missing".to_string());
+        }
+
+        clear_cache_key(&opensearch_cache_key).await?;
+
+        let ranking_step_up = seed_verified_step_up_challenge(
+            &client,
+            &alpha_ids.operator_user_id,
+            "ops.search_ranking.manage",
+            "ranking_profile",
+            Some(ranking_seed.ranking_profile_id.as_str()),
+            &format!("searchrec005-ranking-{query_token}"),
+        )
+        .await
+        .map_err(|err| format!("seed ranking step-up failed: {err}"))?;
+        step_up_ids.push(ranking_step_up.clone());
+        let ranking_patch_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!(
+                        "/api/v1/ops/search/ranking-profiles/{}",
+                        ranking_seed.ranking_profile_id
+                    ))
+                    .header("authorization", &admin_auth)
+                    .header("content-type", "application/json")
+                    .header("x-request-id", &req_rank_patch)
+                    .header("x-idempotency-key", format!("idem-search-composite-{query_token}"))
+                    .header("x-step-up-token", &ranking_step_up)
+                    .body(Body::from(
+                        json!({
+                            "weights_json": patched_weights,
+                            "status": "active"
+                        })
+                        .to_string(),
+                    ))
+                    .map_err(|err| format!("build composite ranking patch request: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call composite ranking patch failed: {err}"))?;
+        assert_eq!(ranking_patch_resp.status(), StatusCode::OK);
+        let ranking_patch_json = response_json(ranking_patch_resp).await?;
+        if ranking_patch_json["data"]["weights_json"] != patched_weights {
+            return Err(format!(
+                "ranking profile weights mismatch after composite patch: {ranking_patch_json}"
+            ));
+        }
+        if count_audit_events(&client, &req_rank_patch, "search.ranking_profile.patch")
+            .await
+            .map_err(|err| format!("count composite ranking patch audit failed: {err}"))?
+            != 1
+        {
+            return Err("composite ranking patch audit missing".to_string());
+        }
+        if count_access_audit(&client, &req_rank_patch, "search_ranking_profile")
+            .await
+            .map_err(|err| format!("count composite ranking patch access audit failed: {err}"))?
+            != 1
+        {
+            return Err("composite ranking patch access audit missing".to_string());
+        }
+
+        let search_weighted_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&sort=composite&page=1&page_size=10",
+                        query_token
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &req_search_weighted)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build weighted composite search request: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call weighted composite search failed: {err}"))?;
+        assert_eq!(search_weighted_resp.status(), StatusCode::OK);
+        let search_weighted_json = response_json(search_weighted_resp).await?;
+        if search_weighted_json["data"]["backend"].as_str() != Some("opensearch") {
+            return Err(format!(
+                "weighted composite search should stay on opensearch backend: {search_weighted_json}"
+            ));
+        }
+        let weighted_first = search_weighted_json["data"]["items"]
+            .as_array()
+            .and_then(|items| items.first())
+            .and_then(|item| item["entity_id"].as_str());
+        if weighted_first != Some(alpha_ids.product_id.as_str()) {
+            return Err(format!(
+                "patched lexical-heavy composite ranking should prefer alpha candidate: {search_weighted_json}"
+            ));
+        }
+        if count_access_audit(&client, &req_search_weighted, "search_catalog")
+            .await
+            .map_err(|err| format!("count weighted composite access audit failed: {err}"))?
+            != 1
+        {
+            return Err("weighted composite search access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_search_weighted,
+            "catalog search lookup executed: GET /api/v1/catalog/search",
+        )
+        .await
+        .map_err(|err| format!("count weighted composite system log failed: {err}"))?
+            != 1
+        {
+            return Err("weighted composite search system log missing".to_string());
+        }
+
+        clear_cache_key(&opensearch_cache_key).await?;
+
+        let _app_mode = ScopedEnvVar::set("APP_MODE", "local");
+        let _opensearch_endpoint = ScopedEnvVar::set("OPENSEARCH_ENDPOINT", "http://127.0.0.1:1");
+        let local_app = crate::with_live_test_state(router()).await;
+        let search_local_resp = local_app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/v1/catalog/search?q={}&entity_scope=product&sort=composite&page=1&page_size=10",
+                        query_token
+                    ))
+                    .header("authorization", &buyer_auth)
+                    .header("x-request-id", &req_search_local)
+                    .body(Body::empty())
+                    .map_err(|err| format!("build local composite search request: {err}"))?,
+            )
+            .await
+            .map_err(|err| format!("call local composite search failed: {err}"))?;
+        assert_eq!(search_local_resp.status(), StatusCode::OK);
+        let search_local_json = response_json(search_local_resp).await?;
+        if search_local_json["data"]["backend"].as_str() != Some("postgresql") {
+            return Err(format!(
+                "local composite search should use postgresql fallback backend: {search_local_json}"
+            ));
+        }
+        let local_first = search_local_json["data"]["items"]
+            .as_array()
+            .and_then(|items| items.first())
+            .and_then(|item| item["entity_id"].as_str());
+        if local_first != Some(alpha_ids.product_id.as_str()) {
+            return Err(format!(
+                "local composite ranking should align with patched lexical-heavy alpha candidate: {search_local_json}"
+            ));
+        }
+        if count_access_audit(&client, &req_search_local, "search_catalog")
+            .await
+            .map_err(|err| format!("count local composite access audit failed: {err}"))?
+            != 1
+        {
+            return Err("local composite search access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_search_local,
+            "catalog search lookup executed: GET /api/v1/catalog/search",
+        )
+        .await
+        .map_err(|err| format!("count local composite system log failed: {err}"))?
+            != 1
+        {
+            return Err("local composite search system log missing".to_string());
+        }
+
+        Ok(())
+    }
+    .await;
+
+    let _ = clear_cache_key(&opensearch_cache_key).await;
+    let _ = clear_cache_key(&postgresql_cache_key).await;
+    cleanup_opensearch_product_document(&alpha_ids.product_id).await;
+    cleanup_opensearch_product_document(&beta_ids.product_id).await;
+    cleanup_seed_graph(&client, &alpha_ids, &step_up_ids, &ranking_seed).await;
+    cleanup_seed_graph(&client, &beta_ids, &[], &ranking_seed).await;
     if let Err(message) = outcome {
         panic!("{message}");
     }

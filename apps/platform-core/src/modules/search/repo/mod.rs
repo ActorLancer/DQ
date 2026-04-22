@@ -54,6 +54,96 @@ impl CandidateBackend {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RankingWeights {
+    lexical: f64,
+    quality: f64,
+    reputation: f64,
+    freshness: f64,
+    trade: f64,
+    completeness: f64,
+}
+
+impl RankingWeights {
+    fn default_for_scope(entity_scope: &str) -> Self {
+        if entity_scope == "seller" {
+            Self {
+                lexical: 0.40,
+                quality: 0.0,
+                reputation: 0.25,
+                freshness: 0.10,
+                trade: 0.15,
+                completeness: 0.10,
+            }
+        } else {
+            Self {
+                lexical: 0.40,
+                quality: 0.20,
+                reputation: 0.15,
+                freshness: 0.10,
+                trade: 0.10,
+                completeness: 0.05,
+            }
+        }
+    }
+
+    fn from_json(entity_scope: &str, value: &Value) -> Self {
+        let defaults = Self::default_for_scope(entity_scope);
+        Self {
+            lexical: weight_from_json(
+                value,
+                &["lexical", "relevance", "relevance_score"],
+                defaults.lexical,
+            ),
+            quality: if entity_scope == "seller" {
+                0.0
+            } else {
+                weight_from_json(value, &["quality", "quality_score"], defaults.quality)
+            },
+            reputation: weight_from_json(
+                value,
+                &["reputation", "reputation_score"],
+                defaults.reputation,
+            ),
+            freshness: weight_from_json(
+                value,
+                &[
+                    "freshness",
+                    "freshness_score",
+                    "updated_at",
+                    "updated_at_score",
+                ],
+                defaults.freshness,
+            ),
+            trade: weight_from_json(
+                value,
+                &["trade", "hotness", "hotness_score"],
+                defaults.trade,
+            ),
+            completeness: weight_from_json(
+                value,
+                &["completeness", "completeness_score"],
+                defaults.completeness,
+            ),
+        }
+    }
+}
+
+fn weight_from_json(value: &Value, keys: &[&str], default: f64) -> f64 {
+    for key in keys {
+        let Some(raw) = value.get(*key) else {
+            continue;
+        };
+        if let Some(parsed) = raw.as_f64() {
+            return parsed.max(0.0);
+        }
+        if let Some(parsed) = raw.as_str().and_then(|inner| inner.parse::<f64>().ok()) {
+            return parsed.max(0.0);
+        }
+    }
+    default
+}
+
 pub async fn search_catalog_candidates(
     client: &(impl GenericClient + Sync),
     runtime_mode: &RuntimeMode,
@@ -65,7 +155,7 @@ pub async fn search_catalog_candidates(
     }
 
     let page = match backend {
-        CandidateBackend::OpenSearch => fetch_candidates_from_opensearch(query).await?,
+        CandidateBackend::OpenSearch => fetch_candidates_from_opensearch(client, query).await?,
         CandidateBackend::Postgresql => fetch_candidates_from_projection(client, query).await?,
     };
 
@@ -522,6 +612,32 @@ pub async fn patch_ranking_profile(
     })
 }
 
+async fn load_active_ranking_weights(
+    client: &(impl GenericClient + Sync),
+    entity_scope: &str,
+) -> RepoResult<RankingWeights> {
+    let scope = if entity_scope == "seller" {
+        "seller"
+    } else {
+        "product"
+    };
+    let row = client
+        .query_opt(
+            "SELECT weights_json
+             FROM search.ranking_profile
+             WHERE entity_scope = $1
+               AND status = 'active'
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1",
+            &[&scope],
+        )
+        .await
+        .map_err(|err| format!("load active search ranking profile failed: {err}"))?;
+    Ok(row
+        .map(|row| RankingWeights::from_json(scope, &row.get::<usize, Value>(0)))
+        .unwrap_or_else(|| RankingWeights::default_for_scope(scope)))
+}
+
 fn candidate_backend_for_runtime(runtime_mode: &RuntimeMode) -> CandidateBackend {
     match runtime_mode {
         RuntimeMode::Staging => CandidateBackend::OpenSearch,
@@ -529,25 +645,41 @@ fn candidate_backend_for_runtime(runtime_mode: &RuntimeMode) -> CandidateBackend
     }
 }
 
-async fn fetch_candidates_from_opensearch(query: &SearchQuery) -> RepoResult<SearchCandidatePage> {
+async fn fetch_candidates_from_opensearch(
+    client: &(impl GenericClient + Sync),
+    query: &SearchQuery,
+) -> RepoResult<SearchCandidatePage> {
     match normalized_scope(&query.entity_scope).as_str() {
         "product" | "service" => {
-            let mut page =
-                fetch_scope_candidates_from_opensearch(product_read_alias(), "product", query)
-                    .await?;
+            let mut page = fetch_scope_candidates_from_opensearch(
+                client,
+                product_read_alias(),
+                "product",
+                query,
+            )
+            .await?;
             page.query_scope = normalized_scope(&query.entity_scope);
             Ok(page)
         }
         "seller" => {
-            fetch_scope_candidates_from_opensearch(seller_read_alias(), "seller", query).await
+            fetch_scope_candidates_from_opensearch(client, seller_read_alias(), "seller", query)
+                .await
         }
         _ => {
-            let product =
-                fetch_scope_candidates_from_opensearch(product_read_alias(), "product", query)
-                    .await?;
-            let seller =
-                fetch_scope_candidates_from_opensearch(seller_read_alias(), "seller", query)
-                    .await?;
+            let product = fetch_scope_candidates_from_opensearch(
+                client,
+                product_read_alias(),
+                "product",
+                query,
+            )
+            .await?;
+            let seller = fetch_scope_candidates_from_opensearch(
+                client,
+                seller_read_alias(),
+                "seller",
+                query,
+            )
+            .await?;
             Ok(merge_candidate_pages(query, product, seller))
         }
     }
@@ -590,16 +722,25 @@ fn merge_candidate_pages(
 }
 
 async fn fetch_scope_candidates_from_opensearch(
+    client: &(impl GenericClient + Sync),
     alias: String,
     entity_scope: &str,
     query: &SearchQuery,
 ) -> RepoResult<SearchCandidatePage> {
+    let ranking_weights = load_active_ranking_weights(client, entity_scope).await?;
     let endpoint = std::env::var("OPENSEARCH_ENDPOINT")
         .unwrap_or_else(|_| "http://127.0.0.1:9200".to_string());
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 50);
     let offset = ((page - 1) * page_size) as usize;
-    let body = build_search_request_body(entity_scope, query, offset, page_size as usize);
+    let current_sort = sort_key(&query.sort);
+    let body = build_search_request_body(
+        entity_scope,
+        query,
+        offset,
+        page_size as usize,
+        ranking_weights,
+    );
     let response = reqwest::Client::new()
         .post(format!(
             "{}/{}/_search",
@@ -641,7 +782,11 @@ async fn fetch_scope_candidates_from_opensearch(
                 continue;
             }
             let score = hit["_score"].as_f64().unwrap_or(0.0);
-            let sort_value = candidate_sort_value(source, entity_scope, sort_key(&query.sort));
+            let sort_value = if current_sort == "composite" {
+                Some(score)
+            } else {
+                candidate_sort_value(source, entity_scope, current_sort)
+            };
             let updated_at = source["updated_at"]
                 .as_str()
                 .or_else(|| source["source_updated_at"].as_str())
@@ -668,6 +813,7 @@ async fn fetch_scope_candidates_from_projection(
     entity_scope: &str,
     query: &SearchQuery,
 ) -> RepoResult<SearchCandidatePage> {
+    let ranking_weights = load_active_ranking_weights(client, entity_scope).await?;
     let query_term = normalized_query_term(query);
     let tags_filter = (!query.tags.is_empty()).then(|| query.tags.clone());
     let delivery_mode = if entity_scope == "seller" {
@@ -699,6 +845,12 @@ async fn fetch_scope_candidates_from_projection(
                 &product_type,
                 &limit,
                 &offset,
+                &ranking_weights.lexical,
+                &ranking_weights.quality,
+                &ranking_weights.reputation,
+                &ranking_weights.freshness,
+                &ranking_weights.trade,
+                &ranking_weights.completeness,
             ],
         )
         .await
@@ -732,6 +884,7 @@ fn build_search_request_body(
     query: &SearchQuery,
     offset: usize,
     page_size: usize,
+    ranking_weights: RankingWeights,
 ) -> Value {
     let mut filters = Vec::new();
     if let Some(industry) = query.industry.as_deref() {
@@ -786,17 +939,113 @@ fn build_search_request_body(
         json!([{ "match_all": {} }])
     };
 
+    let current_sort = sort_key(&query.sort);
+    let base_query = json!({
+        "bool": {
+            "must": must,
+            "filter": filters
+        }
+    });
+    let request_query = if current_sort == "composite" {
+        json!({
+            "script_score": {
+                "query": base_query,
+                "script": {
+                    "source": composite_score_script(entity_scope),
+                    "params": {
+                        "lexical_weight": ranking_weights.lexical,
+                        "quality_weight": ranking_weights.quality,
+                        "reputation_weight": ranking_weights.reputation,
+                        "freshness_weight": ranking_weights.freshness,
+                        "trade_weight": ranking_weights.trade,
+                        "completeness_weight": ranking_weights.completeness,
+                        "now_epoch_ms": current_epoch_millis(),
+                    }
+                }
+            }
+        })
+    } else {
+        base_query
+    };
+
     json!({
         "from": offset,
         "size": page_size,
-        "query": {
-            "bool": {
-                "must": must,
-                "filter": filters
-            }
-        },
-        "sort": sort_descriptor(entity_scope, sort_key(&query.sort))
+        "query": request_query,
+        "sort": sort_descriptor(entity_scope, current_sort)
     })
+}
+
+fn current_epoch_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn composite_score_script(entity_scope: &str) -> &'static str {
+    if entity_scope == "seller" {
+        r#"
+double lexical = _score <= 0.0 ? 0.0 : (_score / (1.0 + _score));
+double ageDays = 0.0;
+if (doc.containsKey('updated_at') && doc['updated_at'].size() != 0) {
+  ageDays = Math.max(0.0, (params.now_epoch_ms - doc['updated_at'].value.toInstant().toEpochMilli()) / 86400000.0);
+}
+double freshness = 1.0 / (1.0 + ageDays);
+double reputation = (doc.containsKey('reputation_score') && doc['reputation_score'].size() != 0)
+  ? doc['reputation_score'].value
+  : 0.0;
+double listingCount = (doc.containsKey('listing_product_count') && doc['listing_product_count'].size() != 0)
+  ? doc['listing_product_count'].value
+  : 0.0;
+double trade = 1.0 - Math.exp(-listingCount / 10.0);
+double completenessSignals = 0.0;
+if (doc.containsKey('country_code') && doc['country_code'].size() != 0) completenessSignals += 1.0;
+if (doc.containsKey('region_code') && doc['region_code'].size() != 0) completenessSignals += 1.0;
+if (doc.containsKey('industry_tags') && doc['industry_tags'].size() != 0) completenessSignals += 1.0;
+if (doc.containsKey('certification_tags') && doc['certification_tags'].size() != 0) completenessSignals += 1.0;
+if (listingCount > 0.0) completenessSignals += 1.0;
+if (reputation > 0.0) completenessSignals += 1.0;
+double completeness = completenessSignals / 6.0;
+return (lexical * params.lexical_weight)
+  + (reputation * params.reputation_weight)
+  + (freshness * params.freshness_weight)
+  + (trade * params.trade_weight)
+  + (completeness * params.completeness_weight);
+"#
+    } else {
+        r#"
+double lexical = _score <= 0.0 ? 0.0 : (_score / (1.0 + _score));
+double ageDays = 0.0;
+if (doc.containsKey('updated_at') && doc['updated_at'].size() != 0) {
+  ageDays = Math.max(0.0, (params.now_epoch_ms - doc['updated_at'].value.toInstant().toEpochMilli()) / 86400000.0);
+}
+double freshness = 1.0 / (1.0 + ageDays);
+double quality = (doc.containsKey('quality_score') && doc['quality_score'].size() != 0)
+  ? doc['quality_score'].value
+  : 0.0;
+double reputation = (doc.containsKey('seller_reputation_score') && doc['seller_reputation_score'].size() != 0)
+  ? doc['seller_reputation_score'].value
+  : 0.0;
+double trade = (doc.containsKey('hotness_score') && doc['hotness_score'].size() != 0)
+  ? doc['hotness_score'].value
+  : 0.0;
+double completenessSignals = 0.0;
+if (doc.containsKey('industry.keyword') && doc['industry.keyword'].size() != 0) completenessSignals += 1.0;
+if (doc.containsKey('tags.keyword') && doc['tags.keyword'].size() != 0) completenessSignals += 1.0;
+if (doc.containsKey('delivery_modes.keyword') && doc['delivery_modes.keyword'].size() != 0) completenessSignals += 1.0;
+if (doc.containsKey('price_amount') && doc['price_amount'].size() != 0 && doc['price_amount'].value > 0.0) completenessSignals += 1.0;
+if (doc.containsKey('currency_code.keyword') && doc['currency_code.keyword'].size() != 0) completenessSignals += 1.0;
+if (doc.containsKey('seller_id') && doc['seller_id'].size() != 0) completenessSignals += 1.0;
+double completeness = completenessSignals / 6.0;
+return (lexical * params.lexical_weight)
+  + (quality * params.quality_weight)
+  + (reputation * params.reputation_weight)
+  + (freshness * params.freshness_weight)
+  + (trade * params.trade_weight)
+  + (completeness * params.completeness_weight);
+"#
+    }
 }
 
 fn sort_descriptor(entity_scope: &str, sort_key: &str) -> Value {
@@ -850,6 +1099,18 @@ fn candidate_sort_value(source: &Value, entity_scope: &str, sort_key: &str) -> O
 
 fn sort_candidates(candidates: &mut [SearchCandidate], sort_key: &str) {
     candidates.sort_by(|left, right| match sort_key {
+        "composite" => right
+            .sort_value
+            .unwrap_or(right.score)
+            .partial_cmp(&left.sort_value.unwrap_or(left.score))
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                right
+                    .score
+                    .partial_cmp(&left.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| right.updated_at.cmp(&left.updated_at)),
         "price_asc" => left
             .sort_value
             .partial_cmp(&right.sort_value)
@@ -1066,7 +1327,13 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
            SELECT CASE
                     WHEN $1::text IS NULL THEN NULL::tsquery
                     ELSE websearch_to_tsquery('simple', $1)
-                  END AS ts_query
+                  END AS ts_query,
+                  $10::float8 AS lexical_weight,
+                  $11::float8 AS quality_weight,
+                  $12::float8 AS reputation_weight,
+                  $13::float8 AS freshness_weight,
+                  $14::float8 AS trade_weight,
+                  $15::float8 AS completeness_weight
          ),
          scoped AS (
            SELECT
@@ -1121,32 +1388,96 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
     )
 }
 
-fn projection_sort_value_expr(entity_scope: &str, sort_key: &str) -> &'static str {
+fn projection_sort_value_expr(entity_scope: &str, sort_key: &str) -> String {
     match sort_key {
-        "price_asc" | "price_desc" => "COALESCE(d.price_amount::float8, 0)",
-        "quality" => "COALESCE(d.quality_score::float8, 0)",
-        "reputation" if entity_scope == "seller" => "COALESCE(d.reputation_score::float8, 0)",
-        "reputation" => "COALESCE(d.seller_reputation_score::float8, 0)",
-        "hotness" if entity_scope == "seller" => "COALESCE(d.listing_product_count::float8, 0)",
-        "hotness" => "COALESCE(d.hotness_score::float8, 0)",
-        _ => "NULL::float8",
+        "price_asc" | "price_desc" => "COALESCE(d.price_amount::float8, 0)".to_string(),
+        "quality" => "COALESCE(d.quality_score::float8, 0)".to_string(),
+        "reputation" if entity_scope == "seller" => {
+            "COALESCE(d.reputation_score::float8, 0)".to_string()
+        }
+        "reputation" => "COALESCE(d.seller_reputation_score::float8, 0)".to_string(),
+        "hotness" if entity_scope == "seller" => {
+            "COALESCE(d.listing_product_count::float8, 0)".to_string()
+        }
+        "hotness" => "COALESCE(d.hotness_score::float8, 0)".to_string(),
+        _ => projection_composite_sort_value_expr(entity_scope),
     }
 }
 
-fn projection_order_clause(entity_scope: &str, sort_key: &str) -> &'static str {
+fn projection_composite_sort_value_expr(entity_scope: &str) -> String {
+    let lexical_score = "CASE
+               WHEN params.ts_query IS NULL THEN 0::float8
+               ELSE ts_rank_cd(d.searchable_tsv, params.ts_query)::float8
+             END";
+    let freshness_score =
+        "1.0 / (1.0 + GREATEST(EXTRACT(EPOCH FROM (now() - d.source_updated_at)) / 86400.0, 0.0))";
+    let quality_score = if entity_scope == "seller" {
+        "0::float8"
+    } else {
+        "COALESCE(d.quality_score::float8, 0)"
+    };
+    let reputation_score = if entity_scope == "seller" {
+        "COALESCE(d.reputation_score::float8, 0)"
+    } else {
+        "COALESCE(d.seller_reputation_score::float8, 0)"
+    };
+    let trade_score = if entity_scope == "seller" {
+        "(1 - exp(-GREATEST(COALESCE(d.listing_product_count::float8, 0), 0) / 10.0))"
+    } else {
+        "COALESCE(d.hotness_score::float8, 0)"
+    };
+    let completeness_score = if entity_scope == "seller" {
+        "(
+            (CASE WHEN NULLIF(d.country_code, '') IS NULL THEN 0 ELSE 1 END)
+          + (CASE WHEN NULLIF(d.region_code, '') IS NULL THEN 0 ELSE 1 END)
+          + (CASE WHEN cardinality(COALESCE(d.industry_tags, '{}')) = 0 THEN 0 ELSE 1 END)
+          + (CASE WHEN cardinality(COALESCE(d.certification_tags, '{}')) = 0 THEN 0 ELSE 1 END)
+          + (CASE WHEN COALESCE(d.listing_product_count, 0) > 0 THEN 1 ELSE 0 END)
+          + (CASE WHEN COALESCE(d.reputation_score::float8, 0) > 0 THEN 1 ELSE 0 END)
+          )::float8 / 6.0"
+    } else {
+        "(
+            (CASE WHEN NULLIF(d.industry, '') IS NULL THEN 0 ELSE 1 END)
+          + (CASE WHEN cardinality(COALESCE(d.tags, '{}')) = 0 THEN 0 ELSE 1 END)
+          + (CASE WHEN cardinality(COALESCE(d.delivery_modes, '{}')) = 0 THEN 0 ELSE 1 END)
+          + (CASE WHEN COALESCE(d.price_amount::float8, 0) > 0 THEN 1 ELSE 0 END)
+          + (CASE WHEN NULLIF(d.currency_code, '') IS NULL THEN 0 ELSE 1 END)
+          + (CASE WHEN d.org_id IS NULL THEN 0 ELSE 1 END)
+          )::float8 / 6.0"
+    };
+
+    format!(
+        "((CASE
+             WHEN {lexical_score} <= 0 THEN 0
+             ELSE {lexical_score} / (1 + {lexical_score})
+           END) * params.lexical_weight)
+         + (({quality_score}) * params.quality_weight)
+         + (({reputation_score}) * params.reputation_weight)
+         + (({freshness_score}) * params.freshness_weight)
+         + (({trade_score}) * params.trade_weight)
+         + (({completeness_score}) * params.completeness_weight)",
+        lexical_score = lexical_score,
+        quality_score = quality_score,
+        reputation_score = reputation_score,
+        freshness_score = freshness_score,
+        trade_score = trade_score,
+        completeness_score = completeness_score,
+    )
+}
+
+fn projection_order_clause(entity_scope: &str, sort_key: &str) -> String {
     match sort_key {
-        "latest" => "updated_at DESC, score DESC, entity_id ASC",
-        "price_asc" => "sort_value ASC NULLS LAST, score DESC, updated_at DESC, entity_id ASC",
+        "latest" => "updated_at DESC, score DESC, entity_id ASC".to_string(),
+        "price_asc" => {
+            "sort_value ASC NULLS LAST, score DESC, updated_at DESC, entity_id ASC".to_string()
+        }
         "price_desc" | "quality" | "reputation" | "hotness" => {
-            "sort_value DESC NULLS LAST, score DESC, updated_at DESC, entity_id ASC"
+            "sort_value DESC NULLS LAST, score DESC, updated_at DESC, entity_id ASC".to_string()
         }
-        _ => {
-            if entity_scope == "seller" {
-                "score DESC, updated_at DESC, entity_id ASC"
-            } else {
-                "score DESC, updated_at DESC, entity_id ASC"
-            }
+        _ if entity_scope == "seller" => {
+            "sort_value DESC NULLS LAST, score DESC, updated_at DESC, entity_id ASC".to_string()
         }
+        _ => "sort_value DESC NULLS LAST, score DESC, updated_at DESC, entity_id ASC".to_string(),
     }
 }
 

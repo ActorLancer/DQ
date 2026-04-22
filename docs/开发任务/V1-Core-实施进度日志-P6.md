@@ -156,3 +156,38 @@
   - 无。`GET /api/v1/catalog/search` 当前已同时覆盖正式权限校验、`staging/local` 候选召回分流、Redis 搜索短缓存、PostgreSQL 最终业务放行、查询错误码与 OpenAPI 同步，不再保留目录搜索“有实现但无正式读审计/文档漂移”的缺口。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+### BATCH-251（计划中）
+- 任务：`SEARCHREC-005` 实现搜索排序基线
+- 状态：计划中
+- 说明：按 `SEARCHREC-005` 冻结口径复核后，当前目录搜索已经支持 `composite/latest/price/quality/reputation/hotness` 枚举，但 `composite` 仍只是 `_score + updated_at` 的简化排序，尚未真实读取 `search.ranking_profile`，也没有把相关性、更新时间、热度、信誉这些正式信号在 `staging -> OpenSearch` 与 `local/demo -> PG fallback` 两条候选链上统一成同一套简单组合规则。当前批次将只围绕搜索主排序基线收口：接入 `search.ranking_profile` 活跃权重，在 OpenSearch 查询和 PostgreSQL fallback 查询中同步组合 lexical / freshness / reputation / trade-hotness（并保留产品质量权重兼容），补齐差异化 smoke 与排序回查，明确不引入任何推荐位、曝光点击、个性化画像或推荐重排逻辑。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，不提前合并缓存失效、作业对账或推荐编排任务。
+### BATCH-251（待审批）
+- 任务：`SEARCHREC-005` 实现搜索排序基线
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-005`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-004` 已形成 `staging -> OpenSearch / local-demo -> PG fallback / PostgreSQL final check` 搜索主链与搜索读审计基线，本批在该基线上把 `composite` 排序从“词分 + 更新时间”收口为正式加权组合排序。
+- 完成情况：
+  - `apps/platform-core/src/modules/search/repo/mod.rs`：新增活跃 `search.ranking_profile` 权重读取与兼容解析，按实体范围落到正式默认权重；`composite` 排序不再直接依赖 `_score + updated_at`，而是统一组合 `lexical / freshness / reputation / trade-hotness`，并对商品额外兼容 `quality` 与基础 completeness 信号。
+  - `repo/mod.rs`：`staging` 的 OpenSearch 查询改为 `script_score` 组合排序，`local/demo` 的 PostgreSQL fallback 查询改为对应的 SQL 组合分数与同口径 `ORDER BY`；显式 `latest / price / quality / reputation / hotness` 排序保持原样，没有把推荐位、个性化画像或推荐重排逻辑引入搜索主链。
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs`：新增 `search_catalog_composite_ranking_db_smoke`，真实构造两个商品候选，验证默认平衡 profile 下 fresher/stronger 候选优先，再通过正式 `PATCH /api/v1/ops/search/ranking-profiles/{id}` 调整权重，确认 `staging -> OpenSearch` 与 `local -> PostgreSQL fallback` 都切换到 lexical-heavy 排序结果，并同时回查 `audit.audit_event`、`audit.access_audit` 与 `ops.system_log`。
+  - `search_api_db.rs`：补充 projection-based OpenSearch seeding 与 composite cache 清理辅助方法，避免新 smoke 继续依赖静态索引文档结构。
+- 验证：
+  - `cargo fmt --all`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_catalog_composite_ranking_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-005`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`、`5.2 V1 搜索能力范围`、`6. 搜索投影设计`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：`GET /api/v1/catalog/search` 与搜索排序语义
+  - `057_search_sync_architecture.sql`：`search.ranking_profile` 默认权重基线
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`：正式搜索链必须保持 `OpenSearch candidate / PG fallback / PostgreSQL final check` 收口
+- 覆盖的任务清单条目：`SEARCHREC-005`
+- 未覆盖项：
+  - 无。`SEARCHREC-005` 要求的相关性、更新时间、热度、信誉权重简单组合已在 `OpenSearch` 与 `PG fallback` 两条候选链上同时落地，并通过正式 ranking profile patch + 搜索读审计完成动态验证；推荐排序逻辑没有被混入搜索主排序。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
