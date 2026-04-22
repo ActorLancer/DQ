@@ -61,6 +61,9 @@
 - `recommendation-aggregator` 消费 `dtp.recommend.behavior` 后，必须更新 `search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation`。
 - 推荐行为导致热度变化后，必须刷新搜索投影并补写 `search.index_sync_task(sync_status='queued')`。
 - `GET /api/v1/ops/recommendation/placements` 与 `PATCH /api/v1/ops/recommendation/placements/{placement_code}` 必须与 `recommend.placement_definition` 一致。
+- `GET /api/v1/ops/recommendation/placements` 必须要求 `ops.recommendation.read`，并写入 `audit.access_audit(target_type='recommendation_placement')` 与 `ops.system_log`。
+- `PATCH /api/v1/ops/recommendation/placements/{placement_code}` 必须要求 `ops.recommendation.manage + X-Idempotency-Key + X-Step-Up-Token`；`step-up` 必须真实绑定 `iam.step_up_challenge(target_action='recommendation.placement.patch', target_ref_type='recommendation_placement')`。
+- `PATCH /api/v1/ops/recommendation/placements/{placement_code}` 成功后，必须真实更新 `recommend.placement_definition`，并失效受影响 `datab:v1:recommend:*` 与 `datab:v1:recommend:seen:*:{placement_code}` Redis key，同时写入 `audit.audit_event(action_name='recommendation.placement.patch')`、`audit.access_audit`、`ops.system_log`。
 - `GET /api/v1/ops/recommendation/ranking-profiles` 与 `PATCH /api/v1/ops/recommendation/ranking-profiles/{id}` 必须与 `recommend.ranking_profile` 一致。
 - `POST /api/v1/ops/recommendation/rebuild` 必须支持推荐缓存失效和推荐派生特征重建。
 - `recommendation-aggregator` 必须同样基于 `event_id` 做 consumer 幂等，并写入 `ops.consumer_idempotency_record`。

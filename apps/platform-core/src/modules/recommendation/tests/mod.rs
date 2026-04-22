@@ -79,16 +79,108 @@ mod route_tests {
     }
 
     #[tokio::test]
-    async fn rejects_recommendation_ops_without_permission() {
+    async fn rejects_recommendation_placement_ops_without_bearer() {
         let app = crate::with_stub_test_state(router());
         let request = Request::builder()
             .method("GET")
             .uri("/api/v1/ops/recommendation/placements")
-            .header("x-role", "buyer_operator")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn rejects_recommendation_placement_ops_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/recommendation/placements")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["buyer_operator"],
+                ),
+            )
             .body(Body::empty())
             .expect("request");
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn recommendation_placement_patch_requires_idempotency_key() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("PATCH")
+            .uri("/api/v1/ops/recommendation/placements/home_featured")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["platform_admin"],
+                ),
+            )
+            .body(Body::from(
+                r#"{
+                  "metadata":{"smoke":true}
+                }"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn recommendation_placement_patch_requires_step_up_token() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("PATCH")
+            .uri("/api/v1/ops/recommendation/placements/home_featured")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["platform_admin"],
+                ),
+            )
+            .header("x-idempotency-key", "recommend-placement-route-test")
+            .body(Body::from(
+                r#"{
+                  "metadata":{"smoke":true}
+                }"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_recommendation_placement_patch_with_invalid_payload() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("PATCH")
+            .uri("/api/v1/ops/recommendation/placements/home_featured")
+            .header("content-type", "application/json")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["platform_admin"],
+                ),
+            )
+            .header("x-idempotency-key", "recommend-placement-invalid")
+            .body(Body::from(r#"{}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

@@ -461,6 +461,31 @@ pub async fn patch_placement(
     trace_id: Option<&str>,
     actor_role: &str,
 ) -> RepoResult<PlacementView> {
+    let normalized_profile_key = request
+        .default_ranking_profile_key
+        .as_ref()
+        .map(|value| value.trim().to_string());
+    let normalized_status = request
+        .status
+        .as_ref()
+        .map(|value| value.trim().to_string());
+    if let Some(profile_key) = normalized_profile_key.as_deref() {
+        let exists = client
+            .query_opt(
+                "SELECT 1
+                 FROM recommend.ranking_profile
+                 WHERE profile_key = $1
+                   AND status = 'active'",
+                &[&profile_key],
+            )
+            .await
+            .map_err(|err| format!("validate recommendation ranking profile failed: {err}"))?;
+        if exists.is_none() {
+            return Err(format!(
+                "recommendation ranking profile missing: profile_key={profile_key}"
+            ));
+        }
+    }
     let row = client
         .query_opt(
             "UPDATE recommend.placement_definition
@@ -491,8 +516,8 @@ pub async fn patch_placement(
                 &placement_code,
                 &request.candidate_policy_json,
                 &request.filter_policy_json,
-                &request.default_ranking_profile_key,
-                &request.status,
+                &normalized_profile_key,
+                &normalized_status,
                 &request.metadata,
                 &request_id,
                 &trace_id,
@@ -2482,6 +2507,38 @@ fn seen_entities_key(subject_key: &str, placement_code: &str) -> String {
         subject_key,
         placement_code
     )
+}
+
+pub async fn invalidate_placement_runtime_cache(placement_code: &str) -> RepoResult<usize> {
+    let client = redis::Client::open(redis_url().as_str())
+        .map_err(|err| format!("redis recommendation client init failed: {err}"))?;
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|err| format!("redis recommendation connect failed: {err}"))?;
+    let mut keys: Vec<String> = connection
+        .keys(format!("{}:recommend:*", redis_namespace()))
+        .await
+        .map_err(|err| format!("redis recommendation keys lookup failed: {err}"))?;
+    let placement_seen_keys: Vec<String> = connection
+        .keys(format!(
+            "{}:recommend:seen:*:{}",
+            redis_namespace(),
+            placement_code
+        ))
+        .await
+        .map_err(|err| format!("redis recommendation seen-set lookup failed: {err}"))?;
+    keys.extend(placement_seen_keys);
+    keys.sort();
+    keys.dedup();
+    let mut deleted = 0usize;
+    for key in keys {
+        deleted += connection
+            .del::<_, usize>(key)
+            .await
+            .map_err(|err| format!("redis recommendation delete failed: {err}"))?;
+    }
+    Ok(deleted)
 }
 
 async fn invalidate_recommendation_cache(

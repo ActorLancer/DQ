@@ -3,12 +3,14 @@ info:
   title: Recommendation API
   version: v1
   description: >
-    `SEARCHREC-009` 与 `SEARCHREC-010` 已把推荐读取与行为写接口收口到正式契约。
+    `SEARCHREC-009`、`SEARCHREC-010` 与 `SEARCHREC-011` 已把推荐读取、行为写接口和
+    推荐位运营接口收口到正式契约。
     `GET /api/v1/recommendations`、`POST /api/v1/recommendations/track/exposure`、
-    `POST /api/v1/recommendations/track/click` 都必须要求
+    `POST /api/v1/recommendations/track/click`、`GET /api/v1/ops/recommendation/placements`、
+    `PATCH /api/v1/ops/recommendation/placements/{placement_code}` 都必须要求
     `Authorization: Bearer <access_token>`；行为写接口还必须携带非空
-    `X-Idempotency-Key`，并写 `audit.audit_event`、`audit.access_audit` 与
-    `ops.system_log`。
+    `X-Idempotency-Key`，推荐位修改还必须携带 `X-Step-Up-Token`，并写
+    `audit.audit_event`、`audit.access_audit` 与 `ops.system_log`。
 servers:
   - url: http://127.0.0.1:8080
 components:
@@ -588,6 +590,8 @@ paths:
   /api/v1/ops/recommendation/placements:
     get:
       summary: list recommendation placements
+      security:
+        - BearerAuth: []
       responses:
         "200":
           description: placement list
@@ -603,15 +607,43 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/PlacementView"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: caller lacks `ops.recommendation.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/recommendation/placements/{placement_code}:
     patch:
       summary: update recommendation placement definition
+      security:
+        - BearerAuth: []
       parameters:
         - name: placement_code
           in: path
           required: true
           schema:
             type: string
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: required idempotency key for placement patch
+        - in: header
+          name: X-Step-Up-Token
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: verified step-up challenge id bound to `recommendation.placement.patch`
       requestBody:
         required: true
         content:
@@ -631,6 +663,36 @@ paths:
                     type: boolean
                   data:
                     $ref: "#/components/schemas/PlacementView"
+        "400":
+          description: invalid placement payload, empty idempotency key, or invalid step-up binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: caller lacks `ops.recommendation.manage` or step-up is not verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: placement or referenced ranking profile missing, or step-up challenge id unknown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Redis or other recommendation ops dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/recommendation/ranking-profiles:
     get:
       summary: list recommendation ranking profiles

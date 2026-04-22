@@ -7,6 +7,7 @@ use crate::modules::recommendation::domain::{
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use db::{Client, Error, GenericClient, NoTls, connect};
+use redis::AsyncCommands;
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap};
 use tower::ServiceExt;
@@ -187,6 +188,50 @@ async fn seed_operator_user(client: &Client, org_id: &str, suffix: &str) -> Resu
                 &format!("recommend-ops-user-{suffix}"),
                 &format!("Recommendation Ops User {suffix}"),
                 &suffix,
+            ],
+        )
+        .await
+        .map(|row| row.get(0))
+}
+
+async fn seed_verified_step_up_challenge(
+    client: &Client,
+    user_id: &str,
+    target_action: &str,
+    target_ref_type: &str,
+    target_ref_id: Option<&str>,
+    seed_label: &str,
+) -> Result<String, Error> {
+    client
+        .query_one(
+            "INSERT INTO iam.step_up_challenge (
+               user_id,
+               challenge_type,
+               target_action,
+               target_ref_type,
+               target_ref_id,
+               challenge_status,
+               expires_at,
+               completed_at,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'mock_otp',
+               $2,
+               $3,
+               $4::text::uuid,
+               'verified',
+               now() + interval '10 minutes',
+               now(),
+               jsonb_build_object('seed', $5)
+             )
+             RETURNING step_up_challenge_id::text",
+            &[
+                &user_id,
+                &target_action,
+                &target_ref_type,
+                &target_ref_id,
+                &seed_label,
             ],
         )
         .await
@@ -456,6 +501,54 @@ async fn count_system_logs(client: &Client, request_id: &str, message: &str) -> 
         )
         .await
         .map(|row| row.get(0))
+}
+
+async fn latest_access_step_up(client: &Client, request_id: &str) -> Result<Option<String>, Error> {
+    client
+        .query_opt(
+            "SELECT step_up_challenge_id::text
+             FROM audit.access_audit
+             WHERE request_id = $1
+             ORDER BY created_at DESC
+             LIMIT 1",
+            &[&request_id],
+        )
+        .await
+        .map(|row| row.and_then(|row| row.get::<usize, Option<String>>(0)))
+}
+
+fn redis_url() -> String {
+    std::env::var("REDIS_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "redis://default:datab_redis_pass@127.0.0.1:6379/1".to_string())
+}
+
+async fn seed_redis_value(key: &str, payload: &str, ttl_secs: u64) -> Result<(), String> {
+    let client = redis::Client::open(redis_url())
+        .map_err(|err| format!("init redis client failed: {err}"))?;
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|err| format!("connect redis failed: {err}"))?;
+    connection
+        .set_ex::<_, _, ()>(key, payload, ttl_secs)
+        .await
+        .map_err(|err| format!("seed redis key failed: {err}"))?;
+    Ok(())
+}
+
+async fn load_redis_value(key: &str) -> Result<Option<String>, String> {
+    let client = redis::Client::open(redis_url())
+        .map_err(|err| format!("init redis client failed: {err}"))?;
+    let mut connection = client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|err| format!("connect redis failed: {err}"))?;
+    connection
+        .get(key)
+        .await
+        .map_err(|err| format!("load redis key failed: {err}"))
 }
 
 #[tokio::test]
@@ -764,14 +857,28 @@ async fn recommendation_api_full_runtime_db_smoke() {
         .await
         .expect("seed opensearch docs");
     let buyer_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["buyer_operator"]);
+    let admin_auth = authorization_header(&ids.operator_user_id, &ids.org_id, &["platform_admin"]);
     let get_request_id = format!("recommend-get-{suffix}");
     let get_trace_id = format!("recommend-get-trace-{suffix}");
     let exposure_request_id = format!("recommend-exposure-{suffix}");
     let exposure_trace_id = format!("recommend-exposure-trace-{suffix}");
     let click_request_id = format!("recommend-click-{suffix}");
     let click_trace_id = format!("recommend-click-trace-{suffix}");
+    let placement_list_request_id = format!("recommend-placement-list-{suffix}");
+    let placement_list_trace_id = format!("recommend-placement-list-trace-{suffix}");
+    let placement_patch_request_id = format!("recommend-placement-patch-{suffix}");
+    let placement_patch_trace_id = format!("recommend-placement-patch-trace-{suffix}");
+    let placement_idempotency_key = format!("recommend-placement-{suffix}");
     let exposure_idempotency_key = format!("recommend-exposure-{suffix}");
     let click_idempotency_key = format!("recommend-click-{suffix}");
+    let redis_namespace =
+        std::env::var("REDIS_NAMESPACE").unwrap_or_else(|_| "datab:v1".to_string());
+    let placement_cache_key = format!(
+        "{redis_namespace}:recommend:{}:{}:placement-{suffix}",
+        ids.org_id, ids.operator_user_id
+    );
+    let placement_seen_key =
+        format!("{redis_namespace}:recommend:seen:placement-smoke-{suffix}:home_featured");
 
     let app = crate::with_live_test_state(router()).await;
     let response = app
@@ -918,13 +1025,25 @@ async fn recommendation_api_full_runtime_db_smoke() {
             Request::builder()
                 .method("GET")
                 .uri("/api/v1/ops/recommendation/placements")
-                .header("x-role", "platform_admin")
+                .header("authorization", &admin_auth)
+                .header("x-request-id", &placement_list_request_id)
+                .header("x-trace-id", &placement_list_trace_id)
                 .body(Body::empty())
                 .expect("placements request"),
         )
         .await
         .expect("placements response");
-    assert_eq!(placements_response.status(), StatusCode::OK);
+    let placements_status = placements_response.status();
+    let placements_json = response_json(placements_response)
+        .await
+        .expect("placements json");
+    assert_eq!(placements_status, StatusCode::OK, "{placements_json}");
+    assert!(
+        placements_json["data"].as_array().is_some_and(|items| items
+            .iter()
+            .any(|item| { item["placement_code"].as_str() == Some("home_featured") })),
+        "{placements_json}"
+    );
 
     let ranking_profiles_response = app
         .clone()
@@ -947,6 +1066,26 @@ async fn recommendation_api_full_runtime_db_smoke() {
     let ranking_profile_id = ranking_profiles_json["data"][0]["recommendation_ranking_profile_id"]
         .as_str()
         .expect("ranking profile id");
+    let ranking_profile_key = ranking_profiles_json["data"][0]["profile_key"]
+        .as_str()
+        .expect("ranking profile key");
+
+    seed_redis_value(&placement_cache_key, "{\"seed\":true}", 300)
+        .await
+        .expect("seed placement cache key");
+    seed_redis_value(&placement_seen_key, "1", 300)
+        .await
+        .expect("seed placement seen key");
+    let placement_step_up = seed_verified_step_up_challenge(
+        &client,
+        &ids.operator_user_id,
+        "recommendation.placement.patch",
+        "recommendation_placement",
+        None,
+        &format!("recommend-placement-step-up-{suffix}"),
+    )
+    .await
+    .expect("seed placement step-up");
 
     let patch_placement_response = app
         .clone()
@@ -955,11 +1094,14 @@ async fn recommendation_api_full_runtime_db_smoke() {
                 .method("PATCH")
                 .uri("/api/v1/ops/recommendation/placements/home_featured")
                 .header("content-type", "application/json")
-                .header("x-role", "platform_admin")
-                .header("x-idempotency-key", format!("recommend-placement-{suffix}"))
-                .header("x-step-up-token", "step-up-ok")
+                .header("authorization", &admin_auth)
+                .header("x-request-id", &placement_patch_request_id)
+                .header("x-trace-id", &placement_patch_trace_id)
+                .header("x-idempotency-key", &placement_idempotency_key)
+                .header("x-step-up-token", &placement_step_up)
                 .body(Body::from(
                     json!({
+                      "default_ranking_profile_key": ranking_profile_key,
                       "metadata": { "smoke_suffix": suffix }
                     })
                     .to_string(),
@@ -968,7 +1110,142 @@ async fn recommendation_api_full_runtime_db_smoke() {
         )
         .await
         .expect("patch placement response");
-    assert_eq!(patch_placement_response.status(), StatusCode::OK);
+    let patch_placement_status = patch_placement_response.status();
+    let patch_placement_json = response_json(patch_placement_response)
+        .await
+        .expect("patch placement json");
+    assert_eq!(
+        patch_placement_status,
+        StatusCode::OK,
+        "{patch_placement_json}"
+    );
+    assert_eq!(
+        patch_placement_json["data"]["metadata"]["smoke_suffix"].as_str(),
+        Some(suffix.as_str())
+    );
+    assert_eq!(
+        patch_placement_json["data"]["default_ranking_profile_key"].as_str(),
+        Some(ranking_profile_key)
+    );
+    let placement_row = client
+        .query_one(
+            "SELECT
+               default_ranking_profile_key,
+               metadata ->> 'smoke_suffix'
+             FROM recommend.placement_definition
+             WHERE placement_code = 'home_featured'",
+            &[],
+        )
+        .await
+        .expect("load patched placement row");
+    assert_eq!(
+        placement_row.get::<_, Option<String>>(0).as_deref(),
+        Some(ranking_profile_key)
+    );
+    assert_eq!(
+        placement_row.get::<_, Option<String>>(1).as_deref(),
+        Some(suffix.as_str())
+    );
+    assert_eq!(
+        count_access_audit(
+            &client,
+            &placement_list_request_id,
+            "recommendation_placement"
+        )
+        .await
+        .expect("count placement list access audit"),
+        1
+    );
+    assert_eq!(
+        count_system_logs(
+            &client,
+            &placement_list_request_id,
+            "recommendation ops lookup executed: GET /api/v1/ops/recommendation/placements",
+        )
+        .await
+        .expect("count placement list system log"),
+        1
+    );
+    assert_eq!(
+        count_audit_events(
+            &client,
+            &placement_patch_request_id,
+            "recommendation.placement.patch",
+        )
+        .await
+        .expect("count placement patch audit event"),
+        1
+    );
+    assert_eq!(
+        count_access_audit(
+            &client,
+            &placement_patch_request_id,
+            "recommendation_placement"
+        )
+        .await
+        .expect("count placement patch access audit"),
+        1
+    );
+    assert_eq!(
+        latest_access_step_up(&client, &placement_patch_request_id)
+            .await
+            .expect("load placement patch step-up")
+            .as_deref(),
+        Some(placement_step_up.as_str())
+    );
+    assert_eq!(
+        count_system_logs(
+            &client,
+            &placement_patch_request_id,
+            "recommendation ops action executed: PATCH /api/v1/ops/recommendation/placements/{placement_code}",
+        )
+        .await
+        .expect("count placement patch system log"),
+        1
+    );
+    let placement_audit_row = client
+        .query_one(
+            "SELECT
+               result_code,
+               metadata ->> 'endpoint',
+               metadata ->> 'permission_code',
+               metadata -> 'details' -> 'cache_invalidation' ->> 'cache_keys_deleted'
+             FROM audit.audit_event
+             WHERE request_id = $1
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT 1",
+            &[&placement_patch_request_id],
+        )
+        .await
+        .expect("load placement audit row");
+    assert_eq!(placement_audit_row.get::<_, String>(0), "updated");
+    assert_eq!(
+        placement_audit_row.get::<_, Option<String>>(1).as_deref(),
+        Some("PATCH /api/v1/ops/recommendation/placements/{placement_code}")
+    );
+    assert_eq!(
+        placement_audit_row.get::<_, Option<String>>(2).as_deref(),
+        Some("ops.recommendation.manage")
+    );
+    assert!(
+        placement_audit_row
+            .get::<_, Option<String>>(3)
+            .as_deref()
+            .and_then(|value| value.parse::<i64>().ok())
+            .is_some_and(|deleted| deleted >= 2)
+    );
+    assert!(
+        load_redis_value(&placement_cache_key)
+            .await
+            .expect("load placement cache after patch")
+            .is_none()
+    );
+    assert!(
+        load_redis_value(&placement_seen_key)
+            .await
+            .expect("load placement seen after patch")
+            .is_none()
+    );
 
     let patch_ranking_response = app
         .clone()

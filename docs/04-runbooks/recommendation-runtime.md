@@ -95,8 +95,8 @@ WHERE aggregate_type = 'recommend.behavior_event'
 
 - 推荐侧正式鉴权统一使用 `Authorization`，不再使用 `x-role` 占位语义。
 - `GET /api/v1/recommendations`、`POST /track/exposure`、`POST /track/click` 对应正式权限点为 `portal.recommendation.read`。
-- `GET /api/v1/ops/recommendation/placements`、`GET /api/v1/ops/recommendation/ranking-profiles` 对应正式权限点为 `ops.recommendation.read`。
-- `PATCH /api/v1/ops/recommendation/placements/{placement_code}`、`PATCH /api/v1/ops/recommendation/ranking-profiles/{id}` 对应正式权限点为 `ops.recommendation.manage`，并要求审计；高风险修改进入实现批次后应接入 `X-Step-Up-Token`。
+- `GET /api/v1/ops/recommendation/placements`、`GET /api/v1/ops/recommendation/ranking-profiles` 对应正式权限点为 `ops.recommendation.read`；其中 `SEARCHREC-011` 已把 `placements` 读取接口收口为 Bearer 鉴权，并要求写入 `audit.access_audit(target_type='recommendation_placement') + ops.system_log`。
+- `PATCH /api/v1/ops/recommendation/placements/{placement_code}`、`PATCH /api/v1/ops/recommendation/ranking-profiles/{id}` 对应正式权限点为 `ops.recommendation.manage`，并要求审计；其中 `SEARCHREC-011` 已把 `PATCH /placements/{placement_code}` 收口为 `Authorization + X-Idempotency-Key + X-Step-Up-Token`，真实校验 `iam.step_up_challenge(target_action='recommendation.placement.patch', target_ref_type='recommendation_placement')`，并写入 `audit.audit_event(action_name='recommendation.placement.patch') + audit.access_audit + ops.system_log`。
 - `POST /api/v1/ops/recommendation/rebuild` 对应正式权限点为 `ops.recommend_rebuild.execute`，并要求审计；是否强制 `step-up` 以后续实现批次按风险级别落地。
 - 推荐行为写接口必须使用 `X-Idempotency-Key`，不得继续以“header 存在即可”的占位方式定义正式幂等语义。
 - 当前 runbook 只冻结正式口径，不代表统一鉴权 / 审计 / OpenAPI / 测试已经补齐；进入 `SEARCHREC` 实现批次后，Agent 必须按 `A13` 同步修改代码与契约。
@@ -108,6 +108,7 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - `recommend.behavior_event.attrs ->> 'idempotency_key'` 可用于检查曝光/点击幂等。
 - `ops.outbox_event.target_topic` 必须为 `dtp.recommend.behavior`。
 - `ops.event_route_policy` 中 `recommend.behavior_event / recommend.behavior_recorded` 必须存在。
+- 推荐位补丁生效后，`recommend.placement_definition.default_ranking_profile_key / metadata` 必须已更新，且 `datab:v1:recommend:*` 与 `datab:v1:recommend:seen:*:{placement_code}` 相关 Redis key 应被失效。
 - `recommend.placement_definition.default_ranking_profile_key` 必须能在 `recommend.ranking_profile.profile_key` 中解析到有效配置。
 - `GET /api/v1/recommendations` 后必须能在 `audit.access_audit` 中回查 `target_type='recommendation_result'`，并在 `ops.system_log` 中回查 `recommendation lookup executed: GET /api/v1/recommendations`。
 - `POST /api/v1/recommendations/track/exposure`、`POST /api/v1/recommendations/track/click` 后必须能在 `audit.audit_event` 中回查 `recommendation.exposure.track / recommendation.click.track`，在 `audit.access_audit` 中回查 `target_type='recommendation_behavior'`，并在 `ops.system_log` 中回查 `recommendation behavior tracked: POST ...`。
