@@ -754,6 +754,9 @@ fn build_search_request_body(
     if let Some(price_max) = query.price_max {
         filters.push(json!({ "range": { "price_amount": { "lte": price_max } } }));
     }
+    if entity_scope != "seller" {
+        filters.push(json!({ "term": { "visible_to_search": true } }));
+    }
     if entity_scope == "product" && normalized_scope(&query.entity_scope) == "service" {
         filters.push(json!({ "term": { "product_type.keyword": "service" } }));
     }
@@ -1036,6 +1039,11 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
     } else {
         "AND ($6::float8 IS NULL OR COALESCE(d.price_amount::float8, 0) <= $6)".to_string()
     };
+    let visibility_filter = if entity_scope == "seller" {
+        String::new()
+    } else {
+        "AND COALESCE(d.visible_to_search, false)".to_string()
+    };
     let sort_value_expr = projection_sort_value_expr(entity_scope, sort_key);
 
     format!(
@@ -1062,6 +1070,7 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
              {delivery_filter}
              {price_min_filter}
              {price_max_filter}
+             {visibility_filter}
              {product_type_filter}
          )
          SELECT
@@ -1091,6 +1100,7 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
         delivery_filter = delivery_filter,
         price_min_filter = price_min_filter,
         price_max_filter = price_max_filter,
+        visibility_filter = visibility_filter,
         product_type_filter = product_type_filter,
         order_by = order_by,
     )

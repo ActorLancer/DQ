@@ -28,6 +28,9 @@
         "description": { "type": "text", "analyzer": "datab_text_analyzer" },
         "sku_code": { "type": "keyword" },
         "status": { "type": "keyword" },
+        "review_status": { "type": "keyword" },
+        "visibility_status": { "type": "keyword" },
+        "visible_to_search": { "type": "boolean" },
         "created_at": { "type": "date" },
         "updated_at": { "type": "date" }
       }

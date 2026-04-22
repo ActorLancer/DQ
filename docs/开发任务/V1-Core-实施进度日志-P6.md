@@ -46,3 +46,41 @@
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；历史 gap `TODO-SEARCHREC-FALLBACK-001` 已关闭。
 - 备注：
   - `RuntimeMode` 当前只显式区分 `local / staging / demo`。由于仓库尚无独立 `production` 枚举，本批按冻结口径把 `staging` 视为正式 OpenSearch 路径的本地等价运行模式；后续如引入独立 `production` mode，必须继承同一强制 OpenSearch 语义，不得与本批结果漂移。
+### BATCH-248（计划中）
+- 任务：`SEARCHREC-002` 商品搜索投影字段集与刷新链路补齐
+- 状态：计划中
+- 说明：按 `SEARCHREC-002` 冻结口径复核 `search.product_search_document` 现状后，确认标题、行业、标签、类目、SKU、卖方、价格区间与上架状态已基本具备，但“审核状态、可见性”仍未作为正式投影字段稳定落库，也尚未进入 `search-indexer -> OpenSearch` 文档。当前批次将补齐商品搜索投影正式字段、刷新函数与必要触发器，确保商品生命周期与审核链变化后，PostgreSQL 权威投影能真实反映搜索可见性语义，并通过 DB smoke / worker smoke 回查投影与索引结果。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，不合并后续搜索 API/推荐任务。
+### BATCH-248（待审批）
+- 任务：`SEARCHREC-002` 落地商品搜索投影结构
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-002`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`057_search_sync_architecture.sql` 已提供 `search.product_search_document`、刷新函数与 `dtp.search.sync` 主链基线，本批在该基线之上补齐冻结清单要求的“审核状态、可见性”正式投影字段与索引文档映射。
+- 完成情况：
+  - `docs/数据库设计/V1/upgrade/081_search_product_projection_visibility_alignment.sql`、`downgrade/081_search_product_projection_visibility_alignment.sql`、`db/migrations/v1/manifest.csv`、`checksums.sha256`：新增 `081` 迁移，向 `search.product_search_document` 正式引入 `review_status`、`visibility_status`、`visible_to_search` 字段与组合索引，并把商品搜索投影刷新函数改为同时计算审核状态、可见性与可搜索布尔放行结果。
+  - `081` 迁移内补充 `search.resolve_product_review_status(...)`、`search.resolve_product_visibility_status(...)` 与 `trg_review_task_search_refresh`：把 `review.review_task` 的 `approved / rejected / pending_review` 状态变化接入搜索投影刷新，避免商品状态更新与审核任务状态更新先后顺序不同导致投影滞后。
+  - `workers/search-indexer/src/main.rs`、`infra/opensearch/index-template-catalog.json`、`infra/opensearch/init-opensearch.sh`：`search-indexer` 写入 OpenSearch 文档时新增 `price_min`、`price_max`、`review_status`、`visibility_status`、`visible_to_search`，索引模板与初始化样例文档同步补齐映射，确保 OpenSearch 不再只保存旧版投影字段。
+  - `apps/platform-core/src/modules/search/repo/mod.rs`：OpenSearch 查询与 PostgreSQL fallback 候选查询均对商品搜索显式增加 `visible_to_search=true` 过滤，保证候选召回后仍以 PostgreSQL 权威投影控制上架/审核/可见性放行。
+  - `apps/platform-core/src/modules/catalog/tests/cat024_catalog_listing_review_db.rs`：扩展商品上架/审核 DB smoke，真实创建标签、补充商品摘要/行业/价格等字段，并回查 `search.product_search_document` 在 `pending_review`、`approved/listed`、`frozen`、`rejected` 各阶段的投影值变化。
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs`、`apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：测试中手工写入的 OpenSearch 商品文档同步补齐 `review_status`、`visibility_status`、`visible_to_search`，避免搜索/推荐 smoke 使用过期文档结构。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat024_catalog_listing_review_end_to_end_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-002`
+  - `商品搜索、排序与索引同步设计.md`：`6. 搜索投影设计`、`7. 索引同步链路`、`9. 搜索读链路`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索投影字段、OpenSearch 查询过滤与 PostgreSQL 最终业务校验口径
+  - `057_search_sync_architecture.sql`：商品搜索投影表、刷新函数、`dtp.search.sync` 主题与 outbox 触发器基线
+  - `kafka-topics.md`、`infra/kafka/topics.v1.json`：搜索同步主题仍保持 `dtp.search.sync`，本批未引入新的旁路 topic
+- 覆盖的任务清单条目：`SEARCHREC-002`
+- 未覆盖项：
+  - 无。`SEARCHREC-002` 要求的标题、摘要、行业、标签、类目、SKU、卖方、价格区间、上架状态、审核状态、可见性均已在 PostgreSQL 搜索投影与 OpenSearch 文档中形成正式字段闭环。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - 仓库内 `db/scripts/migrate-up.sh` / `migration-runner.sh` 依赖 `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` 而非 `DATABASE_URL`。验证时发现本地 `datab` 库存在历史 `068` 校验和漂移，导致整库 `migrate-up` 在 `068` 处被预先阻断；为避免改写历史版本记录，本批仅把 `081` 定向执行到实际 smoke 库并补登 `schema_migration_history`，未调整任何既有历史 migration 内容。

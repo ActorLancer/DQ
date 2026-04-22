@@ -727,8 +727,13 @@ async fn load_index_document(
                      'seller_country_code', seller_country_code,
                      'delivery_modes', delivery_modes,
                      'price_amount', price_amount,
+                     'price_min', price_min,
+                     'price_max', price_max,
                      'currency_code', currency_code,
                      'status', listing_status,
+                     'review_status', review_status,
+                     'visibility_status', visibility_status,
+                     'visible_to_search', visible_to_search,
                      'quality_score', quality_score,
                      'seller_reputation_score', seller_reputation_score,
                      'hotness_score', hotness_score,
@@ -1534,6 +1539,18 @@ mod tests {
         assert_eq!(
             indexed_document["_source"]["id"].as_str(),
             Some(seed.product_id.as_str())
+        );
+        assert_eq!(
+            indexed_document["_source"]["review_status"].as_str(),
+            Some("approved")
+        );
+        assert_eq!(
+            indexed_document["_source"]["visibility_status"].as_str(),
+            Some("visible")
+        );
+        assert_eq!(
+            indexed_document["_source"]["visible_to_search"].as_bool(),
+            Some(true)
         );
         assert!(!cache_exists(&cfg, &seed.cache_key).await);
 

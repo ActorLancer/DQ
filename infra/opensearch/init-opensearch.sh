@@ -109,7 +109,7 @@ create_index_with_aliases \
 create_index "${INDEX_NAME_SEARCH_SYNC_JOBS}"
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-index_demo_doc "${INDEX_ALIAS_PRODUCT_SEARCH_WRITE}" "demo-product-001" "{\"id\":\"demo-product-001\",\"tenant_id\":\"t-demo\",\"seller_id\":\"s-demo\",\"name\":\"Demo Product\",\"description\":\"Demo product for local initialization\",\"sku_code\":\"FILE_STD\",\"status\":\"listed\",\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
+index_demo_doc "${INDEX_ALIAS_PRODUCT_SEARCH_WRITE}" "demo-product-001" "{\"id\":\"demo-product-001\",\"tenant_id\":\"t-demo\",\"seller_id\":\"s-demo\",\"name\":\"Demo Product\",\"description\":\"Demo product for local initialization\",\"sku_code\":\"FILE_STD\",\"status\":\"listed\",\"review_status\":\"approved\",\"visibility_status\":\"visible\",\"visible_to_search\":true,\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
 index_demo_doc "${INDEX_ALIAS_SELLER_SEARCH_WRITE}" "demo-seller-001" "{\"id\":\"demo-seller-001\",\"tenant_id\":\"t-demo\",\"name\":\"Demo Seller\",\"description\":\"Seller profile demo\",\"status\":\"active\",\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
 index_demo_doc "${INDEX_NAME_SEARCH_SYNC_JOBS}" "demo-sync-job-001" "{\"id\":\"demo-sync-job-001\",\"tenant_id\":\"t-demo\",\"status\":\"done\",\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
 echo "[ok] demo documents indexed"

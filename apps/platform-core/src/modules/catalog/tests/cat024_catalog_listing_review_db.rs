@@ -132,6 +132,21 @@ async fn cleanup(
     sku_ids: &[String],
     request_ids: &[String],
 ) {
+    for product_id in product_ids {
+        let _ = client
+            .execute(
+                "DELETE FROM catalog.product_tag WHERE product_id = $1::text::uuid",
+                &[product_id],
+            )
+            .await;
+    }
+    let _ = client
+        .execute(
+            "DELETE FROM catalog.tag WHERE tag_code LIKE 'cat024_%'",
+            &[],
+        )
+        .await;
+
     for request_id in request_ids {
         let _ = client
             .execute(
@@ -254,6 +269,65 @@ async fn cleanup(
         .await;
 }
 
+#[derive(Debug)]
+struct ProductSearchProjection {
+    title: String,
+    category: Option<String>,
+    tags: Vec<String>,
+    subtitle: Option<String>,
+    industry: Option<String>,
+    seller_name: Option<String>,
+    sku_types: Vec<String>,
+    price_min: String,
+    price_max: String,
+    listing_status: String,
+    review_status: String,
+    visibility_status: String,
+    visible_to_search: bool,
+}
+
+async fn load_product_search_projection(
+    client: &Client,
+    product_id: &str,
+) -> Result<ProductSearchProjection, Error> {
+    let row = client
+        .query_one(
+            "SELECT
+               title,
+               category,
+               COALESCE(tags, '{}')::text[],
+               subtitle,
+               industry,
+               seller_name,
+               COALESCE(sku_types, '{}')::text[],
+               COALESCE(price_min, 0)::text,
+               COALESCE(price_max, 0)::text,
+               listing_status,
+               review_status,
+               visibility_status,
+               visible_to_search
+             FROM search.product_search_document
+             WHERE product_id = $1::text::uuid",
+            &[&product_id],
+        )
+        .await?;
+    Ok(ProductSearchProjection {
+        title: row.get(0),
+        category: row.get(1),
+        tags: row.get(2),
+        subtitle: row.get(3),
+        industry: row.get(4),
+        seller_name: row.get(5),
+        sku_types: row.get(6),
+        price_min: row.get(7),
+        price_max: row.get(8),
+        listing_status: row.get(9),
+        review_status: row.get(10),
+        visibility_status: row.get(11),
+        visible_to_search: row.get(12),
+    })
+}
+
 #[tokio::test]
 async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
     if !live_db_enabled() {
@@ -315,6 +389,60 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
             .ok_or_else(|| "missing product_id in create product a response".to_string())?
             .to_string();
         created_products.push(product_a_id.clone());
+        let tag_a_id: String = client
+            .query_one(
+                "INSERT INTO catalog.tag (
+                   tag_name, tag_code, status, searchable_aliases
+                 ) VALUES (
+                   $1, $2, 'active', ARRAY[$3]::text[]
+                 )
+                 RETURNING tag_id::text",
+                &[
+                    &format!("cat024-tag-a-{suffix}"),
+                    &format!("cat024_tag_a_{suffix}"),
+                    &format!("cat024-alias-a-{suffix}"),
+                ],
+            )
+            .await
+            .map_err(|err| format!("insert tag a: {err}"))?
+            .get(0);
+        client
+            .execute(
+                "INSERT INTO catalog.product_tag (product_id, tag_id, tag_source, tag_weight)
+                 VALUES ($1::text::uuid, $2::text::uuid, 'manual', 1)",
+                &[&product_a_id, &tag_a_id],
+            )
+            .await
+            .map_err(|err| format!("attach tag a: {err}"))?;
+        client
+            .execute(
+                "UPDATE catalog.product
+                 SET
+                   price_mode = 'one_time',
+                   price = 88.00,
+                   currency_code = 'CNY',
+                   metadata = jsonb_strip_nulls(
+                     metadata || jsonb_build_object(
+                       'subtitle', $2::text,
+                       'industry', $3::text,
+                       'use_cases', to_jsonb($4::text[]),
+                       'quality_score', $5::text
+                     )
+                   )
+                 WHERE product_id = $1::text::uuid",
+                &[
+                    &product_a_id,
+                    &format!("cat024-subtitle-a-{suffix}"),
+                    &"industrial_manufacturing".to_string(),
+                    &vec![
+                        "quality_traceability".to_string(),
+                        "ops_visibility".to_string(),
+                    ],
+                    &"0.93".to_string(),
+                ],
+            )
+            .await
+            .map_err(|err| format!("update product a search metadata: {err}"))?;
 
         let create_sku_req = format!("req-cat024-sku-create-a-{suffix}");
         request_ids.push(create_sku_req.clone());
@@ -452,6 +580,35 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
         if submit_a["data"]["status"].as_str() != Some("pending_review") {
             return Err("product a submit status is not pending_review".to_string());
         }
+        let projection_after_submit = load_product_search_projection(&client, &product_a_id)
+            .await
+            .map_err(|err| format!("load projection after submit: {err}"))?;
+        if projection_after_submit.title != format!("cat024-product-a-{suffix}")
+            || projection_after_submit.category.as_deref() != Some("manufacturing")
+            || projection_after_submit.subtitle.as_deref()
+                != Some(format!("cat024-subtitle-a-{suffix}").as_str())
+            || projection_after_submit.industry.as_deref() != Some("industrial_manufacturing")
+            || projection_after_submit.seller_name.as_deref()
+                != Some(format!("cat024-org-{suffix}").as_str())
+            || !projection_after_submit
+                .tags
+                .iter()
+                .any(|tag| tag == &format!("cat024-tag-a-{suffix}"))
+            || !projection_after_submit
+                .sku_types
+                .iter()
+                .any(|sku| sku == "FILE_STD")
+            || projection_after_submit.price_min != "88.00000000"
+            || projection_after_submit.price_max != "88.00000000"
+            || projection_after_submit.listing_status != "pending_review"
+            || projection_after_submit.review_status != "pending"
+            || projection_after_submit.visibility_status != "pending_review"
+            || projection_after_submit.visible_to_search
+        {
+            return Err(format!(
+                "unexpected product projection after submit: {projection_after_submit:?}"
+            ));
+        }
 
         let review_approve_req = format!("req-cat024-review-approve-a-{suffix}");
         request_ids.push(review_approve_req.clone());
@@ -476,6 +633,18 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
         .await?;
         if review_a["data"]["status"].as_str() != Some("listed") {
             return Err("product a review approve status is not listed".to_string());
+        }
+        let projection_after_approve = load_product_search_projection(&client, &product_a_id)
+            .await
+            .map_err(|err| format!("load projection after approve: {err}"))?;
+        if projection_after_approve.listing_status != "listed"
+            || projection_after_approve.review_status != "approved"
+            || projection_after_approve.visibility_status != "visible"
+            || !projection_after_approve.visible_to_search
+        {
+            return Err(format!(
+                "unexpected product projection after approve: {projection_after_approve:?}"
+            ));
         }
 
         let step_up_id_row = client
@@ -520,6 +689,18 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
         if freeze_a["data"]["status"].as_str() != Some("frozen") {
             return Err("product a freeze status is not frozen".to_string());
         }
+        let projection_after_freeze = load_product_search_projection(&client, &product_a_id)
+            .await
+            .map_err(|err| format!("load projection after freeze: {err}"))?;
+        if projection_after_freeze.listing_status != "frozen"
+            || projection_after_freeze.review_status != "approved"
+            || projection_after_freeze.visibility_status != "frozen"
+            || projection_after_freeze.visible_to_search
+        {
+            return Err(format!(
+                "unexpected product projection after freeze: {projection_after_freeze:?}"
+            ));
+        }
 
         let create_product_b_req = format!("req-cat024-product-create-b-{suffix}");
         request_ids.push(create_product_b_req.clone());
@@ -552,6 +733,24 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
             .ok_or_else(|| "missing product_id in create product b response".to_string())?
             .to_string();
         created_products.push(product_b_id.clone());
+        client
+            .execute(
+                "UPDATE catalog.product
+                 SET metadata = jsonb_strip_nulls(
+                   metadata || jsonb_build_object(
+                     'subtitle', $2::text,
+                     'industry', $3::text
+                   )
+                 )
+                 WHERE product_id = $1::text::uuid",
+                &[
+                    &product_b_id,
+                    &format!("cat024-subtitle-b-{suffix}"),
+                    &"retail".to_string(),
+                ],
+            )
+            .await
+            .map_err(|err| format!("update product b metadata: {err}"))?;
 
         let create_sku_b_req = format!("req-cat024-sku-create-b-{suffix}");
         request_ids.push(create_sku_b_req.clone());
@@ -658,6 +857,18 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
         .await?;
         if review_b["data"]["status"].as_str() != Some("draft") {
             return Err("product b review reject status is not draft".to_string());
+        }
+        let projection_after_reject = load_product_search_projection(&client, &product_b_id)
+            .await
+            .map_err(|err| format!("load projection after reject: {err}"))?;
+        if projection_after_reject.listing_status != "draft"
+            || projection_after_reject.review_status != "rejected"
+            || projection_after_reject.visibility_status != "rejected"
+            || projection_after_reject.visible_to_search
+        {
+            return Err(format!(
+                "unexpected product projection after reject: {projection_after_reject:?}"
+            ));
         }
 
         let quality_count_row = client
