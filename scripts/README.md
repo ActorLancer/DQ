@@ -23,7 +23,7 @@
 - `prune-local.sh`：安全清理当前仓库本地卷、网络、Fabric 状态（默认 `--dry-run`）。
 - `export-local-config.sh`：导出 compose 解析后的只读快照。
 - `smoke-local.sh`：执行本地环境 smoke 套件（DB 迁移探测、bucket/topic/realm/Grafana/mock-payment）；建议在 `make up-demo` 后运行，或至少保证 `core + observability + mocks` 已就绪。
-- `fabric-adapter-*.sh` / `fabric-event-listener-*.sh`：Go 版 Fabric 适配器与 callback listener 的 bootstrap / test / run 入口，统一复用 `scripts/go-env.sh` 和 `third_party/external-deps/go`。
+- `fabric-adapter-*.sh` / `fabric-event-listener-*.sh` / `fabric-ca-admin-*.sh`：Go 版 Fabric 适配器、callback listener 与 CA 管理执行面的 bootstrap / test / run 入口，统一复用 `scripts/go-env.sh` 和 `third_party/external-deps/go`。
 
 ## 禁止事项
 

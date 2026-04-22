@@ -17,6 +17,13 @@ pub enum IamPermission {
     SsoWrite,
     FabricRead,
     FabricWrite,
+    FabricRegistryRead,
+    FabricRegistryManage,
+    FabricIdentityRead,
+    FabricIdentityIssue,
+    FabricIdentityRevoke,
+    CertificateRead,
+    CertificateRevoke,
     SessionWrite,
     RoleChangeWrite,
 }
@@ -43,6 +50,9 @@ pub enum HighRiskAction {
     EvidenceExport,
     EvidenceReplay,
     PermissionChange,
+    FabricIdentityIssue,
+    FabricIdentityRevoke,
+    CertificateRevoke,
 }
 
 pub fn role_seeds() -> &'static [RoleSeed] {
@@ -67,6 +77,13 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::SsoWrite,
                     IamPermission::FabricRead,
                     IamPermission::FabricWrite,
+                    IamPermission::FabricRegistryRead,
+                    IamPermission::FabricRegistryManage,
+                    IamPermission::FabricIdentityRead,
+                    IamPermission::FabricIdentityIssue,
+                    IamPermission::FabricIdentityRevoke,
+                    IamPermission::CertificateRead,
+                    IamPermission::CertificateRevoke,
                     IamPermission::SessionWrite,
                     IamPermission::RoleChangeWrite,
                 ]),
@@ -102,6 +119,13 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::SsoWrite,
                     IamPermission::FabricRead,
                     IamPermission::FabricWrite,
+                    IamPermission::FabricRegistryRead,
+                    IamPermission::FabricRegistryManage,
+                    IamPermission::FabricIdentityRead,
+                    IamPermission::FabricIdentityIssue,
+                    IamPermission::FabricIdentityRevoke,
+                    IamPermission::CertificateRead,
+                    IamPermission::CertificateRevoke,
                     IamPermission::SessionWrite,
                     IamPermission::RoleChangeWrite,
                 ]),
@@ -122,6 +146,29 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::AccessPolicyRead,
                     IamPermission::SsoRead,
                     IamPermission::FabricRead,
+                    IamPermission::FabricIdentityRead,
+                    IamPermission::CertificateRead,
+                ]),
+            },
+            RoleSeed {
+                role: "fabric_ca_admin",
+                domain: RoleDomain::Platform,
+                permissions: HashSet::from([
+                    IamPermission::OrgRead,
+                    IamPermission::IdentityRead,
+                    IamPermission::SessionRead,
+                    IamPermission::StepUpRead,
+                    IamPermission::StepUpWrite,
+                    IamPermission::AccessPolicyRead,
+                    IamPermission::FabricRead,
+                    IamPermission::FabricWrite,
+                    IamPermission::FabricRegistryRead,
+                    IamPermission::FabricRegistryManage,
+                    IamPermission::FabricIdentityRead,
+                    IamPermission::FabricIdentityIssue,
+                    IamPermission::FabricIdentityRevoke,
+                    IamPermission::CertificateRead,
+                    IamPermission::CertificateRevoke,
                 ]),
             },
             RoleSeed {
@@ -147,7 +194,10 @@ pub fn high_risk_action_requires_step_up(action: HighRiskAction) -> bool {
         | HighRiskAction::CompensationPayout
         | HighRiskAction::EvidenceExport
         | HighRiskAction::EvidenceReplay
-        | HighRiskAction::PermissionChange => true,
+        | HighRiskAction::PermissionChange
+        | HighRiskAction::FabricIdentityIssue
+        | HighRiskAction::FabricIdentityRevoke
+        | HighRiskAction::CertificateRevoke => true,
     }
 }
 

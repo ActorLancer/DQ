@@ -6,6 +6,7 @@
 - `fabric-local.md`：Fabric 本地网络、Gateway、anchor / callback 联调。
 - `fabric-adapter.md`：`AUD-013 / AUD-014` Go 版 `fabric-adapter` 的 bootstrap / test / run、四类摘要 handler、Kafka canonical smoke、回执回写与排障。
 - `fabric-event-listener.md`：`AUD-015` Go 版 `fabric-event-listener` 的 bootstrap / test / run、mock callback 链路、`dtp.fabric.callbacks`、外部事实回执回写与排障。
+- `fabric-ca-admin.md`：`AUD-016` Go 版 `fabric-ca-admin` 的 bootstrap / test / run、`fabric-identities / certificates` 执行面、step-up 串联、`ops.external_fact_receipt / audit.audit_event / ops.system_log` 回查与排障。
 - `audit-replay.md`：`AUD-005` replay dry-run 控制面的权限、step-up、回查与故障处理。
 - `audit-legal-hold.md`：`AUD-006` legal hold 创建 / 释放控制面的权限、step-up、回查与故障处理。
 - `audit-anchor-batches.md`：`AUD-007` anchor batch 查看 / retry 控制面的权限、step-up、DB / outbox / 审计回查与运行态边界。

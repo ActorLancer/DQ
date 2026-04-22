@@ -22,4 +22,4 @@
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
 - `search-rec-cases.md`：Search/Recommendation 子域的搜索同步、搜索 API、推荐召回、行为回流、重建、别名切换与缓存失效验收清单。
 - `notification-cases.md`：通知链路验收清单，覆盖 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log`、幂等、重试、DLQ、人工补发与审计联查。
-- `audit-consistency-cases.md`：已落地 `AUD-003~AUD-015` 的审计联查、证据包导出、replay dry-run、legal hold、anchor batch、canonical outbox / dead letter 查询、outbox publisher、SEARCHREC dead letter dry-run 重处理、一致性联查、一致性修复 dry-run、`fabric-adapter` 四类摘要 handler 与 `fabric-event-listener` callback 验收矩阵；后续 `CA / test-network` 继续在同文件追加。
+- `audit-consistency-cases.md`：已落地 `AUD-003~AUD-016` 的审计联查、证据包导出、replay dry-run、legal hold、anchor batch、canonical outbox / dead letter 查询、outbox publisher、SEARCHREC dead letter dry-run 重处理、一致性联查、一致性修复 dry-run、`fabric-adapter` 四类摘要 handler、`fabric-event-listener` callback 与 `fabric-ca-admin` 证书治理验收矩阵；后续 `test-network / real CA / projection-gaps` 继续在同文件追加。

@@ -420,7 +420,7 @@ paths:
           description: Fabric identity list
   /api/v1/iam/fabric-identities/{id}/issue:
     post:
-      summary: Issue fabric identity placeholder
+      summary: Issue fabric identity
       operationId: issueFabricIdentity
       parameters:
         - name: id
@@ -432,11 +432,17 @@ paths:
       responses:
         "200":
           description: Fabric identity issued
+        "400":
+          description: Step-up challenge or actor context missing
+        "403":
+          description: Forbidden
         "404":
           description: Not found
+        "409":
+          description: Identity not approved for issue
   /api/v1/iam/fabric-identities/{id}/revoke:
     post:
-      summary: Revoke fabric identity placeholder
+      summary: Revoke fabric identity
       operationId: revokeFabricIdentity
       parameters:
         - name: id
@@ -448,8 +454,14 @@ paths:
       responses:
         "200":
           description: Fabric identity revoked
+        "400":
+          description: Step-up challenge or actor context missing
+        "403":
+          description: Forbidden
         "404":
           description: Not found
+        "409":
+          description: Identity not in issued state
   /api/v1/iam/certificates:
     get:
       summary: List certificates
@@ -459,7 +471,7 @@ paths:
           description: Certificate list
   /api/v1/iam/certificates/{id}/revoke:
     post:
-      summary: Revoke certificate placeholder
+      summary: Revoke certificate
       operationId: revokeCertificate
       parameters:
         - name: id
@@ -471,8 +483,14 @@ paths:
       responses:
         "200":
           description: Certificate revoked
+        "400":
+          description: Step-up challenge or actor context missing
+        "403":
+          description: Forbidden
         "404":
           description: Not found
+        "409":
+          description: Certificate not in active state
   /api/v1/iam/connectors:
     get:
       summary: List connectors

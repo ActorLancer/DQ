@@ -1028,3 +1028,120 @@
   - 真实 smoke 过程中还发现：若测试 `chain.chain_anchor.ref_type='order'` 但 `ref_id` 指向不存在的订单，`fabric-adapter` 会按既有正式逻辑把该 `ref_id` 解析成 `order_id`，从而触发 `ops.external_fact_receipt.order_id` 外键；该现象已按正式口径修正测试数据，不构成冻结文档冲突。
   - 为隔离本批新样本，已把历史遗留的三条 `submitted` 测试 source receipt 标记为跳过，避免污染 `AUD-015` 的 callback smoke 判定；本批新产生的业务测试数据已清理，`audit.audit_event / ops.system_log` 按 append-only 保留。
   - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+### BATCH-229（计划中）
+- 任务：`AUD-016` 初始化 `services/fabric-ca-admin/`（Go）
+- 状态：计划中
+- 说明：在 `AUD-015` 已完成 `fabric-event-listener` callback 主链后，当前批次按 `CSV > Markdown > technical_reference > 其他文档` 继续推进 Fabric 证书治理执行面。冻结边界收束为：新增 Go 版 `fabric-ca-admin` 服务，承接 `Fabric 身份签发 / 吊销 / 证书吊销` 的执行逻辑；Rust `platform-core` 保留正式公网 IAM API、权限点、step-up 和审计主体，但不再直接把 Fabric 身份/证书治理写成本地 DB 占位。当前批次先以 `mock` CA provider 跑通最小正式闭环：`step-up -> platform-core IAM API -> fabric-ca-admin -> PostgreSQL(身份/证书/外部事实) -> audit.audit_event / ops.system_log`，并为 `AUD-017` 的 `mock / fabric-test-network` provider 切换与真实 Fabric CA 治理铺底；本批不发明新 topic、不反向把 Go 服务做成主状态机、不把审批流程扩展成第二套未冻结接口。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-016`，完成后再进入 `AUD-017`。
+### BATCH-229（待审批）
+- 任务：`AUD-016` 初始化 `services/fabric-ca-admin/`（Go）
+- 状态：待审批
+- 交付清单：
+  - `services/fabric-ca-admin/`
+    - 新增 Go module、`cmd/fabric-ca-admin` 入口、配置装载、内部 HTTP handler、mock CA provider、PostgreSQL store 与执行服务层。
+    - 正式暴露内部执行接口：
+      - `GET /healthz`
+      - `POST /internal/fabric-identities/{id}/issue`
+      - `POST /internal/fabric-identities/{id}/revoke`
+      - `POST /internal/certificates/{id}/revoke`
+    - 执行面真实更新：
+      - `iam.fabric_identity_binding`
+      - `iam.certificate_record`
+      - `iam.certificate_revocation_record`
+      - `ops.external_fact_receipt`
+      - `ops.system_log`
+  - `apps/platform-core/src/modules/iam/**`
+    - `GET /api/v1/iam/fabric-identities`、`GET /api/v1/iam/certificates` 继续由 Rust 公网 IAM 控制面承接。
+    - `POST /api/v1/iam/fabric-identities/{id}/issue`、`POST /api/v1/iam/fabric-identities/{id}/revoke`、`POST /api/v1/iam/certificates/{id}/revoke` 不再直接写本地 DB，占位逻辑已替换为真实调用 `fabric-ca-admin`。
+    - 补齐正式权限点、`step-up`、真实操作者审计主体与错误码映射：
+      - `iam.fabric_identity.read`
+      - `iam.fabric_identity.issue`
+      - `iam.fabric_identity.revoke`
+      - `iam.certificate.read`
+      - `iam.certificate.revoke`
+    - `step-up` 高风险动作映射补齐：
+      - `iam.fabric.identity.issue`
+      - `iam.fabric.identity.revoke`
+      - `iam.certificate.revoke`
+  - OpenAPI / 文档 / 脚本：
+    - 更新 `packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`
+    - 新增 `docs/04-runbooks/fabric-ca-admin.md`
+    - 更新 `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/README.md`
+    - 更新 `docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`
+    - 新增 `services/fabric-ca-admin/README.md`
+    - 新增 `scripts/fabric-ca-admin-bootstrap.sh`、`scripts/fabric-ca-admin-test.sh`、`scripts/fabric-ca-admin-run.sh`
+    - 更新 `Makefile`、`scripts/README.md`、`services/README.md`
+    - 更新 `infra/docker/.env.local` 与 `docs/开发准备/配置项与密钥管理清单.md`
+- 实现摘要：
+  - Go 侧执行面与 Rust 公网控制面已按冻结边界解耦：
+    - Rust 负责权限、`step-up`、公网错误码、审计主体
+    - Go 负责签发 / 吊销执行、DB 回执落盘和系统日志
+  - 签发链路要求 `iam.fabric_identity_binding.status='approved'`，以现有正式 schema 内的审批态作为 `AUD-016` 最小可用门槛，不引入第二套未冻结审批接口。
+  - Go 服务会把：
+    - `certificate_issue_receipt / ca.certificate_issued`
+    - `certificate_revocation_receipt / ca.certificate_revoked`
+    写入 `ops.external_fact_receipt`，并同步写入：
+    - `fabric ca admin issued identity`
+    - `fabric ca admin revoked identity`
+    - `fabric ca admin revoked certificate`
+  - Rust 侧公网接口会把真实操作者、角色和 `step_up_challenge_id` 写入 `audit.audit_event`，不再把 Go 服务伪装成审计主体。
+  - 为让 `step-up/check` live smoke 稳定通过，本批补入固定测试夹具：
+    - `core.organization.org_id='10000000-0000-0000-0000-000000000416'`
+    - `core.user_account.user_id='10000000-0000-0000-0000-000000000417'`
+    仅作为 `AUD-016` 本地平台操作员 fixture，避免重复重跑时再因 `iam.step_up_challenge.user_id` 外键失败。
+- 验证步骤：
+  1. `find services/fabric-ca-admin -name '*.go' -print0 | xargs -0 gofmt -w`
+  2. `bash ./scripts/fabric-ca-admin-bootstrap.sh`
+  3. `bash ./scripts/fabric-ca-admin-test.sh`
+  4. `bash -lc 'source /home/luna/Documents/DataB/scripts/go-env.sh && cd /home/luna/Documents/DataB/services/fabric-ca-admin && go build ./...'`
+  5. `curl -sS http://127.0.0.1:18112/healthz`
+  6. `IAM_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core iam_fabric_ca_admin_db_smoke -- --nocapture`
+  7. `psql ... SELECT action_name, actor_id::text, request_id, event_time FROM audit.audit_event ...`
+  8. `psql ... SELECT message_text, request_id, created_at FROM ops.system_log ...`
+  9. `cargo fmt --all`
+  10. `cargo check -p platform-core`
+  11. `cargo test -p platform-core`
+  12. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  13. `./scripts/check-query-compile.sh`
+  14. `./scripts/check-openapi-schema.sh`
+- 验证结果：
+  - Go 侧 `gofmt`、`go test ./...`、`go build ./...` 全部通过。
+  - `fabric-ca-admin` 真实运行态健康检查通过：`{"service":"fabric-ca-admin","status":"ok"}`。
+  - `IAM_DB_SMOKE=1 cargo test -p platform-core iam_fabric_ca_admin_db_smoke -- --nocapture` 通过，验证了：
+    - `step-up -> platform-core -> fabric-ca-admin -> PostgreSQL` 主链真实跑通。
+    - 签发后 `iam.fabric_identity_binding.status='issued'`、`iam.certificate_record.status='active'`。
+    - 吊销后 `iam.certificate_record.status='revoked'`、`iam.fabric_identity_binding.status='revoked'`，并存在 `iam.certificate_revocation_record`。
+    - `ops.external_fact_receipt` 业务测试数据在 smoke 内已按规则清理。
+  - append-only 留痕回查通过：
+    - `audit.audit_event` 最新两条为：
+      - `iam.fabric.identity.issue / actor_id=10000000-0000-0000-0000-000000000417 / request_id=req-aud016-issue-db-smoke-1776837252908876954`
+      - `iam.certificate.revoke / actor_id=10000000-0000-0000-0000-000000000417 / request_id=req-aud016-revoke-db-smoke-1776837252908876954`
+    - `ops.system_log` 最新两条为：
+      - `fabric ca admin issued identity / request_id=req-aud016-issue-db-smoke-1776837252908876954`
+      - `fabric ca admin revoked certificate / request_id=req-aud016-revoke-db-smoke-1776837252908876954`
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅有仓库既存 `unused_*` warning。
+  - `cargo test -p platform-core` 通过：`293` 个测试通过，既存 `iam_party_access_flow_live` 继续保持 ignored。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-016`
+  - `技术选型正式版.md`：Go 只承担 Fabric 域职责，包括 `fabric-ca-admin`
+  - `链上链下技术架构与能力边界稿.md`：Rust 控制面 + Go Fabric 执行面分层
+  - `身份与会话接口协议正式版.md`：`fabric-identities / certificates` 正式公网路径
+  - `权限设计/接口权限校验清单.md`：Fabric 身份 / 证书治理的正式权限点与高风险动作
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：AUD/Ops/Fabric 控制面契约收口义务
+- 覆盖的任务清单条目：`AUD-016`
+- 未覆盖项：
+  - 真实 `Fabric CA / test-network / Gateway / chaincode` 仍留待 `AUD-017`
+  - `projection-gaps` 公共控制面仍留待 `AUD-021`
+  - `ops.consumer_idempotency_record + Redis` 的 Fabric consumer 幂等闭环仍留待 `AUD-026`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md` 的 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001`。
+- 备注：
+  - 首轮 live smoke 暴露两个运行态问题，当前批已修复并重新验证：
+    1. `iam.step_up_challenge.user_id` 外键要求真实操作员主体，初版 smoke 未先准备 `core.user_account`；现已补固定 operator fixture。
+    2. 首次失败残留固定 `registry_name` 种子，重跑命中 `uq_fabric_ca_registry_name`；现已改为带纳秒后缀的唯一 seed / request id，避免重复重跑互相污染。
+  - 本批业务测试数据已清理；`audit.audit_event / ops.system_log` 按 append-only 保留。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / IAM 权限模型 / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。

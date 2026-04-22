@@ -26,6 +26,8 @@ use axum::{Json, Router};
 use db::{DbClientOps, DbRecord, Error};
 use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
+use reqwest::Client as HttpClient;
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 pub fn router() -> Router<AppState> {
@@ -123,6 +125,33 @@ pub fn router() -> Router<AppState> {
             get(get_execution_environment),
         )
         .route("/api/v1/auth/me", get(get_auth_me))
+}
+
+const DEFAULT_FABRIC_CA_ADMIN_BASE_URL: &str = "http://127.0.0.1:18112";
+
+#[derive(Debug, Clone, Serialize)]
+struct FabricCaAdminActionRequest {
+    request_id: Option<String>,
+    trace_id: Option<String>,
+    actor_role: Option<String>,
+    actor_user_id: Option<String>,
+    step_up_challenge_id: String,
+    permission_code: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FabricCaAdminActionResult {
+    target_id: String,
+    status: String,
+    certificate_id: Option<String>,
+    external_fact_receipt_id: Option<String>,
+    provider_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct FabricCaAdminError {
+    code: String,
+    message: String,
 }
 
 async fn register_org(
@@ -1868,7 +1897,11 @@ async fn list_fabric_identities(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<FabricIdentityView>>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(&headers, IamPermission::FabricRead, "fabric identity read")?;
+    require_permission(
+        &headers,
+        IamPermission::FabricIdentityRead,
+        "fabric identity read",
+    )?;
     let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
@@ -1900,43 +1933,50 @@ async fn issue_fabric_identity(
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
-        IamPermission::FabricWrite,
-        "fabric identity issue placeholder",
+        IamPermission::FabricIdentityIssue,
+        "fabric identity issue",
     )?;
+    let actor_user_id = require_actor_user_id(&headers)?;
     let client = state.db.client().map_err(map_db_error)?;
-    let tx = client.transaction().await.map_err(map_db_error)?;
-    let row = tx
-        .query_opt(
-            "UPDATE iam.fabric_identity_binding
-             SET status = 'issued', issued_at = now(), updated_at = now()
-             WHERE fabric_identity_binding_id = $1::text::uuid
-             RETURNING fabric_identity_binding_id::text, status",
-            &[&id],
-        )
-        .await
-        .map_err(map_db_error)?;
-    let row = row.ok_or_else(|| {
-        not_found(
-            "fabric identity not found",
-            header(&headers, "x-request-id"),
-        )
-    })?;
-    let view = ActionResultView {
-        target_id: row.get(0),
-        status: row.get(1),
-    };
-    write_audit_event(
-        &tx,
+    let step_up_challenge_id = require_step_up_for_fabric_action(
+        &client,
+        &headers,
+        "iam.fabric.identity.issue",
         "fabric_identity_binding",
-        &view.target_id,
+        &id,
+        &actor_user_id,
+    )
+    .await?;
+    let result = call_fabric_ca_admin(
+        &headers,
+        format!(
+            "{}/internal/fabric-identities/{id}/issue",
+            fabric_ca_admin_base_url()
+        ),
+        "iam.fabric_identity.issue",
+        &step_up_challenge_id,
+    )
+    .await?;
+    write_iam_actor_audit_event(
+        &client,
+        "fabric_identity_binding",
+        &result.target_id,
+        &actor_user_id,
         header(&headers, "x-role").as_deref().unwrap_or("unknown"),
         "iam.fabric.identity.issue",
         "success",
+        step_up_challenge_id.as_str(),
+        result.certificate_id.as_deref(),
+        result.external_fact_receipt_id.as_deref(),
+        result.provider_reference.as_deref(),
         header(&headers, "x-request-id").as_deref(),
         header(&headers, "x-trace-id").as_deref(),
     )
     .await?;
-    tx.commit().await.map_err(map_db_error)?;
+    let view = ActionResultView {
+        target_id: result.target_id,
+        status: result.status,
+    };
     Ok(ApiResponse::ok(view))
 }
 
@@ -1947,43 +1987,50 @@ async fn revoke_fabric_identity(
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
-        IamPermission::FabricWrite,
-        "fabric identity revoke placeholder",
+        IamPermission::FabricIdentityRevoke,
+        "fabric identity revoke",
     )?;
+    let actor_user_id = require_actor_user_id(&headers)?;
     let client = state.db.client().map_err(map_db_error)?;
-    let tx = client.transaction().await.map_err(map_db_error)?;
-    let row = tx
-        .query_opt(
-            "UPDATE iam.fabric_identity_binding
-             SET status = 'revoked', revoked_at = now(), updated_at = now()
-             WHERE fabric_identity_binding_id = $1::text::uuid
-             RETURNING fabric_identity_binding_id::text, status",
-            &[&id],
-        )
-        .await
-        .map_err(map_db_error)?;
-    let row = row.ok_or_else(|| {
-        not_found(
-            "fabric identity not found",
-            header(&headers, "x-request-id"),
-        )
-    })?;
-    let view = ActionResultView {
-        target_id: row.get(0),
-        status: row.get(1),
-    };
-    write_audit_event(
-        &tx,
+    let step_up_challenge_id = require_step_up_for_fabric_action(
+        &client,
+        &headers,
+        "iam.fabric.identity.revoke",
         "fabric_identity_binding",
-        &view.target_id,
+        &id,
+        &actor_user_id,
+    )
+    .await?;
+    let result = call_fabric_ca_admin(
+        &headers,
+        format!(
+            "{}/internal/fabric-identities/{id}/revoke",
+            fabric_ca_admin_base_url()
+        ),
+        "iam.fabric_identity.revoke",
+        &step_up_challenge_id,
+    )
+    .await?;
+    write_iam_actor_audit_event(
+        &client,
+        "fabric_identity_binding",
+        &result.target_id,
+        &actor_user_id,
         header(&headers, "x-role").as_deref().unwrap_or("unknown"),
         "iam.fabric.identity.revoke",
         "success",
+        step_up_challenge_id.as_str(),
+        result.certificate_id.as_deref(),
+        result.external_fact_receipt_id.as_deref(),
+        result.provider_reference.as_deref(),
         header(&headers, "x-request-id").as_deref(),
         header(&headers, "x-trace-id").as_deref(),
     )
     .await?;
-    tx.commit().await.map_err(map_db_error)?;
+    let view = ActionResultView {
+        target_id: result.target_id,
+        status: result.status,
+    };
     Ok(ApiResponse::ok(view))
 }
 
@@ -1991,7 +2038,7 @@ async fn list_certificates(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<CertificateView>>>, (StatusCode, Json<ErrorResponse>)> {
-    require_permission(&headers, IamPermission::FabricRead, "certificate read")?;
+    require_permission(&headers, IamPermission::CertificateRead, "certificate read")?;
     let client = state.db.client().map_err(map_db_error)?;
     let rows = client
         .query(
@@ -2021,40 +2068,50 @@ async fn revoke_certificate(
 ) -> Result<Json<ApiResponse<ActionResultView>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
-        IamPermission::FabricWrite,
-        "certificate revoke placeholder",
+        IamPermission::CertificateRevoke,
+        "certificate revoke",
     )?;
+    let actor_user_id = require_actor_user_id(&headers)?;
     let client = state.db.client().map_err(map_db_error)?;
-    let tx = client.transaction().await.map_err(map_db_error)?;
-    let row = tx
-        .query_opt(
-            "UPDATE iam.certificate_record
-             SET status = 'revoked', updated_at = now()
-             WHERE certificate_id = $1::text::uuid
-             RETURNING certificate_id::text, status",
-            &[&id],
-        )
-        .await
-        .map_err(map_db_error)?;
-    let row =
-        row.ok_or_else(|| not_found("certificate not found", header(&headers, "x-request-id")))?;
-    let result = ActionResultView {
-        target_id: row.get(0),
-        status: row.get(1),
-    };
-    write_audit_event(
-        &tx,
+    let step_up_challenge_id = require_step_up_for_fabric_action(
+        &client,
+        &headers,
+        "iam.certificate.revoke",
+        "certificate_record",
+        &id,
+        &actor_user_id,
+    )
+    .await?;
+    let result = call_fabric_ca_admin(
+        &headers,
+        format!(
+            "{}/internal/certificates/{id}/revoke",
+            fabric_ca_admin_base_url()
+        ),
+        "iam.certificate.revoke",
+        &step_up_challenge_id,
+    )
+    .await?;
+    write_iam_actor_audit_event(
+        &client,
         "certificate_record",
         &result.target_id,
+        &actor_user_id,
         header(&headers, "x-role").as_deref().unwrap_or("unknown"),
         "iam.certificate.revoke",
         "success",
+        step_up_challenge_id.as_str(),
+        result.certificate_id.as_deref(),
+        result.external_fact_receipt_id.as_deref(),
+        result.provider_reference.as_deref(),
         header(&headers, "x-request-id").as_deref(),
         header(&headers, "x-trace-id").as_deref(),
     )
     .await?;
-    tx.commit().await.map_err(map_db_error)?;
-    Ok(ApiResponse::ok(result))
+    Ok(ApiResponse::ok(ActionResultView {
+        target_id: result.target_id,
+        status: result.status,
+    }))
 }
 
 fn default_access_rules() -> Vec<AccessPermissionRuleView> {
@@ -2085,6 +2142,13 @@ fn permission_from_code(
         "iam.access.policy.read" => Ok(IamPermission::AccessPolicyRead),
         "iam.sso.read" => Ok(IamPermission::SsoRead),
         "iam.sso.write" => Ok(IamPermission::SsoWrite),
+        "iam.fabric_registry.read" => Ok(IamPermission::FabricRegistryRead),
+        "iam.fabric_registry.manage" => Ok(IamPermission::FabricRegistryManage),
+        "iam.fabric_identity.read" => Ok(IamPermission::FabricIdentityRead),
+        "iam.fabric_identity.issue" => Ok(IamPermission::FabricIdentityIssue),
+        "iam.fabric_identity.revoke" => Ok(IamPermission::FabricIdentityRevoke),
+        "iam.certificate.read" => Ok(IamPermission::CertificateRead),
+        "iam.certificate.revoke" => Ok(IamPermission::CertificateRevoke),
         "iam.fabric.read" => Ok(IamPermission::FabricRead),
         "iam.fabric.write" => Ok(IamPermission::FabricWrite),
         "iam.session.write" => Ok(IamPermission::SessionWrite),
@@ -2138,6 +2202,9 @@ fn high_risk_action_from_name(
         "audit.evidence.export" => Ok(HighRiskAction::EvidenceExport),
         "audit.evidence.replay" => Ok(HighRiskAction::EvidenceReplay),
         "iam.permission.change" => Ok(HighRiskAction::PermissionChange),
+        "iam.fabric.identity.issue" => Ok(HighRiskAction::FabricIdentityIssue),
+        "iam.fabric.identity.revoke" => Ok(HighRiskAction::FabricIdentityRevoke),
+        "iam.certificate.revoke" => Ok(HighRiskAction::CertificateRevoke),
         _ => Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -2249,6 +2316,256 @@ async fn write_audit_event(
         .await
         .map_err(map_db_error)?;
     Ok(())
+}
+
+async fn write_iam_actor_audit_event(
+    client: &(impl DbClientOps + Sync),
+    ref_type: &str,
+    ref_id: &str,
+    actor_user_id: &str,
+    actor_role: &str,
+    action_name: &str,
+    result_code: &str,
+    step_up_challenge_id: &str,
+    certificate_id: Option<&str>,
+    external_fact_receipt_id: Option<&str>,
+    provider_reference: Option<&str>,
+    request_id: Option<&str>,
+    trace_id: Option<&str>,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    client
+        .query_one(
+            "INSERT INTO audit.audit_event (
+               domain_name, ref_type, ref_id, actor_type, actor_id, action_name, result_code,
+               request_id, trace_id, metadata
+             ) VALUES (
+               'iam', $1, $2::text::uuid, 'user', $3::text::uuid, $4, $5, $6, $7, $8::jsonb
+             )
+             RETURNING audit_id::text",
+            &[
+                &ref_type,
+                &ref_id,
+                &actor_user_id,
+                &action_name,
+                &result_code,
+                &request_id,
+                &trace_id,
+                &serde_json::json!({
+                    "actor_role": actor_role,
+                    "event_id": new_external_readable_id("iam"),
+                    "step_up_challenge_id": step_up_challenge_id,
+                    "certificate_id": certificate_id,
+                    "external_fact_receipt_id": external_fact_receipt_id,
+                    "provider_reference": provider_reference,
+                }),
+            ],
+        )
+        .await
+        .map_err(map_db_error)?;
+    Ok(())
+}
+
+fn require_actor_user_id(headers: &HeaderMap) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    header(headers, "x-user-id").ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: "x-user-id is required".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        )
+    })
+}
+
+async fn require_step_up_for_fabric_action(
+    client: &(impl DbClientOps + Sync),
+    headers: &HeaderMap,
+    expected_action: &str,
+    expected_ref_type: &str,
+    expected_ref_id: &str,
+    actor_user_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let challenge_id = header(headers, "x-step-up-challenge-id").ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: format!("x-step-up-challenge-id is required for {}", expected_action),
+                request_id: header(headers, "x-request-id"),
+            }),
+        )
+    })?;
+
+    let row = client
+        .query_opt(
+            "SELECT step_up_challenge_id::text,
+                    user_id::text,
+                    challenge_status,
+                    target_action,
+                    COALESCE(target_ref_type, ''),
+                    COALESCE(target_ref_id::text, '')
+             FROM iam.step_up_challenge
+             WHERE step_up_challenge_id = $1::text::uuid",
+            &[&challenge_id],
+        )
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                    message: format!("step-up challenge not found: {challenge_id}"),
+                    request_id: header(headers, "x-request-id"),
+                }),
+            )
+        })?;
+
+    let challenge_user_id: String = row.get(1);
+    let challenge_status: String = row.get(2);
+    let target_action: String = row.get(3);
+    let target_ref_type: String = row.get(4);
+    let target_ref_id: String = row.get(5);
+
+    if challenge_user_id != actor_user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: "step-up challenge does not belong to current actor".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if challenge_status != "verified" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: format!("verified step-up challenge is required for {expected_action}"),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if target_action != expected_action {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: format!("step-up challenge target_action must be {expected_action}"),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if !target_ref_type.is_empty() && target_ref_type != expected_ref_type {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: format!("step-up challenge target_ref_type must be `{expected_ref_type}`"),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+    if !target_ref_id.is_empty() && target_ref_id != expected_ref_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                message: format!("step-up challenge target_ref_id must be `{expected_ref_id}`"),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
+
+    Ok(challenge_id)
+}
+
+async fn call_fabric_ca_admin(
+    headers: &HeaderMap,
+    url: String,
+    permission_code: &str,
+    step_up_challenge_id: &str,
+) -> Result<FabricCaAdminActionResult, (StatusCode, Json<ErrorResponse>)> {
+    let response = HttpClient::new()
+        .post(url)
+        .header("content-type", "application/json")
+        .header(
+            "x-role",
+            header(headers, "x-role").unwrap_or_else(|| "unknown".to_string()),
+        )
+        .header("x-user-id", require_actor_user_id(headers)?)
+        .header("x-step-up-challenge-id", step_up_challenge_id)
+        .header("x-permission-code", permission_code)
+        .header(
+            "x-request-id",
+            header(headers, "x-request-id").unwrap_or_else(|| new_external_readable_id("req")),
+        )
+        .header(
+            "x-trace-id",
+            header(headers, "x-trace-id").unwrap_or_else(|| new_external_readable_id("trace")),
+        )
+        .json(&FabricCaAdminActionRequest {
+            request_id: header(headers, "x-request-id"),
+            trace_id: header(headers, "x-trace-id"),
+            actor_role: header(headers, "x-role"),
+            actor_user_id: header(headers, "x-user-id"),
+            step_up_challenge_id: step_up_challenge_id.to_string(),
+            permission_code: permission_code.to_string(),
+        })
+        .send()
+        .await
+        .map_err(|err| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    code: "FABRIC_CA_ADMIN_UNAVAILABLE".to_string(),
+                    message: format!("call fabric-ca-admin failed: {err}"),
+                    request_id: header(headers, "x-request-id"),
+                }),
+            )
+        })?;
+
+    let status = response.status();
+    if status.is_success() {
+        return response
+            .json::<FabricCaAdminActionResult>()
+            .await
+            .map_err(|err| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    Json(ErrorResponse {
+                        code: "FABRIC_CA_ADMIN_INVALID_RESPONSE".to_string(),
+                        message: format!("parse fabric-ca-admin response failed: {err}"),
+                        request_id: header(headers, "x-request-id"),
+                    }),
+                )
+            });
+    }
+
+    let error = response
+        .json::<FabricCaAdminError>()
+        .await
+        .unwrap_or(FabricCaAdminError {
+            code: "FABRIC_CA_ADMIN_ERROR".to_string(),
+            message: "fabric-ca-admin request failed".to_string(),
+        });
+    Err((
+        status,
+        Json(ErrorResponse {
+            code: error.code,
+            message: error.message,
+            request_id: header(headers, "x-request-id"),
+        }),
+    ))
+}
+
+fn fabric_ca_admin_base_url() -> String {
+    std::env::var("FABRIC_CA_ADMIN_BASE_URL")
+        .unwrap_or_else(|_| DEFAULT_FABRIC_CA_ADMIN_BASE_URL.to_string())
+        .trim_end_matches('/')
+        .to_string()
 }
 
 fn require_permission(

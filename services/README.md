@@ -12,3 +12,4 @@
 - 通知进程当前正式落位为 `apps/notification-worker`，`services/` 目录不再承载通知进程。
 - 本目录用于其余外围服务的收敛与迁移落位。
 - 本批次不做业务代码迁移，只冻结命名与位置。
+- `AUD-016` 起，`fabric-ca-admin/` 已作为 Go 执行面服务落地，负责 Fabric 身份签发 / 吊销与证书吊销；Rust `platform-core` 仅保留公网 IAM 控制面、权限、step-up 与审计主体。

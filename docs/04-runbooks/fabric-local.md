@@ -6,6 +6,9 @@
 - `make fabric-down`
 - `make fabric-reset`
 - `make fabric-channel`
+- `make fabric-ca-admin-bootstrap`
+- `make fabric-ca-admin-test`
+- `make fabric-ca-admin-run`
 
 ## 组件说明
 
@@ -28,9 +31,11 @@
 - `AUD-013` 已补齐 `fabric-adapter` 的 Go module、Kafka consumer、canonical envelope 解析、mock provider 与 PostgreSQL 回执回写。
 - `AUD-014` 已在 `fabric-adapter` 内补齐四类摘要 handler 占位：`evidence_batch_root / order_summary / authorization_summary / acceptance_summary`，并把 `submission_kind / contract_name / transaction_name` 贯穿到回执、审计与系统日志。
 - `AUD-015` 已补齐 `fabric-event-listener` 的 Go module、mock callback 轮询源、`dtp.fabric.callbacks` 发布、`ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor / audit.anchor_batch` 回写。
-- 真实 `fabric-test-network / Gateway / chaincode / CA admin` 仍留待 `AUD-016~AUD-017`。
+- `AUD-016` 已补齐 Go 版 `fabric-ca-admin`，由其承接 `Fabric 身份签发 / 吊销 / 证书吊销` 执行面，Rust `platform-core` 仅保留公网 IAM 控制面与 step-up / 审计主体。
+- 真实 `fabric-test-network / Gateway / chaincode / Fabric CA` 仍留待 `AUD-017`。
 - 当前 `fabric-adapter` 的实操入口以 `docs/04-runbooks/fabric-adapter.md` 为准。
 - 当前 `fabric-event-listener` 的实操入口以 `docs/04-runbooks/fabric-event-listener.md` 为准。
+- 当前 `fabric-ca-admin` 的实操入口以 `docs/04-runbooks/fabric-ca-admin.md` 为准。
 - 当前文档结论只能回答“链请求与回执应该怎么走”，不能替代后续代码实现所需的 OpenAPI、回调 DTO、重处理样例与集成测试。
 - 进入 `AUD / integration / consistency` 代码实现批次后，Agent 必须同步补齐：
   - `packages/openapi/audit.yaml`
@@ -38,7 +43,7 @@
   - `docs/02-openapi/audit.yaml`
   - `docs/02-openapi/ops.yaml`
   - `docs/05-test-cases/audit-consistency-cases.md`
-  - callback / reconcile / dead-letter / retry runbook 的实操步骤
+  - callback / CA admin / reconcile / dead-letter / retry runbook 的实操步骤
 
 ## 链码占位部署
 

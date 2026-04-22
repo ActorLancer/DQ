@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -17,8 +17,9 @@
 - outbox publisher：`ops.outbox_event -> workers/outbox-publisher -> Kafka / ops.outbox_publish_attempt / ops.dead_letter_event`
 - fabric adapter 四类摘要 handler：`dtp.audit.anchor / dtp.fabric.requests -> services/fabric-adapter -> evidence_batch_root / order_summary / authorization_summary / acceptance_summary -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor`
 - fabric callback listener：`services/fabric-event-listener -> dtp.fabric.callbacks -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor / audit.anchor_batch`
+- fabric CA admin：`platform-core IAM API -> services/fabric-ca-admin -> iam.fabric_identity_binding / iam.certificate_record / iam.certificate_revocation_record / ops.external_fact_receipt / audit.audit_event / ops.system_log`
 
-后续 `fabric-ca-admin / fabric-test-network / reconcile` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
+后续 `fabric-test-network / real Fabric CA / projection-gaps / reconcile` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
 ## 前置条件
 
@@ -39,6 +40,9 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 
 AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core audit_consistency_reconcile_db_smoke -- --nocapture
+
+IAM_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core iam_fabric_ca_admin_db_smoke -- --nocapture
 ```
 
 ## 验收矩阵
@@ -66,12 +70,13 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-019` | 一致性修复 dry-run | `POST /api/v1/ops/consistency/reconcile` + verified `x-step-up-challenge-id` + `{"ref_type":"order","ref_id":"...","mode":"full","dry_run":true,"reason":"..."}` | 不新增 `reconcile_job` 表、不改写 `ops.chain_projection_gap`，只返回修复建议并写入 `audit.audit_event(action_name='ops.consistency.reconcile.dry_run')`、`audit.access_audit(access_mode='reconcile', target_type='consistency_reconcile')`、`ops.system_log`；同时不得写出 `dtp.consistency.reconcile` 新 outbox 事件 | API 响应、`ops.chain_projection_gap` 仍为原状态、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event(request_id=...)` |
 | `AUD-CASE-020` | Fabric adapter 四类摘要 request consume + receipt write-back | 启动 `./scripts/fabric-adapter-run.sh`，使用 `kcat` 向 `dtp.audit.anchor` 写入 `audit.anchor_requested`，向 `dtp.fabric.requests` 分别写入 `summary_type=order_summary / authorization_summary / acceptance_summary` 的 `fabric.proof_submit_requested` | `services/fabric-adapter` 真实消费两条正式 topic，但在 Go 侧显式分派到 `evidence_batch_root / order_summary / authorization_summary / acceptance_summary` 四类 handler，使用 Go mock provider 生成回执，并把 `submission_kind / contract_name / transaction_name` 写入 `ops.external_fact_receipt.metadata`、`receipt_payload`、`audit.audit_event(action_name='fabric.adapter.submit')`、`ops.system_log(message_text='fabric adapter accepted submit event')`；若 payload 提供 `chain_anchor_id`，则 `chain.chain_anchor.status=submitted` 且 `reconcile_status=pending_check` | Kafka topic 内容、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log`、`chain.chain_anchor`、`cg-fabric-adapter` consumer group |
 | `AUD-CASE-021` | Fabric callback listener consume + callback write-back | 启动 `./scripts/fabric-adapter-run.sh` 与 `./scripts/fabric-event-listener-run.sh`；先通过 `dtp.audit.anchor / dtp.fabric.requests` 生成 source receipt，再把其中一条 source receipt 标记 `mock_callback_status=failed` | `services/fabric-event-listener` 轮询已提交 source receipt，生成 `fabric.commit_confirmed / fabric.commit_failed`，发布到 `dtp.fabric.callbacks`，并把 `provider_code / provider_request_id / callback_event_id / event_version / provider_status / provider_occurred_at / payload_hash` 写回 `ops.external_fact_receipt.metadata`；同时写入 `audit.audit_event(action_name='fabric.event_listener.callback')`、`ops.system_log(message_text='fabric event listener published callback')`，成功链更新 `chain.chain_anchor.status='anchored'` 与 `audit.anchor_batch.status='anchored'`，失败链更新 `chain.chain_anchor.status='failed'` | Kafka `dtp.fabric.callbacks`、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log`、`chain.chain_anchor`、`audit.anchor_batch` |
+| `AUD-CASE-022` | Fabric CA admin 证书签发 / 吊销执行面 | 启动 `./scripts/fabric-ca-admin-run.sh`，通过 `platform-core` 先完成 step-up challenge，再调用 `POST /api/v1/iam/fabric-identities/{id}/issue` 与 `POST /api/v1/iam/certificates/{id}/revoke` | Rust `platform-core` 负责权限、step-up、公网错误码与 `audit.audit_event(actor_id=真实操作者)`；Go `services/fabric-ca-admin` 负责执行证书签发 / 吊销，真实更新 `iam.fabric_identity_binding / iam.certificate_record / iam.certificate_revocation_record`，并写入 `ops.external_fact_receipt(fact_type in ('certificate_issue_receipt','certificate_revocation_receipt'))`、`ops.system_log(message_text in ('fabric ca admin issued identity','fabric ca admin revoked certificate'))` | HTTP 响应、`iam.step_up_challenge`、`iam.fabric_identity_binding`、`iam.certificate_record`、`iam.certificate_revocation_record`、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log` |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
-- `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`AUD-015` 已补齐 `fabric-event-listener` 的 callback 轮询源、Kafka callback 发布与 DB 回写；`fabric-test-network / Gateway / chaincode / CA admin` 留待 `AUD-016~AUD-017`。
+- `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`AUD-015` 已补齐 `fabric-event-listener` 的 callback 轮询源、Kafka callback 发布与 DB 回写；`AUD-016` 已补齐 `fabric-ca-admin` 的证书治理执行面；`fabric-test-network / Gateway / chaincode / real Fabric CA` 留待 `AUD-017`。
 
 ## `AUD-011` 手工一致性联查验证
 

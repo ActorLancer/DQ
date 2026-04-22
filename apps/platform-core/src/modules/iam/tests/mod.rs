@@ -1,3 +1,5 @@
+mod api_db;
+
 #[cfg(test)]
 mod tests {
     use super::super::api::*;
@@ -52,6 +54,15 @@ mod tests {
         assert!(high_risk_action_requires_step_up(
             HighRiskAction::PermissionChange
         ));
+        assert!(high_risk_action_requires_step_up(
+            HighRiskAction::FabricIdentityIssue
+        ));
+        assert!(high_risk_action_requires_step_up(
+            HighRiskAction::FabricIdentityRevoke
+        ));
+        assert!(high_risk_action_requires_step_up(
+            HighRiskAction::CertificateRevoke
+        ));
     }
 
     #[test]
@@ -59,6 +70,14 @@ mod tests {
         assert!(is_allowed("tenant_admin", IamPermission::SsoWrite));
         assert!(is_allowed("platform_admin", IamPermission::FabricWrite));
         assert!(is_allowed("platform_auditor", IamPermission::FabricRead));
+        assert!(is_allowed(
+            "fabric_ca_admin",
+            IamPermission::FabricIdentityIssue
+        ));
+        assert!(is_allowed(
+            "platform_admin",
+            IamPermission::CertificateRevoke
+        ));
         assert!(!is_allowed("developer", IamPermission::SsoWrite));
     }
 
@@ -229,5 +248,41 @@ mod tests {
             .await
             .expect("router response");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_fabric_issue_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/iam/fabric-identities/10000000-0000-0000-0000-000000000901/issue")
+                    .method("POST")
+                    .header("x-role", "platform_admin")
+                    .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_certificate_revoke_without_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/iam/certificates/10000000-0000-0000-0000-000000000902/revoke")
+                    .method("POST")
+                    .header("x-role", "platform_admin")
+                    .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+                    .body(Body::empty())
+                    .expect("request build"),
+            )
+            .await
+            .expect("router response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
