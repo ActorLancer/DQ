@@ -1,5 +1,8 @@
 use audit_kit::{AuditContext, AuditEvent};
-use auth::{JwtParser, KeycloakClaimsJwtParser, MockJwtParser, SessionSubject, extract_bearer};
+use auth::{
+    AuthorizationFacade, AuthorizationRequest, JwtParser, KeycloakClaimsJwtParser, MockJwtParser,
+    NoopStepUpGateway, PermissionChecker, SessionSubject, UnifiedAuthorizationFacade,
+};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -20,7 +23,7 @@ use crate::modules::search::domain::{
 };
 use crate::modules::search::repo;
 use crate::modules::search::service::{
-    SearchPermission, first_matching_role, is_allowed, needs_step_up,
+    SearchPermission, first_matching_role, is_allowed, needs_step_up, permission_from_code,
 };
 
 const SEARCH_QUERY_INVALID_ERROR: &str = "SEARCH_QUERY_INVALID";
@@ -34,6 +37,16 @@ const SEARCH_RANKING_STEP_UP_ACTION: &str = "ops.search_ranking.manage";
 struct StepUpBinding {
     challenge_id: Option<String>,
     token_present: bool,
+}
+
+#[derive(Debug, Default, Clone)]
+struct SearchPermissionChecker;
+
+impl PermissionChecker for SearchPermissionChecker {
+    fn can(&self, subject: &SessionSubject, permission: &str) -> bool {
+        permission_from_code(permission)
+            .is_some_and(|resolved_permission| is_allowed(&subject.roles, resolved_permission))
+    }
 }
 
 pub(in crate::modules::search) async fn search_catalog(
@@ -488,7 +501,26 @@ fn require_permission(
     request_id: &str,
 ) -> Result<SessionSubject, (StatusCode, Json<ErrorResponse>)> {
     let subject = resolve_subject(headers, request_id)?;
-    if is_allowed(&subject.roles, permission) {
+    let facade = authorization_facade();
+    let decision = facade
+        .evaluate(
+            &subject,
+            &AuthorizationRequest {
+                permission: permission.permission_code().to_string(),
+                require_step_up: false,
+            },
+        )
+        .map_err(|err| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ErrorResponse {
+                    code: ErrorCode::IamUnauthorized.as_str().to_string(),
+                    message: err.to_string(),
+                    request_id: Some(request_id.to_string()),
+                }),
+            )
+        })?;
+    if decision.allowed {
         return Ok(subject);
     }
     Err((
@@ -508,26 +540,9 @@ fn resolve_subject(
     headers: &HeaderMap,
     request_id: &str,
 ) -> Result<SessionSubject, (StatusCode, Json<ErrorResponse>)> {
-    let token = extract_bearer(headers).ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                code: ErrorCode::IamUnauthorized.as_str().to_string(),
-                message: "Authorization: Bearer <access_token> is required".to_string(),
-                request_id: Some(request_id.to_string()),
-            }),
-        )
-    })?;
-    parser_from_env().parse_subject(&token).map_err(|err| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                code: ErrorCode::IamUnauthorized.as_str().to_string(),
-                message: err.to_string(),
-                request_id: Some(request_id.to_string()),
-            }),
-        )
-    })
+    authorization_facade()
+        .resolve_subject(headers)
+        .map_err(|err| unauthorized_subject_error(err, request_id))
 }
 
 fn require_actor_user_id(
@@ -1010,6 +1025,34 @@ fn parser_from_env() -> Box<dyn JwtParser> {
         "mock" => Box::new(MockJwtParser),
         _ => Box::new(KeycloakClaimsJwtParser),
     }
+}
+
+fn authorization_facade() -> UnifiedAuthorizationFacade {
+    UnifiedAuthorizationFacade::new(
+        parser_from_env(),
+        Box::new(SearchPermissionChecker),
+        Box::new(NoopStepUpGateway),
+    )
+}
+
+fn unauthorized_subject_error(
+    err: kernel::AppError,
+    request_id: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    let message = err.to_string();
+    let normalized_message = if message.contains("missing bearer token") {
+        "Authorization: Bearer <access_token> is required".to_string()
+    } else {
+        message
+    };
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            message: normalized_message,
+            request_id: Some(request_id.to_string()),
+        }),
+    )
 }
 
 fn request_id(headers: &HeaderMap) -> String {

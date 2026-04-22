@@ -32,6 +32,19 @@ impl SearchPermission {
     }
 }
 
+pub fn permission_from_code(permission_code: &str) -> Option<SearchPermission> {
+    match permission_code {
+        "portal.search.read" => Some(SearchPermission::PortalRead),
+        "ops.search_sync.read" => Some(SearchPermission::SyncRead),
+        "ops.search_reindex.execute" => Some(SearchPermission::ReindexExecute),
+        "ops.search_alias.manage" => Some(SearchPermission::AliasManage),
+        "ops.search_cache.invalidate" => Some(SearchPermission::CacheInvalidate),
+        "ops.search_ranking.read" => Some(SearchPermission::RankingRead),
+        "ops.search_ranking.manage" => Some(SearchPermission::RankingManage),
+        _ => None,
+    }
+}
+
 pub fn is_allowed(roles: &[String], permission: SearchPermission) -> bool {
     roles
         .iter()

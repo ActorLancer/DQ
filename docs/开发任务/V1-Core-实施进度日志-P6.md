@@ -681,3 +681,51 @@
   - 无。`SEARCHREC-014` 要求的五条标准链路首页固定样例、推荐运行时置顶召回、演示环境入口、Redis 缓存命中、OpenSearch 实际写入与正式审计留痕已同时覆盖代码、seed、测试、runbook 与服务级证据。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+### BATCH-261（计划中）
+- 任务：`SEARCHREC-018` 将搜索/推荐 handler 与 service 切到统一鉴权门面和正式权限点，移除 `x-role` 占位语义
+- 状态：计划中
+- 说明：按 `SEARCHREC-018` 冻结口径重新核对后，`search` 虽已基本切到 Bearer + 正式权限点，但仍由各 handler 直接解析 JWT 并手写权限判断；`recommendation` 更残留 `GET/PATCH /api/v1/ops/recommendation/ranking-profiles*` 的 `x-role` 占位语义，尚未统一接入 `AuthorizationFacade`。本批只收口搜索/推荐运行态的统一鉴权门面、正式权限点、写接口头约束和 `x-role` 清理，不提前合并 `SEARCHREC-019` 的搜索域错误码/高风险运维审计补齐。
+- 追溯：继续沿 `SEARCHREC` 顺序推进；当前仅处理统一 Bearer 鉴权门面、正式权限点和 recommendation ranking-profile 读写接口的占位语义拆除，搜索/推荐高风险写接口的进一步 `step-up / 审计 / 错误码` 收口仍留在后续 task。
+### BATCH-261（待审批）
+- 任务：`SEARCHREC-018` 将搜索/推荐 handler 与 service 切到统一鉴权门面和正式权限点，移除 `x-role` 占位语义
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-018`
+- 前置依赖核对结果：`AUD-022` 已完成统一鉴权门面、Step-Up 绑定和审计基线；`SEARCHREC-004`、`SEARCHREC-009`、`SEARCHREC-010`、`SEARCHREC-011`、`SEARCHREC-012` 已完成搜索运维、推荐行为回流、推荐运维配置与推荐重建基线；本批在这些已完成事实之上收口运行态 handler 的统一 Bearer 鉴权和正式权限点。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-018` DoD 为搜索/推荐 handler 与 service 统一接入正式鉴权门面，不得继续保留 `x-role` 占位。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 SEARCHREC 阶段的 PostgreSQL/Kafka/OpenSearch/Redis/Keycloak/IAM/审计边界，确认前台读和运维读写都必须经正式 Bearer 鉴权与权限码。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`、`docs/原始PRD/商品推荐与个性化发现设计.md`：确认搜索前台、搜索运维、推荐运行时、推荐运营配置的权限与最终 PostgreSQL 放行边界。
+  - `docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：核对搜索/推荐接口的正式权限点、请求头和错误码边界。
+  - `docs/权限设计/接口权限校验清单.md`、`docs/开发任务/问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`：确认 `Authorization: Bearer <access_token>` 为正式唯一鉴权入口，`x-role` 仅能作为历史缺口修复对象，不能保留在 SEARCHREC 运行态。
+  - `docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/04-runbooks/kafka-topics.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/057_search_sync_architecture.sql`、`docs/数据库设计/V1/upgrade/058_recommendation_module.sql`、`docs/数据库设计/V1/upgrade/073_recommendation_runtime_alignment.sql`、`infra/docker/docker-compose.local.yml`：复核 SEARCHREC 主链和本地依赖，确保本批不越界改写同步、缓存、行为流和重建主链。
+  - `apps/platform-core/src/modules/search/**`、`apps/platform-core/src/modules/recommendation/**`、`workers/search-indexer/**`、`workers/recommendation-aggregator/**`、`apps/platform-core/src/modules/catalog/**`、`apps/platform-core/src/modules/order/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/04-runbooks/**`、`docs/05-test-cases/**`、`infra/**`、`scripts/**`：复核现有实现，确认 `search` 已基本 Bearer 化但仍直连 JWT 解析，`recommendation` 的 ranking-profile 读写仍残留 `x-role` 占位。
+- 完成情况：
+  - `apps/platform-core/src/modules/search/api/handlers.rs`、`apps/platform-core/src/modules/search/service.rs`：补齐 `permission_from_code(...)`，把搜索 handler 从“直接 `extract_bearer + parser_from_env + 手写角色判断`”切到统一 `AuthorizationFacade` 路径，并统一缺失 Bearer 时的正式错误消息。
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`、`apps/platform-core/src/modules/recommendation/service.rs`：新增 recommendation 权限码映射和 `PermissionChecker`，将 ranking-profile 读写接口从 `x-role` 占位切到统一 Bearer 鉴权门面；读接口走正式权限点，写接口强制 `X-Idempotency-Key` 与 `X-Step-Up-Token` 头约束，不再接受 `x-role`。
+  - `apps/platform-core/src/modules/recommendation/tests/mod.rs`、`apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：补充无 Bearer、无权限、缺少 `X-Idempotency-Key`、缺少 `X-Step-Up-Token` 的失败用例，并将 ranking-profile DB smoke 的历史 `x-role` 请求改为正式 Bearer 请求。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core recommendation::tests::route_tests -- --nocapture`
+  - `cargo test -p platform-core search::tests::route_tests -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `cargo test -p platform-core`
+  - `./scripts/check-query-compile.sh`
+  - `rg -n "x-role|require_placeholder_permission|require_step_up_placeholder|extract_bearer" apps/platform-core/src/modules/recommendation apps/platform-core/src/modules/search`
+- 验证结果：
+  - `cargo fmt --all`、`cargo check -p platform-core`、搜索/推荐 route tests、两条 SEARCHREC DB smoke 和最终 `cargo test -p platform-core` 全部通过；全量测试最终结果为 `353 passed; 0 failed`，既有 `iam_party_access_flow_live` 仍按基线保持 ignored。
+  - 第一次全量 `cargo test -p platform-core` 暴露了 workspace `.sqlx` 离线元数据陈旧问题；本批按要求执行 `cargo sqlx prepare --workspace` 刷新后重新回归，`cargo test -p platform-core` 与 `./scripts/check-query-compile.sh` 均通过，确认不是 SEARCHREC-018 业务逻辑回归。
+  - `recommendation_api_full_runtime_db_smoke` 已真实验证 ranking-profile 读写接口在 PostgreSQL 路径下改用 Bearer 鉴权仍可联动通过；`search_api_and_ops_db_smoke` 验证搜索主链/运维接口切到统一鉴权门面后无回归。
+  - `rg` 结果为空，证明 `search` / `recommendation` 运行态已不再保留 `x-role`、`require_placeholder_permission`、`require_step_up_placeholder` 或直接 `extract_bearer` 的占位路径。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-018`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索前台与搜索运维正式权限点、Bearer 鉴权头
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐读取、推荐运营配置接口的正式权限点与请求头约束
+  - `接口权限校验清单.md`、`A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`：SEARCHREC 统一鉴权门面、`x-role` 清理、推荐 ranking-profile 读写头约束
+- 覆盖的任务清单条目：`SEARCHREC-018`
+- 未覆盖项：
+  - 无。`SEARCHREC-018` 要求的统一鉴权门面、正式权限点接入与 `x-role` 占位移除已在搜索/推荐运行态和 ranking-profile 运维接口上同时落地；更进一步的搜索域错误码、高风险写接口 Step-Up 绑定与审计补齐留在 `SEARCHREC-019` 按冻结顺序继续处理。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；既有 `TODO-SEARCHREC-AUTH-001` 继续覆盖后续 `SEARCHREC-019/015/016/017` 的剩余统一鉴权缺口。

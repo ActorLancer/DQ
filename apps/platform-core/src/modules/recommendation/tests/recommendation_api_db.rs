@@ -1217,7 +1217,7 @@ async fn recommendation_api_full_runtime_db_smoke() {
             Request::builder()
                 .method("GET")
                 .uri("/api/v1/ops/recommendation/ranking-profiles")
-                .header("x-role", "platform_admin")
+                .header("authorization", &admin_auth)
                 .body(Body::empty())
                 .expect("ranking profiles request"),
         )
@@ -1445,7 +1445,7 @@ async fn recommendation_api_full_runtime_db_smoke() {
                     "/api/v1/ops/recommendation/ranking-profiles/{ranking_profile_id}"
                 ))
                 .header("content-type", "application/json")
-                .header("x-role", "platform_admin")
+                .header("authorization", &admin_auth)
                 .header("x-idempotency-key", format!("recommend-ranking-{suffix}"))
                 .header("x-step-up-token", "step-up-ok")
                 .body(Body::from(

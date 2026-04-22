@@ -32,6 +32,16 @@ impl RecommendationPermission {
     }
 }
 
+pub fn permission_from_code(permission_code: &str) -> Option<RecommendationPermission> {
+    match permission_code {
+        "portal.recommendation.read" => Some(RecommendationPermission::PortalRead),
+        "ops.recommendation.read" => Some(RecommendationPermission::PlacementRead),
+        "ops.recommendation.manage" => Some(RecommendationPermission::PlacementManage),
+        "ops.recommend_rebuild.execute" => Some(RecommendationPermission::RebuildExecute),
+        _ => None,
+    }
+}
+
 pub fn is_allowed(role: &str, permission: RecommendationPermission) -> bool {
     role_has_permission(role, permission)
 }
