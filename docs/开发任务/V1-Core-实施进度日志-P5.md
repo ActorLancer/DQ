@@ -1709,3 +1709,36 @@
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 - 备注：
   - 本批没有重写 `audit.yaml / ops.yaml` 的大段内容，因为复核结果显示两份 YAML 与当前 `platform-core.audit` 路由已一致；真实缺口在于校验脚本和 README 索引仍停留在局部路径 / “未来待补”口径。已通过脚本与索引同步把该 gap 收口。
+### BATCH-241（计划中）
+- 任务：`AUD-028` 生成 `docs/05-test-cases/audit-consistency-cases.md`，覆盖链下成功链上失败、链上成功链下未更新、回调乱序、重复事件、修复演练
+- 状态：计划中
+- 说明：重新核对 `AUD-028` 的冻结要求后确认，`docs/05-test-cases/audit-consistency-cases.md` 当前已经收录大批 `AUD-003~AUD-026` 控制面验收项，但还没有把 `AUD-028` 要求的五类一致性场景显式收口成正式矩阵。仅凭“文件很长、已有用例”不能视为完成；必须进一步把五类场景绑定到正式对象、正式接口、现有 runbook 和可重复验证入口，并同步更新 `docs/05-test-cases/README.md` 的索引说明，避免后续 Agent 继续把 callback 晚到、链失败、重复事件和修复演练当成隐含知识处理。
+- 追溯：已重新核对 `CSV / Markdown`、`审计、证据链与回放设计.md` 第 3 节、`审计、证据链与回放接口协议正式版.md` 第 5 节、`全量领域模型与对象关系说明.md` 4.9、`A04-AUD-Ops-接口与契约落地缺口.md`，以及通用冻结文档 `服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`、`审计、证据链与回放设计.md`、`双层权威模型与链上链下一致性设计.md`、`链上链下技术架构与能力边界稿.md`、`日志、可观测性与告警设计.md`、`审计、证据链与回放接口协议正式版.md`、`一致性与事件接口协议正式版.md`、`fabric-local.md`、`kafka-topics.md`、`async-chain-write.md`、`072_canonical_outbox_route_policy.sql`、`074_event_topology_route_extensions.sql` 与 `infra/docker/docker-compose.local.yml`。当前确认的正式完成标准是：`audit-consistency-cases.md` 与 README 明确覆盖五类一致性场景，使用正式术语和正式对象，不再把普通日志、README 叙述或旁路 topic 当作验收证明；并至少用一条真实 smoke 证明这些场景中的审计/日志留痕链路可回查。
+### BATCH-241（待审批）
+- 任务：`AUD-028` 生成 `docs/05-test-cases/audit-consistency-cases.md`，覆盖链下成功链上失败、链上成功链下未更新、回调乱序、重复事件、修复演练
+- 状态：待审批
+- 实现摘要：
+  - `docs/05-test-cases/audit-consistency-cases.md`：在既有 `AUD-003~AUD-026` 验收矩阵之前新增 `AUD-028` 五类一致性场景映射表，把“链下成功链上失败、链上成功链下未更新、回调乱序 / 晚到、重复事件、修复演练”分别绑定到正式对象、正式接口、现有 case ID、runbook 与最小验证入口，避免后续再把这些场景当成散落在长文里的隐含口径。
+  - 场景映射表明确冻结：`ops.external_fact_receipt / chain.chain_anchor / audit.anchor_batch / ops.chain_projection_gap / ops.dead_letter_event / ops.consumer_idempotency_record / audit.audit_event / audit.access_audit / ops.system_log` 才是 `AUD-028` 的正式回查对象；`Fabric` 只负责提交 / 回执 / 摘要证明，不得反向覆盖链下主事实。
+  - `docs/05-test-cases/README.md`：把 `audit-consistency-cases.md` 的索引说明更新到 `AUD-028` 口径，明确该文件已经正式承接五类一致性场景，后续剩余高风险控制面从 `AUD-029+` 起继续追加，不再用 `AUD-027+` 的旧说法。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既有 warning，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`319 passed; 0 failed`，其中 `audit_consistency_reconcile_db_smoke`、`audit_projection_gap_resolve_db_smoke`、`audit_dead_letter_reprocess_db_smoke`、`audit_trade_monitor_db_smoke` 与 `audit_trace_api_db_smoke` 保持绿色。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新工作区 `.sqlx` 缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_consistency_reconcile_db_smoke -- --nocapture` 通过，真实验证 `ops.consistency.reconcile.dry_run`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` 与“无 `dtp.consistency.reconcile` outbox 副作用”。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_projection_gap_resolve_db_smoke -- --nocapture` 通过，真实验证 `ops.chain_projection_gap` 的 query + dry-run + execute resolve、`audit.audit_event(action_name='ops.projection_gap.resolve')`、`audit.access_audit`、`ops.system_log` 与“链上成功链下未更新 / 回调晚到后修复”的正式回查对象。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-028`
+  - `审计、证据链与回放设计.md` 第 3 节
+  - `审计、证据链与回放接口协议正式版.md` 第 5 节
+  - `全量领域模型与对象关系说明.md` 4.9
+  - `A04-AUD-Ops-接口与契约落地缺口.md`
+- 覆盖的任务清单条目：`AUD-028`
+- 未覆盖项：
+  - 无新增未覆盖项；本任务目标是把五类一致性场景显式收口到正式 test-case 与 README 索引，不额外扩展新的 API 或 runbook 旁路。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - 本批没有改动业务代码；复核结果显示现有 smoke 与 runbook 已能支撑 `AUD-028`，真实缺口在于 test-case 文档尚未把五类一致性场景显式绑定到正式对象与验证入口。已通过场景映射表和 README 索引把该 gap 收口。

@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019`、`AUD-020`、`AUD-021`、`AUD-023` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019`、`AUD-020`、`AUD-021`、`AUD-023`、`AUD-024`、`AUD-026` 已落地的首版审计控制面验收矩阵，并在 `AUD-028` 中把“链下成功链上失败、链上成功链下未更新、回调乱序 / 晚到、重复事件、修复演练”五类一致性场景收口到正式用例与手工 drill，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -58,6 +58,21 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core observability_api_db_smoke -- --nocapture
 ```
+
+## `AUD-028` 五类一致性场景映射
+
+| 场景 | 正式口径 | 对应用例 / runbook | 最小验证入口 | 必查痕迹 |
+| --- | --- | --- | --- | --- |
+| 链下成功链上失败 | 本地业务 / 审计 / outbox 已成立，但 `fabric-event-listener` 回写 `fabric.commit_failed`；只能把失败事实落到 `ops.external_fact_receipt / chain.chain_anchor / audit.anchor_batch`，不得反向回滚已成立的链下事实 | `AUD-CASE-020`、`AUD-CASE-021`、`AUD-CASE-023`；`docs/04-runbooks/fabric-adapter.md`、`docs/04-runbooks/fabric-event-listener.md`、`docs/04-runbooks/audit-trade-monitor.md` | `./scripts/fabric-adapter-live-smoke.sh` + `docs/04-runbooks/fabric-event-listener.md` 第 3~5 步失败分支 | `ops.external_fact_receipt.receipt_status='failed'`、`chain.chain_anchor.status='failed'`、`chain.chain_anchor.reconcile_status='pending_check'`、`audit.audit_event(action_name='fabric.event_listener.callback')`、`ops.system_log(message_text='fabric event listener published callback')` |
+| 链上成功链下未更新 | 链上提交 / callback 已确认，但链下投影或业务视图仍存在缺口；正式持久化对象必须是 `ops.chain_projection_gap`，由 `consistency lookup / trade monitor / projection gap resolve` 联查与修复，不能把 `Fabric` 当主状态机 | `AUD-CASE-018`、`AUD-CASE-023`、`AUD-CASE-029`、`AUD-CASE-030`；`docs/04-runbooks/audit-consistency-lookup.md`、`docs/04-runbooks/audit-trade-monitor.md`、`docs/04-runbooks/audit-projection-gaps.md` | `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_projection_gap_resolve_db_smoke -- --nocapture` | `chain.chain_anchor.status='anchored'`、`ops.chain_projection_gap(gap_status='open')`、`audit.access_audit(target_type in ('consistency_query','projection_gap_query'))`、`ops.system_log` |
+| 回调乱序 / 晚到 | `V1` 的正式验收口径不是“让晚到 callback 直接回滚链下事实”，而是先以 `ops.chain_projection_gap(gap_type='missing_callback' / 等价缺口)` 记录乱序影响，再由晚到 callback 回写和 `projection gap resolve` 收口 | `AUD-CASE-021`、`AUD-CASE-029`、`AUD-CASE-030`；`docs/04-runbooks/fabric-event-listener.md`、`docs/04-runbooks/audit-projection-gaps.md` | 先按 `fabric-event-listener.md` 生成 callback receipt，再按 `audit-projection-gaps.md` 执行 query + dry-run/execute resolve | `ops.external_fact_receipt.metadata.callback_event_id / provider_occurred_at`、`ops.chain_projection_gap`、`audit.audit_event(action_name='ops.projection_gap.resolve')`、`audit.access_audit(access_mode='resolve')`、`ops.system_log` |
+| 重复事件 | `V1` 分两层验收：同一 source receipt 一旦写入 `listener_callback_event_id`，`fabric-event-listener` 不得再次补发 callback；consumer 侧重复投递或重试必须通过 `ops.consumer_idempotency_record` 与 `ops.dead_letter_event` 可观测，不能靠普通日志口头去重 | `AUD-CASE-014`、`AUD-CASE-017`、`AUD-CASE-021`；`docs/04-runbooks/fabric-event-listener.md`、`docs/04-runbooks/audit-dead-letter-reprocess.md`、`docs/04-runbooks/audit-ops-outbox-dead-letters.md` | 复跑同一 source receipt 的 listener 轮询，或执行 `audit_dead_letter_reprocess_db_smoke` 回查 `consumer_idempotency_record` | `ops.external_fact_receipt.metadata.listener_callback_event_id` 已存在且 callback receipt 数量不增长；`ops.consumer_idempotency_record(result_code='duplicate' / 'dead_lettered' / 等价去重状态)`、`ops.dead_letter_event`、`audit.audit_event` |
+| 修复演练 | `AUD` 阶段只允许走正式控制面修复：`POST /api/v1/ops/consistency/reconcile` 保持 `dry_run` 预演，`POST /api/v1/ops/projection-gaps/{id}/resolve` 负责真实关闭缺口；两者都必须绑定权限、step-up、审计与系统日志 | `AUD-CASE-019`、`AUD-CASE-030`；`docs/04-runbooks/audit-consistency-reconcile.md`、`docs/04-runbooks/audit-projection-gaps.md` | `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_consistency_reconcile_db_smoke -- --nocapture` + `audit_projection_gap_resolve_db_smoke` | `audit.audit_event(action_name in ('ops.consistency.reconcile.dry_run','ops.projection_gap.resolve'))`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event(target_topic='dtp.consistency.reconcile') = 0`（dry-run 不得旁路发事件） |
+
+补充约束：
+
+- `AUD-028` 只允许把上述五类场景挂到正式对象：`ops.external_fact_receipt`、`chain.chain_anchor`、`audit.anchor_batch`、`ops.chain_projection_gap`、`ops.dead_letter_event`、`ops.consumer_idempotency_record`、`audit.audit_event`、`audit.access_audit`、`ops.system_log`。
+- `Fabric` 在这些场景中只负责“提交 / 回执 / 摘要证明”，不是订单主状态机；任何链失败、晚到 callback、重复事件都不得直接覆盖既有链下主事实。
 
 ## 验收矩阵
 
