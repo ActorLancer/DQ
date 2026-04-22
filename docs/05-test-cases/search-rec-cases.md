@@ -9,7 +9,7 @@
   - `search.index_sync_task` 真实排队
   - OpenSearch alias 与 `search.index_alias_binding.active_index_name` 真实切换
   - `search.ranking_profile` 真实更新
-- `AUD-026` 已真实补齐 SEARCHREC consumer 可靠性闭环：
+- `AUD-026 + SEARCHREC-020` 已真实补齐 SEARCHREC consumer 可靠性闭环：
   - `search-indexer` 与 `recommendation-aggregator` 都基于统一 envelope `event_id` 写入 `ops.consumer_idempotency_record`
   - 失败路径都会进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离
   - worker 侧副作用、重复投递去重和 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 `dry_run` 预演都已有真实 smoke

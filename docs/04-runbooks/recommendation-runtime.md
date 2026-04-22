@@ -106,7 +106,7 @@ WHERE aggregate_type = 'recommend.behavior_event'
 - `POST /api/v1/ops/recommendation/rebuild` 对应正式权限点为 `ops.recommend_rebuild.execute`，属于高风险动作，必须要求 `Authorization + X-Idempotency-Key + X-Step-Up-Token`；`step-up` 必须真实绑定 `iam.step_up_challenge(target_action='recommendation.rebuild.execute', target_ref_type='recommendation_rebuild')`，并写入 `audit.audit_event(action_name='recommendation.rebuild.execute') + audit.access_audit(target_type='recommendation_rebuild') + ops.system_log`。
 - 推荐行为写接口必须使用 `X-Idempotency-Key`，不得继续以“header 存在即可”的占位方式定义正式幂等语义。
 - 当前 runbook 只冻结正式口径，不代表统一鉴权 / 审计 / OpenAPI / 测试已经补齐；进入 `SEARCHREC` 实现批次后，Agent 必须按 `A13` 同步修改代码与契约。
-- `recommendation-aggregator` 已按 `AUD-026` 收口为正式 consumer：统一使用 envelope `event_id` 做幂等，写入 `ops.consumer_idempotency_record`，失败时先进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，再决定 offset 提交。
+- `recommendation-aggregator` 已按 `AUD-026 + SEARCHREC-020` 收口为正式 consumer：统一使用 envelope `event_id` 做幂等，写入 `ops.consumer_idempotency_record`，失败时先进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，再决定 offset 提交。
 - 当前若只验证推荐行为写库、outbox 行存在或缓存发生变化，仍不能视为 consumer 可靠性闭环完成；验收必须同时覆盖 worker 副作用、失败路径、双层 DLQ 与 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 `dry_run` 预演。
 
 ## 本地核对点

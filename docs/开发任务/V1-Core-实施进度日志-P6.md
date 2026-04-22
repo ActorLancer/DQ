@@ -776,3 +776,53 @@
   - 无。`SEARCHREC-019` 要求的搜索运维 `SEARCH_*` 错误码收口与 recommendation 高风险运维写接口 step-up / 审计要求已同步落到运行时代码、DB smoke、runbook、测试用例与 OpenAPI 契约。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；既有 `TODO-SEARCHREC-AUTH-001` 在 `SEARCHREC-018/019` 上的 recommendation runtime 控制面缺口已基本收口，后续仅继续覆盖 `SEARCHREC-015/016/017` 的剩余统一鉴权边界。
+### BATCH-263（计划中）
+- 任务：`SEARCHREC-020` 为 `search-indexer` 与 `recommendation-aggregator` 补齐统一 envelope `event_id` 幂等、双层 DLQ 与 reprocess 闭环验收
+- 状态：计划中
+- 说明：按 `SEARCHREC-020` 冻结口径重新核对后，两个 SEARCHREC consumer 的运行时代码已具备 `event_id` 幂等、`ops.consumer_idempotency_record`、`ops.dead_letter_event + dtp.dead-letter` 双层隔离、`enable.auto.commit=false` 与“成功或失败已安全隔离后才提交 offset”的正式机制，但 `TODO-SEARCHREC-CONSUMER-001` 与部分文档追溯仍停留在“仅冻结文档、未落运行时代码”的陈旧表述。本批以真实 worker smoke、dead-letter reprocess smoke、runbook/test-case/TODO 校对和实施日志证据为主，正式验收 `search-indexer` 与 `recommendation-aggregator` 的可靠性闭环，不重复改写已满足 DoD 的底层实现。
+- 追溯：继续沿修正后的 `SEARCHREC` 顺序推进；当前只处理 consumer 幂等、双层 DLQ、offset 提交纪律与 reprocess 验收闭环，不提前合并 `SEARCHREC-015/016/017` 的综合测试矩阵、OpenAPI 归档与测试文档整理。
+### BATCH-263（待审批）
+- 任务：`SEARCHREC-020` 为 `search-indexer` 与 `recommendation-aggregator` 补齐统一 envelope `event_id` 幂等、双层 DLQ 与 reprocess 闭环验收
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-020`
+- 前置依赖核对结果：`AUD-008`、`AUD-010`、`SEARCHREC-001`、`SEARCHREC-010` 均已在前序批次完成并本地提交；当前基线已具备 canonical outbox / dead-letter reprocess、`search-indexer` 正式搜索同步链路和推荐行为回流链路，本批在该基线上完成 SEARCHREC consumer 可靠性闭环的正式验收与追溯纠偏。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-020` DoD 为两个 SEARCHREC consumer 基于统一 envelope `event_id` 幂等消费、双层 DLQ、offset 提交纪律与 reprocess 对接。
+  - `docs/开发任务/问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`：复核历史 gap，确认不能再用“只看 outbox 行/手工 seed OpenSearch”冒充 worker 可靠性闭环。
+  - `docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/数据库设计/V1/upgrade/056_dual_authority_consistency.sql`：核对统一 envelope、`ops.consumer_idempotency_record`、`ops.dead_letter_event`、`dtp.dead-letter` 与 reprocess 契约。
+  - `docs/04-runbooks/audit-ops-outbox-dead-letters.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：确认 SEARCHREC 阶段对 worker 副作用、双层 DLQ、`dry_run + step-up` reprocess 和验证命令的正式口径。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 PostgreSQL / Kafka / OpenSearch / Redis / IAM / 审计边界，确认 consumer 只能消费并派生，不得反向定义业务真相。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`、`docs/原始PRD/商品推荐与个性化发现设计.md`：确认搜索投影同步与推荐行为回流都必须真实走 Kafka worker 主链，失败时可重放。
+  - `workers/search-indexer/src/main.rs`、`workers/recommendation-aggregator/src/main.rs`：回读现有运行时代码，确认两者都已显式设置 `enable.auto.commit=false`、只在成功或失败安全隔离后 `commit_message`，并有 `search_indexer_db_smoke` / `recommendation_aggregator_db_smoke` 覆盖 processed / duplicate / dead_lettered 路径。
+- 完成情况：
+  - `workers/search-indexer/src/main.rs`、`workers/recommendation-aggregator/src/main.rs`：复核后确认现有运行时代码已满足 `SEARCHREC-020` DoD，无需额外重写；两个 worker 都基于统一 envelope `event_id` 写入 `ops.consumer_idempotency_record`，成功路径记录 `processed`，重复投递记录 `duplicate`，失败路径先写 `ops.dead_letter_event + dtp.dead-letter` 再更新 `dead_lettered` 结果码。
+  - `workers/search-indexer/src/main.rs`：继续沿用正式 offset 提交纪律，只有 `process_kafka_message(...)` 返回成功或失败已安全隔离时才执行 `commit_message`；失败时同时回写 `search.index_sync_task.dead_letter_event_id / reconcile_status` 和 `search.index_sync_exception.dead_letter_event_id`，保证搜索投影同步状态可联查、可重处理。
+  - `workers/recommendation-aggregator/src/main.rs`：继续沿用相同 `event_id` 幂等与双层 DLQ 语义，失败事件会被隔离到 `ops.dead_letter_event(target_topic='dtp.recommend.behavior')` 与 Kafka `dtp.dead-letter`，成功/重复投递均不会重复写热度聚合、相似度或 bundle 关系副作用。
+  - `docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：把 SEARCHREC consumer 可靠性闭环的归因从单纯 `AUD-026` 更新为 `AUD-026 + SEARCHREC-020`，明确本批已完成正式验收，不再保留“仍待 SEARCHREC 验收”的歧义。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：关闭 `TODO-SEARCHREC-CONSUMER-001`，同步记录 `search_indexer_db_smoke`、`recommendation_aggregator_db_smoke`、`audit_dead_letter_reprocess_db_smoke` 与 runbook/test-case 回查已完成正式验收。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core -p search-indexer -p recommendation-aggregator`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `search_indexer_db_smoke` 通过：真实证明 `search-indexer` 对同一 `event_id` 的 processed / duplicate / dead_lettered 三条路径全部成立；失败事件会同时写入 `ops.dead_letter_event(target_topic='dtp.search.sync')` 与 Kafka `dtp.dead-letter`，并把同一个 `dead_letter_event_id` 回写到 `search.index_sync_task` 与 `search.index_sync_exception`。
+  - `recommendation_aggregator_db_smoke` 通过：真实证明 `recommendation-aggregator` 对同一 `event_id` 的 processed / duplicate / dead_lettered 路径成立；失败事件会落入 `ops.dead_letter_event(target_topic='dtp.recommend.behavior')` 与 Kafka `dtp.dead-letter`，幂等记录写入 `ops.consumer_idempotency_record`，且重复投递不会重复产生派生副作用。
+  - `audit_dead_letter_reprocess_db_smoke` 通过：真实验证 `POST /api/v1/ops/dead-letters/{id}/reprocess` 对 SEARCHREC dead-letter 记录的 `dry_run + step-up` 预演链路成立，可回查 `audit.audit_event`、`audit.access_audit`、`ops.system_log` 与 reprocess 计划记录，证明 SEARCHREC consumer 失败后并非静默丢数而是可审计、可重放。
+  - `cargo check -p platform-core -p search-indexer -p recommendation-aggregator`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；workspace 仍存在若干既有 `unused` warning，但本批未引入新的编译失败或查询漂移。
+  - `cargo test -p platform-core` 最终结果为 `353 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 未产生新的 `.sqlx` 差异。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-020`
+  - `一致性与事件接口协议正式版.md`：consumer 幂等、dead-letter、reprocess
+  - `事件模型与Topic清单正式版.md`：`dtp.search.sync`、`dtp.recommend.behavior`、`dtp.dead-letter`
+  - `056_dual_authority_consistency.sql`：`ops.consumer_idempotency_record`
+  - `search-reindex.md`、`recommendation-runtime.md`、`search-rec-cases.md`：SEARCHREC worker 副作用、双层 DLQ、reprocess smoke
+- 覆盖的任务清单条目：`SEARCHREC-020`
+- 未覆盖项：
+  - 无。`SEARCHREC-020` 要求的 SEARCHREC consumer 幂等、双层 DLQ、offset 提交纪律和 reprocess 路径已通过两个 worker smoke、一个 reprocess smoke、runbook/test-case/TODO/实施日志追溯全部固定。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；既有 `TODO-SEARCHREC-CONSUMER-001` 已在本批关闭。

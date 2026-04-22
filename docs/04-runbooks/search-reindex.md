@@ -312,7 +312,7 @@ ORDER BY created_at;
 - 正式 alias：`product_search_read/write`、`seller_search_read/write`
 - 搜索域错误码：`SEARCH_QUERY_INVALID`、`SEARCH_BACKEND_UNAVAILABLE`、`SEARCH_RESULT_STALE`，以及写权限专属 `SEARCH_REINDEX_FORBIDDEN / SEARCH_ALIAS_SWITCH_FORBIDDEN / SEARCH_CACHE_INVALIDATE_FORBIDDEN`
 - 宿主机直连 Kafka 时使用 `127.0.0.1:9094`；容器内监听地址 `kafka:9092` 只供 compose 网络内部使用
-- `search-indexer` 已按 `AUD-026` 收口为正式 consumer：统一使用 envelope `event_id` 写 `ops.consumer_idempotency_record`，处理失败时先写 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，再决定 offset 提交；`AUD-010` 的 `POST /api/v1/ops/dead-letters/{id}/reprocess` 可对该失败记录执行 `dry_run + step-up` 预演。
+- `search-indexer` 已按 `AUD-026 + SEARCHREC-020` 收口为正式 consumer：统一使用 envelope `event_id` 写 `ops.consumer_idempotency_record`，处理失败时先写 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，再决定 offset 提交；`AUD-010` 的 `POST /api/v1/ops/dead-letters/{id}/reprocess` 可对该失败记录执行 `dry_run + step-up` 预演。
 
 ## Worker 可靠性回归
 
