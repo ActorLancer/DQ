@@ -1,3 +1,7 @@
+use crate::modules::audit::application::{
+    EvidenceWriteCommand, LegacyEvidenceBridge, bridge_metadata, bridge_support_evidence_object,
+    record_evidence_snapshot,
+};
 use crate::modules::billing::db::{map_db_error, write_audit_event};
 use crate::modules::billing::models::{
     CreateDisputeCaseRequest, DisputeCaseView, DisputeEvidenceView, DisputeResolutionView,
@@ -256,6 +260,7 @@ pub async fn upload_dispute_evidence(
     .await?;
 
     let metadata = build_evidence_metadata(payload, actor_user_id, request_id);
+    let object_uri = format!("s3://{bucket_name}/{object_key}");
     let row = match tx
         .query_one(
             r#"INSERT INTO support.evidence_object (
@@ -285,7 +290,7 @@ pub async fn upload_dispute_evidence(
                 &evidence_id,
                 &case_id,
                 &payload.object_type,
-                &format!("s3://{bucket_name}/{object_key}"),
+                &object_uri,
                 &object_hash,
                 &metadata,
             ],
@@ -298,7 +303,46 @@ pub async fn upload_dispute_evidence(
             return Err(map_db_error(err));
         }
     };
-    let evidence = parse_evidence_row(&row, false);
+    let mut evidence = parse_evidence_row(&row, false);
+    let evidence_bridge = record_evidence_snapshot(
+        &tx,
+        &EvidenceWriteCommand {
+            item_type: payload.object_type.clone(),
+            ref_type: "dispute_case".to_string(),
+            ref_id: Some(case_id.to_string()),
+            object_uri: object_uri.clone(),
+            object_hash: object_hash.clone(),
+            content_type: payload.content_type.clone(),
+            size_bytes: Some(payload.file_bytes.len() as i64),
+            source_system: "billing.dispute".to_string(),
+            storage_mode: "minio".to_string(),
+            retention_policy_id: None,
+            worm_enabled: false,
+            legal_hold_status: "none".to_string(),
+            created_by: actor_user_id.map(str::to_string),
+            metadata: metadata.clone(),
+            manifest_scope: "dispute_case_evidence".to_string(),
+            manifest_ref_type: "dispute_case".to_string(),
+            manifest_ref_id: Some(case_id.to_string()),
+            manifest_storage_uri: None,
+            manifest_metadata: json!({
+                "case_id": case_id,
+                "source": "billing.dispute",
+            }),
+            legacy_bridge: Some(LegacyEvidenceBridge {
+                legacy_table: "support.evidence_object".to_string(),
+                legacy_object_id: evidence_id.clone(),
+                legacy_parent_type: "support.dispute_case".to_string(),
+                legacy_parent_id: Some(case_id.to_string()),
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    bridge_support_evidence_object(&tx, &evidence.evidence_id, &evidence_bridge)
+        .await
+        .map_err(map_db_error)?;
+    evidence.metadata = merge_json_values(evidence.metadata, bridge_metadata(&evidence_bridge));
 
     if matches!(case.status.as_str(), "opened" | "evidence_collecting") {
         let _ = tx
@@ -807,6 +851,26 @@ fn build_evidence_metadata(
         "request_id": request_id,
         "request_metadata": payload.metadata,
     })
+}
+
+fn merge_json_values(base: Value, extra: Value) -> Value {
+    let mut merged = match base {
+        Value::Object(map) => map,
+        Value::Null => serde_json::Map::new(),
+        raw => {
+            let mut map = serde_json::Map::new();
+            map.insert("raw_metadata".to_string(), raw);
+            map
+        }
+    };
+
+    if let Value::Object(extra) = extra {
+        for (key, value) in extra {
+            merged.insert(key, value);
+        }
+    }
+
+    Value::Object(merged)
 }
 
 fn evidence_bucket_name() -> String {

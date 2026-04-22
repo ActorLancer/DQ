@@ -1,6 +1,8 @@
-use crate::modules::audit::dto::AuditTraceView;
+use crate::modules::audit::dto::{
+    AuditTraceView, EvidenceItemView, EvidenceManifestItemView, EvidenceManifestView,
+};
 use crate::modules::audit::repo::{AuditEventInsert, INSERT_AUDIT_EVENT_SQL};
-use audit_kit::{AuditContext, AuditEvent, EvidenceItem};
+use audit_kit::{AuditContext, AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem};
 
 fn sample_event() -> AuditEvent {
     let mut context = AuditContext::minimal("req-aud-1", "trace-aud-1", "user-1", "tenant-1");
@@ -88,4 +90,96 @@ fn audit_trace_view_keeps_lookup_and_export_fields_aligned() {
         view.occurred_at.as_deref(),
         Some("2026-04-22T10:00:00.000Z")
     );
+}
+
+#[test]
+fn evidence_views_preserve_export_replay_legal_hold_and_history_bridge_fields() {
+    let evidence_item = EvidenceItem {
+        evidence_item_id: Some("item-bridge-1".to_string()),
+        item_type: "dispute_attachment".to_string(),
+        ref_type: "dispute_case".to_string(),
+        ref_id: Some("case-1".to_string()),
+        object_uri: Some("s3://audit-evidence/dispute/case-1/item-1.bin".to_string()),
+        object_hash: Some("object-hash-1".to_string()),
+        content_type: Some("application/octet-stream".to_string()),
+        size_bytes: Some(2048),
+        source_system: Some("billing.dispute".to_string()),
+        storage_mode: Some("minio".to_string()),
+        retention_policy_id: Some("retention-90d".to_string()),
+        worm_enabled: false,
+        legal_hold_status: "active".to_string(),
+        created_by: Some("user-1".to_string()),
+        created_at: Some("2026-04-22T11:00:00.000Z".to_string()),
+        metadata: serde_json::json!({
+            "legacy_bridge": {
+                "legacy_table": "support.evidence_object",
+                "legacy_object_id": "legacy-evidence-1",
+            },
+            "export_scope": "regulator_batch",
+            "replay_scope": "forensic_replay",
+        }),
+    };
+    let evidence_manifest = EvidenceManifest {
+        evidence_manifest_id: Some("manifest-bridge-1".to_string()),
+        manifest_scope: "audit_export_package".to_string(),
+        ref_type: "audit_export".to_string(),
+        ref_id: Some("export-1".to_string()),
+        manifest_hash: "manifest-hash-1".to_string(),
+        item_count: 1,
+        storage_uri: Some("s3://audit-evidence/manifests/export-1.json".to_string()),
+        created_by: Some("user-1".to_string()),
+        created_at: Some("2026-04-22T11:01:00.000Z".to_string()),
+        metadata: serde_json::json!({
+            "legal_hold_case_id": "legal-hold-1",
+            "replay_job_id": "replay-1",
+            "export_job_id": "export-1",
+        }),
+    };
+    let manifest_item = EvidenceManifestItem {
+        evidence_manifest_item_id: Some("manifest-item-1".to_string()),
+        evidence_manifest_id: evidence_manifest.evidence_manifest_id.clone(),
+        evidence_item_id: evidence_item.evidence_item_id.clone(),
+        item_digest: "object-hash-1".to_string(),
+        ordinal_no: 1,
+        created_at: Some("2026-04-22T11:01:01.000Z".to_string()),
+    };
+
+    let item_view = EvidenceItemView::from(&evidence_item);
+    let manifest_view = EvidenceManifestView::from(&evidence_manifest);
+    let manifest_item_view = EvidenceManifestItemView::from(&manifest_item);
+
+    assert_eq!(item_view.object_uri, evidence_item.object_uri);
+    assert_eq!(item_view.object_hash, evidence_item.object_hash);
+    assert_eq!(item_view.source_system.as_deref(), Some("billing.dispute"));
+    assert_eq!(item_view.storage_mode.as_deref(), Some("minio"));
+    assert_eq!(
+        item_view.retention_policy_id.as_deref(),
+        Some("retention-90d")
+    );
+    assert_eq!(item_view.legal_hold_status, "active");
+    assert_eq!(
+        item_view.metadata["legacy_bridge"]["legacy_table"].as_str(),
+        Some("support.evidence_object")
+    );
+    assert_eq!(
+        item_view.metadata["replay_scope"].as_str(),
+        Some("forensic_replay")
+    );
+    assert_eq!(
+        manifest_view.metadata["legal_hold_case_id"].as_str(),
+        Some("legal-hold-1")
+    );
+    assert_eq!(
+        manifest_view.metadata["replay_job_id"].as_str(),
+        Some("replay-1")
+    );
+    assert_eq!(
+        manifest_view.metadata["export_job_id"].as_str(),
+        Some("export-1")
+    );
+    assert_eq!(
+        manifest_item_view.evidence_item_id.as_deref(),
+        Some("item-bridge-1")
+    );
+    assert_eq!(manifest_item_view.item_digest, "object-hash-1");
 }

@@ -344,6 +344,20 @@ pub struct EvidenceManifest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvidenceManifestItem {
+    #[serde(default)]
+    pub evidence_manifest_item_id: Option<String>,
+    #[serde(default)]
+    pub evidence_manifest_id: Option<String>,
+    #[serde(default)]
+    pub evidence_item_id: Option<String>,
+    pub item_digest: String,
+    pub ordinal_no: i32,
+    #[serde(default)]
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EvidencePackage {
     #[serde(default)]
     pub evidence_package_id: Option<String>,
@@ -664,11 +678,20 @@ mod tests {
             created_at: Some("2026-04-22T09:01:00.000Z".to_string()),
             metadata: serde_json::json!({ "channel": "api" }),
         };
+        let manifest_item = EvidenceManifestItem {
+            evidence_manifest_item_id: Some("manifest-item-1".to_string()),
+            evidence_manifest_id: Some("manifest-1".to_string()),
+            evidence_item_id: Some("item-1".to_string()),
+            item_digest: "digest-1".to_string(),
+            ordinal_no: 1,
+            created_at: Some("2026-04-22T09:00:30.000Z".to_string()),
+        };
 
-        let serialized = serde_json::to_value((&manifest, &replay, &access))
+        let serialized = serde_json::to_value((&manifest, &manifest_item, &replay, &access))
             .expect("formal audit models should serialize");
         assert_eq!(serialized[0]["manifest_scope"], "audit_export");
-        assert_eq!(serialized[1]["replay_type"], "state");
-        assert_eq!(serialized[2]["access_mode"], "export");
+        assert_eq!(serialized[1]["item_digest"], "digest-1");
+        assert_eq!(serialized[2]["replay_type"], "state");
+        assert_eq!(serialized[3]["access_mode"], "export");
     }
 }

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::super::api::router;
-    use crate::modules::storage::application::{delete_object, fetch_object_bytes};
+    use crate::modules::storage::application::fetch_object_bytes;
     use axum::Router;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
@@ -150,6 +150,102 @@ mod tests {
             .get(0);
         assert_eq!(evidence_count, 1);
 
+        let bridge_row = client
+            .query_one(
+                "SELECT
+                   metadata->>'audit_evidence_item_id',
+                   metadata->>'audit_evidence_manifest_id'
+                 FROM support.evidence_object
+                 WHERE evidence_id = $1::text::uuid",
+                &[&evidence_id],
+            )
+            .await
+            .expect("query support evidence bridge");
+        let audit_evidence_item_id: Option<String> = bridge_row.get(0);
+        let audit_evidence_manifest_id: Option<String> = bridge_row.get(1);
+        let audit_evidence_item_id =
+            audit_evidence_item_id.expect("support bridge should keep audit evidence item id");
+        let audit_evidence_manifest_id = audit_evidence_manifest_id
+            .expect("support bridge should keep audit evidence manifest id");
+
+        let audit_item_row = client
+            .query_one(
+                "SELECT
+                   item_type,
+                   ref_type,
+                   ref_id::text,
+                   object_uri,
+                   object_hash,
+                   source_system,
+                   storage_mode,
+                   metadata->'legacy_bridge'->>'legacy_table'
+                 FROM audit.evidence_item
+                 WHERE evidence_item_id = $1::text::uuid",
+                &[&audit_evidence_item_id],
+            )
+            .await
+            .expect("query audit evidence item");
+        let audit_item_type: String = audit_item_row.get(0);
+        let audit_ref_type: String = audit_item_row.get(1);
+        let audit_ref_id: Option<String> = audit_item_row.get(2);
+        let audit_object_uri: Option<String> = audit_item_row.get(3);
+        let audit_object_hash: Option<String> = audit_item_row.get(4);
+        let audit_source_system: Option<String> = audit_item_row.get(5);
+        let audit_storage_mode: Option<String> = audit_item_row.get(6);
+        let audit_legacy_table: Option<String> = audit_item_row.get(7);
+        assert_eq!(audit_item_type, "delivery_receipt");
+        assert_eq!(audit_ref_type, "dispute_case");
+        assert_eq!(audit_ref_id.as_deref(), Some(case_id.as_str()));
+        assert_eq!(audit_object_uri.as_deref(), Some(object_uri.as_str()));
+        assert_eq!(
+            audit_object_hash,
+            evidence["data"]["object_hash"].as_str().map(str::to_string)
+        );
+        assert_eq!(audit_source_system.as_deref(), Some("billing.dispute"));
+        assert_eq!(audit_storage_mode.as_deref(), Some("minio"));
+        assert_eq!(
+            audit_legacy_table.as_deref(),
+            Some("support.evidence_object")
+        );
+
+        let audit_manifest_row = client
+            .query_one(
+                "SELECT
+                   manifest_scope,
+                   ref_type,
+                   ref_id::text,
+                   manifest_hash,
+                   item_count
+                 FROM audit.evidence_manifest
+                 WHERE evidence_manifest_id = $1::text::uuid",
+                &[&audit_evidence_manifest_id],
+            )
+            .await
+            .expect("query audit evidence manifest");
+        let manifest_scope: String = audit_manifest_row.get(0);
+        let manifest_ref_type: String = audit_manifest_row.get(1);
+        let manifest_ref_id: Option<String> = audit_manifest_row.get(2);
+        let manifest_hash: String = audit_manifest_row.get(3);
+        let manifest_item_count: i32 = audit_manifest_row.get(4);
+        assert_eq!(manifest_scope, "dispute_case_evidence");
+        assert_eq!(manifest_ref_type, "dispute_case");
+        assert_eq!(manifest_ref_id.as_deref(), Some(case_id.as_str()));
+        assert_eq!(manifest_item_count, 1);
+        assert!(!manifest_hash.is_empty());
+
+        let manifest_link_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM audit.evidence_manifest_item
+                 WHERE evidence_manifest_id = $1::text::uuid
+                   AND evidence_item_id = $2::text::uuid",
+                &[&audit_evidence_manifest_id, &audit_evidence_item_id],
+            )
+            .await
+            .expect("query audit evidence manifest link")
+            .get(0);
+        assert_eq!(manifest_link_count, 1);
+
         let order_dispute_status: String = client
             .query_one(
                 "SELECT dispute_status FROM trade.order_main WHERE order_id = $1::text::uuid",
@@ -197,15 +293,7 @@ mod tests {
         assert_eq!(upload_audit, 1);
         assert_eq!(resolve_audit, 1);
 
-        cleanup(
-            &client,
-            &seed,
-            &case_id,
-            &evidence_id,
-            bucket_name.as_str(),
-            object_key.as_str(),
-        )
-        .await;
+        cleanup(&client, &seed, &case_id, &evidence_id).await;
     }
 
     async fn create_case(app: &Router, seed: &SeedGraph, request_id: &str) -> Value {
@@ -583,15 +671,7 @@ mod tests {
             .get(0)
     }
 
-    async fn cleanup(
-        client: &db::Client,
-        seed: &SeedGraph,
-        case_id: &str,
-        evidence_id: &str,
-        bucket_name: &str,
-        object_key: &str,
-    ) {
-        let _ = delete_object(bucket_name, object_key).await;
+    async fn cleanup(client: &db::Client, seed: &SeedGraph, case_id: &str, evidence_id: &str) {
         let _ = client
             .execute(
                 "DELETE FROM support.decision_record WHERE case_id = $1::text::uuid",

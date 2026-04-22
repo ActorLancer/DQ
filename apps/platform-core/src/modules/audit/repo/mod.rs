@@ -1,4 +1,4 @@
-use audit_kit::AuditEvent;
+use audit_kit::{AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem};
 use serde_json::{Map, Value};
 
 pub const INSERT_AUDIT_EVENT_SQL: &str = r#"
@@ -47,6 +47,88 @@ INSERT INTO audit.audit_event (
 )
 "#;
 
+pub const INSERT_EVIDENCE_ITEM_SQL: &str = r#"
+INSERT INTO audit.evidence_item (
+  item_type,
+  ref_type,
+  ref_id,
+  object_uri,
+  object_hash,
+  content_type,
+  size_bytes,
+  source_system,
+  storage_mode,
+  retention_policy_id,
+  worm_enabled,
+  legal_hold_status,
+  created_by,
+  metadata
+) VALUES (
+  $1, $2, $3::text::uuid, $4, $5, $6, $7, $8, $9, $10::text::uuid, $11, $12, $13::text::uuid, $14::jsonb
+)
+RETURNING
+  evidence_item_id::text,
+  item_type,
+  ref_type,
+  ref_id::text,
+  object_uri,
+  object_hash,
+  content_type,
+  size_bytes,
+  source_system,
+  storage_mode,
+  retention_policy_id::text,
+  worm_enabled,
+  legal_hold_status,
+  created_by::text,
+  to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  metadata
+"#;
+
+pub const INSERT_EVIDENCE_MANIFEST_SQL: &str = r#"
+INSERT INTO audit.evidence_manifest (
+  manifest_scope,
+  ref_type,
+  ref_id,
+  manifest_hash,
+  item_count,
+  storage_uri,
+  created_by,
+  metadata
+) VALUES (
+  $1, $2, $3::text::uuid, $4, $5, $6, $7::text::uuid, $8::jsonb
+)
+RETURNING
+  evidence_manifest_id::text,
+  manifest_scope,
+  ref_type,
+  ref_id::text,
+  manifest_hash,
+  item_count,
+  storage_uri,
+  created_by::text,
+  to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  metadata
+"#;
+
+pub const INSERT_EVIDENCE_MANIFEST_ITEM_SQL: &str = r#"
+INSERT INTO audit.evidence_manifest_item (
+  evidence_manifest_id,
+  evidence_item_id,
+  item_digest,
+  ordinal_no
+) VALUES (
+  $1::text::uuid, $2::text::uuid, $3, $4
+)
+RETURNING
+  evidence_manifest_item_id::text,
+  evidence_manifest_id::text,
+  evidence_item_id::text,
+  item_digest,
+  ordinal_no,
+  to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+"#;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AuditEventInsert {
     pub event_schema_version: String,
@@ -85,6 +167,91 @@ pub struct AuditEventInsert {
     pub ingested_at: Option<String>,
     pub event_time: Option<String>,
     pub metadata: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvidenceItemInsert {
+    pub item_type: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub object_uri: Option<String>,
+    pub object_hash: Option<String>,
+    pub content_type: Option<String>,
+    pub size_bytes: Option<i64>,
+    pub source_system: Option<String>,
+    pub storage_mode: Option<String>,
+    pub retention_policy_id: Option<String>,
+    pub worm_enabled: bool,
+    pub legal_hold_status: String,
+    pub created_by: Option<String>,
+    pub metadata: Value,
+}
+
+impl From<&EvidenceItem> for EvidenceItemInsert {
+    fn from(item: &EvidenceItem) -> Self {
+        Self {
+            item_type: item.item_type.clone(),
+            ref_type: item.ref_type.clone(),
+            ref_id: item.ref_id.clone(),
+            object_uri: item.object_uri.clone(),
+            object_hash: item.object_hash.clone(),
+            content_type: item.content_type.clone(),
+            size_bytes: item.size_bytes,
+            source_system: item.source_system.clone(),
+            storage_mode: item.storage_mode.clone(),
+            retention_policy_id: item.retention_policy_id.clone(),
+            worm_enabled: item.worm_enabled,
+            legal_hold_status: item.legal_hold_status.clone(),
+            created_by: item.created_by.clone(),
+            metadata: metadata_value(item.metadata.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvidenceManifestInsert {
+    pub manifest_scope: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub manifest_hash: String,
+    pub item_count: i32,
+    pub storage_uri: Option<String>,
+    pub created_by: Option<String>,
+    pub metadata: Value,
+}
+
+impl From<&EvidenceManifest> for EvidenceManifestInsert {
+    fn from(manifest: &EvidenceManifest) -> Self {
+        Self {
+            manifest_scope: manifest.manifest_scope.clone(),
+            ref_type: manifest.ref_type.clone(),
+            ref_id: manifest.ref_id.clone(),
+            manifest_hash: manifest.manifest_hash.clone(),
+            item_count: manifest.item_count,
+            storage_uri: manifest.storage_uri.clone(),
+            created_by: manifest.created_by.clone(),
+            metadata: metadata_value(manifest.metadata.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvidenceManifestItemInsert {
+    pub evidence_manifest_id: Option<String>,
+    pub evidence_item_id: Option<String>,
+    pub item_digest: String,
+    pub ordinal_no: i32,
+}
+
+impl From<&EvidenceManifestItem> for EvidenceManifestItemInsert {
+    fn from(item: &EvidenceManifestItem) -> Self {
+        Self {
+            evidence_manifest_id: item.evidence_manifest_id.clone(),
+            evidence_item_id: item.evidence_item_id.clone(),
+            item_digest: item.item_digest.clone(),
+            ordinal_no: item.ordinal_no,
+        }
+    }
 }
 
 impl From<&AuditEvent> for AuditEventInsert {
@@ -130,8 +297,8 @@ impl From<&AuditEvent> for AuditEventInsert {
     }
 }
 
-fn storage_metadata(event: &AuditEvent) -> Value {
-    let mut metadata = match event.metadata.clone() {
+pub fn metadata_object(raw: Value) -> Map<String, Value> {
+    match raw {
         Value::Object(map) => map,
         Value::Null => Map::new(),
         raw => {
@@ -139,7 +306,15 @@ fn storage_metadata(event: &AuditEvent) -> Value {
             map.insert("raw_metadata".to_string(), raw);
             map
         }
-    };
+    }
+}
+
+pub fn metadata_value(raw: Value) -> Value {
+    Value::Object(metadata_object(raw))
+}
+
+fn storage_metadata(event: &AuditEvent) -> Value {
+    let mut metadata = metadata_object(event.metadata.clone());
 
     if let Some(tenant_id) = &event.tenant_id {
         metadata
