@@ -24,4 +24,12 @@ pub fn router() -> Router<AppState> {
             "/api/v1/audit/replay-jobs/{id}",
             get(handlers::get_audit_replay_job),
         )
+        .route(
+            "/api/v1/audit/legal-holds",
+            post(handlers::create_audit_legal_hold),
+        )
+        .route(
+            "/api/v1/audit/legal-holds/{id}/release",
+            post(handlers::release_audit_legal_hold),
+        )
 }

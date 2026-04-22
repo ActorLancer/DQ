@@ -1,6 +1,6 @@
 use audit_kit::{
-    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, ReplayJob,
-    ReplayResult,
+    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, LegalHold,
+    ReplayJob, ReplayResult,
 };
 use db::{Error, GenericClient, Row};
 use serde_json::{Map, Value};
@@ -248,6 +248,46 @@ RETURNING
   actual_digest,
   diff_summary,
   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+"#;
+
+pub const INSERT_LEGAL_HOLD_SQL: &str = r#"
+INSERT INTO audit.legal_hold (
+  legal_hold_id,
+  hold_scope_type,
+  hold_scope_id,
+  reason_code,
+  status,
+  retention_policy_id,
+  requested_by,
+  approved_by,
+  hold_until,
+  metadata
+) VALUES (
+  $1::text::uuid,
+  $2,
+  $3::text::uuid,
+  $4,
+  $5,
+  $6::text::uuid,
+  $7::text::uuid,
+  $8::text::uuid,
+  $9::timestamptz,
+  $10::jsonb
+)
+RETURNING
+  legal_hold_id::text,
+  hold_scope_type,
+  hold_scope_id::text,
+  reason_code,
+  status,
+  retention_policy_id::text,
+  requested_by::text,
+  approved_by::text,
+  to_char(hold_until AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  to_char(released_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  metadata
 "#;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -513,6 +553,37 @@ impl From<&ReplayResult> for ReplayResultInsert {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct LegalHoldInsert {
+    pub legal_hold_id: Option<String>,
+    pub hold_scope_type: String,
+    pub hold_scope_id: Option<String>,
+    pub reason_code: String,
+    pub status: String,
+    pub retention_policy_id: Option<String>,
+    pub requested_by: Option<String>,
+    pub approved_by: Option<String>,
+    pub hold_until: Option<String>,
+    pub metadata: Value,
+}
+
+impl From<&LegalHold> for LegalHoldInsert {
+    fn from(hold: &LegalHold) -> Self {
+        Self {
+            legal_hold_id: hold.legal_hold_id.clone(),
+            hold_scope_type: hold.hold_scope_type.clone(),
+            hold_scope_id: hold.hold_scope_id.clone(),
+            reason_code: hold.reason_code.clone(),
+            status: hold.status.clone(),
+            retention_policy_id: hold.retention_policy_id.clone(),
+            requested_by: hold.requested_by.clone(),
+            approved_by: hold.approved_by.clone(),
+            hold_until: hold.hold_until.clone(),
+            metadata: metadata_value(hold.metadata.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReplayJobDetail {
     pub replay_job: ReplayJob,
     pub results: Vec<ReplayResult>,
@@ -713,6 +784,128 @@ pub async fn insert_replay_result(
         )
         .await?;
     Ok(parse_replay_result_row(&row))
+}
+
+pub async fn insert_legal_hold(
+    client: &(impl GenericClient + Sync),
+    legal_hold: &LegalHold,
+) -> Result<LegalHold, Error> {
+    let insert = LegalHoldInsert::from(legal_hold);
+    let row = client
+        .query_one(
+            INSERT_LEGAL_HOLD_SQL,
+            &[
+                &insert.legal_hold_id,
+                &insert.hold_scope_type,
+                &insert.hold_scope_id,
+                &insert.reason_code,
+                &insert.status,
+                &insert.retention_policy_id,
+                &insert.requested_by,
+                &insert.approved_by,
+                &insert.hold_until,
+                &insert.metadata,
+            ],
+        )
+        .await?;
+    Ok(parse_legal_hold_row(&row))
+}
+
+pub async fn load_legal_hold(
+    client: &(impl GenericClient + Sync),
+    legal_hold_id: &str,
+) -> Result<Option<LegalHold>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               legal_hold_id::text,
+               hold_scope_type,
+               hold_scope_id::text,
+               reason_code,
+               status,
+               retention_policy_id::text,
+               requested_by::text,
+               approved_by::text,
+               to_char(hold_until AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(released_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               metadata
+             FROM audit.legal_hold
+             WHERE legal_hold_id = $1::text::uuid",
+            &[&legal_hold_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_legal_hold_row(&row)))
+}
+
+pub async fn load_active_legal_hold_for_scope(
+    client: &(impl GenericClient + Sync),
+    hold_scope_type: &str,
+    hold_scope_id: &str,
+) -> Result<Option<LegalHold>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               legal_hold_id::text,
+               hold_scope_type,
+               hold_scope_id::text,
+               reason_code,
+               status,
+               retention_policy_id::text,
+               requested_by::text,
+               approved_by::text,
+               to_char(hold_until AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(released_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               metadata
+             FROM audit.legal_hold
+             WHERE hold_scope_type = $1
+               AND hold_scope_id = $2::text::uuid
+               AND status = 'active'
+             ORDER BY created_at DESC, legal_hold_id DESC
+             LIMIT 1",
+            &[&hold_scope_type, &hold_scope_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_legal_hold_row(&row)))
+}
+
+pub async fn release_legal_hold(
+    client: &(impl GenericClient + Sync),
+    legal_hold_id: &str,
+    approved_by: Option<&str>,
+    released_at: &str,
+    metadata_patch: &Value,
+) -> Result<Option<LegalHold>, Error> {
+    let row = client
+        .query_opt(
+            "UPDATE audit.legal_hold
+             SET status = 'released',
+                 approved_by = COALESCE($2::text::uuid, approved_by),
+                 released_at = COALESCE(released_at, $3::timestamptz),
+                 metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb
+             WHERE legal_hold_id = $1::text::uuid
+               AND status = 'active'
+             RETURNING
+               legal_hold_id::text,
+               hold_scope_type,
+               hold_scope_id::text,
+               reason_code,
+               status,
+               retention_policy_id::text,
+               requested_by::text,
+               approved_by::text,
+               to_char(hold_until AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(released_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               metadata",
+            &[&legal_hold_id, &approved_by, &released_at, metadata_patch],
+        )
+        .await?;
+    Ok(row.map(|row| parse_legal_hold_row(&row)))
 }
 
 pub async fn load_replay_job_detail(
@@ -1010,6 +1203,24 @@ fn parse_replay_result_row(row: &Row) -> ReplayResult {
         actual_digest: row.get(5),
         diff_summary: row.get(6),
         created_at: row.get(7),
+    }
+}
+
+fn parse_legal_hold_row(row: &Row) -> LegalHold {
+    LegalHold {
+        legal_hold_id: row.get(0),
+        hold_scope_type: row.get(1),
+        hold_scope_id: row.get(2),
+        reason_code: row.get(3),
+        status: row.get(4),
+        retention_policy_id: row.get(5),
+        requested_by: row.get(6),
+        approved_by: row.get(7),
+        hold_until: row.get(8),
+        created_at: row.get(9),
+        released_at: row.get(10),
+        updated_at: row.get(11),
+        metadata: row.get(12),
     }
 }
 

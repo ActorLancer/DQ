@@ -1,12 +1,13 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
 - 证据包导出：`POST /api/v1/audit/packages/export`
 - 回放任务 dry-run：`POST /api/v1/audit/replay-jobs`
 - 回放任务联查：`GET /api/v1/audit/replay-jobs/{id}`
+- legal hold 创建 / 释放：`POST /api/v1/audit/legal-holds`、`POST /api/v1/audit/legal-holds/{id}/release`
 
 后续 `legal hold`、anchor / Fabric、dead letter reprocess、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
@@ -33,6 +34,9 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-005` | replay 只允许 dry-run | `POST /api/v1/audit/replay-jobs` with `dry_run=false` | 返回 `409` 且错误码 `AUDIT_REPLAY_DRY_RUN_ONLY` | HTTP 响应、错误码 |
 | `AUD-CASE-006` | replay 读取 | `GET /api/v1/audit/replay-jobs/{id}` | 返回 replay job + results；读取动作也必须落 `audit.access_audit` 与 `ops.system_log` | API 响应、`audit.access_audit(access_mode='replay')`、`ops.system_log` |
 | `AUD-CASE-007` | 高风险动作鉴权 | 缺少权限或缺少 step-up 分别调用 export / replay | 返回 `403 / 400`，不得写业务副作用 | HTTP 响应、`audit.evidence_package / replay_job` 无新增 |
+| `AUD-CASE-008` | legal hold 创建 | `POST /api/v1/audit/legal-holds` + `x-step-up-challenge-id` | 写入 `audit.legal_hold`，并产生 `audit.audit_event(action_name='audit.legal_hold.create')`；当前 hold 状态以 `audit.legal_hold` 为权威源，历史 evidence/package 行保持 append-only | API 响应、`audit.legal_hold`、`audit.audit_event`、`ops.system_log` |
+| `AUD-CASE-009` | legal hold 重复创建冲突 | 对同一 active scope 再次创建 | 返回 `409` 且错误码 `AUDIT_LEGAL_HOLD_ACTIVE` | HTTP 响应、错误码、无新增 hold |
+| `AUD-CASE-010` | legal hold 释放 | `POST /api/v1/audit/legal-holds/{id}/release` | `status=released`、`approved_by / released_at` 落库，并产生 `audit.audit_event(action_name='audit.legal_hold.release')`；当前 hold 状态回到 `audit.legal_hold` 权威视图中的 `none` | API 响应、`audit.legal_hold`、`audit.audit_event`、`ops.system_log` |
 
 ## `AUD-005` 手工回放验证
 
@@ -263,14 +267,135 @@ WHERE replay_job_id = '<replay_job_id>'::uuid;
   - `step_up.challenge_id`
   - `target.order_id=<order_id>`
 
+## `AUD-006` 手工 legal hold 验证
+
+1. 准备 step-up challenge：
+
+```sql
+INSERT INTO iam.step_up_challenge (
+  user_id,
+  challenge_type,
+  target_action,
+  target_ref_type,
+  target_ref_id,
+  challenge_status,
+  expires_at,
+  completed_at,
+  metadata
+) VALUES (
+  '<audit_user_id>'::uuid,
+  'mock_otp',
+  'audit.legal_hold.manage',
+  'order',
+  '<order_id>'::uuid,
+  'verified',
+  now() + interval '10 minutes',
+  now(),
+  jsonb_build_object('seed', 'aud006-manual-create')
+)
+RETURNING step_up_challenge_id::text;
+```
+
+2. 创建 legal hold：
+
+```bash
+curl -sS -X POST http://127.0.0.1:18080/api/v1/audit/legal-holds \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <audit_user_id>' \
+  -H 'x-request-id: req-aud006-manual-create' \
+  -H 'x-trace-id: trace-aud006-manual-create' \
+  -H 'x-step-up-challenge-id: <create_challenge_id>' \
+  -d '{
+    "hold_scope_type": "order",
+    "hold_scope_id": "<order_id>",
+    "reason_code": "regulator_investigation",
+    "metadata": {
+      "ticket": "AUD-OPS-006"
+    }
+  }'
+```
+
+3. 再次创建同一 scope，确认冲突：
+
+预期：
+
+- 返回 `409`
+- 错误码为 `AUDIT_LEGAL_HOLD_ACTIVE`
+
+4. 为释放动作准备新的 challenge：
+
+```sql
+INSERT INTO iam.step_up_challenge (
+  user_id,
+  challenge_type,
+  target_action,
+  target_ref_type,
+  target_ref_id,
+  challenge_status,
+  expires_at,
+  completed_at,
+  metadata
+) VALUES (
+  '<audit_user_id>'::uuid,
+  'mock_otp',
+  'audit.legal_hold.manage',
+  'legal_hold',
+  '<legal_hold_id>'::uuid,
+  'verified',
+  now() + interval '10 minutes',
+  now(),
+  jsonb_build_object('seed', 'aud006-manual-release')
+)
+RETURNING step_up_challenge_id::text;
+```
+
+5. 释放 legal hold：
+
+```bash
+curl -sS -X POST http://127.0.0.1:18080/api/v1/audit/legal-holds/<legal_hold_id>/release \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <audit_user_id>' \
+  -H 'x-request-id: req-aud006-manual-release' \
+  -H 'x-trace-id: trace-aud006-manual-release' \
+  -H 'x-step-up-challenge-id: <release_challenge_id>' \
+  -d '{
+    "reason": "manual review cleared hold"
+  }'
+```
+
+6. 回查主记录与 scope 状态：
+
+```sql
+SELECT status, requested_by::text, approved_by::text, released_at, metadata ->> 'release_reason'
+FROM audit.legal_hold
+WHERE legal_hold_id = '<legal_hold_id>'::uuid;
+
+SELECT COUNT(*)::bigint
+FROM audit.legal_hold
+WHERE hold_scope_type = 'order'
+  AND hold_scope_id = '<order_id>'::uuid
+  AND status = 'active';
+```
+
+预期：
+
+- 创建后 `status=active`
+- 释放后 `status=released`
+- `approved_by=<audit_user_id>`
+- `metadata.release_reason='manual review cleared hold'`
+- 若上述活跃 hold 计数在释放后重新查询，应返回 `0`
+- 历史 `audit.evidence_item / audit.evidence_package` 行保持 append-only，不作为当前 hold 状态权威源
+
 ## 清理约束
 
-- 业务测试数据可清理：`trade.order_main` 及本手工步骤创建的临时 `core.organization / catalog.* / core.user_account / iam.step_up_challenge`
-- 审计数据不清理：`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`audit.replay_job`、`audit.replay_result`、MinIO replay report 及相关 evidence snapshot 按 append-only 保留
+- 业务测试数据可清理：`trade.order_main` 及本手工步骤创建的临时 `core.organization / catalog.*` scope 图数据
+- 与高风险动作审计链绑定的 `core.user_account / iam.step_up_challenge` 在当前运行态不做强删；删除它们会触发 FK 尝试回写 append-only `audit.audit_event`
+- 审计数据不清理：`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`audit.replay_job`、`audit.replay_result`、`audit.legal_hold`、MinIO replay report 及相关 evidence snapshot 按 append-only 或审计保留规则保留
 
 ## 当前未覆盖项
 
-- `AUD-006` legal hold 控制面
 - `AUD-007+` anchor / Fabric request / callback / reconcile
 - `AUD-010+` dead letter reprocess / consistency repair / OpenSearch ops
 

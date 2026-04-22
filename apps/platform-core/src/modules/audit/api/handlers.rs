@@ -1,4 +1,4 @@
-use audit_kit::{AuditContext, AuditEvent, EvidencePackage, ReplayJob, ReplayResult};
+use audit_kit::{AuditContext, AuditEvent, EvidencePackage, LegalHold, ReplayJob, ReplayResult};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -11,11 +11,12 @@ use sha2::{Digest, Sha256};
 use crate::AppState;
 use crate::modules::audit::application::{EvidenceWriteCommand, record_evidence_snapshot};
 use crate::modules::audit::domain::{
+    AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
     AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OrderAuditQuery, OrderAuditView,
 };
 use crate::modules::audit::dto::{
-    EvidenceManifestView, EvidencePackageView, ReplayJobView, ReplayResultView,
+    EvidenceManifestView, EvidencePackageView, LegalHoldView, ReplayJobView, ReplayResultView,
 };
 use crate::modules::audit::repo::{self, AccessAuditInsert, OrderAuditScope, SystemLogInsert};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
@@ -25,7 +26,9 @@ const DEFAULT_EXPORT_BUCKET: &str = "evidence-packages";
 const EXPORT_STEP_UP_ACTION: &str = "audit.package.export";
 const EXPORT_STEP_UP_ACTION_COMPAT: &str = "audit.evidence.export";
 const REPLAY_STEP_UP_ACTION: &str = "audit.replay.execute";
+const LEGAL_HOLD_STEP_UP_ACTION: &str = "audit.legal_hold.manage";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
+const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 
 pub(in crate::modules::audit) async fn get_order_audit_traces(
     State(state): State<AppState>,
@@ -779,6 +782,295 @@ pub(in crate::modules::audit) async fn get_audit_replay_job(
     }))
 }
 
+pub(in crate::modules::audit) async fn create_audit_legal_hold(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<AuditLegalHoldCreateRequest>,
+) -> Result<Json<ApiResponse<AuditLegalHoldActionView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    let hold_scope_type = normalize_legal_hold_scope_type(&payload.hold_scope_type, &request_id)?;
+    validate_uuid(&payload.hold_scope_id, "hold_scope_id", &request_id)?;
+    let reason_code = normalize_legal_hold_reason_code(&payload.reason_code, &request_id)?;
+    validate_optional_uuid(
+        payload.retention_policy_id.as_deref(),
+        "retention_policy_id",
+        &request_id,
+    )?;
+    require_permission(
+        &headers,
+        AuditPermission::LegalHoldManage,
+        "audit legal hold manage",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "audit legal hold manage")?;
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_legal_hold_create(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        hold_scope_type.as_str(),
+        payload.hold_scope_id.as_str(),
+    )
+    .await?;
+    let hold_until =
+        normalize_hold_until(&client, payload.hold_until.as_deref(), &request_id).await?;
+    let retention_policy_id =
+        validate_retention_policy(&client, payload.retention_policy_id.as_deref(), &request_id)
+            .await?;
+    let target = load_export_target(
+        &client,
+        hold_scope_type.as_str(),
+        payload.hold_scope_id.as_str(),
+        &request_id,
+    )
+    .await?;
+    if repo::load_active_legal_hold_for_scope(
+        &client,
+        hold_scope_type.as_str(),
+        payload.hold_scope_id.as_str(),
+    )
+    .await
+    .map_err(map_db_error)?
+    .is_some()
+    {
+        return Err(conflict_error(
+            &request_id,
+            LEGAL_HOLD_ACTIVE_ERROR,
+            format!(
+                "active legal hold already exists for {}/{}",
+                hold_scope_type, payload.hold_scope_id
+            ),
+        ));
+    }
+
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let legal_hold_id = next_uuid(&client).await?;
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let mut metadata = build_legal_hold_create_metadata(
+        &headers,
+        &request_id,
+        trace_id.as_str(),
+        target.snapshot_json(),
+        payload.metadata,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+    annotate_legal_hold_metadata(&mut metadata, &target);
+    let created_hold = repo::insert_legal_hold(
+        &tx,
+        &LegalHold {
+            legal_hold_id: Some(legal_hold_id.clone()),
+            hold_scope_type: hold_scope_type.clone(),
+            hold_scope_id: Some(payload.hold_scope_id.clone()),
+            reason_code: reason_code.clone(),
+            status: "active".to_string(),
+            retention_policy_id: retention_policy_id.clone(),
+            requested_by: Some(actor_user_id.clone()),
+            approved_by: None,
+            hold_until,
+            created_at: None,
+            released_at: None,
+            updated_at: None,
+            metadata,
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    let audit_event = build_legal_hold_audit_event(
+        &headers,
+        &request_id,
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        hold_scope_type.as_str(),
+        payload.hold_scope_id.as_str(),
+        "audit.legal_hold.create",
+        "success",
+        "active",
+        Some(legal_hold_id.clone()),
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+        json!({
+            "reason_code": reason_code,
+            "retention_policy_id": retention_policy_id,
+            "hold_until": created_hold.hold_until.clone(),
+            "target_snapshot": target.snapshot_json(),
+        }),
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text: "audit legal hold created: POST /api/v1/audit/legal-holds".to_string(),
+            structured_payload: json!({
+                "module": "audit",
+                "endpoint": "POST /api/v1/audit/legal-holds",
+                "legal_hold_id": legal_hold_id,
+                "hold_scope_type": hold_scope_type,
+                "hold_scope_id": payload.hold_scope_id,
+                "step_up_challenge_id": step_up.challenge_id,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(AuditLegalHoldActionView {
+        legal_hold: LegalHoldView::from(&created_hold),
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+    }))
+}
+
+pub(in crate::modules::audit) async fn release_audit_legal_hold(
+    State(state): State<AppState>,
+    Path(legal_hold_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<AuditLegalHoldReleaseRequest>,
+) -> Result<Json<ApiResponse<AuditLegalHoldActionView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&legal_hold_id, "legal_hold_id", &request_id)?;
+    let release_reason = normalize_legal_hold_release_reason(&payload.reason, &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::LegalHoldManage,
+        "audit legal hold manage",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "audit legal hold release")?;
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_legal_hold_release(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        legal_hold_id.as_str(),
+    )
+    .await?;
+    let existing_hold = repo::load_legal_hold(&client, &legal_hold_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("audit legal hold not found: {legal_hold_id}"),
+            )
+        })?;
+    if existing_hold.status != "active" {
+        return Err(bad_request(
+            &request_id,
+            format!("audit legal hold is not active: {legal_hold_id}"),
+        ));
+    }
+
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let released_at = current_utc_timestamp(&client).await?;
+    let target_snapshot = load_legal_hold_target_snapshot(
+        &client,
+        existing_hold.hold_scope_type.as_str(),
+        existing_hold.hold_scope_id.as_deref(),
+    )
+    .await;
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let metadata_patch = build_legal_hold_release_metadata(
+        &headers,
+        &request_id,
+        trace_id.as_str(),
+        released_at.as_str(),
+        release_reason.as_str(),
+        target_snapshot.clone(),
+        payload.metadata,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+    let released_hold = repo::release_legal_hold(
+        &tx,
+        legal_hold_id.as_str(),
+        Some(actor_user_id.as_str()),
+        released_at.as_str(),
+        &metadata_patch,
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        conflict_error(
+            &request_id,
+            LEGAL_HOLD_ACTIVE_ERROR,
+            format!("audit legal hold is no longer active: {legal_hold_id}"),
+        )
+    })?;
+
+    let audit_event = build_legal_hold_audit_event(
+        &headers,
+        &request_id,
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        released_hold.hold_scope_type.as_str(),
+        released_hold
+            .hold_scope_id
+            .as_deref()
+            .unwrap_or(&legal_hold_id),
+        "audit.legal_hold.release",
+        "success",
+        "none",
+        Some(legal_hold_id.clone()),
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+        json!({
+            "release_reason": release_reason,
+            "released_at": released_at,
+            "target_snapshot": target_snapshot,
+            "previous_reason_code": existing_hold.reason_code,
+        }),
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text: "audit legal hold released: POST /api/v1/audit/legal-holds/{id}/release"
+                .to_string(),
+            structured_payload: json!({
+                "module": "audit",
+                "endpoint": "POST /api/v1/audit/legal-holds/{id}/release",
+                "legal_hold_id": legal_hold_id,
+                "hold_scope_type": released_hold.hold_scope_type,
+                "hold_scope_id": released_hold.hold_scope_id,
+                "released_at": released_at,
+                "step_up_challenge_id": step_up.challenge_id,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(AuditLegalHoldActionView {
+        legal_hold: LegalHoldView::from(&released_hold),
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+    }))
+}
+
 #[derive(Debug, Clone)]
 struct StepUpBinding {
     challenge_id: Option<String>,
@@ -1047,6 +1339,7 @@ enum AuditPermission {
     PackageExport,
     ReplayExecute,
     ReplayRead,
+    LegalHoldManage,
 }
 
 fn is_allowed(role: &str, permission: AuditPermission) -> bool {
@@ -1073,7 +1366,9 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
             role,
             "platform_admin" | "platform_auditor" | "platform_audit_security" | "audit_admin"
         ),
-        AuditPermission::ReplayExecute | AuditPermission::ReplayRead => matches!(
+        AuditPermission::ReplayExecute
+        | AuditPermission::ReplayRead
+        | AuditPermission::LegalHoldManage => matches!(
             role,
             "platform_admin" | "platform_auditor" | "platform_audit_security" | "audit_admin"
         ),
@@ -1252,6 +1547,49 @@ async fn require_step_up_for_replay(
     .await
 }
 
+async fn require_step_up_for_legal_hold_create(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    hold_scope_type: &str,
+    hold_scope_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        LEGAL_HOLD_STEP_UP_ACTION,
+        None,
+        Some(hold_scope_type),
+        Some(hold_scope_id),
+        "audit legal hold manage",
+    )
+    .await
+}
+
+async fn require_step_up_for_legal_hold_release(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    legal_hold_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        LEGAL_HOLD_STEP_UP_ACTION,
+        None,
+        Some("legal_hold"),
+        Some(legal_hold_id),
+        "audit legal hold release",
+    )
+    .await
+}
+
 async fn require_step_up_for_action(
     client: &db::Client,
     headers: &HeaderMap,
@@ -1314,8 +1652,7 @@ async fn require_step_up_for_action(
                 StatusCode::FORBIDDEN,
                 Json(ErrorResponse {
                     code: ErrorCode::IamUnauthorized.as_str().to_string(),
-                    message: "verified step-up challenge is required for audit package export"
-                        .to_string(),
+                    message: format!("verified step-up challenge is required for {action_label}"),
                     request_id: Some(request_id.to_string()),
                 }),
             ));
@@ -1979,8 +2316,8 @@ async fn load_legal_holds_json(
                         '[]'::jsonb
                      )
                      FROM audit.legal_hold
-                     WHERE hold_scope_type = 'order'
-                       AND hold_scope_id = $1::text::uuid",
+                     WHERE (hold_scope_type = 'order' AND hold_scope_id = $1::text::uuid)
+                        OR (hold_scope_type = 'dispute_case' AND metadata ->> 'order_id' = $1)",
                     &[&order_id.as_str()],
                 )
                 .await?;
@@ -2012,6 +2349,7 @@ async fn load_legal_holds_json(
                      )
                      FROM audit.legal_hold
                      WHERE (hold_scope_type = 'order' AND hold_scope_id = $1::text::uuid)
+                        OR (hold_scope_type = 'dispute_case' AND hold_scope_id = $2::text::uuid)
                         OR metadata ->> 'case_id' = $2",
                     &[&order_id.as_str(), &case_id.as_str()],
                 )
@@ -2038,6 +2376,215 @@ fn derive_legal_hold_status(legal_holds: &Value) -> String {
     } else {
         "none".to_string()
     }
+}
+
+async fn load_legal_hold_target_snapshot(
+    client: &db::Client,
+    hold_scope_type: &str,
+    hold_scope_id: Option<&str>,
+) -> Value {
+    let Some(hold_scope_id) = hold_scope_id else {
+        return json!({
+            "ref_type": hold_scope_type,
+            "ref_id": Value::Null,
+        });
+    };
+    match hold_scope_type {
+        "order" | "dispute_case" => {
+            match load_export_target(client, hold_scope_type, hold_scope_id, hold_scope_id).await {
+                Ok(target) => target.snapshot_json(),
+                Err(_) => json!({
+                    "ref_type": hold_scope_type,
+                    "ref_id": hold_scope_id,
+                    "target_missing": true,
+                }),
+            }
+        }
+        other => json!({
+            "ref_type": other,
+            "ref_id": hold_scope_id,
+        }),
+    }
+}
+
+async fn validate_retention_policy(
+    client: &db::Client,
+    retention_policy_id: Option<&str>,
+    request_id: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(retention_policy_id) = retention_policy_id else {
+        return Ok(None);
+    };
+    let row = client
+        .query_opt(
+            "SELECT retention_policy_id::text, legal_hold_allowed, status
+             FROM audit.retention_policy
+             WHERE retention_policy_id = $1::text::uuid",
+            &[&retention_policy_id],
+        )
+        .await
+        .map_err(map_db_error)?;
+    let row = row.ok_or_else(|| {
+        bad_request(
+            request_id,
+            format!("retention_policy_id does not exist: {retention_policy_id}"),
+        )
+    })?;
+    let legal_hold_allowed: bool = row.get(1);
+    let status: String = row.get(2);
+    if status != "active" || !legal_hold_allowed {
+        return Err(bad_request(
+            request_id,
+            format!(
+                "retention_policy_id must be active and legal_hold_allowed=true: {retention_policy_id}"
+            ),
+        ));
+    }
+    Ok(Some(row.get(0)))
+}
+
+async fn normalize_hold_until(
+    client: &db::Client,
+    hold_until: Option<&str>,
+    request_id: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(hold_until) = hold_until.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let row = client
+        .query_one(
+            "SELECT to_char($1::timestamptz AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                    ($1::timestamptz > now()) AS future_hold",
+            &[&hold_until],
+        )
+        .await
+        .map_err(|_| bad_request(request_id, format!("hold_until must be a valid future timestamp: {hold_until}")))?;
+    let is_future: bool = row.get(1);
+    if !is_future {
+        return Err(bad_request(
+            request_id,
+            "hold_until must be later than current time",
+        ));
+    }
+    Ok(Some(row.get(0)))
+}
+
+fn build_legal_hold_create_metadata(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: &str,
+    target_snapshot: Value,
+    request_metadata: Value,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> Value {
+    json!({
+        "endpoint": "POST /api/v1/audit/legal-holds",
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "requested_by_role": current_role(headers),
+        "requested_by_tenant_id": header(headers, "x-tenant-id"),
+        "step_up_challenge_id": step_up_challenge_id,
+        "step_up_token_present": step_up_token_present,
+        "target_snapshot": target_snapshot,
+        "request_metadata": request_metadata,
+    })
+}
+
+fn annotate_legal_hold_metadata(metadata: &mut Value, target: &ExportTarget) {
+    let Some(object) = metadata.as_object_mut() else {
+        return;
+    };
+    match target {
+        ExportTarget::Order { order_id, .. } => {
+            object.insert("ref_type".to_string(), Value::String("order".to_string()));
+            object.insert("order_id".to_string(), Value::String(order_id.clone()));
+        }
+        ExportTarget::DisputeCase {
+            case_id, order_id, ..
+        } => {
+            object.insert(
+                "ref_type".to_string(),
+                Value::String("dispute_case".to_string()),
+            );
+            object.insert("case_id".to_string(), Value::String(case_id.clone()));
+            object.insert("order_id".to_string(), Value::String(order_id.clone()));
+        }
+    }
+}
+
+fn build_legal_hold_release_metadata(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: &str,
+    released_at: &str,
+    release_reason: &str,
+    target_snapshot: Value,
+    request_metadata: Value,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> Value {
+    json!({
+        "release_endpoint": "POST /api/v1/audit/legal-holds/{id}/release",
+        "release_request_id": request_id,
+        "release_trace_id": trace_id,
+        "release_reason": release_reason,
+        "released_at": released_at,
+        "released_by_role": current_role(headers),
+        "released_by_tenant_id": header(headers, "x-tenant-id"),
+        "step_up_challenge_id": step_up_challenge_id,
+        "step_up_token_present": step_up_token_present,
+        "target_snapshot": target_snapshot,
+        "release_request_metadata": request_metadata,
+    })
+}
+
+fn build_legal_hold_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: String,
+    actor_user_id: &str,
+    ref_type: &str,
+    ref_id: &str,
+    action_name: &str,
+    result_code: &str,
+    legal_hold_status: &str,
+    legal_hold_id: Option<String>,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+    metadata: Value,
+) -> AuditEvent {
+    let mut event = AuditEvent::business(
+        "audit",
+        ref_type,
+        Some(ref_id.to_string()),
+        action_name,
+        result_code,
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id,
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "legal_hold_id": legal_hold_id,
+                "step_up_token_present": step_up_token_present,
+                "details": metadata,
+            }),
+        },
+    );
+    event.legal_hold_status = legal_hold_status.to_string();
+    event.sensitivity_level = "high".to_string();
+    event
 }
 
 fn build_export_payload(
@@ -2682,6 +3229,48 @@ fn normalize_replay_reason(
         return Err(bad_request(
             request_id,
             "reason is required for audit replay",
+        ));
+    }
+    Ok(reason.to_string())
+}
+
+fn normalize_legal_hold_scope_type(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    match raw.trim() {
+        "order" => Ok("order".to_string()),
+        "case" | "dispute_case" => Ok("dispute_case".to_string()),
+        other => Err(bad_request(
+            request_id,
+            format!("hold_scope_type must be one of: order, case, dispute_case; got `{other}`"),
+        )),
+    }
+}
+
+fn normalize_legal_hold_reason_code(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let reason_code = raw.trim();
+    if reason_code.is_empty() {
+        return Err(bad_request(
+            request_id,
+            "reason_code is required for audit legal hold",
+        ));
+    }
+    Ok(reason_code.to_string())
+}
+
+fn normalize_legal_hold_release_reason(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let reason = raw.trim();
+    if reason.is_empty() {
+        return Err(bad_request(
+            request_id,
+            "reason is required for audit legal hold release",
         ));
     }
     Ok(reason.to_string())

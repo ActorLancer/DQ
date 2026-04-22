@@ -10,7 +10,7 @@ pub use audit_kit::{
 
 use crate::modules::audit::dto::AuditTraceView;
 use crate::modules::audit::dto::{
-    EvidenceManifestView, EvidencePackageView, ReplayJobView, ReplayResultView,
+    EvidenceManifestView, EvidencePackageView, LegalHoldView, ReplayJobView, ReplayResultView,
 };
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -115,4 +115,28 @@ pub struct AuditReplayJobCreateRequest {
 pub struct AuditReplayJobDetailView {
     pub replay_job: ReplayJobView,
     pub results: Vec<ReplayResultView>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct AuditLegalHoldCreateRequest {
+    pub hold_scope_type: String,
+    pub hold_scope_id: String,
+    pub reason_code: String,
+    pub retention_policy_id: Option<String>,
+    pub hold_until: Option<String>,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct AuditLegalHoldReleaseRequest {
+    pub reason: String,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuditLegalHoldActionView {
+    pub legal_hold: LegalHoldView,
+    pub step_up_bound: bool,
 }

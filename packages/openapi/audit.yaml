@@ -187,6 +187,74 @@ paths:
           description: forbidden
         "404":
           description: replay job not found
+  /api/v1/audit/legal-holds:
+    post:
+      summary: create one legal hold
+      description: >
+        Creates one active `audit.legal_hold` for an `order` or `dispute_case` and appends one
+        high-risk audit event plus one `ops.system_log` entry. Current hold state is resolved from
+        `audit.legal_hold`; historical `audit.evidence_item` / `audit.evidence_package` rows stay
+        append-only and are not updated in place. This control-plane action requires
+        `audit.legal_hold.manage` together with `x-step-up-token` or a verified
+        `x-step-up-challenge-id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditLegalHoldCreateRequest"
+      responses:
+        "200":
+          description: legal hold created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLegalHoldActionResponse"
+        "400":
+          description: bad request
+        "403":
+          description: forbidden
+        "404":
+          description: legal hold target not found
+        "409":
+          description: target already has one active legal hold (`AUDIT_LEGAL_HOLD_ACTIVE`)
+  /api/v1/audit/legal-holds/{id}/release:
+    post:
+      summary: release one legal hold
+      description: >
+        Releases one active `audit.legal_hold`, writes the release reason and reviewer metadata,
+        and appends one high-risk audit event plus one `ops.system_log` entry. Current hold state
+        continues to be resolved from `audit.legal_hold`; historical evidence/package rows remain
+        immutable. This action
+        requires `audit.legal_hold.manage` and a verified step-up binding.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditLegalHoldReleaseRequest"
+      responses:
+        "200":
+          description: legal hold released
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLegalHoldActionResponse"
+        "400":
+          description: bad request
+        "403":
+          description: forbidden
+        "404":
+          description: legal hold not found
+        "409":
+          description: legal hold is no longer active; duplicate create still uses `AUDIT_LEGAL_HOLD_ACTIVE`
 components:
   schemas:
     AuditTrace:
@@ -564,3 +632,104 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/AuditReplayJobDetail"
+    LegalHold:
+      type: object
+      required:
+        - legal_hold_id
+        - hold_scope_type
+        - reason_code
+        - status
+      properties:
+        legal_hold_id:
+          type: string
+          format: uuid
+        hold_scope_type:
+          type: string
+        hold_scope_id:
+          type: string
+          format: uuid
+        reason_code:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - released
+        retention_policy_id:
+          type: string
+          format: uuid
+        requested_by:
+          type: string
+          format: uuid
+        approved_by:
+          type: string
+          format: uuid
+        hold_until:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        released_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    AuditLegalHoldCreateRequest:
+      type: object
+      required:
+        - hold_scope_type
+        - hold_scope_id
+        - reason_code
+      properties:
+        hold_scope_type:
+          type: string
+          description: one of `order`, `case`, or `dispute_case`
+        hold_scope_id:
+          type: string
+          format: uuid
+        reason_code:
+          type: string
+        retention_policy_id:
+          type: string
+          format: uuid
+        hold_until:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    AuditLegalHoldReleaseRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AuditLegalHoldActionView:
+      type: object
+      required:
+        - legal_hold
+        - step_up_bound
+      properties:
+        legal_hold:
+          $ref: "#/components/schemas/LegalHold"
+        step_up_bound:
+          type: boolean
+    AuditLegalHoldActionResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AuditLegalHoldActionView"

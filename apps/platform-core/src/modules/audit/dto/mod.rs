@@ -1,6 +1,6 @@
 use audit_kit::{
-    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, ReplayJob,
-    ReplayResult,
+    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, LegalHold,
+    ReplayJob, ReplayResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -243,6 +243,43 @@ impl From<&ReplayResult> for ReplayResultView {
             actual_digest: result.actual_digest.clone(),
             diff_summary: result.diff_summary.clone(),
             created_at: result.created_at.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LegalHoldView {
+    pub legal_hold_id: Option<String>,
+    pub hold_scope_type: String,
+    pub hold_scope_id: Option<String>,
+    pub reason_code: String,
+    pub status: String,
+    pub retention_policy_id: Option<String>,
+    pub requested_by: Option<String>,
+    pub approved_by: Option<String>,
+    pub hold_until: Option<String>,
+    pub created_at: Option<String>,
+    pub released_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+impl From<&LegalHold> for LegalHoldView {
+    fn from(hold: &LegalHold) -> Self {
+        Self {
+            legal_hold_id: hold.legal_hold_id.clone(),
+            hold_scope_type: hold.hold_scope_type.clone(),
+            hold_scope_id: hold.hold_scope_id.clone(),
+            reason_code: hold.reason_code.clone(),
+            status: hold.status.clone(),
+            retention_policy_id: hold.retention_policy_id.clone(),
+            requested_by: hold.requested_by.clone(),
+            approved_by: hold.approved_by.clone(),
+            hold_until: hold.hold_until.clone(),
+            created_at: hold.created_at.clone(),
+            released_at: hold.released_at.clone(),
+            updated_at: hold.updated_at.clone(),
+            metadata: hold.metadata.clone(),
         }
     }
 }

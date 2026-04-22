@@ -160,6 +160,60 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
+
+    #[tokio::test]
+    async fn rejects_legal_hold_create_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/legal-holds")
+            .header("x-role", "buyer_operator")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud006-forbidden")
+            .header("x-step-up-token", "aud006-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"hold_scope_type":"order","hold_scope_id":"10000000-0000-0000-0000-000000000001","reason_code":"regulator_hold"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn legal_hold_create_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/legal-holds")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud006-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"hold_scope_type":"order","hold_scope_id":"10000000-0000-0000-0000-000000000001","reason_code":"regulator_hold"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_legal_hold_release_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/legal-holds/10000000-0000-0000-0000-000000000006/release")
+            .header("x-role", "buyer_operator")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud006-release-forbidden")
+            .header("x-step-up-token", "aud006-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"reason":"release forbidden"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
 }
 
 #[tokio::test]
@@ -191,6 +245,9 @@ async fn audit_trace_api_db_smoke() {
     let export_request_id = format!("req-aud004-export-{suffix}");
     let replay_request_id = format!("req-aud005-replay-{suffix}");
     let replay_lookup_request_id = format!("req-aud005-replay-get-{suffix}");
+    let legal_hold_request_id = format!("req-aud006-hold-{suffix}");
+    let legal_hold_conflict_request_id = format!("req-aud006-hold-conflict-{suffix}");
+    let legal_hold_release_request_id = format!("req-aud006-hold-release-{suffix}");
     let trace_id = format!("trace-aud003-{suffix}");
 
     write_trade_audit_event(
@@ -799,6 +856,337 @@ async fn audit_trace_api_db_smoke() {
         .get(0);
     assert_eq!(replay_log_count, 2);
 
+    let legal_hold_challenge_id = seed_verified_step_up_challenge(
+        &client,
+        &audit_user_id,
+        "audit.legal_hold.manage",
+        "order",
+        Some(seed.order_id.as_str()),
+        "aud006",
+    )
+    .await
+    .expect("seed verified legal hold step-up challenge");
+
+    let legal_hold_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/audit/legal-holds")
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &legal_hold_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &legal_hold_challenge_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "hold_scope_type": "order",
+                        "hold_scope_id": seed.order_id,
+                        "reason_code": "regulator_investigation",
+                        "metadata": {
+                            "trigger": "integration_test",
+                            "case_ref": "aud006-smoke",
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("legal hold request"),
+        )
+        .await
+        .expect("call audit legal hold create");
+    let legal_hold_status = legal_hold_resp.status();
+    let legal_hold_body = to_bytes(legal_hold_resp.into_body(), usize::MAX)
+        .await
+        .expect("read legal hold body");
+    assert_eq!(
+        legal_hold_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&legal_hold_body)
+    );
+    let legal_hold_json: Value =
+        serde_json::from_slice(&legal_hold_body).expect("decode legal hold body");
+    let legal_hold_id = legal_hold_json["data"]["legal_hold"]["legal_hold_id"]
+        .as_str()
+        .expect("legal_hold_id")
+        .to_string();
+    assert_eq!(
+        legal_hold_json["data"]["legal_hold"]["status"].as_str(),
+        Some("active")
+    );
+    assert_eq!(
+        legal_hold_json["data"]["legal_hold"]["hold_scope_type"].as_str(),
+        Some("order")
+    );
+    assert_eq!(
+        legal_hold_json["data"]["step_up_bound"].as_bool(),
+        Some(true)
+    );
+
+    let legal_hold_conflict_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/audit/legal-holds")
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &legal_hold_conflict_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &legal_hold_challenge_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "hold_scope_type": "order",
+                        "hold_scope_id": seed.order_id,
+                        "reason_code": "regulator_investigation",
+                    })
+                    .to_string(),
+                ))
+                .expect("legal hold conflict request"),
+        )
+        .await
+        .expect("call audit legal hold conflict");
+    assert_eq!(legal_hold_conflict_resp.status(), StatusCode::CONFLICT);
+    let legal_hold_conflict_body = to_bytes(legal_hold_conflict_resp.into_body(), usize::MAX)
+        .await
+        .expect("read legal hold conflict body");
+    let legal_hold_conflict_json: Value =
+        serde_json::from_slice(&legal_hold_conflict_body).expect("decode legal hold conflict");
+    assert_eq!(
+        legal_hold_conflict_json["code"].as_str(),
+        Some("AUDIT_LEGAL_HOLD_ACTIVE")
+    );
+
+    let legal_hold_row = client
+        .query_one(
+            "SELECT hold_scope_type,
+                    hold_scope_id::text,
+                    reason_code,
+                    status,
+                    requested_by::text,
+                    metadata ->> 'order_id',
+                    metadata -> 'request_metadata' ->> 'trigger'
+             FROM audit.legal_hold
+             WHERE legal_hold_id = $1::text::uuid",
+            &[&legal_hold_id],
+        )
+        .await
+        .expect("query legal hold row");
+    assert_eq!(legal_hold_row.get::<_, String>(0), "order");
+    assert_eq!(
+        legal_hold_row.get::<_, Option<String>>(1).as_deref(),
+        Some(seed.order_id.as_str())
+    );
+    assert_eq!(
+        legal_hold_row.get::<_, String>(2),
+        "regulator_investigation"
+    );
+    assert_eq!(legal_hold_row.get::<_, String>(3), "active");
+    assert_eq!(
+        legal_hold_row.get::<_, Option<String>>(4).as_deref(),
+        Some(audit_user_id.as_str())
+    );
+    assert_eq!(
+        legal_hold_row.get::<_, Option<String>>(5).as_deref(),
+        Some(seed.order_id.as_str())
+    );
+    assert_eq!(
+        legal_hold_row.get::<_, Option<String>>(6).as_deref(),
+        Some("integration_test")
+    );
+
+    let active_scope_status = client
+        .query_one(
+            "SELECT
+               (SELECT COUNT(*)::bigint
+                FROM audit.legal_hold
+                WHERE hold_scope_type = 'order'
+                  AND hold_scope_id = $1::text::uuid
+                  AND status = 'active'),
+               (SELECT legal_hold_status
+                FROM audit.evidence_item
+                WHERE ref_type = 'order'
+                  AND ref_id = $1::text::uuid
+                ORDER BY created_at DESC
+                LIMIT 1),
+               (SELECT legal_hold_status
+                FROM audit.evidence_package
+                WHERE evidence_package_id = $2::text::uuid)",
+            &[&seed.order_id, &evidence_package_id],
+        )
+        .await
+        .expect("query active legal hold statuses");
+    assert_eq!(active_scope_status.get::<_, i64>(0), 1);
+    assert_eq!(
+        active_scope_status.get::<_, Option<String>>(1).as_deref(),
+        Some("none")
+    );
+    assert_eq!(
+        active_scope_status.get::<_, Option<String>>(2).as_deref(),
+        Some("none")
+    );
+
+    let legal_hold_audit_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = 'audit.legal_hold.create'
+               AND ref_type = 'order'
+               AND ref_id = $2::text::uuid",
+            &[&legal_hold_request_id, &seed.order_id],
+        )
+        .await
+        .expect("count legal hold create audit event")
+        .get(0);
+    assert_eq!(legal_hold_audit_count, 1);
+
+    let legal_hold_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = $1
+               AND message_text = 'audit legal hold created: POST /api/v1/audit/legal-holds'",
+            &[&legal_hold_request_id],
+        )
+        .await
+        .expect("count legal hold create logs")
+        .get(0);
+    assert_eq!(legal_hold_log_count, 1);
+
+    let legal_hold_release_challenge_id = seed_verified_step_up_challenge(
+        &client,
+        &audit_user_id,
+        "audit.legal_hold.manage",
+        "legal_hold",
+        Some(legal_hold_id.as_str()),
+        "aud006-release",
+    )
+    .await
+    .expect("seed verified legal hold release challenge");
+
+    let legal_hold_release_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/audit/legal-holds/{legal_hold_id}/release"))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &legal_hold_release_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &legal_hold_release_challenge_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "reason": "manual review cleared hold",
+                        "metadata": {
+                            "resolution": "cleared",
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("legal hold release request"),
+        )
+        .await
+        .expect("call audit legal hold release");
+    let legal_hold_release_status = legal_hold_release_resp.status();
+    let legal_hold_release_body = to_bytes(legal_hold_release_resp.into_body(), usize::MAX)
+        .await
+        .expect("read legal hold release body");
+    assert_eq!(
+        legal_hold_release_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&legal_hold_release_body)
+    );
+    let legal_hold_release_json: Value =
+        serde_json::from_slice(&legal_hold_release_body).expect("decode legal hold release");
+    assert_eq!(
+        legal_hold_release_json["data"]["legal_hold"]["status"].as_str(),
+        Some("released")
+    );
+    assert_eq!(
+        legal_hold_release_json["data"]["legal_hold"]["approved_by"].as_str(),
+        Some(audit_user_id.as_str())
+    );
+    assert!(
+        legal_hold_release_json["data"]["legal_hold"]["released_at"]
+            .as_str()
+            .is_some()
+    );
+
+    let released_scope_status = client
+        .query_one(
+            "SELECT
+               (SELECT COUNT(*)::bigint
+                FROM audit.legal_hold
+                WHERE hold_scope_type = 'order'
+                  AND hold_scope_id = $1::text::uuid
+                  AND status = 'active'),
+               (SELECT legal_hold_status
+                FROM audit.evidence_item
+                WHERE ref_type = 'order'
+                  AND ref_id = $1::text::uuid
+                ORDER BY created_at DESC
+                LIMIT 1),
+               (SELECT legal_hold_status
+                FROM audit.evidence_package
+                WHERE evidence_package_id = $2::text::uuid),
+               (SELECT status FROM audit.legal_hold WHERE legal_hold_id = $3::text::uuid),
+               (SELECT metadata ->> 'release_reason' FROM audit.legal_hold WHERE legal_hold_id = $3::text::uuid)",
+            &[&seed.order_id, &evidence_package_id, &legal_hold_id],
+        )
+        .await
+        .expect("query released legal hold statuses");
+    assert_eq!(released_scope_status.get::<_, i64>(0), 0);
+    assert_eq!(
+        released_scope_status.get::<_, Option<String>>(1).as_deref(),
+        Some("none")
+    );
+    assert_eq!(
+        released_scope_status.get::<_, Option<String>>(2).as_deref(),
+        Some("none")
+    );
+    assert_eq!(
+        released_scope_status.get::<_, Option<String>>(3).as_deref(),
+        Some("released")
+    );
+    assert_eq!(
+        released_scope_status.get::<_, Option<String>>(4).as_deref(),
+        Some("manual review cleared hold")
+    );
+
+    let legal_hold_release_audit_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = 'audit.legal_hold.release'
+               AND ref_type = 'order'
+               AND ref_id = $2::text::uuid",
+            &[&legal_hold_release_request_id, &seed.order_id],
+        )
+        .await
+        .expect("count legal hold release audit event")
+        .get(0);
+    assert_eq!(legal_hold_release_audit_count, 1);
+
+    let legal_hold_release_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = $1
+               AND message_text = 'audit legal hold released: POST /api/v1/audit/legal-holds/{id}/release'",
+            &[&legal_hold_release_request_id],
+        )
+        .await
+        .expect("count legal hold release logs")
+        .get(0);
+    assert_eq!(legal_hold_release_log_count, 1);
+
     let _ = client
         .execute(
             "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
@@ -809,6 +1197,18 @@ async fn audit_trace_api_db_smoke() {
         .execute(
             "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
             &[&replay_challenge_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&legal_hold_challenge_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&legal_hold_release_challenge_id],
         )
         .await;
     let _ = client

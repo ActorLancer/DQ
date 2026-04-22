@@ -218,22 +218,71 @@
   - 运行态修正证明：真实 `AUD_DB_SMOKE` 暴露了两个实现偏差，已在本批修正并复验通过：
     - 导出 smoke 原先直接引用不存在的 `core.user_account`，现改为先种最小用户再创建 `iam.step_up_challenge`。
     - `audit.evidence_package` 运行态 schema 不存在 `metadata` 列，现已按正式结构化列落库，并把附加导出信息放入 `audit.audit_event / audit.access_audit / evidence_manifest.metadata`。
+### BATCH-219（计划中）
+- 任务：AUD-006 legal hold 控制面接口
+- 状态：计划中
+- 说明：在 `AUD-003 ~ AUD-005` 已落地审计联查、证据包导出和 replay dry-run 控制面的基础上，本批补齐 `POST /api/v1/audit/legal-holds` 与 `POST /api/v1/audit/legal-holds/{id}/release`。实现将复用统一 `LegalHold` authority model 与既有 step-up / 权限 / 审计 helper，要求高风险动作真实经过 `Keycloak/IAM` 权限与 step-up、把 legal hold 状态落 `audit.legal_hold`、并将创建/释放行为同步写入 `audit.audit_event + audit.access_audit + ops.system_log`，同时补齐 OpenAPI、runbook、验收矩阵和至少一条真实 API + DB 验证。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-006`，完成后再进入 `AUD-007`。
 - 覆盖的冻结文档条目：
-  - `v1-core-开发任务清单.csv / .md`：`AUD-004`
-  - `审计、证据链与回放设计.md`：导出包、高风险动作、最小披露和正式审计要求
-  - `审计、证据链与回放接口协议正式版.md`：`/api/v1/audit/packages/export` 的请求、权限、理由与 step-up 口径
-  - `全量领域模型与对象关系说明.md`：order / dispute_case 与证据/审计/hold 聚合边界
-  - `050_audit_search_dev_ops.sql`、`055_audit_hardening.sql`：`audit.evidence_package`、`audit.evidence_manifest`、`audit.access_audit`、`audit.audit_event` 正式 schema
-  - `A04`、`A06`：导出控制面契约落地与统一 authority model 收口
-- 覆盖的任务清单条目：`AUD-004`
+  - `v1-core-开发任务清单.csv / .md`：`AUD-006`
+  - `审计、证据链与回放设计.md`：legal hold、高风险动作、正式审计与最小披露要求
+  - `审计、证据链与回放接口协议正式版.md`：`POST /api/v1/audit/legal-holds`、`POST /api/v1/audit/legal-holds/{id}/release` 的请求、权限、理由与 step-up 口径
+  - `全量领域模型与对象关系说明.md`：order / dispute_case 与审计 / hold 聚合边界
+  - `050_audit_search_dev_ops.sql`、`055_audit_hardening.sql`：`audit.legal_hold`、`audit.access_audit`、`audit.audit_event` 正式 schema 与 append-only 约束
+  - `A04`、`A06`：控制面契约落地与统一 authority model 收口
+- 覆盖的任务清单条目：`AUD-006`
 - 未覆盖项：
-  - legal hold 控制面、replay / reconcile、dead letter reprocess 与一致性修复高风险接口，留待 `AUD-005+`。
+  - anchor / Fabric callback、reconcile、dead letter reprocess 与一致性修复高风险接口，留待 `AUD-007+`。
   - Fabric 锚定、回执、外部事实与双层权威联查，留待后续 `AUD` 批次。
 - 新增 TODO / 预留项：
-  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 收敛为“`AUD-003 / AUD-004` 已交付查询 + 导出控制面，后续仅跟踪 replay / legal hold / ops 控制面缺口”。
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛为“`AUD-003 ~ AUD-006` 已交付查询 / 导出 / replay / legal hold 控制面，后续仅跟踪 anchor / Fabric / ops / 一致性矩阵缺口”。
 - 备注：
   - 本批没有发现需要人工确认的 `CSV / Markdown / technical_reference` 冲突，不触发暂停条件。
   - 手工清理验证时，尝试删除已被 append-only `audit.audit_event` 引用的 `iam.step_up_challenge` 会触发 FK 的 `SET NULL -> UPDATE audit.audit_event`，被 append-only trigger 正常拒绝；因此高风险动作验证产生的 challenge 记录按运行态现状保留，不把审计域强行改造成可回写对象。
+### BATCH-219（待审批）
+- 任务：`AUD-006` legal hold 控制面接口
+- 状态：待审批
+- 当前任务编号：`AUD-006`
+- 前置依赖核对结果：`AUD-001` 统一 `AuditEvent` authority model、`AUD-002` 统一 `EvidenceItem / EvidenceManifest` authority model、`AUD-003` 审计读取控制面、`AUD-004` 证据包导出控制面、`AUD-005` replay dry-run 控制面均已本地提交完成；`audit.legal_hold` 正式 schema、平台级审计角色门面、`iam.step_up_challenge` 运行态链路与本地 `PostgreSQL / MinIO / Kafka / OpenSearch / Redis / Keycloak` 基线满足当前批次依赖。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-006` DoD 为 `POST /api/v1/audit/legal-holds`、`POST /api/v1/audit/legal-holds/{id}/release` 的接口、DTO、权限校验、错误码、审计与最小测试齐备，并要求至少一条真实 API/集成验证。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `AUD` 阶段高风险控制面必须真实经过 `PostgreSQL / Redis / Kafka / Keycloak/IAM / MinIO / OpenSearch / 观测栈` 的职责边界；本批 legal hold 不允许只留骨架接口。
+  - `docs/原始PRD/审计、证据链与回放设计.md`：确认 `legal hold` 属于高风险动作，必须经过 step-up、正式审计与后续导出/回放联查。
+  - `docs/数据库设计/接口协议/审计、证据链与回放接口协议正式版.md`：确认 `audit.legal_hold.manage` 是正式权限点，`hold_scope_type / hold_scope_id / reason_code / metadata` 是创建入参，释放动作需要 `reason`，并要求有正式错误码与运行态审计留痕。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：确认 `order / dispute_case / evidence_package` 与 `legal hold` 的聚合边界；当前 hold authority 在 `audit.legal_hold`，不是历史 evidence 快照。
+  - `docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`、`docs/开发任务/问题修复任务/A06-Audit-Kit-统一模型漂移.md`：确认 legal hold 控制面必须落正式 router/OpenAPI/runbook/test-case，并复用统一 `LegalHold` model，不允许另造临时 DTO。
+  - `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`072_canonical_outbox_route_policy.sql`、`074_event_topology_route_extensions.sql`、`infra/docker/docker-compose.local.yml`：确认本批不新增旁路 topic / worker；legal hold 是 `platform-core` 内部高风险控制面，不通过 Fabric / outbox 改写主状态。
+- 实现要点：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `POST /api/v1/audit/legal-holds` 与 `POST /api/v1/audit/legal-holds/{id}/release`，要求 `x-request-id`；两个动作都要求平台级 `audit.legal_hold.manage` 权限、`x-user-id` 与 step-up。
+  - legal hold create：规范化 `hold_scope_type`，支持 `order` 与 `case/dispute_case`；校验 `hold_scope_id`、`reason_code`、可选 `retention_policy_id / hold_until`；按 scope 唯一 active hold 做 `409 AUDIT_LEGAL_HOLD_ACTIVE` 冲突保护；写入 `audit.legal_hold(status=active)`，并同步追加 `audit.audit_event(action_name='audit.legal_hold.create')` 与 `ops.system_log`。
+  - legal hold release：路径参数必须是合法 `legal_hold_id`；step-up challenge 必须绑定 `target_action='audit.legal_hold.manage'` 与 `target_ref_type='legal_hold'`；仅允许释放当前 active hold；更新 `audit.legal_hold(status=released, approved_by, released_at, metadata.release_reason)`，并同步追加 `audit.audit_event(action_name='audit.legal_hold.release')` 与 `ops.system_log`。
+  - 运行态口径修正：`audit.evidence_item` 与 `audit.evidence_package` 都由 append-only trigger 保护，不能被 legal hold create/release 原地回写；当前 hold 状态的正式权威源是 `audit.legal_hold`，历史 evidence/package 只保留快照。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：补齐 legal hold 路由级权限 / step-up 测试，并把 live smoke 扩展为 create -> duplicate conflict -> release -> `audit.legal_hold / audit.audit_event / ops.system_log` 全链回查。
+  - `packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`、`scripts/check-openapi-schema.sh`、`docs/04-runbooks/audit-legal-hold.md`、`docs/05-test-cases/audit-consistency-cases.md`、相关 README：同步补齐契约、手工 `curl`、SQL 回查、清理约束与 append-only 说明。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core modules::audit -- --nocapture`
+  4. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core modules::audit::tests::api_db::audit_trace_api_db_smoke -- --nocapture`
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `./scripts/check-openapi-schema.sh`
+  9. 真实 HTTP 联调：
+     - `set -a; source infra/docker/.env.local; set +a; APP_HOST=127.0.0.1 APP_PORT=18080 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+     - 通过 `psql` 插入最小 `order` scope 图、`core.user_account` 与两条 `iam.step_up_challenge`
+     - `curl -X POST /api/v1/audit/legal-holds` 返回 `200`
+     - `curl -X POST /api/v1/audit/legal-holds/{id}/release` 返回 `200`
+     - 回查 `audit.legal_hold.status=released`、`metadata.release_reason='manual curl release'`、create/release 各 1 条 `audit.audit_event` 与 `ops.system_log`
+- 验证结果：
+  - legal hold 路由级权限 / step-up 测试通过；`modules::audit` 模块测试通过。
+  - `AUD_DB_SMOKE=1` 的真实 smoke 通过，create / duplicate conflict / release 与 DB 回查一致。
+  - 全量 `cargo test -p platform-core` 通过；`cargo check -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-openapi-schema.sh` 全部通过。
+  - 真实 HTTP 联调通过：`/healthz=200`，create/release 两个请求均 `200`，DB 回查到 `audit.legal_hold.status=released`、`release_reason=manual curl release`、`create_audit_count=1`、`release_audit_count=1`、`create_log_count=1`、`release_log_count=1`、`active_hold_count=0`。
+  - 运行态修正结论已验证：删除已被 `audit.audit_event` 引用的 `iam.step_up_challenge` 会触发 FK 尝试 `SET NULL`，被 append-only trigger 拒绝；因此临时 `order / catalog.*` 业务图已清理，而与审计链绑定的 `core.user_account / iam.step_up_challenge / audit.legal_hold / audit.audit_event / ops.system_log` 按审计口径保留。
+- 备注：
+  - 本批没有发现需要人工确认的 `CSV / Markdown / technical_reference` 冲突，不触发暂停条件。
+  - `AUD-006` 本地完成后，下一批按顺序进入 `AUD-007`。
 ### BATCH-218（计划中）
 - 任务：AUD-005 审计回放任务接口
 - 状态：计划中
