@@ -1156,3 +1156,42 @@
   - 无。当前批次已对卖方搜索投影字段、刷新链路、worker 文档写入与 seller 召回权重完成重验，没有新增 `V1-gap`。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-272（计划中）
+- 任务：`SEARCHREC-004` 逐任务复核与正式重验（目录搜索接口闭环）
+- 状态：计划中
+- 说明：按 `SEARCHREC-004` 的冻结口径，重新核对 `GET /api/v1/catalog/search` 的 handler、DTO、OpenAPI、读审计和差异化运行模式边界，重点确认 `staging / production -> OpenSearch`、`local / demo -> PostgreSQL projection fallback`、Redis 搜索缓存和 PostgreSQL 最终状态/可见性校验仍保持一致，不把历史批次结论直接当作当前完成证明；若本轮发现读审计、错误码、参数校验或 OpenAPI 漂移，则在当前 task 内直接修正。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-004`，不提前进入 `SEARCHREC-005`。
+### BATCH-272（待审批）
+- 任务：`SEARCHREC-004` 逐任务复核与正式重验（目录搜索接口闭环）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-004`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-003` 已重验 `staging -> OpenSearch / local-demo -> PostgreSQL fallback` 边界与商品/卖方搜索投影字段，本批在该基线上重新确认目录搜索接口、读审计与 OpenAPI 契约。
+- 复核结论：
+  - `SEARCHREC-004` 当前实现满足冻结口径，无需额外代码修订。`GET /api/v1/catalog/search` 仍要求正式 Bearer 鉴权，非法 `entity_scope / sort / 价格区间` 继续返回 `400 / SEARCH_QUERY_INVALID`，没有回退到旧的宽松占位语义。
+  - `apps/platform-core/src/modules/search/api/handlers.rs` 仍在成功路径写入 `audit.access_audit + ops.system_log`，目录搜索不会因为命中 Redis 缓存而丢失正式读链留痕；`search_api_and_ops_db_smoke` 与 `search_catalog_pg_fallback_db_smoke` 的现有 smoke 仍回查审计与系统日志。
+  - `docs/02-openapi/search.yaml` 与 `packages/openapi/search.yaml` 当前继续覆盖 `GET /api/v1/catalog/search` 的查询参数、`backend=opensearch|postgresql` 枚举和 `SEARCH_QUERY_INVALID` 等错误响应，未发现接口实现与 OpenAPI 契约漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo test -p platform-core rejects_catalog_search_with_invalid -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - 路由级拒绝测试通过，继续证明目录搜索对非法 `entity_scope` 与非法 `sort` 真实返回 `400 / SEARCH_QUERY_INVALID`。
+  - `search_api_and_ops_db_smoke` 与 `search_catalog_pg_fallback_db_smoke` 通过，继续证明 `staging` 使用 OpenSearch、`local` 使用 PostgreSQL fallback，且两条路径都保留 Redis 搜索短缓存与 `audit.access_audit + ops.system_log` 读审计。
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 0 ignored`；本轮没有发现目录搜索接口、鉴权或 OpenAPI 契约回退。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过；本轮仅刷新离线 `.sqlx` 缓存，没有引入新的查询编译缺口。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-004`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`、`local/demo 允许 PG 投影运行`、`PostgreSQL fallback 搜索`、`6. 搜索投影设计`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：`GET /api/v1/catalog/search` 查询参数、错误码与 PostgreSQL 最终业务校验边界
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+- 覆盖的任务清单条目：`SEARCHREC-004`
+- 未覆盖项：
+  - 无。目录搜索接口当前仍同时覆盖正式鉴权、错误码、`staging/local` 候选召回分流、Redis 搜索缓存、PostgreSQL 最终放行与读审计，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
