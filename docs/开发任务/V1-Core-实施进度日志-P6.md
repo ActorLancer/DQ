@@ -908,3 +908,49 @@
   - 无。`SEARCHREC-016` 要求的 Search / Recommendation OpenAPI 第一版归档、实现对齐校验、统一鉴权/权限/幂等/Step-Up/审计/错误码口径冻结已通过 YAML 本体、README 索引、校验脚本与真实 API smoke 全部固定。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批没有引入新的冻结缺口。
+### BATCH-266（计划中）
+- 任务：`SEARCHREC-017` 生成 `docs/05-test-cases/search-rec-cases.md`，覆盖投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底，并登记统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项
+- 状态：计划中
+- 说明：按 `SEARCHREC-017` 冻结口径复核后，`docs/05-test-cases/search-rec-cases.md` 已积累大量 SEARCHREC 规则和回归命令，但还缺一个正式“验收矩阵 -> 对应 smoke / 人工回查”的映射层；`docs/05-test-cases/README.md` 对该文件的描述也尚未把投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底、统一鉴权、双层 DLQ 与 reprocess 的正式承接关系说透。本批将把搜索/推荐 test-case 文档从“规则清单”收口成“任务验收矩阵”，并确保 README 索引明确引用。
+- 追溯：继续沿修正后的 `SEARCHREC` 顺序推进；当前只处理 Search / Recommendation 测试矩阵文档冻结与引用校验，不改动运行时代码或 OpenAPI。
+### BATCH-266（待审批）
+- 任务：`SEARCHREC-017` 生成 `docs/05-test-cases/search-rec-cases.md`，覆盖投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底，并登记统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-017`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已完成；`SEARCHREC-016` 已把 Search / Recommendation OpenAPI 归档与统一鉴权/Step-Up/错误码契约正式固定；`SEARCHREC-020` 已补齐 consumer 幂等、双层 DLQ 与 reprocess 验收闭环。当前文档冻结所依赖的运行时、OpenAPI 与 worker 验收基线全部满足。
+- 实际变更：
+  - `docs/05-test-cases/search-rec-cases.md`：新增 `SEARCHREC-017` 验收矩阵分组，把“搜索投影/投影延迟/回 PG 最终校验”“推荐读取/曝光幂等/零结果兜底”“统一鉴权/Step-Up/审计/错误码/consumer 可靠性”三组冻结要求，逐项映射到具体 smoke、数据库回查、OpenSearch/Redis/Kafka 证据，避免后续只看到规则而不知道由哪条验证承接。
+  - `docs/05-test-cases/search-rec-cases.md`：修正回归命令为当前真实入口，包括 `APP_MODE=staging`、`APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1`、`KAFKA_BROKERS=127.0.0.1:9094`、`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`，并补上 `recommendation_api_full_runtime_db_smoke`，防止测试文档继续传播过时命令。
+  - `docs/05-test-cases/README.md`：把 `search-rec-cases.md` 明确提升为 `SEARCHREC-017` 正式冻结的 Search / Recommendation 验收矩阵，并点明其覆盖投影延迟、回 PostgreSQL 最终校验、推荐曝光/点击幂等、零结果兜底、统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与 dry-run reprocess。
+- 验证命令：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `rg -n "x-role:" docs/05-test-cases/search-rec-cases.md docs/05-test-cases/README.md`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_visibility_and_alias_consistency_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_filters_frozen_product_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `rg -n "x-role:" ...` 返回空结果，证明测试文档中已不存在旧 `x-role:` 请求头示例，只保留“禁止使用占位语义”的说明文本。
+  - 搜索侧 `search_api_and_ops_db_smoke`、`search_catalog_pg_fallback_db_smoke`、`search_visibility_and_alias_consistency_db_smoke` 全部通过，分别对应统一鉴权/权限/Step-Up/审计/错误码、local PostgreSQL fallback、alias 切换 + PostgreSQL 最终校验三条验收矩阵。
+  - 推荐侧 `recommendation_api_full_runtime_db_smoke`、`recommendation_local_minimal_candidate_db_smoke`、`recommendation_filters_frozen_product_db_smoke` 全部通过，分别对应曝光/点击幂等 + 审计、local 最小候选 + zero_result_fallback、冻结商品最终过滤三条验收矩阵。
+  - `search_indexer_db_smoke`、`recommendation_aggregator_db_smoke` 与 `audit_dead_letter_reprocess_db_smoke` 全部通过，证明文档中登记的 consumer 幂等、双层 DLQ 与 dry-run reprocess 路径有真实 worker 与控制面证据支撑。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；全量回归结果为 `355 passed; 0 failed; 1 ignored`，无新的 `.sqlx` 漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-017`
+  - `商品搜索、排序与索引同步设计.md`、`商品搜索、排序与索引同步接口协议正式版.md`：投影延迟、回 PostgreSQL 最终校验、搜索域错误码、alias/reindex 运维链路
+  - `商品推荐与个性化发现接口协议正式版.md`、`A09-推荐主链路与行为流契约缺口.md`：推荐读取/曝光/点击幂等、零结果兜底、最终 PG 校验、推荐行为流
+  - `A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`、`A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`、`A11-测试与Smoke口径误报风险.md`：统一鉴权、必要 `step-up`、审计、错误码、consumer 幂等、双层 DLQ、reprocess 与“禁止伪 smoke”
+- 覆盖的任务清单条目：`SEARCHREC-017`
+- 未覆盖项：
+  - 无。`SEARCHREC-017` 要求的投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底、统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项，已在 test-case 主文档、README 索引和真实 smoke 证据中全部固定。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批只收口测试文档与命令口径，没有新增冻结缺口。

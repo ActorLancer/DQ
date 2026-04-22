@@ -2,6 +2,7 @@
 
 ## 当前批次说明
 
+- `SEARCHREC-017` 起，本文件不仅记录规则，还必须把冻结验收项映射到具体 smoke / DB / OpenSearch / Redis / Kafka 回查证据，避免出现“测试通过但不知道覆盖了什么”的误报。
 - `AUD-022` 已真实落地搜索运维控制面的统一 Bearer 鉴权、正式权限点、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、`audit.audit_event + audit.access_audit + ops.system_log` 留痕，以及搜索域 `SEARCH_*` 错误码。
 - `AUD-022` 的自动化 smoke 已真实覆盖 PostgreSQL、Redis 与 OpenSearch：
   - 目录搜索两次命中验证 `cache_hit=false -> true`
@@ -14,6 +15,26 @@
   - 失败路径都会进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离
   - worker 侧副作用、重复投递去重和 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 `dry_run` 预演都已有真实 smoke
   - 验收时不允许继续用“手工 seed OpenSearch”“只断言 outbox 行存在”冒充 worker 可靠性验证
+- 本文件中的请求与验收语义统一以 `Authorization: Bearer <access_token>`、正式权限点、必要 `X-Step-Up-Token`、审计留痕与正式错误码为准，禁止继续使用 `x-role` 占位语义。
+
+## SEARCHREC-017 验收矩阵
+
+### 搜索投影、投影延迟与最终校验
+
+- `投影延迟 / sync state / exception surface`：`search_api_and_ops_db_smoke` 与 `search_indexer_db_smoke` 必须共同证明 `GET /api/v1/ops/search/sync`、`search.index_sync_task`、`search.index_sync_exception`、`ops.dead_letter_event`、Kafka `dtp.search.sync` / `dtp.dead-letter` 能把“已排队 / 已同步 / 失败重试 / 死信隔离 / open exception 关闭”完整串起来。
+- `alias switch + 回 PG 最终校验`：`search_visibility_and_alias_consistency_db_smoke` 必须先证明 `POST /api/v1/ops/search/aliases/switch` 后读链真实切到新 alias，再证明 PostgreSQL 权威状态改为不可见后，即使 OpenSearch 仍有旧文档，最终返回也会被 PostgreSQL 过滤。
+- `local/demo PostgreSQL fallback`：`search_catalog_pg_fallback_db_smoke` 必须证明 OpenSearch 不可用时仍能经搜索投影表返回 `backend=postgresql`，且 Redis 搜索短缓存仍工作。
+
+### 推荐读取、曝光幂等与零结果兜底
+
+- `推荐读取 + PostgreSQL 最终校验`：`recommendation_get_api_db_smoke` 与 `recommendation_filters_frozen_product_db_smoke` 必须共同证明推荐结果不能直接信任 OpenSearch 候选；商品冻结、下架或拒绝后，新的 `recommendation_result_item` 不得继续落库。
+- `推荐曝光 / 点击幂等 + 审计留痕`：`recommendation_api_full_runtime_db_smoke` 必须回查 `recommend.behavior_event`、canonical outbox、`audit.audit_event`、`audit.access_audit`、`ops.system_log`，并证明重复 exposure/click 以 `X-Idempotency-Key` 去重，而不是重复写行为事件。
+- `local 最小候选 + zero_result_fallback`：`recommendation_local_minimal_candidate_db_smoke` 必须证明 `APP_MODE=local` 下会退化到 PostgreSQL 最小候选策略，且 `placement_code=search_zero_result_fallback` 时能返回非空兜底结果并带上 `fallback:zero_result` 证据。
+
+### 统一鉴权、Step-Up、错误码与 consumer 可靠性
+
+- `统一 Bearer / 正式权限点 / 必要 step-up / 审计 / 搜索域错误码`：`search_api_and_ops_db_smoke` 与 `recommendation_api_full_runtime_db_smoke` 必须覆盖 `Authorization` 缺失、权限不足、`X-Idempotency-Key` 缺失、必要 `X-Step-Up-Token` 缺失或绑定错误、`audit.audit_event + audit.access_audit + ops.system_log` 留痕，以及搜索域 `SEARCH_*` 错误码。
+- `consumer 幂等 / 双层 DLQ / 可重处理`：`search_indexer_db_smoke`、`recommendation_aggregator_db_smoke` 与 `audit_dead_letter_reprocess_db_smoke` 必须共同证明 `ops.consumer_idempotency_record`、`ops.dead_letter_event`、Kafka `dtp.dead-letter`、worker 副作用隔离和 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 `dry_run` 预演链路都真实成立。
 
 ## Search V1
 
@@ -44,11 +65,11 @@
 - `search-indexer` 成功补偿同一实体后，必须关闭该实体的 open exception，避免 ops 视图持续显示脏异常。
 - `search-indexer` 的测试不得只用手工 seed OpenSearch 证明通过，必须验证 worker 侧真实副作用、失败隔离与 reprocess 路径。
 - 搜索回归命令：
-  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
-  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
   - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_visibility_and_alias_consistency_db_smoke -- --nocapture`
   - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
-  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
 
 ## Recommendation V1
 
@@ -83,9 +104,10 @@
 - `recommendation-aggregator` 处理失败时，必须进入 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter` 双层隔离，且不得在失败后直接提交 offset。
 - 推荐行为流测试不得只断言 `ops.outbox_event` 有行存在，还必须验证 consumer 侧派生状态、副作用、DLQ 与 `POST /api/v1/ops/dead-letters/{id}/reprocess` 路径。
 - 推荐回归命令：
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_get_api_db_smoke -- --nocapture`
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_home_featured_standard_scenarios_db_smoke -- --nocapture`
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
   - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_filters_frozen_product_db_smoke -- --nocapture`
   - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
-  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
