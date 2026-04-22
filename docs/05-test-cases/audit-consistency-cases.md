@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -9,6 +9,8 @@
 - 回放任务联查：`GET /api/v1/audit/replay-jobs/{id}`
 - legal hold 创建 / 释放：`POST /api/v1/audit/legal-holds`、`POST /api/v1/audit/legal-holds/{id}/release`
 - anchor batch 查看 / 重试：`GET /api/v1/audit/anchor-batches`、`POST /api/v1/audit/anchor-batches/{id}/retry`
+- canonical outbox 查询：`GET /api/v1/ops/outbox`
+- dead letter 查询：`GET /api/v1/ops/dead-letters`
 
 后续 Fabric callback、dead letter reprocess、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
@@ -40,6 +42,13 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-010` | legal hold 释放 | `POST /api/v1/audit/legal-holds/{id}/release` | `status=released`、`approved_by / released_at` 落库，并产生 `audit.audit_event(action_name='audit.legal_hold.release')`；当前 hold 状态回到 `audit.legal_hold` 权威视图中的 `none` | API 响应、`audit.legal_hold`、`audit.audit_event`、`ops.system_log` |
 | `AUD-CASE-011` | anchor batch 查看 | `GET /api/v1/audit/anchor-batches?anchor_status=failed&batch_scope=audit_event&chain_id=fabric-local` | 返回 `audit.anchor_batch + chain.chain_anchor` 联查视图，可看到 `anchor_batch_id / batch_scope / record_count / batch_root / chain_id / tx_hash / anchor_status / anchored_at` | API 响应、`audit.access_audit(access_mode='masked')`、`ops.system_log` |
 | `AUD-CASE-012` | failed batch retry | `POST /api/v1/audit/anchor-batches/{id}/retry` + verified `x-step-up-challenge-id` | 仅允许 `status=failed`；成功后 `audit.anchor_batch.status=retry_requested`，并写出 canonical outbox `audit.anchor_requested -> dtp.audit.anchor` | API 响应、`audit.anchor_batch`、`ops.outbox_event(target_topic='dtp.audit.anchor')`、`audit.audit_event(action_name='audit.anchor.retry')`、`audit.access_audit(access_mode='retry')`、`ops.system_log` |
+| `AUD-CASE-013` | canonical outbox 查询 | `GET /api/v1/ops/outbox?target_topic=dtp.search.sync&event_type=search.product.changed` | 返回 `ops.outbox_event` 分页结果，并包含最新 `ops.outbox_publish_attempt`；查询动作写入 `audit.access_audit + ops.system_log` | API 响应、`ops.outbox_event`、`ops.outbox_publish_attempt`、`audit.access_audit(access_mode='masked')`、`ops.system_log` |
+| `AUD-CASE-014` | dead letter + SEARCHREC 幂等联查 | `GET /api/v1/ops/dead-letters?failure_stage=consumer_handler` | 返回 `ops.dead_letter_event` 分页结果，并挂出 `ops.consumer_idempotency_record`，可定位 `search-indexer` 或 `recommendation-aggregator` 的失败隔离记录 | API 响应、`ops.dead_letter_event`、`ops.consumer_idempotency_record`、`audit.access_audit(access_mode='masked')`、`ops.system_log` |
+
+补充说明：
+
+- `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
+- `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
 
 ## `AUD-005` 手工回放验证
 

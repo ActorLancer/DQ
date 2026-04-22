@@ -40,4 +40,9 @@ pub fn router() -> Router<AppState> {
             "/api/v1/audit/anchor-batches/{id}/retry",
             post(handlers::retry_audit_anchor_batch),
         )
+        .route("/api/v1/ops/outbox", get(handlers::get_ops_outbox))
+        .route(
+            "/api/v1/ops/dead-letters",
+            get(handlers::get_ops_dead_letters),
+        )
 }

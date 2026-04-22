@@ -2622,7 +2622,7 @@
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
   技术参考：../开发准备/技术选型正式版.md:L30（3. 平台核心技术底座） | ../原始PRD/链上链下技术架构与能力边界稿.md:L54（4. 分层架构） | ../领域模型/全量领域模型与对象关系说明.md:L1171（4.10 链上摘要与公链增强聚合） | 问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md:L1（AUD/Ops 接口与契约落地缺口） | 问题修复任务/A06-Audit-Kit-统一模型漂移.md
-- **AUD-008** [AGENT][P0][W1][no] 实现 `outbox_event`、`dead_letter_event`、`consumer_idempotency_record`、`external_receipt`、`reconcile_job` 表的仓储与查询接口。
+- **AUD-008** [AGENT][P0][W1][no] 实现 `ops.outbox_event`、`ops.dead_letter_event`、`ops.consumer_idempotency_record`、`ops.external_fact_receipt`、`ops.chain_projection_gap` 的仓储与查询接口，并明确 `consistency/reconcile` 在 `V1` 中是控制面动作，由 `AUD-012` 承接，不单列正式 `reconcile_job` 表。
   依赖：CORE-007; CORE-008; DB-008; ENV-022
   交付：apps/platform-core/src/modules/audit/**; services/fabric-adapter/**; workers/**; docs/04-runbooks/**
   完成定义：接口、DTO、权限校验、审计、错误码和最小测试已齐备；`ops.dead_letter_event` 与 `ops.consumer_idempotency_record` 已可支撑 SEARCHREC consumer 的失败隔离、幂等与联查。

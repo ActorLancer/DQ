@@ -14,11 +14,12 @@ use crate::modules::audit::domain::{
     AnchorBatchPageView, AnchorBatchQuery, AuditAnchorBatchRetryRequest, AuditAnchorBatchRetryView,
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
-    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OrderAuditQuery, OrderAuditView,
+    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OpsDeadLetterPageView,
+    OpsDeadLetterQuery, OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
 };
 use crate::modules::audit::dto::{
-    AnchorBatchView, EvidenceManifestView, EvidencePackageView, LegalHoldView, ReplayJobView,
-    ReplayResultView,
+    AnchorBatchView, DeadLetterEventView, EvidenceManifestView, EvidencePackageView, LegalHoldView,
+    OutboxEventView, ReplayJobView, ReplayResultView,
 };
 use crate::modules::audit::repo::{self, AccessAuditInsert, OrderAuditScope, SystemLogInsert};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
@@ -157,6 +158,186 @@ pub(in crate::modules::audit) async fn get_audit_traces(
         page: pagination.page,
         page_size: pagination.page_size,
         items: trace_page.items,
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_outbox(
+    State(state): State<AppState>,
+    Query(query): Query<OpsOutboxQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsOutboxPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(&headers, AuditPermission::OpsOutboxRead, "ops outbox read")?;
+
+    let normalized_query = OpsOutboxQuery {
+        outbox_status: normalize_optional_filter(
+            query.outbox_status.as_deref(),
+            "outbox_status",
+            &request_id,
+        )?,
+        event_type: normalize_optional_filter(
+            query.event_type.as_deref(),
+            "event_type",
+            &request_id,
+        )?,
+        target_topic: normalize_optional_filter(
+            query.target_topic.as_deref(),
+            "target_topic",
+            &request_id,
+        )?,
+        request_id: normalize_optional_filter(
+            query.request_id.as_deref(),
+            "request_id",
+            &request_id,
+        )?,
+        trace_id: normalize_optional_filter(query.trace_id.as_deref(), "trace_id", &request_id)?,
+        aggregate_type: normalize_optional_filter(
+            query.aggregate_type.as_deref(),
+            "aggregate_type",
+            &request_id,
+        )?,
+        idempotency_key: normalize_optional_filter(
+            query.idempotency_key.as_deref(),
+            "idempotency_key",
+            &request_id,
+        )?,
+        authority_scope: normalize_optional_filter(
+            query.authority_scope.as_deref(),
+            "authority_scope",
+            &request_id,
+        )?,
+        source_of_truth: normalize_optional_filter(
+            query.source_of_truth.as_deref(),
+            "source_of_truth",
+            &request_id,
+        )?,
+        proof_commit_policy: normalize_optional_filter(
+            query.proof_commit_policy.as_deref(),
+            "proof_commit_policy",
+            &request_id,
+        )?,
+        page: query.page,
+        page_size: query.page_size,
+    };
+
+    let client = state_client(&state)?;
+    let pagination = normalized_query.pagination();
+    let outbox_page = repo::search_outbox_events(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "ops_outbox_query",
+        None,
+        "GET /api/v1/ops/outbox",
+        json!({
+            "outbox_status": normalized_query.outbox_status,
+            "event_type": normalized_query.event_type,
+            "target_topic": normalized_query.target_topic,
+            "request_id": normalized_query.request_id,
+            "trace_id": normalized_query.trace_id,
+            "aggregate_type": normalized_query.aggregate_type,
+            "idempotency_key": normalized_query.idempotency_key,
+            "authority_scope": normalized_query.authority_scope,
+            "source_of_truth": normalized_query.source_of_truth,
+            "proof_commit_policy": normalized_query.proof_commit_policy,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": outbox_page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsOutboxPageView {
+        total: outbox_page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: outbox_page
+            .items
+            .iter()
+            .map(OutboxEventView::from)
+            .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_dead_letters(
+    State(state): State<AppState>,
+    Query(query): Query<OpsDeadLetterQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsDeadLetterPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsDeadLetterRead,
+        "ops dead letter read",
+    )?;
+
+    let normalized_query = OpsDeadLetterQuery {
+        reprocess_status: normalize_optional_filter(
+            query.reprocess_status.as_deref(),
+            "reprocess_status",
+            &request_id,
+        )?,
+        failure_stage: normalize_optional_filter(
+            query.failure_stage.as_deref(),
+            "failure_stage",
+            &request_id,
+        )?,
+        request_id: normalize_optional_filter(
+            query.request_id.as_deref(),
+            "request_id",
+            &request_id,
+        )?,
+        trace_id: normalize_optional_filter(query.trace_id.as_deref(), "trace_id", &request_id)?,
+        page: query.page,
+        page_size: query.page_size,
+    };
+
+    let client = state_client(&state)?;
+    let pagination = normalized_query.pagination();
+    let dead_letter_page = repo::search_dead_letters(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "dead_letter_query",
+        None,
+        "GET /api/v1/ops/dead-letters",
+        json!({
+            "reprocess_status": normalized_query.reprocess_status,
+            "failure_stage": normalized_query.failure_stage,
+            "request_id": normalized_query.request_id,
+            "trace_id": normalized_query.trace_id,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": dead_letter_page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsDeadLetterPageView {
+        total: dead_letter_page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: dead_letter_page
+            .items
+            .iter()
+            .map(DeadLetterEventView::from)
+            .collect(),
     }))
 }
 
@@ -1602,6 +1783,8 @@ struct ReplayReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AuditPermission {
     TraceRead,
+    OpsOutboxRead,
+    OpsDeadLetterRead,
     PackageExport,
     ReplayExecute,
     ReplayRead,
@@ -1629,6 +1812,21 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
                 | "data_custody_admin"
                 | "regulator_readonly"
                 | "regulator_observer"
+        ),
+        AuditPermission::OpsOutboxRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_audit_security"
+                | "consistency_operator"
+                | "node_ops_admin"
+        ),
+        AuditPermission::OpsDeadLetterRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_audit_security"
+                | "consistency_operator"
+                | "node_ops_admin"
+                | "audit_admin"
         ),
         AuditPermission::PackageExport => matches!(
             role,
@@ -3492,6 +3690,63 @@ async fn record_lookup_side_effects(
     Ok(())
 }
 
+async fn record_ops_lookup_side_effects(
+    client: &db::Client,
+    headers: &HeaderMap,
+    target_type: &str,
+    target_id: Option<String>,
+    endpoint: &str,
+    filters: serde_json::Value,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = header(headers, "x-request-id");
+    let trace_id = header(headers, "x-trace-id");
+    let filters_for_access = filters.clone();
+    let role = current_role(headers);
+    let access_audit_id = repo::record_access_audit(
+        client,
+        &AccessAuditInsert {
+            accessor_user_id: parse_uuid_header(headers, "x-user-id"),
+            accessor_role_key: Some(role.clone()),
+            access_mode: "masked".to_string(),
+            target_type: target_type.to_string(),
+            target_id,
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: parse_uuid_header(headers, "x-step-up-challenge-id"),
+            request_id: request_id.clone(),
+            trace_id: trace_id.clone(),
+            metadata: json!({
+                "endpoint": endpoint,
+                "filters": filters_for_access,
+                "step_up_token_present": header(headers, "x-step-up-token").is_some(),
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        client,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id,
+            trace_id,
+            message_text: format!("ops lookup executed: {endpoint}"),
+            structured_payload: json!({
+                "module": "ops",
+                "endpoint": endpoint,
+                "access_audit_id": access_audit_id,
+                "role": role,
+                "filters": filters,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    Ok(())
+}
+
 fn state_client(state: &AppState) -> Result<db::Client, (StatusCode, Json<ErrorResponse>)> {
     state.db.client().map_err(map_db_error)
 }
@@ -3618,6 +3873,14 @@ fn normalize_anchor_retry_reason(
 }
 
 fn normalize_optional_anchor_filter(
+    raw: Option<&str>,
+    field_name: &str,
+    request_id: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    normalize_optional_filter(raw, field_name, request_id)
+}
+
+fn normalize_optional_filter(
     raw: Option<&str>,
     field_name: &str,
     request_id: &str,

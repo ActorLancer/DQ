@@ -430,6 +430,241 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/outbox:
+    get:
+      summary: query canonical outbox events
+      tags: [AuditOps]
+      description: |
+        Returns canonical outbox rows plus the latest publish attempt. This is the
+        runtime query surface for `ops.outbox_event` and is the formal V1 source for
+        auditing route authority, publish status, and SEARCHREC / AUD downstream
+        consumer investigations.
+      parameters:
+        - in: query
+          name: outbox_status
+          schema:
+            type: string
+        - in: query
+          name: event_type
+          schema:
+            type: string
+        - in: query
+          name: target_topic
+          schema:
+            type: string
+        - in: query
+          name: request_id
+          schema:
+            type: string
+        - in: query
+          name: trace_id
+          schema:
+            type: string
+        - in: query
+          name: aggregate_type
+          schema:
+            type: string
+        - in: query
+          name: idempotency_key
+          schema:
+            type: string
+        - in: query
+          name: authority_scope
+          schema:
+            type: string
+        - in: query
+          name: source_of_truth
+          schema:
+            type: string
+        - in: query
+          name: proof_commit_policy
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+      responses:
+        "200":
+          description: outbox page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsOutboxPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - outbox_event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                      aggregate_type: search.document_projection
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      event_type: search.product.changed
+                      payload:
+                        event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                        event_type: search.product.changed
+                        event_version: v1
+                        aggregate_type: search.document_projection
+                        aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                        request_id: req-aud008-outbox
+                        trace_id: trace-aud008-search
+                      status: failed
+                      retry_count: 1
+                      max_retries: 3
+                      request_id: req-aud008-outbox
+                      trace_id: trace-aud008-search
+                      authority_scope: canonical_outbox
+                      source_of_truth: postgresql
+                      proof_commit_policy: async_allowed
+                      target_bus: kafka
+                      target_topic: dtp.search.sync
+                      payload_hash: sha256:outbox-payload
+                      last_error_code: KAFKA_PUBLISH_FAILED
+                      last_error_message: broker unavailable during publish attempt
+                      latest_publish_attempt:
+                        outbox_publish_attempt_id: 0af158cc-6f1e-4a78-8998-478337a0b1b3
+                        worker_id: outbox-publisher-local
+                        target_bus: kafka
+                        target_topic: dtp.search.sync
+                        attempt_no: 1
+                        result_code: failed
+                        error_code: KAFKA_PUBLISH_FAILED
+                        error_message: broker unavailable during publish attempt
+                        attempted_at: "2026-04-22T10:00:00.000Z"
+                        completed_at: "2026-04-22T10:00:01.000Z"
+                        metadata:
+                          dlq_candidate: true
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/dead-letters:
+    get:
+      summary: query dead letter events with consumer idempotency linkage
+      tags: [AuditOps]
+      description: |
+        Returns DB dead-letter rows from `ops.dead_letter_event` plus linked
+        `ops.consumer_idempotency_record` entries. This is the formal V1 read model
+        for SEARCHREC consumer failure isolation before `AUD-010` adds reprocess.
+      parameters:
+        - in: query
+          name: reprocess_status
+          schema:
+            type: string
+        - in: query
+          name: failure_stage
+          schema:
+            type: string
+        - in: query
+          name: request_id
+          schema:
+            type: string
+        - in: query
+          name: trace_id
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+      responses:
+        "200":
+          description: dead letter page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsDeadLetterPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - dead_letter_event_id: 3e1cbc5f-1dc9-4135-a68a-a9442eaad874
+                      outbox_event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                      aggregate_type: search.document_projection
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      event_type: search.product.changed
+                      payload:
+                        event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                        event_type: search.product.changed
+                      failed_reason: opensearch bulk rejected payload
+                      request_id: req-aud008-dead-letter
+                      trace_id: trace-aud008-search
+                      authority_scope: canonical_outbox
+                      source_of_truth: postgresql
+                      target_bus: kafka
+                      target_topic: dtp.search.sync
+                      failure_stage: consumer_handler
+                      first_failed_at: "2026-04-22T10:05:00.000Z"
+                      last_failed_at: "2026-04-22T10:05:00.000Z"
+                      reprocess_status: pending
+                      created_at: "2026-04-22T10:05:01.000Z"
+                      consumer_idempotency_records:
+                        - consumer_idempotency_record_id: 710a62ec-e8f2-4055-a3e8-e7f2c0b16c3e
+                          consumer_name: search-indexer
+                          event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                          aggregate_type: search.document_projection
+                          aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                          trace_id: trace-aud008-search
+                          result_code: dead_lettered
+                          processed_at: "2026-04-22T10:05:00.000Z"
+                          metadata:
+                            worker: search-indexer
+                            dlq_topic: dtp.dead-letter
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     ApiResponseString:
@@ -486,6 +721,24 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/NotificationAuditSearchResponse"
+    ApiResponseOpsOutboxPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsOutboxPageResponse"
+    ApiResponseOpsDeadLetterPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsDeadLetterPageResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -946,6 +1199,249 @@ components:
           type: string
         last_failed_at:
           type: string
+          nullable: true
+    OpsOutboxPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutboxEventRecord"
+    OpsDeadLetterPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeadLetterEventRecord"
+    OutboxEventRecord:
+      type: object
+      required:
+        - aggregate_type
+        - event_type
+        - payload
+        - status
+        - retry_count
+        - max_retries
+        - authority_scope
+        - source_of_truth
+        - proof_commit_policy
+        - target_bus
+      properties:
+        outbox_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        aggregate_type:
+          type: string
+        aggregate_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        payload:
+          $ref: "#/components/schemas/JsonObject"
+        status:
+          type: string
+        retry_count:
+          type: integer
+        max_retries:
+          type: integer
+        available_at:
+          type: string
+          nullable: true
+        published_at:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        idempotency_key:
+          type: string
+          nullable: true
+        authority_scope:
+          type: string
+        source_of_truth:
+          type: string
+        proof_commit_policy:
+          type: string
+        target_bus:
+          type: string
+        target_topic:
+          type: string
+          nullable: true
+        partition_key:
+          type: string
+          nullable: true
+        ordering_key:
+          type: string
+          nullable: true
+        payload_hash:
+          type: string
+          nullable: true
+        last_error_code:
+          type: string
+          nullable: true
+        last_error_message:
+          type: string
+          nullable: true
+        latest_publish_attempt:
+          $ref: "#/components/schemas/OutboxPublishAttemptRecord"
+    OutboxPublishAttemptRecord:
+      type: object
+      required: [target_bus, attempt_no, result_code, metadata]
+      properties:
+        outbox_publish_attempt_id:
+          type: string
+          format: uuid
+          nullable: true
+        worker_id:
+          type: string
+          nullable: true
+        target_bus:
+          type: string
+        target_topic:
+          type: string
+          nullable: true
+        attempt_no:
+          type: integer
+        result_code:
+          type: string
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        attempted_at:
+          type: string
+          nullable: true
+        completed_at:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
+          nullable: true
+    DeadLetterEventRecord:
+      type: object
+      required:
+        - aggregate_type
+        - event_type
+        - payload
+        - authority_scope
+        - source_of_truth
+        - target_bus
+        - reprocess_status
+        - consumer_idempotency_records
+      properties:
+        dead_letter_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        outbox_event_id:
+          type: string
+          format: uuid
+          nullable: true
+        aggregate_type:
+          type: string
+        aggregate_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        payload:
+          $ref: "#/components/schemas/JsonObject"
+        failed_reason:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        authority_scope:
+          type: string
+        source_of_truth:
+          type: string
+        target_bus:
+          type: string
+        target_topic:
+          type: string
+          nullable: true
+        failure_stage:
+          type: string
+          nullable: true
+        first_failed_at:
+          type: string
+          nullable: true
+        last_failed_at:
+          type: string
+          nullable: true
+        reprocess_status:
+          type: string
+        reprocessed_at:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          nullable: true
+        consumer_idempotency_records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsumerIdempotencyRecord"
+    ConsumerIdempotencyRecord:
+      type: object
+      required: [consumer_name, event_id, result_code, metadata]
+      properties:
+        consumer_idempotency_record_id:
+          type: string
+          format: uuid
+          nullable: true
+        consumer_name:
+          type: string
+        event_id:
+          type: string
+          format: uuid
+        aggregate_type:
+          type: string
+          nullable: true
+        aggregate_id:
+          type: string
+          format: uuid
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        result_code:
+          type: string
+        processed_at:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
           nullable: true
     NotificationRecipient:
       type: object

@@ -4,6 +4,11 @@ use audit_kit::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::modules::audit::repo::{
+    ChainProjectionGapRecord, ConsumerIdempotencyRecord, DeadLetterEventRecord,
+    ExternalFactReceiptRecord, OutboxEventRecord, OutboxPublishAttemptRecord,
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuditTraceView {
     pub audit_id: Option<String>,
@@ -261,6 +266,291 @@ impl From<&AnchorBatch> for AnchorBatchView {
             created_at: batch.created_at.clone(),
             updated_at: batch.updated_at.clone(),
             metadata: batch.metadata.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OutboxPublishAttemptView {
+    pub outbox_publish_attempt_id: Option<String>,
+    pub worker_id: Option<String>,
+    pub target_bus: String,
+    pub target_topic: Option<String>,
+    pub attempt_no: i32,
+    pub result_code: String,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub attempted_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ConsumerIdempotencyRecordView {
+    pub consumer_idempotency_record_id: Option<String>,
+    pub consumer_name: String,
+    pub event_id: String,
+    pub aggregate_type: Option<String>,
+    pub aggregate_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub result_code: String,
+    pub processed_at: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OutboxEventView {
+    pub outbox_event_id: Option<String>,
+    pub aggregate_type: String,
+    pub aggregate_id: Option<String>,
+    pub event_type: String,
+    pub payload: serde_json::Value,
+    pub status: String,
+    pub retry_count: i32,
+    pub max_retries: i32,
+    pub available_at: Option<String>,
+    pub published_at: Option<String>,
+    pub created_at: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub idempotency_key: Option<String>,
+    pub authority_scope: String,
+    pub source_of_truth: String,
+    pub proof_commit_policy: String,
+    pub target_bus: String,
+    pub target_topic: Option<String>,
+    pub partition_key: Option<String>,
+    pub ordering_key: Option<String>,
+    pub payload_hash: Option<String>,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub latest_publish_attempt: Option<OutboxPublishAttemptView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeadLetterEventView {
+    pub dead_letter_event_id: Option<String>,
+    pub outbox_event_id: Option<String>,
+    pub aggregate_type: String,
+    pub aggregate_id: Option<String>,
+    pub event_type: String,
+    pub payload: serde_json::Value,
+    pub failed_reason: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub authority_scope: String,
+    pub source_of_truth: String,
+    pub target_bus: String,
+    pub target_topic: Option<String>,
+    pub failure_stage: Option<String>,
+    pub first_failed_at: Option<String>,
+    pub last_failed_at: Option<String>,
+    pub reprocess_status: String,
+    pub reprocessed_at: Option<String>,
+    pub created_at: Option<String>,
+    pub consumer_idempotency_records: Vec<ConsumerIdempotencyRecordView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExternalFactReceiptView {
+    pub external_fact_receipt_id: Option<String>,
+    pub order_id: Option<String>,
+    pub ref_domain: Option<String>,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub fact_type: String,
+    pub provider_type: String,
+    pub provider_key: Option<String>,
+    pub provider_reference: Option<String>,
+    pub receipt_status: String,
+    pub receipt_payload: serde_json::Value,
+    pub receipt_hash: Option<String>,
+    pub occurred_at: Option<String>,
+    pub received_at: Option<String>,
+    pub confirmed_at: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChainProjectionGapView {
+    pub chain_projection_gap_id: Option<String>,
+    pub aggregate_type: String,
+    pub aggregate_id: Option<String>,
+    pub order_id: Option<String>,
+    pub chain_id: String,
+    pub source_event_type: Option<String>,
+    pub expected_tx_id: Option<String>,
+    pub projected_tx_hash: Option<String>,
+    pub gap_type: String,
+    pub gap_status: String,
+    pub first_detected_at: Option<String>,
+    pub last_detected_at: Option<String>,
+    pub resolved_at: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub outbox_event_id: Option<String>,
+    pub anchor_id: Option<String>,
+    pub resolution_summary: serde_json::Value,
+    pub metadata: serde_json::Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+impl From<&OutboxPublishAttemptRecord> for OutboxPublishAttemptView {
+    fn from(attempt: &OutboxPublishAttemptRecord) -> Self {
+        Self {
+            outbox_publish_attempt_id: attempt.outbox_publish_attempt_id.clone(),
+            worker_id: attempt.worker_id.clone(),
+            target_bus: attempt.target_bus.clone(),
+            target_topic: attempt.target_topic.clone(),
+            attempt_no: attempt.attempt_no,
+            result_code: attempt.result_code.clone(),
+            error_code: attempt.error_code.clone(),
+            error_message: attempt.error_message.clone(),
+            attempted_at: attempt.attempted_at.clone(),
+            completed_at: attempt.completed_at.clone(),
+            metadata: attempt.metadata.clone(),
+        }
+    }
+}
+
+impl From<&ConsumerIdempotencyRecord> for ConsumerIdempotencyRecordView {
+    fn from(record: &ConsumerIdempotencyRecord) -> Self {
+        Self {
+            consumer_idempotency_record_id: record.consumer_idempotency_record_id.clone(),
+            consumer_name: record.consumer_name.clone(),
+            event_id: record.event_id.clone(),
+            aggregate_type: record.aggregate_type.clone(),
+            aggregate_id: record.aggregate_id.clone(),
+            trace_id: record.trace_id.clone(),
+            result_code: record.result_code.clone(),
+            processed_at: record.processed_at.clone(),
+            metadata: record.metadata.clone(),
+        }
+    }
+}
+
+impl From<&OutboxEventRecord> for OutboxEventView {
+    fn from(record: &OutboxEventRecord) -> Self {
+        Self {
+            outbox_event_id: record.outbox_event_id.clone(),
+            aggregate_type: record.aggregate_type.clone(),
+            aggregate_id: record.aggregate_id.clone(),
+            event_type: record.event_type.clone(),
+            payload: record.payload.clone(),
+            status: record.status.clone(),
+            retry_count: record.retry_count,
+            max_retries: record.max_retries,
+            available_at: record.available_at.clone(),
+            published_at: record.published_at.clone(),
+            created_at: record.created_at.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            idempotency_key: record.idempotency_key.clone(),
+            authority_scope: record.authority_scope.clone(),
+            source_of_truth: record.source_of_truth.clone(),
+            proof_commit_policy: record.proof_commit_policy.clone(),
+            target_bus: record.target_bus.clone(),
+            target_topic: record.target_topic.clone(),
+            partition_key: record.partition_key.clone(),
+            ordering_key: record.ordering_key.clone(),
+            payload_hash: record.payload_hash.clone(),
+            last_error_code: record.last_error_code.clone(),
+            last_error_message: record.last_error_message.clone(),
+            latest_publish_attempt: record
+                .latest_publish_attempt
+                .as_ref()
+                .map(OutboxPublishAttemptView::from),
+        }
+    }
+}
+
+impl From<&DeadLetterEventRecord> for DeadLetterEventView {
+    fn from(record: &DeadLetterEventRecord) -> Self {
+        Self {
+            dead_letter_event_id: record.dead_letter_event_id.clone(),
+            outbox_event_id: record.outbox_event_id.clone(),
+            aggregate_type: record.aggregate_type.clone(),
+            aggregate_id: record.aggregate_id.clone(),
+            event_type: record.event_type.clone(),
+            payload: record.payload.clone(),
+            failed_reason: record.failed_reason.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            authority_scope: record.authority_scope.clone(),
+            source_of_truth: record.source_of_truth.clone(),
+            target_bus: record.target_bus.clone(),
+            target_topic: record.target_topic.clone(),
+            failure_stage: record.failure_stage.clone(),
+            first_failed_at: record.first_failed_at.clone(),
+            last_failed_at: record.last_failed_at.clone(),
+            reprocess_status: record.reprocess_status.clone(),
+            reprocessed_at: record.reprocessed_at.clone(),
+            created_at: record.created_at.clone(),
+            consumer_idempotency_records: record
+                .consumer_idempotency_records
+                .iter()
+                .map(ConsumerIdempotencyRecordView::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&ExternalFactReceiptRecord> for ExternalFactReceiptView {
+    fn from(record: &ExternalFactReceiptRecord) -> Self {
+        Self {
+            external_fact_receipt_id: record.external_fact_receipt_id.clone(),
+            order_id: record.order_id.clone(),
+            ref_domain: record.ref_domain.clone(),
+            ref_type: record.ref_type.clone(),
+            ref_id: record.ref_id.clone(),
+            fact_type: record.fact_type.clone(),
+            provider_type: record.provider_type.clone(),
+            provider_key: record.provider_key.clone(),
+            provider_reference: record.provider_reference.clone(),
+            receipt_status: record.receipt_status.clone(),
+            receipt_payload: record.receipt_payload.clone(),
+            receipt_hash: record.receipt_hash.clone(),
+            occurred_at: record.occurred_at.clone(),
+            received_at: record.received_at.clone(),
+            confirmed_at: record.confirmed_at.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            metadata: record.metadata.clone(),
+            created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&ChainProjectionGapRecord> for ChainProjectionGapView {
+    fn from(record: &ChainProjectionGapRecord) -> Self {
+        Self {
+            chain_projection_gap_id: record.chain_projection_gap_id.clone(),
+            aggregate_type: record.aggregate_type.clone(),
+            aggregate_id: record.aggregate_id.clone(),
+            order_id: record.order_id.clone(),
+            chain_id: record.chain_id.clone(),
+            source_event_type: record.source_event_type.clone(),
+            expected_tx_id: record.expected_tx_id.clone(),
+            projected_tx_hash: record.projected_tx_hash.clone(),
+            gap_type: record.gap_type.clone(),
+            gap_status: record.gap_status.clone(),
+            first_detected_at: record.first_detected_at.clone(),
+            last_detected_at: record.last_detected_at.clone(),
+            resolved_at: record.resolved_at.clone(),
+            request_id: record.request_id.clone(),
+            trace_id: record.trace_id.clone(),
+            outbox_event_id: record.outbox_event_id.clone(),
+            anchor_id: record.anchor_id.clone(),
+            resolution_summary: record.resolution_summary.clone(),
+            metadata: record.metadata.clone(),
+            created_at: record.created_at.clone(),
+            updated_at: record.updated_at.clone(),
         }
     }
 }

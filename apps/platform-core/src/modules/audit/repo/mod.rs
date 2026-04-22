@@ -5,7 +5,10 @@ use audit_kit::{
 use db::{Error, GenericClient, Row};
 use serde_json::{Map, Value};
 
-use crate::modules::audit::domain::{AnchorBatchQuery, AuditTraceQuery};
+use crate::modules::audit::domain::{
+    AnchorBatchQuery, AuditTraceQuery, ChainProjectionGapQuery, ConsumerIdempotencyQuery,
+    ExternalFactReceiptQuery, OpsDeadLetterQuery, OpsOutboxQuery,
+};
 use crate::modules::audit::dto::AuditTraceView;
 
 pub const INSERT_AUDIT_EVENT_SQL: &str = r#"
@@ -593,6 +596,166 @@ pub struct ReplayJobDetail {
 pub struct AnchorBatchPage {
     pub total: i64,
     pub items: Vec<AnchorBatch>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutboxPublishAttemptRecord {
+    pub outbox_publish_attempt_id: Option<String>,
+    pub worker_id: Option<String>,
+    pub target_bus: String,
+    pub target_topic: Option<String>,
+    pub attempt_no: i32,
+    pub result_code: String,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub attempted_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutboxEventRecord {
+    pub outbox_event_id: Option<String>,
+    pub aggregate_type: String,
+    pub aggregate_id: Option<String>,
+    pub event_type: String,
+    pub payload: Value,
+    pub status: String,
+    pub retry_count: i32,
+    pub max_retries: i32,
+    pub available_at: Option<String>,
+    pub published_at: Option<String>,
+    pub created_at: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub idempotency_key: Option<String>,
+    pub authority_scope: String,
+    pub source_of_truth: String,
+    pub proof_commit_policy: String,
+    pub target_bus: String,
+    pub target_topic: Option<String>,
+    pub partition_key: Option<String>,
+    pub ordering_key: Option<String>,
+    pub payload_hash: Option<String>,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub latest_publish_attempt: Option<OutboxPublishAttemptRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutboxEventPage {
+    pub total: i64,
+    pub items: Vec<OutboxEventRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConsumerIdempotencyRecord {
+    pub consumer_idempotency_record_id: Option<String>,
+    pub consumer_name: String,
+    pub event_id: String,
+    pub aggregate_type: Option<String>,
+    pub aggregate_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub result_code: String,
+    pub processed_at: Option<String>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConsumerIdempotencyPage {
+    pub total: i64,
+    pub items: Vec<ConsumerIdempotencyRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeadLetterEventRecord {
+    pub dead_letter_event_id: Option<String>,
+    pub outbox_event_id: Option<String>,
+    pub aggregate_type: String,
+    pub aggregate_id: Option<String>,
+    pub event_type: String,
+    pub payload: Value,
+    pub failed_reason: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub authority_scope: String,
+    pub source_of_truth: String,
+    pub target_bus: String,
+    pub target_topic: Option<String>,
+    pub failure_stage: Option<String>,
+    pub first_failed_at: Option<String>,
+    pub last_failed_at: Option<String>,
+    pub reprocess_status: String,
+    pub reprocessed_at: Option<String>,
+    pub created_at: Option<String>,
+    pub consumer_idempotency_records: Vec<ConsumerIdempotencyRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeadLetterEventPage {
+    pub total: i64,
+    pub items: Vec<DeadLetterEventRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternalFactReceiptRecord {
+    pub external_fact_receipt_id: Option<String>,
+    pub order_id: Option<String>,
+    pub ref_domain: Option<String>,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub fact_type: String,
+    pub provider_type: String,
+    pub provider_key: Option<String>,
+    pub provider_reference: Option<String>,
+    pub receipt_status: String,
+    pub receipt_payload: Value,
+    pub receipt_hash: Option<String>,
+    pub occurred_at: Option<String>,
+    pub received_at: Option<String>,
+    pub confirmed_at: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub metadata: Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternalFactReceiptPage {
+    pub total: i64,
+    pub items: Vec<ExternalFactReceiptRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChainProjectionGapRecord {
+    pub chain_projection_gap_id: Option<String>,
+    pub aggregate_type: String,
+    pub aggregate_id: Option<String>,
+    pub order_id: Option<String>,
+    pub chain_id: String,
+    pub source_event_type: Option<String>,
+    pub expected_tx_id: Option<String>,
+    pub projected_tx_hash: Option<String>,
+    pub gap_type: String,
+    pub gap_status: String,
+    pub first_detected_at: Option<String>,
+    pub last_detected_at: Option<String>,
+    pub resolved_at: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub outbox_event_id: Option<String>,
+    pub anchor_id: Option<String>,
+    pub resolution_summary: Value,
+    pub metadata: Value,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChainProjectionGapPage {
+    pub total: i64,
+    pub items: Vec<ChainProjectionGapRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1198,6 +1361,574 @@ pub async fn search_audit_traces(
     })
 }
 
+pub async fn search_outbox_events(
+    client: &(impl GenericClient + Sync),
+    query: &OpsOutboxQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<OutboxEventPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.outbox_event oe
+             WHERE ($1::text IS NULL OR oe.status = $1)
+               AND ($2::text IS NULL OR oe.event_type = $2)
+               AND ($3::text IS NULL OR oe.target_topic = $3)
+               AND ($4::text IS NULL OR oe.request_id = $4)
+               AND ($5::text IS NULL OR oe.trace_id = $5)
+               AND ($6::text IS NULL OR oe.aggregate_type = $6)
+               AND ($7::text IS NULL OR oe.idempotency_key = $7)
+               AND ($8::text IS NULL OR oe.authority_scope = $8)
+               AND ($9::text IS NULL OR oe.source_of_truth = $9)
+               AND ($10::text IS NULL OR oe.proof_commit_policy = $10)",
+            &[
+                &query.outbox_status,
+                &query.event_type,
+                &query.target_topic,
+                &query.request_id,
+                &query.trace_id,
+                &query.aggregate_type,
+                &query.idempotency_key,
+                &query.authority_scope,
+                &query.source_of_truth,
+                &query.proof_commit_policy,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               oe.outbox_event_id::text,
+               oe.aggregate_type,
+               oe.aggregate_id::text,
+               oe.event_type,
+               oe.payload,
+               oe.status,
+               oe.retry_count,
+               oe.max_retries,
+               to_char(oe.available_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(oe.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(oe.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               oe.request_id,
+               oe.trace_id,
+               oe.idempotency_key,
+               oe.authority_scope,
+               oe.source_of_truth,
+               oe.proof_commit_policy,
+               oe.target_bus,
+               oe.target_topic,
+               oe.partition_key,
+               oe.ordering_key,
+               oe.payload_hash,
+               oe.last_error_code,
+               oe.last_error_message,
+               opa.outbox_publish_attempt_id::text,
+               opa.worker_id,
+               opa.target_bus,
+               opa.target_topic,
+               opa.attempt_no,
+               opa.result_code,
+               opa.error_code,
+               opa.error_message,
+               to_char(opa.attempted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(opa.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               opa.metadata
+             FROM ops.outbox_event oe
+             LEFT JOIN LATERAL (
+               SELECT
+                 outbox_publish_attempt_id,
+                 worker_id,
+                 target_bus,
+                 target_topic,
+                 attempt_no,
+                 result_code,
+                 error_code,
+                 error_message,
+                 attempted_at,
+                 completed_at,
+                 metadata
+               FROM ops.outbox_publish_attempt
+               WHERE outbox_event_id = oe.outbox_event_id
+               ORDER BY attempt_no DESC, attempted_at DESC, outbox_publish_attempt_id DESC
+               LIMIT 1
+             ) opa ON true
+             WHERE ($1::text IS NULL OR oe.status = $1)
+               AND ($2::text IS NULL OR oe.event_type = $2)
+               AND ($3::text IS NULL OR oe.target_topic = $3)
+               AND ($4::text IS NULL OR oe.request_id = $4)
+               AND ($5::text IS NULL OR oe.trace_id = $5)
+               AND ($6::text IS NULL OR oe.aggregate_type = $6)
+               AND ($7::text IS NULL OR oe.idempotency_key = $7)
+               AND ($8::text IS NULL OR oe.authority_scope = $8)
+               AND ($9::text IS NULL OR oe.source_of_truth = $9)
+               AND ($10::text IS NULL OR oe.proof_commit_policy = $10)
+             ORDER BY oe.created_at DESC, oe.outbox_event_id DESC
+             LIMIT $11
+             OFFSET $12",
+            &[
+                &query.outbox_status,
+                &query.event_type,
+                &query.target_topic,
+                &query.request_id,
+                &query.trace_id,
+                &query.aggregate_type,
+                &query.idempotency_key,
+                &query.authority_scope,
+                &query.source_of_truth,
+                &query.proof_commit_policy,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(OutboxEventPage {
+        total,
+        items: rows.iter().map(parse_outbox_event_row).collect(),
+    })
+}
+
+pub async fn search_dead_letters(
+    client: &(impl GenericClient + Sync),
+    query: &OpsDeadLetterQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<DeadLetterEventPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.dead_letter_event dl
+             WHERE ($1::text IS NULL OR dl.reprocess_status = $1)
+               AND ($2::text IS NULL OR dl.failure_stage = $2)
+               AND ($3::text IS NULL OR dl.request_id = $3)
+               AND ($4::text IS NULL OR dl.trace_id = $4)",
+            &[
+                &query.reprocess_status,
+                &query.failure_stage,
+                &query.request_id,
+                &query.trace_id,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               dead_letter_event_id::text,
+               outbox_event_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               event_type,
+               payload,
+               failed_reason,
+               request_id,
+               trace_id,
+               authority_scope,
+               source_of_truth,
+               target_bus,
+               target_topic,
+               failure_stage,
+               to_char(first_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               reprocess_status,
+               to_char(reprocessed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.dead_letter_event dl
+             WHERE ($1::text IS NULL OR dl.reprocess_status = $1)
+               AND ($2::text IS NULL OR dl.failure_stage = $2)
+               AND ($3::text IS NULL OR dl.request_id = $3)
+               AND ($4::text IS NULL OR dl.trace_id = $4)
+             ORDER BY dl.created_at DESC, dl.dead_letter_event_id DESC
+             LIMIT $5
+             OFFSET $6",
+            &[
+                &query.reprocess_status,
+                &query.failure_stage,
+                &query.request_id,
+                &query.trace_id,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    let event_ids: Vec<String> = rows
+        .iter()
+        .filter_map(|row| row.get::<_, Option<String>>(1))
+        .collect();
+    let idempotency_map = load_consumer_idempotency_for_event_ids(client, &event_ids).await?;
+
+    Ok(DeadLetterEventPage {
+        total,
+        items: rows
+            .iter()
+            .map(|row| {
+                let outbox_event_id = row.get::<_, Option<String>>(1);
+                let records = outbox_event_id
+                    .as_ref()
+                    .and_then(|event_id| idempotency_map.get(event_id))
+                    .cloned()
+                    .unwrap_or_default();
+                parse_dead_letter_row(row, records)
+            })
+            .collect(),
+    })
+}
+
+pub async fn search_consumer_idempotency_records(
+    client: &(impl GenericClient + Sync),
+    query: &ConsumerIdempotencyQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<ConsumerIdempotencyPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.consumer_idempotency_record cir
+             WHERE ($1::text IS NULL OR cir.consumer_name = $1)
+               AND ($2::text IS NULL OR cir.event_id = $2::text::uuid)
+               AND ($3::text IS NULL OR cir.aggregate_type = $3)
+               AND ($4::text IS NULL OR cir.aggregate_id = $4::text::uuid)
+               AND ($5::text IS NULL OR cir.trace_id = $5)",
+            &[
+                &query.consumer_name,
+                &query.event_id,
+                &query.aggregate_type,
+                &query.aggregate_id,
+                &query.trace_id,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               consumer_idempotency_record_id::text,
+               consumer_name,
+               event_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               trace_id,
+               result_code,
+               to_char(processed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               metadata
+             FROM ops.consumer_idempotency_record cir
+             WHERE ($1::text IS NULL OR cir.consumer_name = $1)
+               AND ($2::text IS NULL OR cir.event_id = $2::text::uuid)
+               AND ($3::text IS NULL OR cir.aggregate_type = $3)
+               AND ($4::text IS NULL OR cir.aggregate_id = $4::text::uuid)
+               AND ($5::text IS NULL OR cir.trace_id = $5)
+             ORDER BY cir.processed_at DESC, cir.consumer_idempotency_record_id DESC
+             LIMIT $6
+             OFFSET $7",
+            &[
+                &query.consumer_name,
+                &query.event_id,
+                &query.aggregate_type,
+                &query.aggregate_id,
+                &query.trace_id,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(ConsumerIdempotencyPage {
+        total,
+        items: rows.iter().map(parse_consumer_idempotency_row).collect(),
+    })
+}
+
+pub async fn search_external_fact_receipts(
+    client: &(impl GenericClient + Sync),
+    query: &ExternalFactReceiptQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<ExternalFactReceiptPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.external_fact_receipt efr
+             WHERE ($1::text IS NULL OR efr.order_id = $1::text::uuid)
+               AND ($2::text IS NULL OR efr.ref_type = $2)
+               AND ($3::text IS NULL OR efr.ref_id = $3::text::uuid)
+               AND ($4::text IS NULL OR efr.fact_type = $4)
+               AND ($5::text IS NULL OR efr.provider_type = $5)
+               AND ($6::text IS NULL OR efr.receipt_status = $6)
+               AND ($7::text IS NULL OR efr.request_id = $7)
+               AND ($8::text IS NULL OR efr.trace_id = $8)",
+            &[
+                &query.order_id,
+                &query.ref_type,
+                &query.ref_id,
+                &query.fact_type,
+                &query.provider_type,
+                &query.receipt_status,
+                &query.request_id,
+                &query.trace_id,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               external_fact_receipt_id::text,
+               order_id::text,
+               ref_domain,
+               ref_type,
+               ref_id::text,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(confirmed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.external_fact_receipt efr
+             WHERE ($1::text IS NULL OR efr.order_id = $1::text::uuid)
+               AND ($2::text IS NULL OR efr.ref_type = $2)
+               AND ($3::text IS NULL OR efr.ref_id = $3::text::uuid)
+               AND ($4::text IS NULL OR efr.fact_type = $4)
+               AND ($5::text IS NULL OR efr.provider_type = $5)
+               AND ($6::text IS NULL OR efr.receipt_status = $6)
+               AND ($7::text IS NULL OR efr.request_id = $7)
+               AND ($8::text IS NULL OR efr.trace_id = $8)
+             ORDER BY efr.received_at DESC, efr.external_fact_receipt_id DESC
+             LIMIT $9
+             OFFSET $10",
+            &[
+                &query.order_id,
+                &query.ref_type,
+                &query.ref_id,
+                &query.fact_type,
+                &query.provider_type,
+                &query.receipt_status,
+                &query.request_id,
+                &query.trace_id,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(ExternalFactReceiptPage {
+        total,
+        items: rows.iter().map(parse_external_fact_receipt_row).collect(),
+    })
+}
+
+pub async fn load_external_fact_receipt(
+    client: &(impl GenericClient + Sync),
+    external_fact_receipt_id: &str,
+) -> Result<Option<ExternalFactReceiptRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               external_fact_receipt_id::text,
+               order_id::text,
+               ref_domain,
+               ref_type,
+               ref_id::text,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(confirmed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.external_fact_receipt
+             WHERE external_fact_receipt_id = $1::text::uuid",
+            &[&external_fact_receipt_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_external_fact_receipt_row(&row)))
+}
+
+pub async fn search_chain_projection_gaps(
+    client: &(impl GenericClient + Sync),
+    query: &ChainProjectionGapQuery,
+    limit: i64,
+    offset: i64,
+) -> Result<ChainProjectionGapPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.chain_projection_gap cpg
+             WHERE ($1::text IS NULL OR cpg.aggregate_type = $1)
+               AND ($2::text IS NULL OR cpg.aggregate_id = $2::text::uuid)
+               AND ($3::text IS NULL OR cpg.order_id = $3::text::uuid)
+               AND ($4::text IS NULL OR cpg.chain_id = $4)
+               AND ($5::text IS NULL OR cpg.gap_type = $5)
+               AND ($6::text IS NULL OR cpg.gap_status = $6)
+               AND ($7::text IS NULL OR cpg.request_id = $7)
+               AND ($8::text IS NULL OR cpg.trace_id = $8)",
+            &[
+                &query.aggregate_type,
+                &query.aggregate_id,
+                &query.order_id,
+                &query.chain_id,
+                &query.gap_type,
+                &query.gap_status,
+                &query.request_id,
+                &query.trace_id,
+            ],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               chain_projection_gap_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               order_id::text,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               to_char(first_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               outbox_event_id::text,
+               anchor_id::text,
+               resolution_summary,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.chain_projection_gap cpg
+             WHERE ($1::text IS NULL OR cpg.aggregate_type = $1)
+               AND ($2::text IS NULL OR cpg.aggregate_id = $2::text::uuid)
+               AND ($3::text IS NULL OR cpg.order_id = $3::text::uuid)
+               AND ($4::text IS NULL OR cpg.chain_id = $4)
+               AND ($5::text IS NULL OR cpg.gap_type = $5)
+               AND ($6::text IS NULL OR cpg.gap_status = $6)
+               AND ($7::text IS NULL OR cpg.request_id = $7)
+               AND ($8::text IS NULL OR cpg.trace_id = $8)
+             ORDER BY cpg.created_at DESC, cpg.chain_projection_gap_id DESC
+             LIMIT $9
+             OFFSET $10",
+            &[
+                &query.aggregate_type,
+                &query.aggregate_id,
+                &query.order_id,
+                &query.chain_id,
+                &query.gap_type,
+                &query.gap_status,
+                &query.request_id,
+                &query.trace_id,
+                &limit,
+                &offset,
+            ],
+        )
+        .await?;
+
+    Ok(ChainProjectionGapPage {
+        total,
+        items: rows.iter().map(parse_chain_projection_gap_row).collect(),
+    })
+}
+
+pub async fn load_chain_projection_gap(
+    client: &(impl GenericClient + Sync),
+    chain_projection_gap_id: &str,
+) -> Result<Option<ChainProjectionGapRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               chain_projection_gap_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               order_id::text,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               to_char(first_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               outbox_event_id::text,
+               anchor_id::text,
+               resolution_summary,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.chain_projection_gap
+             WHERE chain_projection_gap_id = $1::text::uuid",
+            &[&chain_projection_gap_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_chain_projection_gap_row(&row)))
+}
+
+async fn load_consumer_idempotency_for_event_ids(
+    client: &(impl GenericClient + Sync),
+    event_ids: &[String],
+) -> Result<std::collections::HashMap<String, Vec<ConsumerIdempotencyRecord>>, Error> {
+    let mut records_by_event = std::collections::HashMap::new();
+    if event_ids.is_empty() {
+        return Ok(records_by_event);
+    }
+
+    let rows = client
+        .query(
+            "SELECT
+               consumer_idempotency_record_id::text,
+               consumer_name,
+               event_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               trace_id,
+               result_code,
+               to_char(processed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               metadata
+             FROM ops.consumer_idempotency_record
+             WHERE event_id::text = ANY($1::text[])
+             ORDER BY processed_at DESC, consumer_idempotency_record_id DESC",
+            &[&event_ids],
+        )
+        .await?;
+
+    for row in rows {
+        let record = parse_consumer_idempotency_row(&row);
+        records_by_event
+            .entry(record.event_id.clone())
+            .or_insert_with(Vec::new)
+            .push(record);
+    }
+    Ok(records_by_event)
+}
+
 pub async fn record_access_audit(
     client: &(impl GenericClient + Sync),
     access: &AccessAuditInsert,
@@ -1451,5 +2182,149 @@ fn parse_audit_trace_row(row: &Row) -> AuditTraceView {
         evidence_manifest_id: row.get(14),
         event_hash: row.get(15),
         occurred_at: row.get(16),
+    }
+}
+
+fn parse_outbox_publish_attempt_from_row(
+    row: &Row,
+    start: usize,
+) -> Option<OutboxPublishAttemptRecord> {
+    let outbox_publish_attempt_id = row.get::<_, Option<String>>(start);
+    outbox_publish_attempt_id.as_ref()?;
+    Some(OutboxPublishAttemptRecord {
+        outbox_publish_attempt_id,
+        worker_id: row.get(start + 1),
+        target_bus: row.get(start + 2),
+        target_topic: row.get(start + 3),
+        attempt_no: row.get(start + 4),
+        result_code: row.get(start + 5),
+        error_code: row.get(start + 6),
+        error_message: row.get(start + 7),
+        attempted_at: row.get(start + 8),
+        completed_at: row.get(start + 9),
+        metadata: row.get(start + 10),
+    })
+}
+
+fn parse_outbox_event_row(row: &Row) -> OutboxEventRecord {
+    OutboxEventRecord {
+        outbox_event_id: row.get(0),
+        aggregate_type: row.get(1),
+        aggregate_id: row.get(2),
+        event_type: row.get(3),
+        payload: row.get(4),
+        status: row.get(5),
+        retry_count: row.get(6),
+        max_retries: row.get(7),
+        available_at: row.get(8),
+        published_at: row.get(9),
+        created_at: row.get(10),
+        request_id: row.get(11),
+        trace_id: row.get(12),
+        idempotency_key: row.get(13),
+        authority_scope: row.get(14),
+        source_of_truth: row.get(15),
+        proof_commit_policy: row.get(16),
+        target_bus: row.get(17),
+        target_topic: row.get(18),
+        partition_key: row.get(19),
+        ordering_key: row.get(20),
+        payload_hash: row.get(21),
+        last_error_code: row.get(22),
+        last_error_message: row.get(23),
+        latest_publish_attempt: parse_outbox_publish_attempt_from_row(row, 24),
+    }
+}
+
+fn parse_consumer_idempotency_row(row: &Row) -> ConsumerIdempotencyRecord {
+    ConsumerIdempotencyRecord {
+        consumer_idempotency_record_id: row.get(0),
+        consumer_name: row.get(1),
+        event_id: row.get(2),
+        aggregate_type: row.get(3),
+        aggregate_id: row.get(4),
+        trace_id: row.get(5),
+        result_code: row.get(6),
+        processed_at: row.get(7),
+        metadata: row.get(8),
+    }
+}
+
+fn parse_dead_letter_row(
+    row: &Row,
+    consumer_idempotency_records: Vec<ConsumerIdempotencyRecord>,
+) -> DeadLetterEventRecord {
+    DeadLetterEventRecord {
+        dead_letter_event_id: row.get(0),
+        outbox_event_id: row.get(1),
+        aggregate_type: row.get(2),
+        aggregate_id: row.get(3),
+        event_type: row.get(4),
+        payload: row.get(5),
+        failed_reason: row.get(6),
+        request_id: row.get(7),
+        trace_id: row.get(8),
+        authority_scope: row.get(9),
+        source_of_truth: row.get(10),
+        target_bus: row.get(11),
+        target_topic: row.get(12),
+        failure_stage: row.get(13),
+        first_failed_at: row.get(14),
+        last_failed_at: row.get(15),
+        reprocess_status: row.get(16),
+        reprocessed_at: row.get(17),
+        created_at: row.get(18),
+        consumer_idempotency_records,
+    }
+}
+
+fn parse_external_fact_receipt_row(row: &Row) -> ExternalFactReceiptRecord {
+    ExternalFactReceiptRecord {
+        external_fact_receipt_id: row.get(0),
+        order_id: row.get(1),
+        ref_domain: row.get(2),
+        ref_type: row.get(3),
+        ref_id: row.get(4),
+        fact_type: row.get(5),
+        provider_type: row.get(6),
+        provider_key: row.get(7),
+        provider_reference: row.get(8),
+        receipt_status: row.get(9),
+        receipt_payload: row.get(10),
+        receipt_hash: row.get(11),
+        occurred_at: row.get(12),
+        received_at: row.get(13),
+        confirmed_at: row.get(14),
+        request_id: row.get(15),
+        trace_id: row.get(16),
+        metadata: row.get(17),
+        created_at: row.get(18),
+        updated_at: row.get(19),
+    }
+}
+
+fn parse_chain_projection_gap_row(row: &Row) -> ChainProjectionGapRecord {
+    ChainProjectionGapRecord {
+        chain_projection_gap_id: row.get(0),
+        aggregate_type: row.get(1),
+        aggregate_id: row.get(2),
+        order_id: row.get(3),
+        chain_id: row.get(4),
+        source_event_type: row.get(5),
+        expected_tx_id: row.get(6),
+        projected_tx_hash: row.get(7),
+        gap_type: row.get(8),
+        gap_status: row.get(9),
+        first_detected_at: row.get(10),
+        last_detected_at: row.get(11),
+        resolved_at: row.get(12),
+        request_id: row.get(13),
+        trace_id: row.get(14),
+        outbox_event_id: row.get(15),
+        anchor_id: row.get(16),
+        resolution_summary: row.get(17),
+        metadata: row.get(18),
+        created_at: row.get(19),
+        updated_at: row.get(20),
     }
 }

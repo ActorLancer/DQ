@@ -1,5 +1,9 @@
 use crate::modules::audit::api::router;
 use crate::modules::audit::application::{EvidenceWriteCommand, record_evidence_snapshot};
+use crate::modules::audit::domain::{
+    ChainProjectionGapQuery, ConsumerIdempotencyQuery, ExternalFactReceiptQuery,
+};
+use crate::modules::audit::repo;
 use crate::modules::order::repo::write_trade_audit_event;
 use crate::modules::storage::application::fetch_object_bytes;
 use crate::modules::storage::application::put_object_bytes;
@@ -244,6 +248,33 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn rejects_ops_outbox_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/outbox")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud008-outbox-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn ops_dead_letters_requires_request_id() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/dead-letters")
+            .header("x-role", "platform_audit_security")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -280,7 +311,10 @@ async fn audit_trace_api_db_smoke() {
     let legal_hold_release_request_id = format!("req-aud006-hold-release-{suffix}");
     let anchor_list_request_id = format!("req-aud007-list-{suffix}");
     let anchor_retry_request_id = format!("req-aud007-retry-{suffix}");
+    let ops_outbox_request_id = format!("req-aud008-outbox-{suffix}");
+    let ops_dead_letter_request_id = format!("req-aud008-dead-letters-{suffix}");
     let trace_id = format!("trace-aud003-{suffix}");
+    let ops_trace_id = format!("trace-aud008-{suffix}");
 
     write_trade_audit_event(
         &client,
@@ -1219,7 +1253,7 @@ async fn audit_trace_api_db_smoke() {
         .get(0);
     assert_eq!(legal_hold_release_log_count, 1);
 
-    let (anchor_batch_id, _chain_anchor_id) =
+    let (anchor_batch_id, chain_anchor_id) =
         seed_failed_anchor_batch(&client, &audit_user_id, &suffix)
             .await
             .expect("seed failed anchor batch");
@@ -1456,6 +1490,551 @@ async fn audit_trace_api_db_smoke() {
         .expect("count anchor logs")
         .get(0);
     assert_eq!(anchor_log_count, 2);
+
+    let outbox_event_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud008 outbox id")
+        .get(0);
+    let external_fact_receipt_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud008 external fact id")
+        .get(0);
+    let chain_projection_gap_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud008 projection gap id")
+        .get(0);
+
+    client
+        .execute(
+            "INSERT INTO ops.outbox_event (
+               outbox_event_id,
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               status,
+               retry_count,
+               max_retries,
+               available_at,
+               created_at,
+               event_schema_version,
+               request_id,
+               trace_id,
+               idempotency_key,
+               authority_scope,
+               source_of_truth,
+               proof_commit_policy,
+               target_bus,
+               target_topic,
+               partition_key,
+               ordering_key,
+               payload_hash,
+               last_error_code,
+               last_error_message
+             ) VALUES (
+               $1::text::uuid,
+               'search.index_sync_task',
+               $2::text::uuid,
+               'search.product.changed',
+               jsonb_build_object(
+                 'event_id', $1,
+                 'event_type', 'search.product.changed',
+                 'aggregate_type', 'search.index_sync_task',
+                 'aggregate_id', $2,
+                 'request_id', $3,
+                 'trace_id', $4,
+                 'payload', jsonb_build_object('seed', $5)
+               ),
+               'failed',
+               2,
+               16,
+               now() - interval '2 minutes',
+               now() - interval '5 minutes',
+               'v1',
+               $3,
+               $4,
+               $6,
+               'business',
+               'database',
+               'async_evidence',
+               'kafka',
+               'dtp.search.sync',
+               $2,
+               $2,
+               $7,
+               'KAFKA_TIMEOUT',
+               'publisher timeout while relaying search sync'
+             )",
+            &[
+                &outbox_event_id,
+                &seed.product_id,
+                &ops_outbox_request_id,
+                &ops_trace_id,
+                &suffix,
+                &format!("aud008-idempotency-{suffix}"),
+                &format!("aud008-payload-hash-{suffix}"),
+            ],
+        )
+        .await
+        .expect("insert aud008 outbox event");
+
+    client
+        .execute(
+            "INSERT INTO ops.outbox_publish_attempt (
+               outbox_event_id,
+               worker_id,
+               target_bus,
+               target_topic,
+               attempt_no,
+               result_code,
+               error_code,
+               error_message,
+               attempted_at,
+               completed_at,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'outbox-publisher-local',
+               'kafka',
+               'dtp.search.sync',
+               2,
+               'failed',
+               'KAFKA_TIMEOUT',
+               'broker timeout during publish',
+               now() - interval '90 seconds',
+               now() - interval '89 seconds',
+               jsonb_build_object('seed', $2, 'worker', 'outbox-publisher-local')
+             )",
+            &[&outbox_event_id, &suffix],
+        )
+        .await
+        .expect("insert aud008 outbox publish attempt");
+
+    client
+        .execute(
+            "INSERT INTO ops.dead_letter_event (
+               dead_letter_event_id,
+               outbox_event_id,
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               failed_reason,
+               created_at,
+               request_id,
+               trace_id,
+               authority_scope,
+               source_of_truth,
+               target_bus,
+               target_topic,
+               failure_stage,
+               first_failed_at,
+               last_failed_at,
+               reprocess_status
+             ) VALUES (
+               gen_random_uuid(),
+               $1::text::uuid,
+               'search.index_sync_task',
+               $2::text::uuid,
+               'search.product.changed',
+               jsonb_build_object('event_id', $1, 'seed', $3, 'target_topic', 'dtp.search.sync'),
+               'search projection consumer isolated after repeated failure',
+               now() - interval '80 seconds',
+               $4,
+               $5,
+               'business',
+               'database',
+               'kafka',
+               'dtp.search.sync',
+               'consumer_handler',
+               now() - interval '85 seconds',
+               now() - interval '75 seconds',
+               'not_reprocessed'
+             )",
+            &[
+                &outbox_event_id,
+                &seed.product_id,
+                &suffix,
+                &ops_dead_letter_request_id,
+                &ops_trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud008 dead letter");
+
+    client
+        .execute(
+            "INSERT INTO ops.consumer_idempotency_record (
+               consumer_name,
+               event_id,
+               aggregate_type,
+               aggregate_id,
+               trace_id,
+               result_code,
+               metadata
+             ) VALUES (
+               'search-indexer',
+               $1::text::uuid,
+               'search.index_sync_task',
+               $2::text::uuid,
+               $3,
+               'dead_lettered',
+               jsonb_build_object('seed', $4, 'dlq_target', 'dtp.dead-letter')
+             )",
+            &[&outbox_event_id, &seed.product_id, &ops_trace_id, &suffix],
+        )
+        .await
+        .expect("insert aud008 consumer idempotency");
+
+    client
+        .execute(
+            "INSERT INTO ops.external_fact_receipt (
+               external_fact_receipt_id,
+               order_id,
+               ref_domain,
+               ref_type,
+               ref_id,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               occurred_at,
+               received_at,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'payment',
+               'order',
+               $2::text::uuid,
+               'payment_callback',
+               'mock_payment_provider',
+               'mockpay',
+               $3,
+               'pending',
+               jsonb_build_object('seed', $4, 'provider_status', 'received'),
+               $5,
+               now() - interval '70 seconds',
+               now() - interval '69 seconds',
+               $6,
+               $7,
+               jsonb_build_object('seed', $4)
+             )",
+            &[
+                &external_fact_receipt_id,
+                &seed.order_id,
+                &format!("provider-ref-{suffix}"),
+                &suffix,
+                &format!("receipt-hash-{suffix}"),
+                &ops_outbox_request_id,
+                &ops_trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud008 external fact receipt");
+
+    client
+        .execute(
+            "INSERT INTO ops.chain_projection_gap (
+               chain_projection_gap_id,
+               aggregate_type,
+               aggregate_id,
+               order_id,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               first_detected_at,
+               last_detected_at,
+               request_id,
+               trace_id,
+               outbox_event_id,
+               anchor_id,
+               resolution_summary,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'order',
+               $2::text::uuid,
+               $2::text::uuid,
+               'fabric-local',
+               'audit.anchor_requested',
+               $3,
+               NULL,
+               'missing_projection',
+               'open',
+               now() - interval '60 seconds',
+               now() - interval '55 seconds',
+               $4,
+               $5,
+               $6::text::uuid,
+               $7::text::uuid,
+               '{}'::jsonb,
+               jsonb_build_object('seed', $8)
+             )",
+            &[
+                &chain_projection_gap_id,
+                &seed.order_id,
+                &format!("expected-tx-{suffix}"),
+                &ops_outbox_request_id,
+                &ops_trace_id,
+                &outbox_event_id,
+                &chain_anchor_id,
+                &suffix,
+            ],
+        )
+        .await
+        .expect("insert aud008 projection gap");
+
+    let ops_outbox_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/outbox?request_id={}&target_topic=dtp.search.sync&event_type=search.product.changed",
+                    ops_outbox_request_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &ops_outbox_request_id)
+                .header("x-trace-id", &ops_trace_id)
+                .body(Body::empty())
+                .expect("ops outbox request"),
+        )
+        .await
+        .expect("call ops outbox");
+    let ops_outbox_status = ops_outbox_resp.status();
+    let ops_outbox_body = to_bytes(ops_outbox_resp.into_body(), usize::MAX)
+        .await
+        .expect("read ops outbox body");
+    assert_eq!(
+        ops_outbox_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&ops_outbox_body)
+    );
+    let ops_outbox_json: Value =
+        serde_json::from_slice(&ops_outbox_body).expect("decode ops outbox body");
+    assert_eq!(ops_outbox_json["data"]["total"].as_i64(), Some(1));
+    assert_eq!(
+        ops_outbox_json["data"]["items"][0]["outbox_event_id"].as_str(),
+        Some(outbox_event_id.as_str())
+    );
+    assert_eq!(
+        ops_outbox_json["data"]["items"][0]["target_topic"].as_str(),
+        Some("dtp.search.sync")
+    );
+    assert_eq!(
+        ops_outbox_json["data"]["items"][0]["latest_publish_attempt"]["result_code"].as_str(),
+        Some("failed")
+    );
+
+    let ops_dead_letter_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/dead-letters?trace_id={}&failure_stage=consumer_handler",
+                    ops_trace_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &ops_dead_letter_request_id)
+                .header("x-trace-id", &ops_trace_id)
+                .body(Body::empty())
+                .expect("ops dead letter request"),
+        )
+        .await
+        .expect("call ops dead letters");
+    let ops_dead_letter_status = ops_dead_letter_resp.status();
+    let ops_dead_letter_body = to_bytes(ops_dead_letter_resp.into_body(), usize::MAX)
+        .await
+        .expect("read ops dead letters body");
+    assert_eq!(
+        ops_dead_letter_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&ops_dead_letter_body)
+    );
+    let ops_dead_letter_json: Value =
+        serde_json::from_slice(&ops_dead_letter_body).expect("decode ops dead letters body");
+    assert_eq!(ops_dead_letter_json["data"]["total"].as_i64(), Some(1));
+    assert_eq!(
+        ops_dead_letter_json["data"]["items"][0]["outbox_event_id"].as_str(),
+        Some(outbox_event_id.as_str())
+    );
+    assert_eq!(
+        ops_dead_letter_json["data"]["items"][0]["consumer_idempotency_records"][0]["consumer_name"]
+            .as_str(),
+        Some("search-indexer")
+    );
+    assert_eq!(
+        ops_dead_letter_json["data"]["items"][0]["consumer_idempotency_records"][0]["result_code"]
+            .as_str(),
+        Some("dead_lettered")
+    );
+
+    let external_fact_page = repo::search_external_fact_receipts(
+        &client,
+        &ExternalFactReceiptQuery {
+            order_id: Some(seed.order_id.clone()),
+            receipt_status: Some("pending".to_string()),
+            page: Some(1),
+            page_size: Some(20),
+            ..Default::default()
+        },
+        20,
+        0,
+    )
+    .await
+    .expect("search external fact receipts");
+    assert_eq!(external_fact_page.total, 1);
+    assert_eq!(
+        external_fact_page.items[0]
+            .external_fact_receipt_id
+            .as_deref(),
+        Some(external_fact_receipt_id.as_str())
+    );
+
+    let projection_gap_page = repo::search_chain_projection_gaps(
+        &client,
+        &ChainProjectionGapQuery {
+            order_id: Some(seed.order_id.clone()),
+            gap_status: Some("open".to_string()),
+            page: Some(1),
+            page_size: Some(20),
+            ..Default::default()
+        },
+        20,
+        0,
+    )
+    .await
+    .expect("search projection gaps");
+    assert_eq!(projection_gap_page.total, 1);
+    assert_eq!(
+        projection_gap_page.items[0]
+            .chain_projection_gap_id
+            .as_deref(),
+        Some(chain_projection_gap_id.as_str())
+    );
+    assert_eq!(
+        projection_gap_page.items[0].outbox_event_id.as_deref(),
+        Some(outbox_event_id.as_str())
+    );
+
+    let idempotency_page = repo::search_consumer_idempotency_records(
+        &client,
+        &ConsumerIdempotencyQuery {
+            consumer_name: Some("search-indexer".to_string()),
+            event_id: Some(outbox_event_id.clone()),
+            page: Some(1),
+            page_size: Some(20),
+            ..Default::default()
+        },
+        20,
+        0,
+    )
+    .await
+    .expect("search consumer idempotency");
+    assert_eq!(idempotency_page.total, 1);
+    assert_eq!(idempotency_page.items[0].consumer_name, "search-indexer");
+    assert_eq!(idempotency_page.items[0].event_id, outbox_event_id);
+
+    let ops_access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND target_type = ANY($2::text[])
+               AND access_mode = 'masked'",
+            &[
+                &vec![
+                    ops_outbox_request_id.clone(),
+                    ops_dead_letter_request_id.clone(),
+                ],
+                &vec![
+                    "ops_outbox_query".to_string(),
+                    "dead_letter_query".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud008 access audit")
+        .get(0);
+    assert_eq!(ops_access_count, 2);
+
+    let ops_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = ANY($2::text[])",
+            &[
+                &vec![
+                    ops_outbox_request_id.clone(),
+                    ops_dead_letter_request_id.clone(),
+                ],
+                &vec![
+                    "ops lookup executed: GET /api/v1/ops/outbox".to_string(),
+                    "ops lookup executed: GET /api/v1/ops/dead-letters".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud008 system logs")
+        .get(0);
+    assert_eq!(ops_log_count, 2);
+
+    let _ = client
+        .execute(
+            "DELETE FROM ops.chain_projection_gap WHERE chain_projection_gap_id = $1::text::uuid",
+            &[&chain_projection_gap_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.external_fact_receipt WHERE external_fact_receipt_id = $1::text::uuid",
+            &[&external_fact_receipt_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.consumer_idempotency_record
+             WHERE consumer_name = 'search-indexer'
+               AND event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.dead_letter_event WHERE outbox_event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.outbox_publish_attempt WHERE outbox_event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.outbox_event WHERE outbox_event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
 
     let _ = client
         .execute(

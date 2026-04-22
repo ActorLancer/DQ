@@ -10,7 +10,9 @@ pub use audit_kit::{
 
 use crate::modules::audit::dto::AuditTraceView;
 use crate::modules::audit::dto::{
-    EvidenceManifestView, EvidencePackageView, LegalHoldView, ReplayJobView, ReplayResultView,
+    ChainProjectionGapView, ConsumerIdempotencyRecordView, DeadLetterEventView,
+    EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView, LegalHoldView,
+    OutboxEventView, ReplayJobView, ReplayResultView,
 };
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -178,4 +180,154 @@ pub struct AuditAnchorBatchRetryRequest {
 pub struct AuditAnchorBatchRetryView {
     pub anchor_batch: crate::modules::audit::dto::AnchorBatchView,
     pub step_up_bound: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct OpsOutboxQuery {
+    pub outbox_status: Option<String>,
+    pub event_type: Option<String>,
+    pub target_topic: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub aggregate_type: Option<String>,
+    pub idempotency_key: Option<String>,
+    pub authority_scope: Option<String>,
+    pub source_of_truth: Option<String>,
+    pub proof_commit_policy: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl OpsOutboxQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsOutboxPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<OutboxEventView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct OpsDeadLetterQuery {
+    pub reprocess_status: Option<String>,
+    pub failure_stage: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl OpsDeadLetterQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsDeadLetterPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<DeadLetterEventView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct ConsumerIdempotencyQuery {
+    pub consumer_name: Option<String>,
+    pub event_id: Option<String>,
+    pub aggregate_type: Option<String>,
+    pub aggregate_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl ConsumerIdempotencyQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ConsumerIdempotencyPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<ConsumerIdempotencyRecordView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct ExternalFactReceiptQuery {
+    pub order_id: Option<String>,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<String>,
+    pub fact_type: Option<String>,
+    pub provider_type: Option<String>,
+    pub receipt_status: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl ExternalFactReceiptQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExternalFactReceiptPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<ExternalFactReceiptView>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct ChainProjectionGapQuery {
+    pub aggregate_type: Option<String>,
+    pub aggregate_id: Option<String>,
+    pub order_id: Option<String>,
+    pub chain_id: Option<String>,
+    pub gap_type: Option<String>,
+    pub gap_status: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+impl ChainProjectionGapQuery {
+    pub fn pagination(&self) -> Pagination {
+        Pagination::from_query(Some(PaginationQuery {
+            page: self.page,
+            page_size: self.page_size,
+        }))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChainProjectionGapPageView {
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub items: Vec<ChainProjectionGapView>,
 }

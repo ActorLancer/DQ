@@ -79,6 +79,11 @@
 - `POST /api/v1/ops/search/reindex`
 - `POST /api/v1/ops/search/cache/invalidate`
 
+补充约束：
+
+- `AUD-008` 的正式持久化查询对象应使用 `ops.external_fact_receipt` 与 `ops.chain_projection_gap`，不再沿用残留文案 `external_receipt / reconcile_job`
+- `POST /api/v1/ops/consistency/reconcile` 在 `V1` 中是控制面动作，不单列正式 `reconcile_job` 表；其持久化查询对象由 `ops.chain_projection_gap` 承接
+
 ### 3.3 developer / observability / trade-monitor 域
 
 - `GET /api/v1/developer/trace`

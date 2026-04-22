@@ -430,3 +430,55 @@
   - 本批没有发现需要人工确认的 `CSV / Markdown / technical_reference` 冲突，不触发暂停条件。
   - 手工联调结束后，已清理可删除的业务测试对象：`trade.order_main`、`catalog.product_sku`、`catalog.product`、`catalog.asset_version`、`catalog.data_asset` 与卖方组织。
   - 与高风险动作强绑定的 `iam.step_up_challenge`、其关联用户和买方组织在本地尝试删除时，会触发 `audit.audit_event` 的 FK `SET NULL -> UPDATE`，被 append-only trigger 正常拒绝；因此这类由正式审计对象引用的支持记录按运行态现状保留，不绕过审计域约束做强删。
+### BATCH-221（计划中）
+- 任务：AUD-008 Outbox / Dead Letter / Idempotency / External Fact / Projection Gap 查询基座
+- 状态：计划中
+- 说明：基于 `AUD-003 ~ AUD-007` 已落地的审计控制面，当前批次开始进入 `ops / consistency` 正式基础设施查询层。已重新按 `CSV > Markdown > technical_reference > 其他文档` 复核 `AUD-008`，并根据冻结 schema/接口确认：任务文案中的 `external_receipt` 应收敛为正式 `ops.external_fact_receipt`；`reconcile_job` 不引入独立正式表，而由 `ops.chain_projection_gap` 承接持久化查询对象，`POST /api/v1/ops/consistency/reconcile` 控制面动作保留给 `AUD-012`。本批将先修正文案漂移，再实现 `ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record / ops.external_fact_receipt / ops.chain_projection_gap` 的仓储与查询接口，并补齐 `GET /api/v1/ops/outbox`、`GET /api/v1/ops/dead-letters` 的最小正式控制面、权限、审计与最小测试，确保 SEARCHREC 后续能真实联查 dead letter 与 consumer 幂等记录。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-008`，完成后再进入 `AUD-009`。
+### BATCH-221（待审批）
+- 任务：`AUD-008` Outbox / Dead Letter / Idempotency / External Fact / Projection Gap 查询基座
+- 状态：待审批
+- 当前任务编号：`AUD-008`
+- 前置依赖核对结果：`CORE-007`、`CORE-008`、`DB-008`、`ENV-022` 已满足；`AUD-003 ~ AUD-007` 已本地提交完成，审计 query / export / replay / legal hold / anchor batch 基线可供当前批次复用。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-008` DoD 为正式仓储、查询接口、权限、审计、错误码、最小测试齐备，并明确 SEARCHREC consumer 的 dead letter / idempotency 联查是当前批次验收重点。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL / Kafka / Redis / Keycloak / MinIO / OpenSearch / 观测栈 / Fabric` 的职责边界，确认 `ops` 查询控制面不能代替主状态权威。
+  - `docs/原始PRD/审计、证据链与回放设计.md`、`docs/原始PRD/双层权威模型与链上链下一致性设计.md`、`docs/原始PRD/链上链下技术架构与能力边界稿.md`、`docs/原始PRD/日志、可观测性与告警设计.md`：确认 outbox / dead letter / external fact / projection gap 属于双层权威与一致性治理正式对象，观测域不能替代审计域。
+  - `docs/数据库设计/接口协议/审计、证据链与回放接口协议正式版.md`、`docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`、`docs/数据库设计/接口协议/交易链监控与公平性接口协议正式版.md`：确认 `GET /api/v1/ops/outbox`、`GET /api/v1/ops/dead-letters` 当前应先落地，`ops.external_fact_receipt` 与 `ops.chain_projection_gap` 先作为仓储查询对象，`reconcile` 动作留给 `AUD-012`，`projection-gaps` 公共控制面留给后续任务。
+  - `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`、`infra/docker/docker-compose.local.yml`：确认 canonical outbox、formal topic、route policy 与本地基础设施边界。
+  - `docs/开发任务/问题修复任务/A02-统一事件-Envelope-与路由权威源.md`、`A03-统一事务模板-落地真实审计与Outbox-Writer.md`、`A04-AUD-Ops-接口与契约落地缺口.md`、`A05-Outbox-Publisher-DLQ-统一闭环缺口.md`、`A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`：确认 `AUD-008` 当前必须先落仓储与查询基座，支撑后续 SEARCHREC consumer 可靠性与 `AUD-010` reprocess。
+  - `apps/platform-core/src/modules/audit/**`、`apps/platform-core/src/modules/integration/**`、`apps/platform-core/src/modules/order/**`、`apps/platform-core/src/modules/delivery/**`、`apps/platform-core/src/modules/billing/**`、`apps/platform-core/src/modules/catalog/**`、`services/fabric-adapter/**`、`services/fabric-event-listener/**`、`services/fabric-ca-admin/**`、`workers/outbox-publisher/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/04-runbooks/**`、`docs/05-test-cases/**`、`infra/**`、`scripts/**`：确认现有 `ops / consistency` 控制面仍未正式落地，已有 worker/README/OpenAPI 片段只能参考。
+- 实现摘要：
+  - 已按人工确认修正文案漂移：`AUD-008` 任务清单、问题修复文档与一致性协议中，`external_receipt` 收敛为正式 `ops.external_fact_receipt`，`reconcile_job` 收敛为“`ops.chain_projection_gap` 持久化查询对象 + `AUD-012` reconcile 控制面动作”，不再引入独立正式表。
+  - `apps/platform-core/src/modules/audit/domain/mod.rs`、`dto/mod.rs`：新增 `OpsOutboxQuery / OpsDeadLetterQuery / ConsumerIdempotencyQuery / ExternalFactReceiptQuery / ChainProjectionGapQuery` 与对应分页/视图 DTO，统一承接 `AUD-008` 查询对象。
+  - `apps/platform-core/src/modules/audit/repo/mod.rs`：新增 `ops.outbox_event`、`ops.dead_letter_event`、`ops.consumer_idempotency_record`、`ops.external_fact_receipt`、`ops.chain_projection_gap` 的正式记录模型、分页查询与单对象读取；`dead_letter` 查询会把 `event_id -> consumer_idempotency_record` 关系直接挂到返回结果，供 SEARCHREC 失败隔离联查。
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `GET /api/v1/ops/outbox`、`GET /api/v1/ops/dead-letters`，补齐 `OpsOutboxRead / OpsDeadLetterRead` 权限、`x-request-id` 强约束、过滤参数标准化，以及 `audit.access_audit + ops.system_log` 的正式留痕。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增 route-level 权限 / `x-request-id` 测试，并扩展 live smoke，真实插入 `ops.outbox_event + ops.outbox_publish_attempt + ops.dead_letter_event + ops.consumer_idempotency_record + ops.external_fact_receipt + ops.chain_projection_gap`，验证 API 返回、仓储联查、审计与系统日志回查以及业务测试数据清理。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`scripts/check-openapi-schema.sh`：补齐 `AUD-008` 两条正式 `ops` 路径、分页 schema、`consumer_idempotency_records` 契约与 archive 同步校验。
+  - `docs/04-runbooks/audit-ops-outbox-dead-letters.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：补齐宿主机启动口径、手工 `curl`、SQL 回查、SEARCHREC 失败隔离说明与 `AUD-008` 验收矩阵。
+- 真实验证：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo test -p platform-core rejects_ops_outbox_without_permission -- --nocapture`
+  5. `cargo test -p platform-core ops_dead_letters_requires_request_id -- --nocapture`
+  6. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_trace_api_db_smoke -- --nocapture`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. `./scripts/check-openapi-schema.sh`
+  10. 宿主机真实 `curl` 联调：
+     - 使用 `KAFKA_BROKERS=127.0.0.1:9094 APP_PORT=18080 cargo run -p platform-core-bin` 启动服务，避免宿主机误用 compose 内部地址 `kafka:9092`
+     - 通过 `psql` 插入最小 `ops.outbox_event / ops.outbox_publish_attempt / ops.dead_letter_event / ops.consumer_idempotency_record` 样本
+     - `curl GET /api/v1/ops/outbox?target_topic=dtp.search.sync&request_id=...` 返回 `total=1`、`target_topic=dtp.search.sync`、`latest_publish_attempt.result_code=failed`
+     - `curl GET /api/v1/ops/dead-letters?trace_id=...&failure_stage=consumer_handler` 返回 `total=1`、`consumer_idempotency_records[0].consumer_name=search-indexer`、`result_code=dead_lettered`
+     - 数据库回查 `audit.access_audit=2`、`ops.system_log=2`
+     - 已清理临时业务测试数据：`ops.consumer_idempotency_record`、`ops.dead_letter_event`、`ops.outbox_publish_attempt`、`ops.outbox_event`；`audit.access_audit` 与 `ops.system_log` 保留
+- 覆盖的冻结文档条目：`AUD-008`
+- 未覆盖项：
+  - outbox publisher 真发布链路、Kafka publish / callback / dual-DLQ 闭环，留待 `AUD-009` 与 `AUD-010`
+  - 一致性联查 / 修复控制面、`projection-gaps` 公共接口与 Fabric request/callback，留待 `AUD-011+`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，将 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛到包含 `AUD-008` 的最新状态。
+- 备注：
+  - 本批未发现新的 `CSV / Markdown / technical_reference / schema / runbook / 代码` 冲突，不触发暂停条件。
+  - 宿主机手工联调时确认：`platform-core-bin` 若不显式设置 `KAFKA_BROKERS=127.0.0.1:9094` 会回落到 compose 内部 broker 地址，当前已在 `AUD-008` 新增 runbook 中固定宿主机启动口径。

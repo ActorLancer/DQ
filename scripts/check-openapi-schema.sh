@@ -48,14 +48,24 @@ for path in \
   "/internal/notifications/templates/preview" \
   "/internal/notifications/send" \
   "/internal/notifications/audit/search" \
-  "/internal/notifications/dead-letters/{dead_letter_event_id}/replay"; do
+  "/internal/notifications/dead-letters/{dead_letter_event_id}/replay" \
+  "/api/v1/ops/outbox" \
+  "/api/v1/ops/dead-letters"; do
   grep -q "$path" "$ops_file" || {
     echo "[error] $ops_file missing path: $path" >&2
     exit 1
   }
 done
 
-for token in "aggregate_type" "event_type" "target_topic" "step_up_ticket" "dtp.notification.dispatch"; do
+for token in \
+  "aggregate_type" \
+  "event_type" \
+  "target_topic" \
+  "step_up_ticket" \
+  "dtp.notification.dispatch" \
+  "OpsOutboxPageResponse" \
+  "OpsDeadLetterPageResponse" \
+  "consumer_idempotency_records"; do
   grep -q "$token" "$ops_file" || {
     echo "[error] $ops_file missing notification contract token: $token" >&2
     exit 1
