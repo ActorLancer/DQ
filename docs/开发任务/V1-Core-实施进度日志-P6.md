@@ -282,3 +282,49 @@
   - 无。`SEARCHREC-007` 要求的搜索同步作业表、异常记录表、retry/reconcile/ops 查看与 alias authority 状态落点已同时覆盖 schema、worker、副作用回写、ops 视图和服务级联调。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+### BATCH-254（计划中）
+- 任务：`SEARCHREC-008` 初始化推荐模块基础模型
+- 状态：计划中
+- 说明：按 `SEARCHREC-008` 冻结口径复核后，当前仓库已存在 `recommendation` 运行时代码和 `058/073` 推荐 schema，但“推荐位 / 候选来源 / 排序配置 / 曝光点击事件”这组基础模型还没有作为独立 task 被正式收口：`packages/openapi/recommendation.yaml` 仍是骨架，缺少面向基础模型的专门验证，runbook/test cases 也没有把 placement/ranking/behavior baseline 单独固化。本批将围绕基础模型本身收口，不提前把 `Authorization` 鉴权、ops 审计和完整推荐编排混入后续 009-012 的接口任务。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，当前只处理推荐基础模型与契约基线，不提前合并推荐结果接口、行为写接口或 ops 配置写接口的高风险鉴权整改。
+### BATCH-254（待审批）
+- 任务：`SEARCHREC-008` 初始化推荐模块基础模型
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-008`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-007` 已形成搜索主链、alias authority、缓存与同步作业闭环，本批在此基线上正式收口推荐基础模型，不提前越过到 `SEARCHREC-009+` 的推荐接口鉴权与 ops 写链任务。
+- 完成情况：
+  - `apps/platform-core/src/modules/recommendation/domain/mod.rs`：新增冻结基线常量，正式固化 V1 推荐位、默认排序 profile key 与基础行为事件类型；推荐位基线覆盖 `home_featured`、`industry_featured`、`product_detail_similar`、`product_detail_bundle`、`seller_profile_featured`、`buyer_workbench_discovery`、`search_zero_result_fallback`，排序 profile key 固化为 `recommend_v1_default/detail/bundle/seller`，行为事件类型固化为 `recommendation_panel_viewed / recommendation_item_exposed / recommendation_item_clicked`。
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：新增 `recommendation_model_baseline_db_smoke`，真实回查 `recommend.placement_definition`、`recommend.ranking_profile`、`ops.event_route_policy` 与 `pg_trigger`，并直接写入 `recommend.behavior_event` 的 exposure/click 事件，验证 `recommend.subject_profile_snapshot`、`recommend.cohort_popularity` 衍生状态会同步更新；保留并继续跑通 `recommendation_api_full_runtime_db_smoke`，确保基础模型收口没有破坏推荐结果、曝光和点击闭环。
+  - `packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`：把推荐 OpenAPI 从骨架扩展为正式契约，补齐 `RecommendationResponse`、`RecommendationItem`、曝光/点击 tracking 请求、推荐位视图、排序 profile 视图与 rebuild 请求响应结构，不再只停留在路径标题级说明。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：补齐“基础模型基线”章节，明确 placement code、ranking profile key、behavior event baseline、`ops.event_route_policy` 路由与 legacy trigger 缺失检查 SQL，保证 runbook 与测试清单和正式 schema 对齐。
+  - `apps/platform-core/src/modules/search/repo/mod.rs`、`apps/platform-core/src/modules/recommendation/repo/mod.rs`：补充 OpenSearch hit 实体 ID 归一化与 UUID 防御逻辑，只接受能够回落 PostgreSQL 最终校验的 UUID 候选；历史 demo / 脏索引文档会在最终放行前被静默丢弃，不再把推荐或搜索请求打成 `400 invalid input syntax for type uuid`。同时新增最小单测覆盖该防御逻辑，确保 `OpenSearch candidate -> PostgreSQL final check` 的边界不被历史索引内容破坏。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core normalized_hit_entity_id -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core recommendation_model_baseline_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 直接数据库回查：
+    - `psql ... SELECT placement_code, placement_scope, page_context, default_ranking_profile_key, status FROM recommend.placement_definition ...`
+    - `psql ... SELECT profile_key, placement_scope, backend_type, status FROM recommend.ranking_profile ...`
+    - `psql ... SELECT aggregate_type, event_type, target_topic, consumer_group_hint FROM ops.event_route_policy WHERE event_type LIKE 'recommend.behavior%' ...`
+    - `psql ... SELECT tgname FROM pg_trigger WHERE tgrelid = 'recommend.behavior_event'::regclass AND tgname = 'trg_recommend_behavior_event_outbox'`
+- 验证结果：
+  - `recommendation_model_baseline_db_smoke` 通过：真实验证 7 个基线推荐位都存在、状态为 `active`、默认排序 profile 可解析、`candidate_policy_json.recall` 与冻结口径一致；4 个基线排序 profile 均为 `active`；`ops.event_route_policy(aggregate_type='recommend.behavior_event', event_type='recommend.behavior_recorded')` 指向 `dtp.recommend.behavior / cg-recommendation-aggregator`；历史 `trg_recommend_behavior_event_outbox` trigger 不存在；直接写 exposure/click 后，`recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity` 已更新。
+  - `recommendation_api_full_runtime_db_smoke` 通过：真实验证 `GET /api/v1/recommendations` 能返回推荐结果，`POST /api/v1/recommendations/track/exposure` 与 `POST /api/v1/recommendations/track/click` 能落库并更新推荐主链衍生状态；期间额外暴露出 OpenSearch 中历史 demo seller 文档会把非 UUID `_id` 带进最终校验的问题，本批已通过 UUID 归一化修复，确认推荐运行时重新恢复为 `200`。
+  - `cargo test -p platform-core` 全量通过（`331 passed`，`1 ignored`）；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，`.sqlx/` 元数据已更新。
+  - 直接 `psql` 回查通过：基线推荐位、基线排序 profile 与推荐行为流 route policy 均为正式值；`event_route_policy` 的推荐行为路由当前以 `aggregate_type='recommend.behavior_event' + event_type='recommend.behavior_recorded'` 存在，且 legacy outbox trigger 缺失，和 `073_recommendation_runtime_alignment.sql`、当前运行时代码一致。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-008`
+  - `商品推荐与个性化发现设计.md`：推荐位、候选召回、排序 profile、曝光/点击行为回流基线
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐查询、曝光/点击 tracking 与 ops 基础模型契约
+  - `058_recommendation_module.sql`、`073_recommendation_runtime_alignment.sql`：推荐 schema、行为流 route policy 与 runtime 对齐
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐主链必须以 PostgreSQL 为权威源，行为流走 canonical outbox / Kafka，不再保留 legacy trigger 旁路
+- 覆盖的任务清单条目：`SEARCHREC-008`
+- 未覆盖项：
+  - 无。`SEARCHREC-008` 要求的推荐位、候选来源、排序 profile、曝光/点击事件基础模型与正式契约已落地，并通过 PostgreSQL / OpenSearch / route policy / behavior aggregate 的真实验证闭环收口。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

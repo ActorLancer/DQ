@@ -4,6 +4,7 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use sqlx::types::Uuid;
 use std::collections::BTreeSet;
 
 use crate::modules::search::domain::{
@@ -904,14 +905,9 @@ async fn fetch_scope_candidates_from_opensearch(
     if let Some(raw_hits) = payload["hits"]["hits"].as_array() {
         for hit in raw_hits {
             let source = &hit["_source"];
-            let entity_id = hit["_id"]
-                .as_str()
-                .or_else(|| source["id"].as_str())
-                .unwrap_or_default()
-                .to_string();
-            if entity_id.is_empty() {
+            let Some(entity_id) = normalized_hit_entity_id(hit, entity_scope) else {
                 continue;
-            }
+            };
             let score = hit["_score"].as_f64().unwrap_or(0.0);
             let sort_value = if current_sort == "composite" {
                 Some(score)
@@ -1281,6 +1277,9 @@ async fn fetch_product_result(
     product_id: &str,
     score: f64,
 ) -> RepoResult<Option<SearchResultItem>> {
+    if !is_uuid(product_id) {
+        return Ok(None);
+    }
     let row = client
         .query_opt(
             "SELECT
@@ -1349,6 +1348,9 @@ async fn fetch_seller_result(
     org_id: &str,
     score: f64,
 ) -> RepoResult<Option<SearchResultItem>> {
+    if !is_uuid(org_id) {
+        return Ok(None);
+    }
     let row = client
         .query_opt(
             "SELECT
@@ -1949,6 +1951,32 @@ fn normalized_scope(scope: &str) -> String {
     }
 }
 
+fn normalized_hit_entity_id(hit: &Value, entity_scope: &str) -> Option<String> {
+    let source = &hit["_source"];
+    let candidates = if entity_scope == "seller" {
+        [
+            source.get("org_id").and_then(Value::as_str),
+            source.get("id").and_then(Value::as_str),
+            hit.get("_id").and_then(Value::as_str),
+        ]
+    } else {
+        [
+            source.get("product_id").and_then(Value::as_str),
+            source.get("id").and_then(Value::as_str),
+            hit.get("_id").and_then(Value::as_str),
+        ]
+    };
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|candidate| is_uuid(candidate))
+        .map(str::to_string)
+}
+
+fn is_uuid(raw: &str) -> bool {
+    Uuid::parse_str(raw).is_ok()
+}
+
 fn sort_key(value: &str) -> &str {
     match value.trim().to_ascii_lowercase().as_str() {
         "latest" => "latest",
@@ -1958,5 +1986,36 @@ fn sort_key(value: &str) -> &str {
         "reputation" => "reputation",
         "hotness" => "hotness",
         _ => "composite",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalized_hit_entity_id;
+    use serde_json::json;
+
+    #[test]
+    fn normalized_hit_entity_id_prefers_valid_source_uuid() {
+        let hit = json!({
+            "_id": "demo-seller-001",
+            "_source": {
+                "id": "a90f02be-331b-4bcd-938d-c57fc8ece426"
+            }
+        });
+        assert_eq!(
+            normalized_hit_entity_id(&hit, "seller").as_deref(),
+            Some("a90f02be-331b-4bcd-938d-c57fc8ece426")
+        );
+    }
+
+    #[test]
+    fn normalized_hit_entity_id_rejects_non_uuid_documents() {
+        let hit = json!({
+            "_id": "demo-seller-001",
+            "_source": {
+                "id": "demo-seller-001"
+            }
+        });
+        assert!(normalized_hit_entity_id(&hit, "seller").is_none());
     }
 }

@@ -49,6 +49,10 @@
 
 ## Recommendation V1
 
+- `recommend.placement_definition` 必须至少包含 `home_featured / industry_featured / product_detail_similar / product_detail_bundle / seller_profile_featured / buyer_workbench_discovery / search_zero_result_fallback`，且每个推荐位都要有非空 `candidate_policy_json.recall`。
+- `recommend.ranking_profile` 必须至少包含 `recommend_v1_default / recommend_v1_detail / recommend_v1_bundle / recommend_v1_seller`，并能被 placement 的 `default_ranking_profile_key` 正确引用。
+- `recommend.behavior_event` 的基础行为模型至少要覆盖 `recommendation_panel_viewed / recommendation_item_exposed / recommendation_item_clicked`，并在写入曝光/点击后真实推进 `recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity`。
+- `ops.event_route_policy` 中 `recommend.behavior_event / recommend.behavior_recorded` 的 canonical topic 必须唯一收口到 `dtp.recommend.behavior`，且不再依赖旧的 `trg_recommend_behavior_event_outbox` 自动派生 topic。
 - `GET /api/v1/recommendations` 必须走 `OpenSearch recall + PostgreSQL final check + recommendation_result` 落库闭环。
 - 推荐返回前必须过滤掉 PostgreSQL 最终不可见对象，不能直接信任 OpenSearch 命中。
 - 推荐缓存必须写入 `datab:v1:recommend:*`，曝光后应能看到 `datab:v1:recommend:seen:*` 已看集合。

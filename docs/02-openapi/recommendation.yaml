@@ -2,6 +2,348 @@ openapi: 3.1.0
 info:
   title: Recommendation API
   version: v1
+components:
+  schemas:
+    RecommendationItem:
+      type: object
+      required:
+        - recommendation_result_item_id
+        - entity_scope
+        - entity_id
+        - title
+        - final_score
+        - explanation_codes
+        - recall_sources
+        - status
+      properties:
+        recommendation_result_item_id:
+          type: string
+          format: uuid
+        entity_scope:
+          type: string
+          enum: [product, seller]
+        entity_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        seller_name:
+          type: string
+          nullable: true
+        price:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+        final_score:
+          type: number
+          format: double
+        explanation_codes:
+          type: array
+          items:
+            type: string
+        recall_sources:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+    RecommendationResponse:
+      type: object
+      required:
+        - recommendation_request_id
+        - recommendation_result_id
+        - placement_code
+        - strategy_version
+        - cache_hit
+        - items
+      properties:
+        recommendation_request_id:
+          type: string
+          format: uuid
+        recommendation_result_id:
+          type: string
+          format: uuid
+        placement_code:
+          type: string
+        strategy_version:
+          type: string
+        cache_hit:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendationItem"
+    ExposureItemInput:
+      type: object
+      required: [entity_scope, entity_id]
+      properties:
+        recommendation_result_item_id:
+          type: string
+          format: uuid
+          nullable: true
+        entity_scope:
+          type: string
+          enum: [product, seller]
+        entity_id:
+          type: string
+          format: uuid
+    TrackExposureRequest:
+      type: object
+      required:
+        - recommendation_request_id
+        - recommendation_result_id
+        - placement_code
+        - items
+      properties:
+        recommendation_request_id:
+          type: string
+          format: uuid
+        recommendation_result_id:
+          type: string
+          format: uuid
+        placement_code:
+          type: string
+        trace_id:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExposureItemInput"
+    TrackClickRequest:
+      type: object
+      required:
+        - recommendation_request_id
+        - recommendation_result_id
+        - recommendation_result_item_id
+        - entity_scope
+        - entity_id
+      properties:
+        recommendation_request_id:
+          type: string
+          format: uuid
+        recommendation_result_id:
+          type: string
+          format: uuid
+        recommendation_result_item_id:
+          type: string
+          format: uuid
+        entity_scope:
+          type: string
+          enum: [product, seller]
+        entity_id:
+          type: string
+          format: uuid
+        trace_id:
+          type: string
+          nullable: true
+    BehaviorTrackResponse:
+      type: object
+      required:
+        - accepted_count
+        - deduplicated_count
+        - behavior_event_ids
+        - outbox_enqueued_count
+      properties:
+        accepted_count:
+          type: integer
+        deduplicated_count:
+          type: integer
+        behavior_event_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        outbox_enqueued_count:
+          type: integer
+    PlacementView:
+      type: object
+      required:
+        - placement_code
+        - placement_name
+        - placement_scope
+        - page_context
+        - candidate_policy_json
+        - filter_policy_json
+        - status
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        placement_code:
+          type: string
+        placement_name:
+          type: string
+        placement_scope:
+          type: string
+          enum: [mixed, product, service, seller]
+        page_context:
+          type: string
+        candidate_policy_json:
+          type: object
+        filter_policy_json:
+          type: object
+        default_ranking_profile_key:
+          type: string
+          nullable: true
+        status:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    PatchPlacementRequest:
+      type: object
+      properties:
+        candidate_policy_json:
+          type: object
+          nullable: true
+        filter_policy_json:
+          type: object
+          nullable: true
+        default_ranking_profile_key:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+    RecommendationRankingProfileView:
+      type: object
+      required:
+        - recommendation_ranking_profile_id
+        - profile_key
+        - placement_scope
+        - backend_type
+        - weights_json
+        - diversity_policy_json
+        - exploration_policy_json
+        - explain_codes
+        - status
+        - stage_from
+        - metadata
+        - created_at
+        - updated_at
+      properties:
+        recommendation_ranking_profile_id:
+          type: string
+          format: uuid
+        profile_key:
+          type: string
+        placement_scope:
+          type: string
+          enum: [mixed, product, service, seller]
+        backend_type:
+          type: string
+        weights_json:
+          type: object
+        diversity_policy_json:
+          type: object
+        exploration_policy_json:
+          type: object
+        explain_codes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        stage_from:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    PatchRecommendationRankingProfileRequest:
+      type: object
+      properties:
+        weights_json:
+          type: object
+          nullable: true
+        diversity_policy_json:
+          type: object
+          nullable: true
+        exploration_policy_json:
+          type: object
+          nullable: true
+        explain_codes:
+          type: array
+          items:
+            type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+    RecommendationRebuildRequest:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum: [all, cache, subject_profile, cohort, signals, similarity, bundle]
+          default: all
+        placement_code:
+          type: string
+          nullable: true
+        subject_scope:
+          type: string
+          nullable: true
+        subject_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        subject_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        anonymous_session_key:
+          type: string
+          nullable: true
+        entity_scope:
+          type: string
+          enum: [product, seller]
+          nullable: true
+        entity_id:
+          type: string
+          format: uuid
+          nullable: true
+        purge_cache:
+          type: boolean
+          nullable: true
+    RecommendationRebuildResponse:
+      type: object
+      required:
+        - scope
+        - cache_keys_deleted
+        - refreshed_subject_profiles
+        - refreshed_cohort_rows
+        - refreshed_signal_rows
+        - refreshed_similarity_rows
+        - refreshed_bundle_rows
+      properties:
+        scope:
+          type: string
+        cache_keys_deleted:
+          type: integer
+        refreshed_subject_profiles:
+          type: integer
+        refreshed_cohort_rows:
+          type: integer
+        refreshed_signal_rows:
+          type: integer
+        refreshed_similarity_rows:
+          type: integer
+        refreshed_bundle_rows:
+          type: integer
 paths:
   /api/v1/recommendations:
     get:
@@ -44,24 +386,78 @@ paths:
       responses:
         "200":
           description: recommendation result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/RecommendationResponse"
   /api/v1/recommendations/track/exposure:
     post:
       summary: record recommendation panel and item exposure with idempotency
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackExposureRequest"
       responses:
         "200":
           description: exposure accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/BehaviorTrackResponse"
   /api/v1/recommendations/track/click:
     post:
       summary: record recommendation click with idempotency
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackClickRequest"
       responses:
         "200":
           description: click accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/BehaviorTrackResponse"
   /api/v1/ops/recommendation/placements:
     get:
       summary: list recommendation placements
       responses:
         "200":
           description: placement list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlacementView"
   /api/v1/ops/recommendation/placements/{placement_code}:
     patch:
       summary: update recommendation placement definition
@@ -71,15 +467,43 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchPlacementRequest"
       responses:
         "200":
           description: updated placement
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/PlacementView"
   /api/v1/ops/recommendation/ranking-profiles:
     get:
       summary: list recommendation ranking profiles
       responses:
         "200":
           description: ranking profile list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RecommendationRankingProfileView"
   /api/v1/ops/recommendation/ranking-profiles/{id}:
     patch:
       summary: update recommendation ranking profile
@@ -89,12 +513,44 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchRecommendationRankingProfileRequest"
       responses:
         "200":
           description: updated ranking profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/RecommendationRankingProfileView"
   /api/v1/ops/recommendation/rebuild:
     post:
       summary: rebuild recommendation cache and derived features
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendationRebuildRequest"
       responses:
         "200":
           description: rebuild accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/RecommendationRebuildResponse"

@@ -1,8 +1,13 @@
 use crate::modules::recommendation::api::router;
+use crate::modules::recommendation::domain::{
+    RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES, RECOMMENDATION_BASELINE_PLACEMENTS,
+    RECOMMENDATION_BASELINE_RANKING_PROFILE_KEYS,
+};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use db::{Client, Error, GenericClient, NoTls, connect};
 use serde_json::{Value, json};
+use std::collections::{BTreeSet, HashMap};
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
@@ -360,6 +365,287 @@ async fn cleanup_opensearch_documents(ids: &SeedIds) {
         ))
         .send()
         .await;
+}
+
+#[tokio::test]
+async fn recommendation_model_baseline_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let Ok(dsn) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect database");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let ids = seed_graph(&client, &suffix).await.expect("seed graph");
+
+    let expected_codes = RECOMMENDATION_BASELINE_PLACEMENTS
+        .iter()
+        .map(|(code, _, _, _, _)| (*code).to_string())
+        .collect::<Vec<_>>();
+    let placement_rows = client
+        .query(
+            "SELECT
+               placement_code,
+               placement_scope,
+               page_context,
+               default_ranking_profile_key,
+               status,
+               candidate_policy_json -> 'recall'
+             FROM recommend.placement_definition
+             WHERE placement_code = ANY($1::text[])
+             ORDER BY placement_code",
+            &[&expected_codes],
+        )
+        .await
+        .expect("load baseline placements");
+    let placement_map = placement_rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<_, String>(0),
+                (
+                    row.get::<_, String>(1),
+                    row.get::<_, String>(2),
+                    row.get::<_, Option<String>>(3),
+                    row.get::<_, String>(4),
+                    row.get::<_, Option<Value>>(5),
+                ),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    for (code, scope, page_context, ranking_key, recall_sources) in
+        RECOMMENDATION_BASELINE_PLACEMENTS
+    {
+        let Some((actual_scope, actual_page_context, actual_ranking_key, status, recall_json)) =
+            placement_map.get(*code)
+        else {
+            panic!("missing baseline placement: {code}");
+        };
+        assert_eq!(actual_scope, scope, "placement_scope mismatch for {code}");
+        assert_eq!(
+            actual_page_context, page_context,
+            "page_context mismatch for {code}"
+        );
+        assert_eq!(
+            actual_ranking_key.as_deref(),
+            Some(*ranking_key),
+            "default_ranking_profile_key mismatch for {code}"
+        );
+        assert_eq!(status, "active", "placement status mismatch for {code}");
+
+        let actual_recall = recall_json
+            .as_ref()
+            .and_then(|value| value.as_array())
+            .expect("placement recall array")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect::<BTreeSet<_>>();
+        let expected_recall = recall_sources.iter().copied().collect::<BTreeSet<_>>();
+        assert_eq!(
+            actual_recall, expected_recall,
+            "candidate recall sources mismatch for {code}"
+        );
+    }
+
+    let expected_profiles = RECOMMENDATION_BASELINE_RANKING_PROFILE_KEYS
+        .iter()
+        .map(|item| (*item).to_string())
+        .collect::<Vec<_>>();
+    let ranking_rows = client
+        .query(
+            "SELECT profile_key, placement_scope, status
+             FROM recommend.ranking_profile
+             WHERE profile_key = ANY($1::text[])
+             ORDER BY profile_key",
+            &[&expected_profiles],
+        )
+        .await
+        .expect("load baseline ranking profiles");
+    let ranking_map = ranking_rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<_, String>(0),
+                (row.get::<_, String>(1), row.get::<_, String>(2)),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    assert_eq!(
+        ranking_map.len(),
+        RECOMMENDATION_BASELINE_RANKING_PROFILE_KEYS.len()
+    );
+    for profile_key in RECOMMENDATION_BASELINE_RANKING_PROFILE_KEYS {
+        let Some((placement_scope, status)) = ranking_map.get(*profile_key) else {
+            panic!("missing baseline ranking profile: {profile_key}");
+        };
+        assert_eq!(status, "active", "ranking profile status mismatch");
+        assert!(
+            !placement_scope.is_empty(),
+            "ranking profile scope is empty"
+        );
+    }
+
+    let route_policy = client
+        .query_one(
+            "SELECT target_topic, consumer_group_hint
+             FROM ops.event_route_policy
+             WHERE aggregate_type = 'recommend.behavior_event'
+               AND event_type = 'recommend.behavior_recorded'",
+            &[],
+        )
+        .await
+        .expect("load recommendation route policy");
+    assert_eq!(route_policy.get::<_, String>(0), "dtp.recommend.behavior");
+    assert_eq!(
+        route_policy.get::<_, String>(1),
+        "cg-recommendation-aggregator"
+    );
+
+    let legacy_trigger_missing = client
+        .query_one(
+            "SELECT NOT EXISTS (
+               SELECT 1
+               FROM pg_trigger
+               WHERE tgname = 'trg_recommend_behavior_event_outbox'
+                 AND NOT tgisinternal
+             )",
+            &[],
+        )
+        .await
+        .expect("check legacy outbox trigger")
+        .get::<_, bool>(0);
+    assert!(legacy_trigger_missing);
+
+    for (index, event_type) in [
+        RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES[1],
+        RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES[2],
+    ]
+    .iter()
+    .enumerate()
+    {
+        client
+            .execute(
+                "INSERT INTO recommend.behavior_event (
+                   subject_scope,
+                   subject_org_id,
+                   event_type,
+                   placement_code,
+                   entity_scope,
+                   entity_id,
+                   request_id,
+                   trace_id,
+                   attrs
+                 ) VALUES (
+                   'organization',
+                   $1::text::uuid,
+                   $2,
+                   'home_featured',
+                   'product',
+                   $3::text::uuid,
+                   $4,
+                   $5,
+                   jsonb_build_object(
+                     'category', 'manufacturing',
+                     'delivery_mode', 'file_download',
+                     'tags', jsonb_build_array('质量', '巡检'),
+                     'seed', $6
+                   )
+                 )",
+                &[
+                    &ids.org_id,
+                    event_type,
+                    &ids.product_ids[0],
+                    &format!("recommend-base-request-{suffix}-{index}"),
+                    &format!("recommend-base-trace-{suffix}-{index}"),
+                    &suffix,
+                ],
+            )
+            .await
+            .expect("insert baseline behavior event");
+    }
+
+    let profile_row = client
+        .query_one(
+            "SELECT
+               preferred_categories,
+               preferred_delivery_modes,
+               feature_snapshot ->> 'last_event_type',
+               feature_snapshot ->> 'last_placement_code'
+             FROM recommend.subject_profile_snapshot
+             WHERE subject_scope = 'organization'
+               AND subject_ref = $1",
+            &[&ids.org_id],
+        )
+        .await
+        .expect("load subject profile snapshot");
+    let preferred_categories: Vec<String> = profile_row.get(0);
+    let preferred_delivery_modes: Vec<String> = profile_row.get(1);
+    assert!(
+        preferred_categories
+            .iter()
+            .any(|item| item == "manufacturing")
+    );
+    assert!(
+        preferred_delivery_modes
+            .iter()
+            .any(|item| item == "file_download")
+    );
+    assert_eq!(
+        profile_row.get::<_, Option<String>>(2).as_deref(),
+        Some("recommendation_item_clicked")
+    );
+    assert_eq!(
+        profile_row.get::<_, Option<String>>(3).as_deref(),
+        Some("home_featured")
+    );
+
+    let cohort_row = client
+        .query_one(
+            "SELECT exposure_count, click_count, hotness_score::float8
+             FROM recommend.cohort_popularity
+             WHERE cohort_key = $1
+               AND entity_scope = 'product'
+               AND entity_id = $2::text::uuid",
+            &[&format!("org:{}", ids.org_id), &ids.product_ids[0]],
+        )
+        .await
+        .expect("load cohort popularity");
+    assert!(cohort_row.get::<_, i64>(0) >= 1);
+    assert!(cohort_row.get::<_, i64>(1) >= 1);
+    assert!(cohort_row.get::<_, f64>(2) >= 1.2);
+
+    let behavior_count = client
+        .query_one(
+            "SELECT count(*)::bigint
+             FROM recommend.behavior_event
+             WHERE subject_org_id = $1::text::uuid
+               AND event_type = ANY($2::text[])",
+            &[
+                &ids.org_id,
+                &vec![
+                    RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES[1].to_string(),
+                    RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES[2].to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count baseline behavior events")
+        .get::<_, i64>(0);
+    assert_eq!(behavior_count, 2);
+
+    cleanup_graph(&client, &ids).await;
 }
 
 #[tokio::test]

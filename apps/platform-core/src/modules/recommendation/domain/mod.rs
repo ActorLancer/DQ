@@ -1,6 +1,79 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub type RecommendationBaselinePlacement = (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static [&'static str],
+);
+
+pub const RECOMMENDATION_BASELINE_PLACEMENTS: &[RecommendationBaselinePlacement] = &[
+    (
+        "home_featured",
+        "mixed",
+        "home",
+        "recommend_v1_default",
+        &["popular", "new_arrival", "trusted_seller"],
+    ),
+    (
+        "industry_featured",
+        "product",
+        "industry_topic",
+        "recommend_v1_default",
+        &["popular", "similar"],
+    ),
+    (
+        "product_detail_similar",
+        "product",
+        "product_detail",
+        "recommend_v1_detail",
+        &["similar", "cohort"],
+    ),
+    (
+        "product_detail_bundle",
+        "service",
+        "product_detail",
+        "recommend_v1_bundle",
+        &["bundle", "seller_related"],
+    ),
+    (
+        "seller_profile_featured",
+        "mixed",
+        "seller_profile",
+        "recommend_v1_seller",
+        &["seller_hot", "seller_quality"],
+    ),
+    (
+        "buyer_workbench_discovery",
+        "mixed",
+        "buyer_workbench",
+        "recommend_v1_default",
+        &["cohort", "new_arrival", "renewal"],
+    ),
+    (
+        "search_zero_result_fallback",
+        "mixed",
+        "search",
+        "recommend_v1_default",
+        &["similar", "popular"],
+    ),
+];
+
+pub const RECOMMENDATION_BASELINE_RANKING_PROFILE_KEYS: &[&str] = &[
+    "recommend_v1_default",
+    "recommend_v1_detail",
+    "recommend_v1_bundle",
+    "recommend_v1_seller",
+];
+
+pub const RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES: &[&str] = &[
+    "recommendation_panel_viewed",
+    "recommendation_item_exposed",
+    "recommendation_item_clicked",
+];
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RecommendationQuery {
     pub placement_code: String,

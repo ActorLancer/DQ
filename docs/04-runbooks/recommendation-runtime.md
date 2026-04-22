@@ -33,6 +33,56 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
 9. topic 固定为 `dtp.recommend.behavior`
 10. `recommendation-aggregator` 更新派生状态并失效缓存
 
+## 基础模型基线
+
+`SEARCHREC-008` 对推荐基础模型的冻结基线如下：
+
+- 推荐位：
+  - `home_featured`
+  - `industry_featured`
+  - `product_detail_similar`
+  - `product_detail_bundle`
+  - `seller_profile_featured`
+  - `buyer_workbench_discovery`
+  - `search_zero_result_fallback`
+- 默认排序配置：
+  - `recommend_v1_default`
+  - `recommend_v1_detail`
+  - `recommend_v1_bundle`
+  - `recommend_v1_seller`
+- 首批正式行为事件：
+  - `recommendation_panel_viewed`
+  - `recommendation_item_exposed`
+  - `recommendation_item_clicked`
+
+基础模型回查：
+
+```sql
+SELECT placement_code,
+       placement_scope,
+       page_context,
+       default_ranking_profile_key,
+       candidate_policy_json -> 'recall' AS recall_sources
+FROM recommend.placement_definition
+ORDER BY placement_code;
+```
+
+```sql
+SELECT profile_key,
+       placement_scope,
+       status
+FROM recommend.ranking_profile
+ORDER BY profile_key;
+```
+
+```sql
+SELECT target_topic,
+       consumer_group_hint
+FROM ops.event_route_policy
+WHERE aggregate_type = 'recommend.behavior_event'
+  AND event_type = 'recommend.behavior_recorded';
+```
+
 ## 鉴权与运维冻结口径
 
 - 推荐侧正式鉴权统一使用 `Authorization`，不再使用 `x-role` 占位语义。
@@ -50,6 +100,8 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
 - `recommend.behavior_event.attrs ->> 'idempotency_key'` 可用于检查曝光/点击幂等。
 - `ops.outbox_event.target_topic` 必须为 `dtp.recommend.behavior`。
 - `ops.event_route_policy` 中 `recommend.behavior_event / recommend.behavior_recorded` 必须存在。
+- `recommend.placement_definition.default_ranking_profile_key` 必须能在 `recommend.ranking_profile.profile_key` 中解析到有效配置。
+- `recommend.behavior_event` 写入 `recommendation_item_exposed / recommendation_item_clicked` 后，`recommend.subject_profile_snapshot` 与 `recommend.cohort_popularity` 必须同步更新。
 - `search.index_sync_task` 会因推荐行为热度更新而出现新的 `queued` 任务。
 - Redis 推荐缓存前缀：`datab:v1:recommend:*`
 - Redis 推荐已看集合前缀：`datab:v1:recommend:seen:*`
