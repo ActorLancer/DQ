@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -14,6 +14,7 @@
 - dead letter dry-run 重处理：`POST /api/v1/ops/dead-letters/{id}/reprocess`
 - 一致性联查：`GET /api/v1/ops/consistency/{refType}/{refId}`
 - 一致性修复 dry-run：`POST /api/v1/ops/consistency/reconcile`
+- 外部事实查询 / 确认：`GET /api/v1/ops/external-facts`、`POST /api/v1/ops/external-facts/{id}/confirm`
 - outbox publisher：`ops.outbox_event -> workers/outbox-publisher -> Kafka / ops.outbox_publish_attempt / ops.dead_letter_event`
 - fabric adapter 四类摘要 handler：`dtp.audit.anchor / dtp.fabric.requests -> services/fabric-adapter -> evidence_batch_root / order_summary / authorization_summary / acceptance_summary -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor`
 - fabric callback listener：`services/fabric-event-listener -> dtp.fabric.callbacks -> ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor / audit.anchor_batch`
@@ -74,12 +75,15 @@ IAM_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-022` | Fabric CA admin 证书签发 / 吊销执行面 | 启动 `./scripts/fabric-ca-admin-run.sh`，通过 `platform-core` 先完成 step-up challenge，再调用 `POST /api/v1/iam/fabric-identities/{id}/issue` 与 `POST /api/v1/iam/certificates/{id}/revoke` | Rust `platform-core` 负责权限、step-up、公网错误码与 `audit.audit_event(actor_id=真实操作者)`；Go `services/fabric-ca-admin` 负责执行证书签发 / 吊销，真实更新 `iam.fabric_identity_binding / iam.certificate_record / iam.certificate_revocation_record`，并写入 `ops.external_fact_receipt(fact_type in ('certificate_issue_receipt','certificate_revocation_receipt'))`、`ops.system_log(message_text in ('fabric ca admin issued identity','fabric ca admin revoked certificate'))` | HTTP 响应、`iam.step_up_challenge`、`iam.fabric_identity_binding`、`iam.certificate_record`、`iam.certificate_revocation_record`、`ops.external_fact_receipt`、`audit.audit_event`、`ops.system_log` |
 | `AUD-CASE-023` | 交易链监控总览 | `GET /api/v1/ops/trade-monitor/orders/{order_id}` | 返回订单维度 trade monitor 视图，包含最近 checkpoint / external fact / fairness incident / projection gap 摘要；平台与租户角色都必须通过正式权限与 order scope 校验；查询动作写入 `audit.access_audit + ops.system_log` | API 响应、`trade.order_main`、`ops.trade_lifecycle_checkpoint`、`ops.external_fact_receipt`、`risk.fairness_incident`、`ops.chain_projection_gap`、`chain.chain_anchor`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-024` | 生命周期检查点过滤查询 | `GET /api/v1/ops/trade-monitor/orders/{order_id}/checkpoints?checkpoint_status=pending&lifecycle_stage=delivery&page=1&page_size=20` | 返回过滤后的 `ops.trade_lifecycle_checkpoint` 分页结果；tenant 侧必须命中 buyer/seller order scope；查询动作写入 `audit.access_audit + ops.system_log` | API 响应、`ops.trade_lifecycle_checkpoint`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-025` | 外部事实分页查询 | `GET /api/v1/ops/external-facts?order_id=...&receipt_status=pending&provider_type=mock_payment_provider&from=...&to=...` | 返回 `ops.external_fact_receipt` 分页结果；查询动作写入 `audit.access_audit(target_type='external_fact_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.external_fact_receipt`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-026` | 外部事实确认 | `POST /api/v1/ops/external-facts/{id}/confirm` + verified `x-step-up-challenge-id` + `{"confirm_result":"confirmed","reason":"...","operator_note":"..."}` | 仅允许 `receipt_status='pending'`；成功后只更新 `ops.external_fact_receipt.receipt_status / confirmed_at / metadata.manual_confirmation / metadata.rule_evaluation`，写入 `audit.audit_event(action_name='ops.external_fact.confirm')`、`audit.access_audit(access_mode='confirm', target_type='external_fact_receipt')`、`ops.system_log`，且不得直接改写 `trade.order_main.external_fact_status` | API 响应、`ops.external_fact_receipt`、`trade.order_main`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
 - `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`AUD-015` 已补齐 `fabric-event-listener` 的 callback 轮询源、Kafka callback 发布与 DB 回写；`AUD-016` 已补齐 `fabric-ca-admin` 的证书治理执行面；`fabric-test-network / Gateway / chaincode / real Fabric CA` 留待 `AUD-017`。
+- `AUD-019` 已把 `ops.external_fact_receipt` 的公共 HTTP 控制面补齐到查询 / confirm；`fairness-incidents / projection-gaps` 继续由 `AUD-020 / AUD-021` 承接。
 
 ## `AUD-011` 手工一致性联查验证
 
@@ -303,6 +307,98 @@ LIMIT 10;
 - checkpoints 过滤结果只返回命中的 `delivery + pending`
 - `audit.access_audit + ops.system_log` 至少各 2 条
 - trade monitor 读取的是正式 PostgreSQL authority，不依赖旁路 Kafka 消费结果
+
+## `AUD-019` 手工外部事实查询 / confirm 验证
+
+1. 启动服务：
+
+```bash
+set -a
+source infra/docker/.env.local
+set +a
+
+APP_PORT=18080 \
+KAFKA_BROKERS=127.0.0.1:9094 \
+KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
+cargo run -p platform-core-bin
+```
+
+2. 先跑 live smoke，确认 `ops.external_fact_receipt` 查询 / confirm、step-up、审计与“不直接改业务主状态”边界都已生效：
+
+```bash
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_external_fact_confirm_db_smoke -- --nocapture
+```
+
+3. 查询 pending receipt：
+
+```bash
+curl -sS "http://127.0.0.1:18080/api/v1/ops/external-facts?order_id=<order_id>&receipt_status=pending&provider_type=mock_payment_provider&page=1&page_size=20" \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud019-list' \
+  -H 'x-trace-id: trace-aud019'
+```
+
+4. 对其中一条 pending receipt 发起 confirm：
+
+```bash
+curl -sS -X POST "http://127.0.0.1:18080/api/v1/ops/external-facts/<external_fact_receipt_id>/confirm" \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud019-confirm' \
+  -H 'x-trace-id: trace-aud019' \
+  -H 'x-step-up-challenge-id: <confirm_step_up_id>' \
+  -d '{
+    "confirm_result": "confirmed",
+    "reason": "operator verified payment callback",
+    "operator_note": "provider callback digest matches expected invoice"
+  }'
+```
+
+5. 回查 receipt 与主状态边界：
+
+```sql
+SELECT receipt_status,
+       confirmed_at,
+       metadata -> 'manual_confirmation' ->> 'confirm_result' AS confirm_result,
+       metadata -> 'manual_confirmation' ->> 'reason' AS confirm_reason,
+       metadata -> 'rule_evaluation' ->> 'status' AS rule_evaluation_status
+FROM ops.external_fact_receipt
+WHERE external_fact_receipt_id = '<external_fact_receipt_id>'::uuid;
+
+SELECT external_fact_status, reconcile_status, proof_commit_state
+FROM trade.order_main
+WHERE order_id = '<order_id>'::uuid;
+```
+
+6. 回查审计与系统日志：
+
+```sql
+SELECT action_name, result_code, ref_type, ref_id::text
+FROM audit.audit_event
+WHERE request_id = 'req-aud019-confirm'
+  AND action_name = 'ops.external_fact.confirm';
+
+SELECT access_mode, target_type, target_id::text
+FROM audit.access_audit
+WHERE request_id IN ('req-aud019-list', 'req-aud019-confirm')
+ORDER BY created_at;
+
+SELECT message_text, structured_payload
+FROM ops.system_log
+WHERE request_id IN ('req-aud019-list', 'req-aud019-confirm')
+ORDER BY created_at;
+```
+
+7. 预期：
+
+- 查询能返回 `ops.external_fact_receipt` 正式分页结果
+- confirm 只允许 `receipt_status='pending'`
+- confirm 成功后 `receipt_status / confirmed_at / metadata.manual_confirmation / metadata.rule_evaluation` 更新
+- `audit.audit_event(action_name='ops.external_fact.confirm')`、`audit.access_audit(access_mode='confirm')`、`ops.system_log` 同时可回查
+- `trade.order_main.external_fact_status` 保持原值，不被 confirm 直接改写
 
 ## `AUD-013 / AUD-014` 手工 fabric-adapter 验证
 

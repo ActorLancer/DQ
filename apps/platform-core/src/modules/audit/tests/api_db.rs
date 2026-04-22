@@ -438,6 +438,38 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn rejects_external_fact_query_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/external-facts")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud019-external-facts-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn external_fact_confirm_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/external-facts/10000000-0000-0000-0000-000000000019/confirm")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud019-external-fact-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"confirm_result":"confirmed","reason":"missing step-up"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -4167,6 +4199,328 @@ async fn audit_trade_monitor_db_smoke() {
         .execute(
             "DELETE FROM chain.chain_anchor WHERE chain_anchor_id = $1::text::uuid",
             &[&chain_anchor_id],
+        )
+        .await;
+    cleanup_business_rows(&client, &seed).await;
+}
+
+#[tokio::test]
+async fn audit_external_fact_confirm_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let seed = seed_order_graph(&client, &format!("aud019-{suffix}"))
+        .await
+        .expect("seed order graph");
+    let operator_user_id = seed_user(&client, &seed.buyer_org_id, &format!("aud019-{suffix}"))
+        .await
+        .expect("seed aud019 operator");
+    let app = crate::with_live_test_state(router()).await;
+    let list_request_id = format!("req-aud019-list-{suffix}");
+    let confirm_request_id = format!("req-aud019-confirm-{suffix}");
+    let trace_id = format!("trace-aud019-{suffix}");
+    let external_fact_receipt_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud019 receipt id")
+        .get(0);
+
+    client
+        .execute(
+            "UPDATE trade.order_main
+             SET authority_model = 'dual_layer',
+                 business_state_version = 12,
+                 proof_commit_state = 'pending_anchor',
+                 proof_commit_policy = 'async_evidence',
+                 external_fact_status = 'pending_receipt',
+                 reconcile_status = 'pending_check',
+                 last_reconciled_at = now() - interval '10 minutes'
+             WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await
+        .expect("update aud019 order consistency fields");
+
+    client
+        .execute(
+            "INSERT INTO ops.external_fact_receipt (
+               external_fact_receipt_id,
+               order_id,
+               ref_domain,
+               ref_type,
+               ref_id,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               occurred_at,
+               received_at,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'payment',
+               'order',
+               $2::text::uuid,
+               'payment_callback',
+               'mock_payment_provider',
+               'mockpay',
+               $3,
+               'pending',
+               jsonb_build_object('seed', $4, 'provider_status', 'received'),
+               $5,
+               now() - interval '6 minutes',
+               now() - interval '5 minutes',
+               $6,
+               $7,
+               jsonb_build_object('seed', $4, 'source', 'aud019-smoke')
+             )",
+            &[
+                &external_fact_receipt_id,
+                &seed.order_id,
+                &format!("provider-ref-aud019-{suffix}"),
+                &suffix,
+                &format!("aud019-receipt-hash-{suffix}"),
+                &list_request_id,
+                &trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud019 external receipt");
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/external-facts?order_id={}&receipt_status=pending&provider_type=mock_payment_provider&from=2000-01-01T00:00:00.000Z&to=2999-01-01T00:00:00.000Z&page=1&page_size=10",
+                    seed.order_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &list_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("aud019 list request"),
+        )
+        .await
+        .expect("call aud019 list");
+    let list_status = list_response.status();
+    let list_body = to_bytes(list_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud019 list body");
+    assert_eq!(
+        list_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&list_body)
+    );
+    let list_json: Value = serde_json::from_slice(&list_body).expect("decode aud019 list body");
+    assert_eq!(list_json["data"]["total"].as_i64(), Some(1));
+    assert_eq!(
+        list_json["data"]["items"][0]["external_fact_receipt_id"].as_str(),
+        Some(external_fact_receipt_id.as_str())
+    );
+    assert_eq!(
+        list_json["data"]["items"][0]["receipt_status"].as_str(),
+        Some("pending")
+    );
+
+    let confirm_step_up_id = seed_verified_step_up_challenge(
+        &client,
+        &operator_user_id,
+        "ops.external_fact.manage",
+        "external_fact_receipt",
+        Some(&external_fact_receipt_id),
+        &format!("aud019-{suffix}"),
+    )
+    .await
+    .expect("seed aud019 external fact confirm step-up");
+
+    let confirm_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/ops/external-facts/{}/confirm",
+                    external_fact_receipt_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &confirm_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &confirm_step_up_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"confirm_result":"confirmed","reason":"operator verified payment callback","operator_note":"provider callback digest matches expected invoice"}"#,
+                ))
+                .expect("aud019 confirm request"),
+        )
+        .await
+        .expect("call aud019 confirm");
+    let confirm_status = confirm_response.status();
+    let confirm_body = to_bytes(confirm_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud019 confirm body");
+    assert_eq!(
+        confirm_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&confirm_body)
+    );
+    let confirm_json: Value =
+        serde_json::from_slice(&confirm_body).expect("decode aud019 confirm body");
+    assert_eq!(
+        confirm_json["data"]["confirm_result"].as_str(),
+        Some("confirmed")
+    );
+    assert_eq!(
+        confirm_json["data"]["status"].as_str(),
+        Some("manual_confirmation_recorded")
+    );
+    assert_eq!(
+        confirm_json["data"]["rule_evaluation_status"].as_str(),
+        Some("pending_follow_up")
+    );
+    assert_eq!(
+        confirm_json["data"]["external_fact_receipt"]["receipt_status"].as_str(),
+        Some("confirmed")
+    );
+    assert!(
+        confirm_json["data"]["external_fact_receipt"]["confirmed_at"]
+            .as_str()
+            .is_some()
+    );
+
+    let receipt_row = client
+        .query_one(
+            "SELECT
+               receipt_status,
+               confirmed_at IS NOT NULL,
+               metadata -> 'manual_confirmation' ->> 'confirm_result',
+               metadata -> 'manual_confirmation' ->> 'reason',
+               metadata -> 'rule_evaluation' ->> 'status'
+             FROM ops.external_fact_receipt
+             WHERE external_fact_receipt_id = $1::text::uuid",
+            &[&external_fact_receipt_id],
+        )
+        .await
+        .expect("load aud019 receipt row");
+    let receipt_status: String = receipt_row.get(0);
+    let confirmed_at_present: bool = receipt_row.get(1);
+    let metadata_confirm_result: Option<String> = receipt_row.get(2);
+    let metadata_reason: Option<String> = receipt_row.get(3);
+    let rule_evaluation_status: Option<String> = receipt_row.get(4);
+    assert_eq!(receipt_status, "confirmed");
+    assert!(confirmed_at_present);
+    assert_eq!(metadata_confirm_result.as_deref(), Some("confirmed"));
+    assert_eq!(
+        metadata_reason.as_deref(),
+        Some("operator verified payment callback")
+    );
+    assert_eq!(rule_evaluation_status.as_deref(), Some("pending_follow_up"));
+
+    let order_external_fact_status: String = client
+        .query_one(
+            "SELECT external_fact_status
+             FROM trade.order_main
+             WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await
+        .expect("load aud019 order status")
+        .get(0);
+    assert_eq!(order_external_fact_status, "pending_receipt");
+
+    let audit_event_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND action_name = 'ops.external_fact.confirm'
+               AND result_code = 'confirmed'",
+            &[&confirm_request_id],
+        )
+        .await
+        .expect("count aud019 audit event")
+        .get(0);
+    assert_eq!(audit_event_count, 1);
+
+    let access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND target_type = ANY($2::text[])",
+            &[
+                &vec![list_request_id.clone(), confirm_request_id.clone()],
+                &vec![
+                    "external_fact_query".to_string(),
+                    "external_fact_receipt".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud019 access audit")
+        .get(0);
+    assert_eq!(access_count, 2);
+
+    let log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = ANY($2::text[])",
+            &[
+                &vec![list_request_id.clone(), confirm_request_id.clone()],
+                &vec![
+                    "ops lookup executed: GET /api/v1/ops/external-facts".to_string(),
+                    "ops external fact confirm executed: POST /api/v1/ops/external-facts/{id}/confirm".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud019 system log")
+        .get(0);
+    assert_eq!(log_count, 2);
+
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&confirm_step_up_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.external_fact_receipt WHERE external_fact_receipt_id = $1::text::uuid",
+            &[&external_fact_receipt_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+            &[&operator_user_id],
         )
         .await;
     cleanup_business_rows(&client, &seed).await;

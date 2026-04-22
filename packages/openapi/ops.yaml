@@ -775,6 +775,213 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/external-facts:
+    get:
+      summary: query external fact receipt records
+      tags: [AuditOps]
+      description: |
+        Returns the formal `ops.external_fact_receipt` read model used by the trade
+        monitor / consistency control-plane. The endpoint is platform-only and every
+        lookup is mirrored into `audit.access_audit + ops.system_log`.
+      parameters:
+        - in: query
+          name: order_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: ref_type
+          schema:
+            type: string
+        - in: query
+          name: ref_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: fact_type
+          schema:
+            type: string
+        - in: query
+          name: provider_type
+          schema:
+            type: string
+        - in: query
+          name: receipt_status
+          schema:
+            type: string
+        - in: query
+          name: request_id
+          schema:
+            type: string
+        - in: query
+          name: trace_id
+          schema:
+            type: string
+        - in: query
+          name: from
+          schema:
+            type: string
+            description: Inclusive lower bound applied to receipt observation time.
+        - in: query
+          name: to
+          schema:
+            type: string
+            description: Inclusive upper bound applied to receipt observation time.
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: external fact receipt page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseExternalFactReceiptPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - external_fact_receipt_id: 991f69a0-ae84-4c5e-89f4-d764354e955d
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      ref_domain: payment
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      fact_type: payment_callback
+                      provider_type: mock_payment_provider
+                      provider_key: mockpay
+                      provider_reference: provider-ref-aud019
+                      receipt_status: pending
+                      receipt_payload:
+                        provider_status: received
+                      receipt_hash: aud019-receipt-hash
+                      occurred_at: "2026-04-22T10:04:00.000Z"
+                      received_at: "2026-04-22T10:05:00.000Z"
+                      confirmed_at: null
+                      request_id: req-aud019-list
+                      trace_id: trace-aud019
+                      metadata:
+                        source: aud019-smoke
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/external-facts/{id}/confirm:
+    post:
+      summary: confirm one pending external fact receipt
+      tags: [AuditOps]
+      description: |
+        Performs the high-risk confirmation action for a pending `ops.external_fact_receipt`.
+        The endpoint requires `ops.external_fact.manage` plus step-up, records formal
+        audit / access / system-log traces, updates only the receipt confirmation result,
+        and must not directly mutate `trade.order_main.external_fact_status`.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpsExternalFactConfirmRequest"
+            example:
+              confirm_result: confirmed
+              reason: operator verified payment callback
+              operator_note: provider callback digest matches expected invoice
+      responses:
+        "200":
+          description: manual confirmation recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsExternalFactConfirmResponse"
+              example:
+                success: true
+                data:
+                  external_fact_receipt:
+                    external_fact_receipt_id: 991f69a0-ae84-4c5e-89f4-d764354e955d
+                    order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    ref_domain: payment
+                    ref_type: order
+                    ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    fact_type: payment_callback
+                    provider_type: mock_payment_provider
+                    provider_key: mockpay
+                    provider_reference: provider-ref-aud019
+                    receipt_status: confirmed
+                    receipt_payload:
+                      provider_status: received
+                    receipt_hash: aud019-receipt-hash
+                    occurred_at: "2026-04-22T10:04:00.000Z"
+                    received_at: "2026-04-22T10:05:00.000Z"
+                    confirmed_at: "2026-04-22T10:11:00.000Z"
+                    request_id: req-aud019-list
+                    trace_id: trace-aud019
+                    metadata:
+                      manual_confirmation:
+                        confirm_result: confirmed
+                        reason: operator verified payment callback
+                      rule_evaluation:
+                        status: pending_follow_up
+                  confirm_result: confirmed
+                  step_up_bound: true
+                  status: manual_confirmation_recorded
+                  rule_evaluation_status: pending_follow_up
+        "400":
+          description: invalid payload or step-up binding mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or verified step-up missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: external fact receipt not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: external fact receipt is no longer pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/consistency/{refType}/{refId}:
     get:
       summary: query dual-authority consistency state for a business reference
@@ -1359,6 +1566,24 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/TradeMonitorCheckpointPageResponse"
+    ApiResponseExternalFactReceiptPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/ExternalFactReceiptPageResponse"
+    ApiResponseOpsExternalFactConfirmResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsExternalFactConfirmResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -1831,6 +2056,56 @@ components:
           default: true
         metadata:
           $ref: "#/components/schemas/JsonObject"
+    OpsExternalFactConfirmRequest:
+      type: object
+      required:
+        - confirm_result
+        - reason
+      properties:
+        confirm_result:
+          type: string
+          enum: [confirmed, matched, mismatched, rejected]
+        reason:
+          type: string
+        operator_note:
+          type: string
+          nullable: true
+    ExternalFactReceiptPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalFactReceiptRecord"
+    OpsExternalFactConfirmResponse:
+      type: object
+      required:
+        - external_fact_receipt
+        - confirm_result
+        - step_up_bound
+        - status
+        - rule_evaluation_status
+      properties:
+        external_fact_receipt:
+          $ref: "#/components/schemas/ExternalFactReceiptRecord"
+        confirm_result:
+          type: string
+          enum: [confirmed, matched, mismatched, rejected]
+        step_up_bound:
+          type: boolean
+        status:
+          type: string
+          enum: [manual_confirmation_recorded]
+        rule_evaluation_status:
+          type: string
+          enum: [pending_follow_up]
     OpsOutboxPageResponse:
       type: object
       required: [total, page, page_size, items]

@@ -300,6 +300,8 @@ pub struct ExternalFactReceiptQuery {
     pub receipt_status: Option<String>,
     pub request_id: Option<String>,
     pub trace_id: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
     pub page: Option<u32>,
     pub page_size: Option<u32>,
 }
@@ -319,6 +321,22 @@ pub struct ExternalFactReceiptPageView {
     pub page: u32,
     pub page_size: u32,
     pub items: Vec<ExternalFactReceiptView>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct OpsExternalFactConfirmRequest {
+    pub confirm_result: String,
+    pub reason: String,
+    pub operator_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsExternalFactConfirmView {
+    pub external_fact_receipt: ExternalFactReceiptView,
+    pub confirm_result: String,
+    pub step_up_bound: bool,
+    pub status: String,
+    pub rule_evaluation_status: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Default, PartialEq)]

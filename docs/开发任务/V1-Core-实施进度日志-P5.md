@@ -1294,3 +1294,53 @@
   - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-018` 按冻结口径属于 `platform-core` 的只读聚合面。Fabric 的真实写链、Gateway、chaincode event listener 与 CA admin 仍保持 `AUD-013 ~ AUD-017` 已落地的 `Go` 分层，不回退到 Rust 直接交互。
   - 手工清理时，尝试删除本次联调用于访问的 `core.user_account` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`，被 append-only guard 正常拒绝；因此本批按运行态边界只清理订单、商品和监控对象等临时业务数据，保留该用户及组织作为审计留痕依赖，不视为业务测试脏数据外泄。
   - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。
+### BATCH-232（计划中）
+- 任务：`AUD-019` 外部事实查询 / 确认接口
+- 状态：计划中
+- 说明：按 `AUD-019` 冻结口径，实现 `GET /api/v1/ops/external-facts` 与 `POST /api/v1/ops/external-facts/{id}/confirm`。本批严格以 `ops.external_fact_receipt` 为正式持久化对象，不新增 `external_receipt` 或其他旁路表；查询接口补齐 `order_id / ref_type / ref_id / fact_type / provider_type / receipt_status / request_id / trace_id / from / to` 过滤、platform-only 鉴权与 `audit.access_audit + ops.system_log` 留痕；确认接口补齐 `ops.external_fact.manage`、`step-up`、`pending` 状态约束、确认结果回写、正式审计事件和系统日志，并明确“不直接改写业务主状态，只记录回执确认结果并为后续规则评估保留正式留痕”。同时同步 `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、runbook、测试矩阵和 `AUD_DB_SMOKE + 宿主机 curl + psql` 验证。
+- 追溯：已按 `CSV > Markdown > technical_reference > 其他辅助文档` 重新核对 `AUD-019`、`交易链监控与公平性接口协议正式版`、`067/068/072/074`、`A04`、`trade-monitor` / `consistency` / `fabric-local` runbook 与当前 `audit` 模块实现；当前未发现需要暂停的人为冲突。
+### BATCH-232（待审批）
+- 任务：`AUD-019` 外部事实查询 / 确认接口
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`、`domain/mod.rs`、`repo/mod.rs`：新增 `GET /api/v1/ops/external-facts` 与 `POST /api/v1/ops/external-facts/{id}/confirm`，补齐 `order_id / ref_type / ref_id / fact_type / provider_type / receipt_status / request_id / trace_id / from / to` 过滤、`ops.external_fact.read / ops.external_fact.manage` 权限矩阵、`step-up` 绑定、`pending` 状态保护，以及 `ops.external_fact_receipt` 的正式查询 / 单对象装载 / confirmation 回写。
+  - `apps/platform-core/src/modules/audit/api/handlers.rs`：确认动作只更新 `ops.external_fact_receipt.receipt_status / confirmed_at / metadata`，把 `manual_confirmation` 与 `rule_evaluation.status='pending_follow_up'` 写回 receipt metadata；同步写入 `audit.audit_event(action_name='ops.external_fact.confirm')`、`audit.access_audit(target_type='external_fact_receipt')` 与 `ops.system_log`，并明确不直接改写 `trade.order_main.external_fact_status`。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增路由级 `permission / request-id / step-up` 测试与 `audit_external_fact_confirm_db_smoke`；真实插入最小订单图、`ops.external_fact_receipt(receipt_status='pending')`、`iam.step_up_challenge`，调用 list + confirm 两条正式 API，并回查 `ops.external_fact_receipt / trade.order_main / audit.audit_event / audit.access_audit / ops.system_log`。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`：归档 `external-facts` 两条正式接口、请求/响应 schema 与示例，并把剩余公共控制面缺口收敛到 `AUD-020~021`。
+  - `docs/04-runbooks/audit-external-facts.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：补齐 `AUD-019` 的宿主机 `curl + psql` 操作手册、验收矩阵、排障说明与回查 SQL。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：无新增 `V1-gap / V2-reserved / V3-reserved`；`TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 已推进到仅剩 `AUD-020~021` 的 `fairness-incidents / projection-gaps` 公共控制面缺口。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既存 `unused_*` warning，无新增编译失败。
+  - `cargo test -p platform-core` 通过：`299 passed; 0 failed`，新增 `audit_external_fact_confirm_db_smoke` 与路由级权限 / step-up 测试均通过。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线查询缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过，确认 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml` 同步且 schema 骨架完整。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_external_fact_confirm_db_smoke -- --nocapture` 通过：真实完成 `ops.external_fact_receipt` 回写、`rule_evaluation.status='pending_follow_up'` 留痕、`trade.order_main.external_fact_status` 不变、`audit.audit_event + audit.access_audit + ops.system_log` 回查与临时业务对象清理。
+  - 真实宿主机联调通过：启动 `APP_PORT=18080 cargo run -p platform-core-bin`，用 `psql` 手工写入一笔最小订单图、`ops.external_fact_receipt(receipt_status='pending')` 与 verified `iam.step_up_challenge`，然后执行：
+    - `GET /api/v1/ops/external-facts?order_id=a0e9e886-9d16-47d5-be1f-5ade77a4bade&receipt_status=pending&provider_type=mock_payment_provider&page=1&page_size=20`
+    - `POST /api/v1/ops/external-facts/3a343777-d9da-44fa-8f93-78a572181cd5/confirm`
+    并回查到：
+    - `ops.external_fact_receipt.receipt_status='confirmed'`
+    - `ops.external_fact_receipt.metadata.manual_confirmation.confirm_result='confirmed'`
+    - `ops.external_fact_receipt.metadata.rule_evaluation.status='pending_follow_up'`
+    - `trade.order_main.external_fact_status='pending_receipt'`，未被 confirm 直接改写
+    - `audit.audit_event(action_name='ops.external_fact.confirm', result_code='confirmed') = 1`
+    - `audit.access_audit` 共 `2` 条，`target_type in ('external_fact_query','external_fact_receipt')`
+    - `ops.system_log` 共 `2` 条，对应 list / confirm 两条正式路径
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-019`
+  - `交易链监控与公平性接口协议正式版.md`：`GET /api/v1/ops/external-facts`、`POST /api/v1/ops/external-facts/{id}/confirm`
+  - `067_trade_chain_monitoring.sql`、`068_trade_chain_monitoring_authz.sql`：`ops.external_fact_receipt` 正式对象与 `ops.external_fact.read / manage` 权限绑定
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：external-facts 公共控制面的契约 / runbook / 测试收口缺口
+  - `async-chain-write.md`、`kafka-topics.md`：确认本批仍是正式 receipt 控制面，不旁路出新的 topic / outbox 链
+- 覆盖的任务清单条目：`AUD-019`
+- 未覆盖项：
+  - `GET /api/v1/ops/fairness-incidents`、`POST /handle` 留待 `AUD-020`
+  - `GET /api/v1/ops/projection-gaps`、`POST /resolve` 留待 `AUD-021`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 推进到包含 `AUD-019 external-facts` 的最新状态。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-019` 按冻结口径属于 `platform-core` 的外部事实控制面。Fabric 的真实写链、Gateway、chaincode event listener 与 CA admin 仍保持 `AUD-013 ~ AUD-017` 已落地的 `Go` 分层，不回退到 Rust 直接交互。
+  - 手工清理时，尝试删除本次联调用到的 `iam.step_up_challenge` 会触发 `audit.audit_event.step_up_challenge_id -> SET NULL -> UPDATE append-only`，尝试删除 `core.user_account / buyer organization` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`；这两类对象因此按审计依赖保留，不视为业务测试脏数据外泄。其余订单 / 商品 / receipt 业务测试数据已清理。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。

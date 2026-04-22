@@ -46,6 +46,10 @@ pub fn router() -> Router<AppState> {
             get(handlers::get_ops_dead_letters),
         )
         .route(
+            "/api/v1/ops/external-facts",
+            get(handlers::get_ops_external_facts),
+        )
+        .route(
             "/api/v1/ops/consistency/{refType}/{refId}",
             get(handlers::get_ops_consistency),
         )
@@ -60,6 +64,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/ops/trade-monitor/orders/{orderId}/checkpoints",
             get(handlers::get_ops_trade_monitor_checkpoints),
+        )
+        .route(
+            "/api/v1/ops/external-facts/{id}/confirm",
+            post(handlers::confirm_ops_external_fact),
         )
         .route(
             "/api/v1/ops/dead-letters/{id}/reprocess",

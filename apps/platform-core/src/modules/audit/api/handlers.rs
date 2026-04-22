@@ -14,13 +14,14 @@ use crate::modules::audit::domain::{
     AnchorBatchPageView, AnchorBatchQuery, AuditAnchorBatchRetryRequest, AuditAnchorBatchRetryView,
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
-    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OpsConsistencyBusinessStateView,
-    OpsConsistencyExternalFactStateView, OpsConsistencyProofStateView,
-    OpsConsistencyReconcileRequest, OpsConsistencyReconcileView,
+    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, ExternalFactReceiptPageView,
+    ExternalFactReceiptQuery, OpsConsistencyBusinessStateView, OpsConsistencyExternalFactStateView,
+    OpsConsistencyProofStateView, OpsConsistencyReconcileRequest, OpsConsistencyReconcileView,
     OpsConsistencyRepairRecommendationView, OpsConsistencyView, OpsDeadLetterPageView,
     OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
-    OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
-    TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery, TradeMonitorOverviewView,
+    OpsExternalFactConfirmRequest, OpsExternalFactConfirmView, OpsOutboxPageView, OpsOutboxQuery,
+    OrderAuditQuery, OrderAuditView, TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery,
+    TradeMonitorOverviewView,
 };
 use crate::modules::audit::dto::{
     AnchorBatchView, ChainProjectionGapView, DeadLetterEventView, EvidenceManifestView,
@@ -40,12 +41,14 @@ const LEGAL_HOLD_STEP_UP_ACTION: &str = "audit.legal_hold.manage";
 const ANCHOR_STEP_UP_ACTION: &str = "audit.anchor.manage";
 const DEAD_LETTER_REPROCESS_STEP_UP_ACTION: &str = "ops.dead_letter.reprocess";
 const CONSISTENCY_RECONCILE_STEP_UP_ACTION: &str = "ops.consistency.reconcile";
+const EXTERNAL_FACT_CONFIRM_STEP_UP_ACTION: &str = "ops.external_fact.manage";
 const CONSISTENCY_RECONCILE_TARGET_TOPIC: &str = "dtp.consistency.reconcile";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
 const DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_DRY_RUN_ONLY";
 const DEAD_LETTER_REPROCESS_NOT_SUPPORTED_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_NOT_SUPPORTED";
 const DEAD_LETTER_REPROCESS_STATE_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_STATE_CONFLICT";
 const CONSISTENCY_RECONCILE_DRY_RUN_ONLY_ERROR: &str = "AUDIT_CONSISTENCY_RECONCILE_DRY_RUN_ONLY";
+const EXTERNAL_FACT_CONFIRM_STATE_ERROR: &str = "AUDIT_EXTERNAL_FACT_CONFIRM_STATE_CONFLICT";
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
 
@@ -351,6 +354,277 @@ pub(in crate::modules::audit) async fn get_ops_dead_letters(
             .iter()
             .map(DeadLetterEventView::from)
             .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_external_facts(
+    State(state): State<AppState>,
+    Query(query): Query<ExternalFactReceiptQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<ExternalFactReceiptPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_optional_uuid(query.order_id.as_deref(), "order_id", &request_id)?;
+    validate_optional_uuid(query.ref_id.as_deref(), "ref_id", &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsExternalFactRead,
+        "ops external fact read",
+    )?;
+
+    let normalized_query = ExternalFactReceiptQuery {
+        order_id: normalize_optional_filter(query.order_id.as_deref(), "order_id", &request_id)?,
+        ref_type: normalize_optional_filter(query.ref_type.as_deref(), "ref_type", &request_id)?,
+        ref_id: normalize_optional_filter(query.ref_id.as_deref(), "ref_id", &request_id)?,
+        fact_type: normalize_optional_filter(query.fact_type.as_deref(), "fact_type", &request_id)?,
+        provider_type: normalize_optional_filter(
+            query.provider_type.as_deref(),
+            "provider_type",
+            &request_id,
+        )?,
+        receipt_status: normalize_optional_filter(
+            query.receipt_status.as_deref(),
+            "receipt_status",
+            &request_id,
+        )?,
+        request_id: normalize_optional_filter(
+            query.request_id.as_deref(),
+            "request_id",
+            &request_id,
+        )?,
+        trace_id: normalize_optional_filter(query.trace_id.as_deref(), "trace_id", &request_id)?,
+        from: normalize_optional_filter(query.from.as_deref(), "from", &request_id)?,
+        to: normalize_optional_filter(query.to.as_deref(), "to", &request_id)?,
+        page: query.page,
+        page_size: query.page_size,
+    };
+
+    let client = state_client(&state)?;
+    let pagination = normalized_query.pagination();
+    let external_fact_page = repo::search_external_fact_receipts(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "external_fact_query",
+        normalized_query
+            .order_id
+            .clone()
+            .or_else(|| normalized_query.ref_id.clone()),
+        "GET /api/v1/ops/external-facts",
+        json!({
+            "order_id": normalized_query.order_id,
+            "ref_type": normalized_query.ref_type,
+            "ref_id": normalized_query.ref_id,
+            "fact_type": normalized_query.fact_type,
+            "provider_type": normalized_query.provider_type,
+            "receipt_status": normalized_query.receipt_status,
+            "request_id": normalized_query.request_id,
+            "trace_id": normalized_query.trace_id,
+            "from": normalized_query.from,
+            "to": normalized_query.to,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": external_fact_page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ExternalFactReceiptPageView {
+        total: external_fact_page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: external_fact_page
+            .items
+            .iter()
+            .map(ExternalFactReceiptView::from)
+            .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn confirm_ops_external_fact(
+    State(state): State<AppState>,
+    Path(external_fact_receipt_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<OpsExternalFactConfirmRequest>,
+) -> Result<Json<ApiResponse<OpsExternalFactConfirmView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&external_fact_receipt_id, "id", &request_id)?;
+    let confirm_result =
+        normalize_external_fact_confirm_result(&payload.confirm_result, &request_id)?;
+    let reason = normalize_external_fact_confirm_reason(&payload.reason, &request_id)?;
+    let operator_note = normalize_optional_long_text(
+        payload.operator_note.as_deref(),
+        "operator_note",
+        &request_id,
+    )?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsExternalFactManage,
+        "ops external fact confirm",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "ops external fact confirm")?;
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_external_fact_confirm(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        external_fact_receipt_id.as_str(),
+    )
+    .await?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+
+    let existing_receipt = repo::load_external_fact_receipt(&client, &external_fact_receipt_id)
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("external fact receipt not found: {external_fact_receipt_id}"),
+            )
+        })?;
+    if existing_receipt.receipt_status != "pending" {
+        return Err(conflict_error(
+            &request_id,
+            EXTERNAL_FACT_CONFIRM_STATE_ERROR,
+            format!(
+                "external fact receipt confirm is only allowed when receipt_status=`pending`; got `{}`",
+                existing_receipt.receipt_status
+            ),
+        ));
+    }
+
+    let confirmed_at = current_utc_timestamp(&client).await?;
+    let metadata_patch = build_external_fact_confirmation_metadata(
+        &headers,
+        request_id.as_str(),
+        trace_id.as_str(),
+        confirmed_at.as_str(),
+        confirm_result.as_str(),
+        reason.as_str(),
+        operator_note.as_deref(),
+        actor_user_id.as_str(),
+        &existing_receipt,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let confirmed_receipt = repo::confirm_external_fact_receipt(
+        &tx,
+        external_fact_receipt_id.as_str(),
+        confirm_result.as_str(),
+        confirmed_at.as_str(),
+        &metadata_patch,
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        conflict_error(
+            &request_id,
+            EXTERNAL_FACT_CONFIRM_STATE_ERROR,
+            format!("external fact receipt is no longer pending: {external_fact_receipt_id}"),
+        )
+    })?;
+
+    let audit_event = build_external_fact_confirm_audit_event(
+        &headers,
+        request_id.as_str(),
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        confirm_result.as_str(),
+        reason.as_str(),
+        operator_note.as_deref(),
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+        &existing_receipt,
+        &confirmed_receipt,
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+
+    let access_audit_id = repo::record_access_audit(
+        &tx,
+        &AccessAuditInsert {
+            accessor_user_id: Some(actor_user_id.clone()),
+            accessor_role_key: Some(current_role(&headers)),
+            access_mode: "confirm".to_string(),
+            target_type: "external_fact_receipt".to_string(),
+            target_id: Some(external_fact_receipt_id.clone()),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: step_up.challenge_id.clone(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            metadata: json!({
+                "endpoint": "POST /api/v1/ops/external-facts/{id}/confirm",
+                "order_id": confirmed_receipt.order_id.clone(),
+                "ref_domain": confirmed_receipt.ref_domain.clone(),
+                "ref_type": confirmed_receipt.ref_type.clone(),
+                "ref_id": confirmed_receipt.ref_id.clone(),
+                "fact_type": confirmed_receipt.fact_type.clone(),
+                "provider_type": confirmed_receipt.provider_type.clone(),
+                "confirm_result": confirm_result.clone(),
+                "reason": reason.clone(),
+                "operator_note": operator_note.clone(),
+                "previous_receipt_status": existing_receipt.receipt_status.clone(),
+                "receipt_status": confirmed_receipt.receipt_status.clone(),
+                "rule_evaluation_status": "pending_follow_up",
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text:
+                "ops external fact confirm executed: POST /api/v1/ops/external-facts/{id}/confirm"
+                    .to_string(),
+            structured_payload: json!({
+                "module": "ops",
+                "endpoint": "POST /api/v1/ops/external-facts/{id}/confirm",
+                "access_audit_id": access_audit_id,
+                "external_fact_receipt_id": external_fact_receipt_id.clone(),
+                "order_id": confirmed_receipt.order_id.clone(),
+                "ref_type": confirmed_receipt.ref_type.clone(),
+                "ref_id": confirmed_receipt.ref_id.clone(),
+                "fact_type": confirmed_receipt.fact_type.clone(),
+                "provider_type": confirmed_receipt.provider_type.clone(),
+                "confirm_result": confirm_result.clone(),
+                "previous_receipt_status": existing_receipt.receipt_status.clone(),
+                "receipt_status": confirmed_receipt.receipt_status.clone(),
+                "confirmed_at": confirmed_receipt.confirmed_at.clone(),
+                "rule_evaluation_status": "pending_follow_up",
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(OpsExternalFactConfirmView {
+        external_fact_receipt: ExternalFactReceiptView::from(&confirmed_receipt),
+        confirm_result,
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+        status: "manual_confirmation_recorded".to_string(),
+        rule_evaluation_status: "pending_follow_up".to_string(),
     }))
 }
 
@@ -2637,6 +2911,8 @@ enum AuditPermission {
     OpsTradeMonitorRead,
     OpsOutboxRead,
     OpsDeadLetterRead,
+    OpsExternalFactRead,
+    OpsExternalFactManage,
     OpsConsistencyRead,
     OpsConsistencyReconcile,
     OpsDeadLetterReprocess,
@@ -2694,6 +2970,13 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
                 | "node_ops_admin"
                 | "audit_admin"
         ),
+        AuditPermission::OpsExternalFactRead => matches!(
+            role,
+            "platform_admin" | "platform_audit_security" | "platform_risk_settlement"
+        ),
+        AuditPermission::OpsExternalFactManage => {
+            matches!(role, "platform_admin" | "platform_audit_security")
+        }
         AuditPermission::OpsConsistencyRead => matches!(
             role,
             "platform_admin"
@@ -3008,6 +3291,27 @@ async fn require_step_up_for_consistency_reconcile(
         Some(ref_type),
         Some(ref_id),
         "ops consistency reconcile",
+    )
+    .await
+}
+
+async fn require_step_up_for_external_fact_confirm(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    external_fact_receipt_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        EXTERNAL_FACT_CONFIRM_STEP_UP_ACTION,
+        None,
+        Some("external_fact_receipt"),
+        Some(external_fact_receipt_id),
+        "ops external fact confirm",
     )
     .await
 }
@@ -4874,6 +5178,112 @@ fn build_consistency_reconcile_audit_event(
     event
 }
 
+fn build_external_fact_confirmation_metadata(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: &str,
+    confirmed_at: &str,
+    confirm_result: &str,
+    reason: &str,
+    operator_note: Option<&str>,
+    actor_user_id: &str,
+    existing_receipt: &repo::ExternalFactReceiptRecord,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> Value {
+    json!({
+        "manual_confirmation": {
+            "endpoint": "POST /api/v1/ops/external-facts/{id}/confirm",
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "confirmed_at": confirmed_at,
+            "confirm_result": confirm_result,
+            "reason": reason,
+            "operator_note": operator_note,
+            "operator_user_id": actor_user_id,
+            "operator_role": current_role(headers),
+            "tenant_id": header(headers, "x-tenant-id"),
+            "step_up_challenge_id": step_up_challenge_id,
+            "step_up_token_present": step_up_token_present,
+            "previous_receipt_status": existing_receipt.receipt_status.clone(),
+        },
+        "rule_evaluation": {
+            "status": "pending_follow_up",
+            "requested_at": confirmed_at,
+            "requested_by": actor_user_id,
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "reason": reason,
+        }
+    })
+}
+
+fn build_external_fact_confirm_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: String,
+    actor_user_id: &str,
+    confirm_result: &str,
+    reason: &str,
+    operator_note: Option<&str>,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+    existing_receipt: &repo::ExternalFactReceiptRecord,
+    confirmed_receipt: &repo::ExternalFactReceiptRecord,
+) -> AuditEvent {
+    let ref_type = confirmed_receipt
+        .ref_type
+        .clone()
+        .unwrap_or_else(|| "external_fact_receipt".to_string());
+    let ref_id = confirmed_receipt
+        .ref_id
+        .clone()
+        .or_else(|| confirmed_receipt.external_fact_receipt_id.clone());
+    let mut event = AuditEvent::business(
+        "ops",
+        ref_type.as_str(),
+        ref_id,
+        "ops.external_fact.confirm",
+        confirm_result,
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id,
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "external_fact_receipt_id": confirmed_receipt.external_fact_receipt_id.clone(),
+                "order_id": confirmed_receipt.order_id.clone(),
+                "ref_domain": confirmed_receipt.ref_domain.clone(),
+                "ref_type": confirmed_receipt.ref_type.clone(),
+                "ref_id": confirmed_receipt.ref_id.clone(),
+                "fact_type": confirmed_receipt.fact_type.clone(),
+                "provider_type": confirmed_receipt.provider_type.clone(),
+                "provider_key": confirmed_receipt.provider_key.clone(),
+                "provider_reference": confirmed_receipt.provider_reference.clone(),
+                "previous_receipt_status": existing_receipt.receipt_status.clone(),
+                "receipt_status": confirmed_receipt.receipt_status.clone(),
+                "confirmed_at": confirmed_receipt.confirmed_at.clone(),
+                "reason": reason,
+                "operator_note": operator_note,
+                "step_up_token_present": step_up_token_present,
+                "rule_evaluation_status": "pending_follow_up",
+            }),
+        },
+    );
+    event.sensitivity_level = "high".to_string();
+    event
+}
+
 fn state_client(state: &AppState) -> Result<db::Client, (StatusCode, Json<ErrorResponse>)> {
     state.db.client().map_err(map_db_error)
 }
@@ -5040,6 +5450,41 @@ fn normalize_consistency_reconcile_reason(
     Ok(reason.to_string())
 }
 
+fn normalize_external_fact_confirm_result(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let normalized = match raw.trim() {
+        "confirmed" | "confirm" => "confirmed",
+        "matched" | "match" => "matched",
+        "mismatched" | "mismatch" => "mismatched",
+        "rejected" | "reject" => "rejected",
+        other => {
+            return Err(bad_request(
+                request_id,
+                format!(
+                    "confirm_result must be one of: confirmed, matched, mismatched, rejected; got `{other}`"
+                ),
+            ));
+        }
+    };
+    Ok(normalized.to_string())
+}
+
+fn normalize_external_fact_confirm_reason(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let reason = raw.trim();
+    if reason.is_empty() {
+        return Err(bad_request(
+            request_id,
+            "reason is required for ops external fact confirm",
+        ));
+    }
+    Ok(reason.to_string())
+}
+
 fn normalize_anchor_retry_reason(
     raw: &str,
     request_id: &str,
@@ -5074,6 +5519,23 @@ fn normalize_optional_filter(
         return Err(bad_request(
             request_id,
             format!("{field_name} must be shorter than 129 characters"),
+        ));
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn normalize_optional_long_text(
+    raw: Option<&str>,
+    field_name: &str,
+    request_id: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(value) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if value.len() > 1000 {
+        return Err(bad_request(
+            request_id,
+            format!("{field_name} must be shorter than 1001 characters"),
         ));
     }
     Ok(Some(value.to_string()))

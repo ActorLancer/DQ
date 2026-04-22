@@ -1804,7 +1804,9 @@ pub async fn search_external_fact_receipts(
                AND ($5::text IS NULL OR efr.provider_type = $5)
                AND ($6::text IS NULL OR efr.receipt_status = $6)
                AND ($7::text IS NULL OR efr.request_id = $7)
-               AND ($8::text IS NULL OR efr.trace_id = $8)",
+               AND ($8::text IS NULL OR efr.trace_id = $8)
+               AND ($9::text IS NULL OR COALESCE(efr.received_at, efr.occurred_at, efr.created_at) >= $9::timestamptz)
+               AND ($10::text IS NULL OR COALESCE(efr.received_at, efr.occurred_at, efr.created_at) <= $10::timestamptz)",
             &[
                 &query.order_id,
                 &query.ref_type,
@@ -1814,6 +1816,8 @@ pub async fn search_external_fact_receipts(
                 &query.receipt_status,
                 &query.request_id,
                 &query.trace_id,
+                &query.from,
+                &query.to,
             ],
         )
         .await?
@@ -1851,9 +1855,11 @@ pub async fn search_external_fact_receipts(
                AND ($6::text IS NULL OR efr.receipt_status = $6)
                AND ($7::text IS NULL OR efr.request_id = $7)
                AND ($8::text IS NULL OR efr.trace_id = $8)
+               AND ($9::text IS NULL OR COALESCE(efr.received_at, efr.occurred_at, efr.created_at) >= $9::timestamptz)
+               AND ($10::text IS NULL OR COALESCE(efr.received_at, efr.occurred_at, efr.created_at) <= $10::timestamptz)
              ORDER BY efr.received_at DESC, efr.external_fact_receipt_id DESC
-             LIMIT $9
-             OFFSET $10",
+             LIMIT $11
+             OFFSET $12",
             &[
                 &query.order_id,
                 &query.ref_type,
@@ -1863,6 +1869,8 @@ pub async fn search_external_fact_receipts(
                 &query.receipt_status,
                 &query.request_id,
                 &query.trace_id,
+                &query.from,
+                &query.to,
                 &limit,
                 &offset,
             ],
@@ -1905,6 +1913,54 @@ pub async fn load_external_fact_receipt(
              FROM ops.external_fact_receipt
              WHERE external_fact_receipt_id = $1::text::uuid",
             &[&external_fact_receipt_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_external_fact_receipt_row(&row)))
+}
+
+pub async fn confirm_external_fact_receipt(
+    client: &(impl GenericClient + Sync),
+    external_fact_receipt_id: &str,
+    confirm_result: &str,
+    confirmed_at: &str,
+    metadata_patch: &Value,
+) -> Result<Option<ExternalFactReceiptRecord>, Error> {
+    let row = client
+        .query_opt(
+            "UPDATE ops.external_fact_receipt
+             SET receipt_status = $2,
+                 confirmed_at = $3::timestamptz,
+                 metadata = COALESCE(metadata, '{}'::jsonb) || $4::jsonb,
+                 updated_at = now()
+             WHERE external_fact_receipt_id = $1::text::uuid
+               AND receipt_status = 'pending'
+             RETURNING
+               external_fact_receipt_id::text,
+               order_id::text,
+               ref_domain,
+               ref_type,
+               ref_id::text,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(confirmed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[
+                &external_fact_receipt_id,
+                &confirm_result,
+                &confirmed_at,
+                metadata_patch,
+            ],
         )
         .await?;
     Ok(row.map(|row| parse_external_fact_receipt_row(&row)))
