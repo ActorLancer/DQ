@@ -10,10 +10,11 @@ pub use audit_kit::{
 
 use crate::modules::audit::dto::AuditTraceView;
 use crate::modules::audit::dto::{
-    AlertEventView, ChainProjectionGapView, ConsumerIdempotencyRecordView, DeadLetterEventView,
-    EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView, FairnessIncidentView,
-    IncidentTicketView, LegalHoldView, ObservabilityBackendView, OutboxEventView, ReplayJobView,
-    ReplayResultView, SloView, SystemLogMirrorView, TraceIndexView, TradeLifecycleCheckpointView,
+    AlertEventView, ChainAnchorView, ChainProjectionGapView, ConsumerIdempotencyRecordView,
+    DeadLetterEventView, EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView,
+    FairnessIncidentView, IncidentTicketView, LegalHoldView, ObservabilityBackendView,
+    OutboxEventView, ReplayJobView, ReplayResultView, SloView, SystemLogMirrorView, TraceIndexView,
+    TradeLifecycleCheckpointView,
 };
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -63,6 +64,13 @@ impl OrderAuditQuery {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+pub struct DeveloperTraceQuery {
+    pub order_id: Option<String>,
+    pub event_id: Option<String>,
+    pub tx_hash: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuditTracePageView {
     pub total: i64,
@@ -82,6 +90,51 @@ pub struct OrderAuditView {
     pub page: u32,
     pub page_size: u32,
     pub traces: Vec<AuditTraceView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeveloperTraceSubjectView {
+    pub lookup_mode: String,
+    pub lookup_value: String,
+    pub matched_object_type: String,
+    pub matched_object_id: Option<String>,
+    pub resolved_ref_type: String,
+    pub resolved_ref_id: String,
+    pub resolved_order_id: String,
+    pub business_status: String,
+    pub payment_status: String,
+    pub delivery_status: Option<String>,
+    pub acceptance_status: Option<String>,
+    pub settlement_status: Option<String>,
+    pub dispute_status: Option<String>,
+    pub proof_commit_state: String,
+    pub proof_commit_policy: String,
+    pub external_fact_status: String,
+    pub reconcile_status: String,
+    pub last_reconciled_at: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub snapshot: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeveloperTraceLookupView {
+    pub subject: DeveloperTraceSubjectView,
+    pub matched_audit_trace: Option<AuditTraceView>,
+    pub matched_outbox_event: Option<OutboxEventView>,
+    pub matched_dead_letter: Option<DeadLetterEventView>,
+    pub matched_chain_anchor: Option<ChainAnchorView>,
+    pub matched_projection_gap: Option<ChainProjectionGapView>,
+    pub matched_checkpoint: Option<TradeLifecycleCheckpointView>,
+    pub trace: Option<TraceIndexView>,
+    pub recent_logs: Vec<SystemLogMirrorView>,
+    pub recent_checkpoints: Vec<TradeLifecycleCheckpointView>,
+    pub recent_external_facts: Vec<ExternalFactReceiptView>,
+    pub recent_projection_gaps: Vec<ChainProjectionGapView>,
+    pub recent_chain_anchors: Vec<ChainAnchorView>,
+    pub recent_outbox_events: Vec<OutboxEventView>,
+    pub recent_dead_letters: Vec<DeadLetterEventView>,
+    pub recent_audit_traces: Vec<AuditTraceView>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

@@ -49,6 +49,7 @@ for path in \
   "/internal/notifications/send" \
   "/internal/notifications/audit/search" \
   "/internal/notifications/dead-letters/{dead_letter_event_id}/replay" \
+  "/api/v1/developer/trace" \
   "/api/v1/ops/outbox" \
   "/api/v1/ops/dead-letters"; do
   grep -q "$path" "$ops_file" || {
@@ -63,6 +64,9 @@ for token in \
   "target_topic" \
   "step_up_ticket" \
   "dtp.notification.dispatch" \
+  "developer.trace.read" \
+  "DeveloperTraceLookupResponse" \
+  "matched_projection_gap" \
   "OpsOutboxPageResponse" \
   "OpsDeadLetterPageResponse" \
   "consumer_idempotency_records"; do

@@ -100,6 +100,8 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-035` | 告警中心查询 | `GET /api/v1/ops/alerts?severity=high&source_backend_key=prometheus_main` | 返回 `ops.alert_event` 分页结果；查询动作写入 `audit.access_audit(target_type='alert_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.alert_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-036` | 事故工单查询 | `GET /api/v1/ops/incidents?owner_role_key=platform_audit_security` | 返回 `ops.incident_ticket` 分页结果与最新 incident event 摘要；查询动作写入 `audit.access_audit(target_type='incident_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.incident_ticket`、`ops.incident_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-037` | SLO 查询 | `GET /api/v1/ops/slos?service_name=platform-core` | 返回 `ops.slo_definition` 联查最新 `ops.slo_snapshot` 的分页结果；查询动作写入 `audit.access_audit(target_type='slo_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.slo_definition`、`ops.slo_snapshot`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-038` | 开发者状态联查三类 selector | `GET /api/v1/developer/trace?order_id=...`、`?event_id=...`、`?tx_hash=...` | 三种 selector 都必须只读联查正式对象，并返回订单主状态、proof/anchor、外部事实、trace、最近 logs/outbox/dead letter/audit traces；每次查询都写入 `audit.access_audit(target_type='developer_trace_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`trade.order_main`、`audit.audit_event`、`ops.outbox_event`、`ops.dead_letter_event`、`ops.external_fact_receipt`、`ops.chain_projection_gap`、`ops.trade_lifecycle_checkpoint`、`ops.trace_index`、`ops.system_log`、`chain.chain_anchor`、`audit.access_audit` |
+| `AUD-CASE-039` | 开发者状态联查输入/权限约束 | 缺少 `developer.trace.read`、缺少 `x-tenant-id`、或同时传多个 selector 调用 `GET /api/v1/developer/trace` | 分别返回 `403 / 400`；不得写出修复、副作用或链动作，仅允许保留失败请求的 HTTP/错误码输出 | HTTP 响应、错误码、无新增业务副作用 |
 
 补充说明：
 
@@ -1402,3 +1404,84 @@ WHERE request_id IN ('req-aud021-manual-dry-run', 'req-aud021-manual-execute')
 - `AUD-023+` 后续剩余 AUD 高风险控制面
 
 进入对应批次后，必须在本文件继续追加，不得把本文件视为 `AUD` 全阶段完成证明。
+
+## AUD-024 开发者状态联查
+
+验收范围：
+
+- `GET /api/v1/developer/trace`
+
+正式验收点：
+
+- 只允许传入一个 selector：`order_id`、`event_id`、`tx_hash`
+- `event_id` 必须同时支持命中 `ops.outbox_event.outbox_event_id` 与 `audit.audit_event.audit_id`
+- `tx_hash` 必须能从 `chain.chain_anchor.tx_hash`、`audit.audit_event.tx_hash`、`ops.chain_projection_gap.projected_tx_hash`、`ops.trade_lifecycle_checkpoint.related_tx_hash` 联查
+- tenant 侧必须要求 `developer.trace.read + x-tenant-id + order scope`
+- 返回结果必须包含 `subject / trace / recent_logs / recent_outbox_events / recent_dead_letters / recent_audit_traces`
+- 查询动作必须写入 `audit.access_audit(target_type='developer_trace_query')` 与 `ops.system_log`
+- Fabric / Kafka / Tempo / Loki 只作为状态来源的外围系统，本接口正式读模型仍是 PostgreSQL 回写对象
+
+自动化验证：
+
+- `cargo test -p platform-core route_tests -- --nocapture`
+- `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core developer_trace_api_db_smoke -- --nocapture`
+
+自动化 smoke 覆盖：
+
+- `order_id` lookup 返回同一订单的业务快照
+- `event_id` lookup 命中 `ops.outbox_event` 并回填 `matched_dead_letter`
+- `tx_hash` lookup 命中 `chain.chain_anchor / ops.trade_lifecycle_checkpoint / ops.trace_index`
+- 三次 lookup 都回查 `audit.access_audit + ops.system_log`
+- 输入错误与缺权路径返回 `400 / 403`
+
+手工验证：
+
+```bash
+curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?order_id=<order_id>" \
+  -H 'x-role: developer_admin' \
+  -H 'x-user-id: <developer_user_id>' \
+  -H 'x-tenant-id: <tenant_org_id>' \
+  -H 'x-request-id: req-aud024-manual-order' \
+  -H 'x-trace-id: trace-aud024-manual'
+
+curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?event_id=<outbox_event_id>" \
+  -H 'x-role: developer_admin' \
+  -H 'x-user-id: <developer_user_id>' \
+  -H 'x-tenant-id: <tenant_org_id>' \
+  -H 'x-request-id: req-aud024-manual-event' \
+  -H 'x-trace-id: trace-aud024-manual'
+
+curl -sS "http://127.0.0.1:18080/api/v1/developer/trace?tx_hash=<tx_hash>" \
+  -H 'x-role: developer_admin' \
+  -H 'x-user-id: <developer_user_id>' \
+  -H 'x-tenant-id: <tenant_org_id>' \
+  -H 'x-request-id: req-aud024-manual-tx' \
+  -H 'x-trace-id: trace-aud024-manual'
+```
+
+SQL 回查：
+
+```sql
+SELECT request_id,
+       access_mode,
+       target_type,
+       target_id::text
+FROM audit.access_audit
+WHERE request_id IN (
+  'req-aud024-manual-order',
+  'req-aud024-manual-event',
+  'req-aud024-manual-tx'
+)
+  AND target_type = 'developer_trace_query';
+
+SELECT request_id,
+       message_text,
+       structured_payload
+FROM ops.system_log
+WHERE request_id IN (
+  'req-aud024-manual-order',
+  'req-aud024-manual-event',
+  'req-aud024-manual-tx'
+)
+  AND message_text = 'developer trace lookup executed: GET /api/v1/developer/trace';
+```

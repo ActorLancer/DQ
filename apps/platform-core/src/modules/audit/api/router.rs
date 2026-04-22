@@ -8,6 +8,10 @@ use super::handlers;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
+            "/api/v1/developer/trace",
+            get(handlers::get_developer_trace),
+        )
+        .route(
             "/api/v1/audit/orders/{id}",
             get(handlers::get_order_audit_traces),
         )

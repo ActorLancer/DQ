@@ -20,4 +20,5 @@
 - `audit-fairness-incidents.md`：`AUD-020` 公平性事件查询 / 处理控制面的权限、step-up、`risk.fairness_incident` 回查与“只记录联动建议、不直接改业务主状态”边界。
 - `audit-projection-gaps.md`：`AUD-021` 投影缺口查询 / 关闭控制面的权限、step-up、`ops.chain_projection_gap` 回查、`dry_run` 预演与“只关闭正式 gap 对象、不派生 reconcile job”边界。
 - `audit-observability.md`：`AUD-023` 观测总览、日志镜像查询 / 导出、trace 联查、告警 / 事故 / SLO 查询的权限、step-up、MinIO 对象回查与观测栈联查边界。
+- `developer-trace.md`：`AUD-024` 开发者状态联查的 `order_id / event_id / tx_hash` 单 selector 查询、tenant+order scope、Go/Fabric 回写状态可见性、`audit.access_audit / ops.system_log` 回查与排障边界。
 - `audit-trade-monitor.md`：`AUD-018` 交易链监控总览 / checkpoints 的宿主机调用、tenant+order scope、`trade_lifecycle_checkpoint / external_fact / fairness / projection_gap / chain_anchor` 回查与运行态边界。

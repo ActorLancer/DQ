@@ -15,7 +15,8 @@ use crate::modules::audit::domain::{
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
     AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, ChainProjectionGapPageView,
-    ChainProjectionGapQuery, ExternalFactReceiptPageView, ExternalFactReceiptQuery,
+    ChainProjectionGapQuery, DeveloperTraceLookupView, DeveloperTraceQuery,
+    DeveloperTraceSubjectView, ExternalFactReceiptPageView, ExternalFactReceiptQuery,
     FairnessIncidentPageView, FairnessIncidentQuery, ObservabilityBackendStatusView,
     OpsAlertPageView, OpsAlertQuery, OpsAlertSummaryView, OpsConsistencyBusinessStateView,
     OpsConsistencyExternalFactStateView, OpsConsistencyProofStateView,
@@ -31,10 +32,11 @@ use crate::modules::audit::domain::{
     TradeMonitorOverviewView,
 };
 use crate::modules::audit::dto::{
-    AlertEventView, AnchorBatchView, ChainProjectionGapView, DeadLetterEventView,
-    EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView, FairnessIncidentView,
-    IncidentTicketView, LegalHoldView, ObservabilityBackendView, OutboxEventView, ReplayJobView,
-    ReplayResultView, SloView, SystemLogMirrorView, TraceIndexView, TradeLifecycleCheckpointView,
+    AlertEventView, AnchorBatchView, AuditTraceView, ChainAnchorView, ChainProjectionGapView,
+    DeadLetterEventView, EvidenceManifestView, EvidencePackageView, ExternalFactReceiptView,
+    FairnessIncidentView, IncidentTicketView, LegalHoldView, ObservabilityBackendView,
+    OutboxEventView, ReplayJobView, ReplayResultView, SloView, SystemLogMirrorView, TraceIndexView,
+    TradeLifecycleCheckpointView,
 };
 use crate::modules::audit::repo::{self, AccessAuditInsert, OrderAuditScope, SystemLogInsert};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
@@ -69,6 +71,26 @@ const PROJECTION_GAP_STATE_DIGEST_ERROR: &str = "AUDIT_PROJECTION_GAP_STATE_DIGE
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
 const LOG_EXPORT_EMPTY_ERROR: &str = "OPS_LOG_EXPORT_EMPTY";
+const DEVELOPER_TRACE_RECENT_LIMIT: i64 = 10;
+const DEVELOPER_TRACE_LOG_LIMIT: i64 = 20;
+
+#[derive(Debug, Clone)]
+struct DeveloperTraceResolution {
+    lookup_mode: String,
+    lookup_value: String,
+    matched_object_type: String,
+    matched_object_id: Option<String>,
+    resolved_ref_type: String,
+    resolved_ref_id: String,
+    matched_audit_trace: Option<AuditTraceView>,
+    matched_outbox_event: Option<repo::OutboxEventRecord>,
+    matched_dead_letter: Option<repo::DeadLetterEventRecord>,
+    matched_chain_anchor: Option<repo::ChainAnchorRecord>,
+    matched_projection_gap: Option<repo::ChainProjectionGapRecord>,
+    matched_checkpoint: Option<repo::TradeLifecycleCheckpointRecord>,
+    request_id: Option<String>,
+    trace_id: Option<String>,
+}
 
 pub(in crate::modules::audit) async fn get_order_audit_traces(
     State(state): State<AppState>,
@@ -192,6 +214,285 @@ pub(in crate::modules::audit) async fn get_audit_traces(
         page: pagination.page,
         page_size: pagination.page_size,
         items: trace_page.items,
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_developer_trace(
+    State(state): State<AppState>,
+    Query(query): Query<DeveloperTraceQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<DeveloperTraceLookupView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    let normalized_query = normalize_developer_trace_query(query, &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::DeveloperTraceRead,
+        "developer trace read",
+    )?;
+
+    let client = state_client(&state)?;
+    let resolution =
+        resolve_developer_trace_lookup(&client, &normalized_query, &request_id).await?;
+    let matched_subject = repo::load_consistency_subject(
+        &client,
+        resolution.resolved_ref_type.as_str(),
+        resolution.resolved_ref_id.as_str(),
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        not_found(
+            &request_id,
+            format!(
+                "developer trace subject not found: ref_type={} ref_id={}",
+                resolution.resolved_ref_type, resolution.resolved_ref_id
+            ),
+        )
+    })?;
+    let resolved_order_id = developer_trace_order_id(&matched_subject).ok_or_else(|| {
+        not_found(
+            &request_id,
+            format!(
+                "developer trace target is not linked to an order: ref_type={} ref_id={}",
+                matched_subject.ref_type, matched_subject.ref_id
+            ),
+        )
+    })?;
+    let order_scope = repo::load_order_audit_scope(&client, resolved_order_id.as_str())
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("developer trace order not found: {resolved_order_id}"),
+            )
+        })?;
+    ensure_developer_trace_scope(&headers, &order_scope, &request_id)?;
+
+    let order_subject =
+        if matched_subject.ref_type == "order" && matched_subject.ref_id == resolved_order_id {
+            matched_subject.clone()
+        } else {
+            repo::load_consistency_subject(&client, "order", resolved_order_id.as_str())
+                .await
+                .map_err(map_db_error)?
+                .ok_or_else(|| {
+                    not_found(
+                        &request_id,
+                        format!("developer trace order subject not found: {resolved_order_id}"),
+                    )
+                })?
+        };
+
+    let recent_outbox_events = repo::search_recent_outbox_events_for_aggregates(
+        &client,
+        &consistency_aggregate_type_candidates("order"),
+        resolved_order_id.as_str(),
+        DEVELOPER_TRACE_RECENT_LIMIT,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_dead_letters = repo::search_recent_dead_letters_for_aggregates(
+        &client,
+        &consistency_aggregate_type_candidates("order"),
+        resolved_order_id.as_str(),
+        DEVELOPER_TRACE_RECENT_LIMIT,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_external_facts = repo::search_recent_external_fact_receipts_for_refs(
+        &client,
+        &["order".to_string()],
+        resolved_order_id.as_str(),
+        Some(resolved_order_id.as_str()),
+        DEVELOPER_TRACE_RECENT_LIMIT,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_projection_gaps = repo::search_recent_chain_projection_gaps_for_aggregates(
+        &client,
+        &consistency_aggregate_type_candidates("order"),
+        resolved_order_id.as_str(),
+        Some(resolved_order_id.as_str()),
+        DEVELOPER_TRACE_RECENT_LIMIT,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_chain_anchors = repo::search_recent_chain_anchors_for_refs(
+        &client,
+        &["order".to_string()],
+        resolved_order_id.as_str(),
+        DEVELOPER_TRACE_RECENT_LIMIT,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_audit_traces = repo::search_recent_audit_traces_for_refs(
+        &client,
+        &["order".to_string()],
+        resolved_order_id.as_str(),
+        DEVELOPER_TRACE_RECENT_LIMIT,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_checkpoints = repo::search_trade_lifecycle_checkpoints_by_order(
+        &client,
+        resolved_order_id.as_str(),
+        &TradeMonitorCheckpointQuery::default(),
+        DEVELOPER_TRACE_RECENT_LIMIT,
+        0,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    let resolved_trace_id = developer_trace_resolved_trace_id(
+        resolution.trace_id.clone(),
+        &recent_audit_traces,
+        &recent_outbox_events,
+        &recent_dead_letters,
+        &recent_external_facts.items,
+        &recent_projection_gaps.items,
+        &recent_checkpoints.items,
+    );
+    let trace = if let Some(trace_id) = resolved_trace_id.as_deref() {
+        repo::load_trace_index_by_trace_id(&client, trace_id)
+            .await
+            .map_err(map_db_error)?
+    } else {
+        None
+    };
+    let recent_logs_query = if let Some(trace_id) = trace
+        .as_ref()
+        .map(|record| record.trace_id.clone())
+        .or_else(|| resolved_trace_id.clone())
+    {
+        OpsLogMirrorQuery {
+            trace_id: Some(trace_id),
+            page: Some(1),
+            page_size: Some(DEVELOPER_TRACE_LOG_LIMIT as u32),
+            ..Default::default()
+        }
+    } else {
+        OpsLogMirrorQuery {
+            object_type: Some("order".to_string()),
+            object_id: Some(resolved_order_id.clone()),
+            page: Some(1),
+            page_size: Some(DEVELOPER_TRACE_LOG_LIMIT as u32),
+            ..Default::default()
+        }
+    };
+    let recent_logs =
+        repo::search_system_log_mirrors(&client, &recent_logs_query, DEVELOPER_TRACE_LOG_LIMIT, 0)
+            .await
+            .map_err(map_db_error)?;
+
+    let subject_snapshot =
+        build_developer_trace_snapshot(&order_subject.snapshot, &matched_subject.snapshot);
+    let subject = DeveloperTraceSubjectView {
+        lookup_mode: resolution.lookup_mode.clone(),
+        lookup_value: resolution.lookup_value.clone(),
+        matched_object_type: resolution.matched_object_type.clone(),
+        matched_object_id: resolution.matched_object_id.clone(),
+        resolved_ref_type: resolution.resolved_ref_type.clone(),
+        resolved_ref_id: resolution.resolved_ref_id.clone(),
+        resolved_order_id: resolved_order_id.clone(),
+        business_status: order_subject.business_status.clone(),
+        payment_status: order_scope.payment_status.clone(),
+        delivery_status: json_string(&order_subject.snapshot, "delivery_status"),
+        acceptance_status: json_string(&order_subject.snapshot, "acceptance_status"),
+        settlement_status: json_string(&order_subject.snapshot, "settlement_status"),
+        dispute_status: json_string(&order_subject.snapshot, "dispute_status"),
+        proof_commit_state: order_subject.proof_commit_state.clone(),
+        proof_commit_policy: order_subject.proof_commit_policy.clone(),
+        external_fact_status: order_subject.external_fact_status.clone(),
+        reconcile_status: order_subject.reconcile_status.clone(),
+        last_reconciled_at: order_subject.last_reconciled_at.clone(),
+        request_id: resolution.request_id.clone(),
+        trace_id: resolved_trace_id.clone(),
+        snapshot: subject_snapshot,
+    };
+
+    record_developer_lookup_side_effects(
+        &client,
+        &headers,
+        resolved_order_id.clone(),
+        json!({
+            "lookup_mode": resolution.lookup_mode,
+            "lookup_value": resolution.lookup_value,
+            "matched_object_type": resolution.matched_object_type,
+            "matched_object_id": resolution.matched_object_id,
+            "resolved_ref_type": resolution.resolved_ref_type,
+            "resolved_ref_id": resolution.resolved_ref_id,
+            "resolved_order_id": resolved_order_id,
+            "resolved_trace_id": subject.trace_id,
+            "recent_log_total": recent_logs.total,
+            "recent_checkpoint_total": recent_checkpoints.total,
+            "recent_external_fact_total": recent_external_facts.total,
+            "recent_projection_gap_total": recent_projection_gaps.total,
+            "recent_chain_anchor_total": recent_chain_anchors.len(),
+            "recent_outbox_total": recent_outbox_events.len(),
+            "recent_dead_letter_total": recent_dead_letters.len(),
+            "recent_audit_trace_total": recent_audit_traces.len(),
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(DeveloperTraceLookupView {
+        subject,
+        matched_audit_trace: resolution.matched_audit_trace,
+        matched_outbox_event: resolution
+            .matched_outbox_event
+            .as_ref()
+            .map(OutboxEventView::from),
+        matched_dead_letter: resolution
+            .matched_dead_letter
+            .as_ref()
+            .map(DeadLetterEventView::from),
+        matched_chain_anchor: resolution
+            .matched_chain_anchor
+            .as_ref()
+            .map(ChainAnchorView::from),
+        matched_projection_gap: resolution
+            .matched_projection_gap
+            .as_ref()
+            .map(ChainProjectionGapView::from),
+        matched_checkpoint: resolution
+            .matched_checkpoint
+            .as_ref()
+            .map(TradeLifecycleCheckpointView::from),
+        trace: trace.as_ref().map(TraceIndexView::from),
+        recent_logs: recent_logs
+            .items
+            .iter()
+            .map(SystemLogMirrorView::from)
+            .collect(),
+        recent_checkpoints: recent_checkpoints
+            .items
+            .iter()
+            .map(TradeLifecycleCheckpointView::from)
+            .collect(),
+        recent_external_facts: recent_external_facts
+            .items
+            .iter()
+            .map(ExternalFactReceiptView::from)
+            .collect(),
+        recent_projection_gaps: recent_projection_gaps
+            .items
+            .iter()
+            .map(ChainProjectionGapView::from)
+            .collect(),
+        recent_chain_anchors: recent_chain_anchors
+            .iter()
+            .map(ChainAnchorView::from)
+            .collect(),
+        recent_outbox_events: recent_outbox_events
+            .iter()
+            .map(OutboxEventView::from)
+            .collect(),
+        recent_dead_letters: recent_dead_letters
+            .iter()
+            .map(DeadLetterEventView::from)
+            .collect(),
+        recent_audit_traces,
     }))
 }
 
@@ -4185,6 +4486,7 @@ struct ReplayReport {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AuditPermission {
+    DeveloperTraceRead,
     TraceRead,
     OpsObservabilityRead,
     OpsLogQuery,
@@ -4215,6 +4517,10 @@ enum AuditPermission {
 
 fn is_allowed(role: &str, permission: AuditPermission) -> bool {
     match permission {
+        AuditPermission::DeveloperTraceRead => matches!(
+            role,
+            "tenant_developer" | "developer_admin" | "platform_admin" | "platform_audit_security"
+        ),
         AuditPermission::TraceRead => matches!(
             role,
             "tenant_admin"
@@ -6368,6 +6674,449 @@ async fn record_ops_lookup_side_effects(
     .await
     .map_err(map_db_error)?;
     Ok(())
+}
+
+async fn record_developer_lookup_side_effects(
+    client: &db::Client,
+    headers: &HeaderMap,
+    target_id: String,
+    filters: serde_json::Value,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = header(headers, "x-request-id");
+    let trace_id = header(headers, "x-trace-id");
+    let filters_for_access = filters.clone();
+    let role = current_role(headers);
+    let access_audit_id = repo::record_access_audit(
+        client,
+        &AccessAuditInsert {
+            accessor_user_id: parse_uuid_header(headers, "x-user-id"),
+            accessor_role_key: Some(role.clone()),
+            access_mode: "masked".to_string(),
+            target_type: "developer_trace_query".to_string(),
+            target_id: Some(target_id),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: parse_uuid_header(headers, "x-step-up-challenge-id"),
+            request_id: request_id.clone(),
+            trace_id: trace_id.clone(),
+            metadata: json!({
+                "endpoint": "GET /api/v1/developer/trace",
+                "filters": filters_for_access,
+                "step_up_token_present": header(headers, "x-step-up-token").is_some(),
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        client,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id,
+            trace_id,
+            message_text: "developer trace lookup executed: GET /api/v1/developer/trace"
+                .to_string(),
+            structured_payload: json!({
+                "module": "developer",
+                "endpoint": "GET /api/v1/developer/trace",
+                "access_audit_id": access_audit_id,
+                "role": role,
+                "filters": filters,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    Ok(())
+}
+
+fn normalize_developer_trace_query(
+    query: DeveloperTraceQuery,
+    request_id: &str,
+) -> Result<DeveloperTraceQuery, (StatusCode, Json<ErrorResponse>)> {
+    validate_optional_uuid(query.order_id.as_deref(), "order_id", request_id)?;
+    validate_optional_uuid(query.event_id.as_deref(), "event_id", request_id)?;
+    let normalized = DeveloperTraceQuery {
+        order_id: normalize_optional_filter(query.order_id.as_deref(), "order_id", request_id)?,
+        event_id: normalize_optional_filter(query.event_id.as_deref(), "event_id", request_id)?,
+        tx_hash: normalize_optional_filter(query.tx_hash.as_deref(), "tx_hash", request_id)?,
+    };
+    let selector_count = u8::from(normalized.order_id.is_some())
+        + u8::from(normalized.event_id.is_some())
+        + u8::from(normalized.tx_hash.is_some());
+    if selector_count != 1 {
+        return Err(bad_request(
+            request_id,
+            "developer trace requires exactly one of order_id, event_id, tx_hash",
+        ));
+    }
+    Ok(normalized)
+}
+
+async fn resolve_developer_trace_lookup(
+    client: &db::Client,
+    query: &DeveloperTraceQuery,
+    request_id: &str,
+) -> Result<DeveloperTraceResolution, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(order_id) = query.order_id.clone() {
+        return Ok(DeveloperTraceResolution {
+            lookup_mode: "order_id".to_string(),
+            lookup_value: order_id.clone(),
+            matched_object_type: "order".to_string(),
+            matched_object_id: Some(order_id.clone()),
+            resolved_ref_type: "order".to_string(),
+            resolved_ref_id: order_id,
+            matched_audit_trace: None,
+            matched_outbox_event: None,
+            matched_dead_letter: None,
+            matched_chain_anchor: None,
+            matched_projection_gap: None,
+            matched_checkpoint: None,
+            request_id: None,
+            trace_id: None,
+        });
+    }
+
+    if let Some(event_id) = query.event_id.clone() {
+        if let Some(outbox_event) = repo::load_outbox_event_by_id(client, event_id.as_str())
+            .await
+            .map_err(map_db_error)?
+        {
+            let resolved_ref_type = developer_trace_ref_type_from_aggregate(
+                outbox_event.aggregate_type.as_str(),
+                request_id,
+            )?;
+            let resolved_ref_id = outbox_event.aggregate_id.clone().ok_or_else(|| {
+                internal_error(
+                    Some(request_id.to_string()),
+                    format!("developer trace outbox event missing aggregate_id: {event_id}"),
+                )
+            })?;
+            let matched_dead_letter =
+                repo::load_latest_dead_letter_by_outbox_event_id(client, event_id.as_str())
+                    .await
+                    .map_err(map_db_error)?;
+            return Ok(DeveloperTraceResolution {
+                lookup_mode: "event_id".to_string(),
+                lookup_value: event_id.clone(),
+                matched_object_type: "outbox_event".to_string(),
+                matched_object_id: outbox_event.outbox_event_id.clone(),
+                resolved_ref_type,
+                resolved_ref_id,
+                matched_audit_trace: None,
+                matched_outbox_event: Some(outbox_event.clone()),
+                matched_dead_letter,
+                matched_chain_anchor: None,
+                matched_projection_gap: None,
+                matched_checkpoint: None,
+                request_id: outbox_event.request_id.clone(),
+                trace_id: outbox_event.trace_id.clone(),
+            });
+        }
+
+        if let Some(audit_trace) = repo::load_audit_trace_by_id(client, event_id.as_str())
+            .await
+            .map_err(map_db_error)?
+        {
+            let resolved_ref_type =
+                normalize_consistency_ref_type(audit_trace.ref_type.as_str(), request_id)?;
+            let resolved_ref_id = audit_trace.ref_id.clone().ok_or_else(|| {
+                internal_error(
+                    Some(request_id.to_string()),
+                    format!("developer trace audit event missing ref_id: {event_id}"),
+                )
+            })?;
+            return Ok(DeveloperTraceResolution {
+                lookup_mode: "event_id".to_string(),
+                lookup_value: event_id,
+                matched_object_type: "audit_event".to_string(),
+                matched_object_id: audit_trace.audit_id.clone(),
+                resolved_ref_type,
+                resolved_ref_id,
+                matched_audit_trace: Some(audit_trace.clone()),
+                matched_outbox_event: None,
+                matched_dead_letter: None,
+                matched_chain_anchor: None,
+                matched_projection_gap: None,
+                matched_checkpoint: None,
+                request_id: audit_trace.request_id.clone(),
+                trace_id: audit_trace.trace_id.clone(),
+            });
+        }
+
+        return Err(not_found(
+            request_id,
+            format!("developer trace event target not found: {event_id}"),
+        ));
+    }
+
+    let tx_hash = query
+        .tx_hash
+        .clone()
+        .ok_or_else(|| bad_request(request_id, "developer trace requires one lookup selector"))?;
+    if let Some(chain_anchor) = repo::load_chain_anchor_by_tx_hash(client, tx_hash.as_str())
+        .await
+        .map_err(map_db_error)?
+    {
+        let resolved_ref_type =
+            normalize_consistency_ref_type(chain_anchor.ref_type.as_str(), request_id)?;
+        let resolved_ref_id = chain_anchor.ref_id.clone().ok_or_else(|| {
+            internal_error(
+                Some(request_id.to_string()),
+                format!("developer trace chain anchor missing ref_id for tx_hash: {tx_hash}"),
+            )
+        })?;
+        let matched_audit_trace =
+            repo::load_latest_audit_trace_by_tx_hash(client, tx_hash.as_str())
+                .await
+                .map_err(map_db_error)?;
+        return Ok(DeveloperTraceResolution {
+            lookup_mode: "tx_hash".to_string(),
+            lookup_value: tx_hash,
+            matched_object_type: "chain_anchor".to_string(),
+            matched_object_id: chain_anchor.chain_anchor_id.clone(),
+            resolved_ref_type,
+            resolved_ref_id,
+            matched_audit_trace: matched_audit_trace.clone(),
+            matched_outbox_event: None,
+            matched_dead_letter: None,
+            matched_chain_anchor: Some(chain_anchor),
+            matched_projection_gap: None,
+            matched_checkpoint: None,
+            request_id: matched_audit_trace
+                .as_ref()
+                .and_then(|trace| trace.request_id.clone()),
+            trace_id: matched_audit_trace
+                .as_ref()
+                .and_then(|trace| trace.trace_id.clone()),
+        });
+    }
+
+    if let Some(audit_trace) = repo::load_latest_audit_trace_by_tx_hash(client, tx_hash.as_str())
+        .await
+        .map_err(map_db_error)?
+    {
+        let resolved_ref_type =
+            normalize_consistency_ref_type(audit_trace.ref_type.as_str(), request_id)?;
+        let resolved_ref_id = audit_trace.ref_id.clone().ok_or_else(|| {
+            internal_error(
+                Some(request_id.to_string()),
+                format!("developer trace audit event missing ref_id for tx_hash: {tx_hash}"),
+            )
+        })?;
+        return Ok(DeveloperTraceResolution {
+            lookup_mode: "tx_hash".to_string(),
+            lookup_value: tx_hash,
+            matched_object_type: "audit_event".to_string(),
+            matched_object_id: audit_trace.audit_id.clone(),
+            resolved_ref_type,
+            resolved_ref_id,
+            matched_audit_trace: Some(audit_trace.clone()),
+            matched_outbox_event: None,
+            matched_dead_letter: None,
+            matched_chain_anchor: None,
+            matched_projection_gap: None,
+            matched_checkpoint: None,
+            request_id: audit_trace.request_id.clone(),
+            trace_id: audit_trace.trace_id.clone(),
+        });
+    }
+
+    if let Some(projection_gap) =
+        repo::load_latest_chain_projection_gap_by_tx_hash(client, tx_hash.as_str())
+            .await
+            .map_err(map_db_error)?
+    {
+        let resolved_ref_type = developer_trace_ref_type_from_aggregate(
+            projection_gap.aggregate_type.as_str(),
+            request_id,
+        )?;
+        let resolved_ref_id = projection_gap
+            .aggregate_id
+            .clone()
+            .or_else(|| {
+                if resolved_ref_type == "order" {
+                    projection_gap.order_id.clone()
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| {
+                internal_error(
+                    Some(request_id.to_string()),
+                    format!(
+                        "developer trace projection gap missing aggregate_id for tx_hash: {tx_hash}"
+                    ),
+                )
+            })?;
+        return Ok(DeveloperTraceResolution {
+            lookup_mode: "tx_hash".to_string(),
+            lookup_value: tx_hash,
+            matched_object_type: "chain_projection_gap".to_string(),
+            matched_object_id: projection_gap.chain_projection_gap_id.clone(),
+            resolved_ref_type,
+            resolved_ref_id,
+            matched_audit_trace: None,
+            matched_outbox_event: None,
+            matched_dead_letter: None,
+            matched_chain_anchor: None,
+            matched_projection_gap: Some(projection_gap.clone()),
+            matched_checkpoint: None,
+            request_id: projection_gap.request_id.clone(),
+            trace_id: projection_gap.trace_id.clone(),
+        });
+    }
+
+    if let Some(checkpoint) =
+        repo::load_latest_trade_lifecycle_checkpoint_by_tx_hash(client, tx_hash.as_str())
+            .await
+            .map_err(map_db_error)?
+    {
+        let resolved_ref_type =
+            normalize_consistency_ref_type(checkpoint.ref_type.as_str(), request_id)?;
+        return Ok(DeveloperTraceResolution {
+            lookup_mode: "tx_hash".to_string(),
+            lookup_value: tx_hash,
+            matched_object_type: "trade_lifecycle_checkpoint".to_string(),
+            matched_object_id: checkpoint.trade_lifecycle_checkpoint_id.clone(),
+            resolved_ref_type,
+            resolved_ref_id: checkpoint.ref_id.clone(),
+            matched_audit_trace: None,
+            matched_outbox_event: None,
+            matched_dead_letter: None,
+            matched_chain_anchor: None,
+            matched_projection_gap: None,
+            matched_checkpoint: Some(checkpoint.clone()),
+            request_id: checkpoint.request_id.clone(),
+            trace_id: checkpoint.trace_id.clone(),
+        });
+    }
+
+    Err(not_found(
+        request_id,
+        format!("developer trace tx target not found: {tx_hash}"),
+    ))
+}
+
+fn developer_trace_ref_type_from_aggregate(
+    aggregate_type: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    match aggregate_type {
+        "order" | "trade.order_main" => Ok("order".to_string()),
+        "contract" | "digital_contract" | "contract.digital_contract" => {
+            Ok("digital_contract".to_string())
+        }
+        "delivery" | "delivery_record" | "delivery.delivery_record" => {
+            Ok("delivery_record".to_string())
+        }
+        "settlement" | "settlement_record" | "billing.settlement_record" => {
+            Ok("settlement_record".to_string())
+        }
+        "payment" | "payment_intent" | "payment.payment_intent" => Ok("payment_intent".to_string()),
+        "refund" | "refund_intent" | "payment.refund_intent" => Ok("refund_intent".to_string()),
+        "payout" | "payout_instruction" | "payment.payout_instruction" => {
+            Ok("payout_instruction".to_string())
+        }
+        other => Err(not_found(
+            request_id,
+            format!("developer trace aggregate type is not supported: {other}"),
+        )),
+    }
+}
+
+fn developer_trace_order_id(subject: &repo::ConsistencySubjectRecord) -> Option<String> {
+    if subject.ref_type == "order" {
+        Some(subject.ref_id.clone())
+    } else {
+        subject.order_id.clone()
+    }
+}
+
+fn developer_trace_resolved_trace_id(
+    preferred: Option<String>,
+    audit_traces: &[AuditTraceView],
+    outbox_events: &[repo::OutboxEventRecord],
+    dead_letters: &[repo::DeadLetterEventRecord],
+    external_facts: &[repo::ExternalFactReceiptRecord],
+    projection_gaps: &[repo::ChainProjectionGapRecord],
+    checkpoints: &[repo::TradeLifecycleCheckpointRecord],
+) -> Option<String> {
+    preferred
+        .or_else(|| audit_traces.iter().find_map(|trace| trace.trace_id.clone()))
+        .or_else(|| {
+            outbox_events
+                .iter()
+                .find_map(|event| event.trace_id.clone())
+        })
+        .or_else(|| dead_letters.iter().find_map(|event| event.trace_id.clone()))
+        .or_else(|| {
+            external_facts
+                .iter()
+                .find_map(|receipt| receipt.trace_id.clone())
+        })
+        .or_else(|| projection_gaps.iter().find_map(|gap| gap.trace_id.clone()))
+        .or_else(|| {
+            checkpoints
+                .iter()
+                .find_map(|checkpoint| checkpoint.trace_id.clone())
+        })
+}
+
+fn build_developer_trace_snapshot(order_snapshot: &Value, matched_snapshot: &Value) -> Value {
+    if order_snapshot == matched_snapshot {
+        json!({
+            "order": order_snapshot,
+        })
+    } else {
+        json!({
+            "order": order_snapshot,
+            "matched_ref": matched_snapshot,
+        })
+    }
+}
+
+fn is_developer_tenant_scoped_role(role: &str) -> bool {
+    matches!(role, "tenant_developer" | "developer_admin")
+}
+
+fn ensure_developer_trace_scope(
+    headers: &HeaderMap,
+    scope: &OrderAuditScope,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let role = current_role(headers);
+    if !is_developer_tenant_scoped_role(&role) {
+        return Ok(());
+    }
+
+    let tenant_id = header(headers, "x-tenant-id").ok_or_else(|| {
+        bad_request(
+            request_id,
+            "x-tenant-id is required for developer trace tenant scope",
+        )
+    })?;
+    if tenant_id == scope.buyer_org_id || tenant_id == scope.seller_org_id {
+        return Ok(());
+    }
+
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            message: "developer trace is forbidden outside tenant order scope".to_string(),
+            request_id: Some(request_id.to_string()),
+        }),
+    ))
+}
+
+fn json_string(snapshot: &Value, key: &str) -> Option<String> {
+    snapshot
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
 }
 
 fn resolve_searchrec_dead_letter_consumers(

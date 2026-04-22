@@ -1532,6 +1532,292 @@ pub async fn load_order_audit_scope(
     }))
 }
 
+pub async fn load_outbox_event_by_id(
+    client: &(impl GenericClient + Sync),
+    outbox_event_id: &str,
+) -> Result<Option<OutboxEventRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               oe.outbox_event_id::text,
+               oe.aggregate_type,
+               oe.aggregate_id::text,
+               oe.event_type,
+               oe.payload,
+               oe.status,
+               oe.retry_count,
+               oe.max_retries,
+               to_char(oe.available_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(oe.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(oe.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               oe.request_id,
+               oe.trace_id,
+               oe.idempotency_key,
+               oe.authority_scope,
+               oe.source_of_truth,
+               oe.proof_commit_policy,
+               oe.target_bus,
+               oe.target_topic,
+               oe.partition_key,
+               oe.ordering_key,
+               oe.payload_hash,
+               oe.last_error_code,
+               oe.last_error_message,
+               opa.outbox_publish_attempt_id::text,
+               opa.worker_id,
+               opa.target_bus,
+               opa.target_topic,
+               opa.attempt_no,
+               opa.result_code,
+               opa.error_code,
+               opa.error_message,
+               to_char(opa.attempted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(opa.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               opa.metadata
+             FROM ops.outbox_event oe
+             LEFT JOIN LATERAL (
+               SELECT
+                 outbox_publish_attempt_id,
+                 worker_id,
+                 target_bus,
+                 target_topic,
+                 attempt_no,
+                 result_code,
+                 error_code,
+                 error_message,
+                 attempted_at,
+                 completed_at,
+                 metadata
+               FROM ops.outbox_publish_attempt
+               WHERE outbox_event_id = oe.outbox_event_id
+               ORDER BY attempt_no DESC, attempted_at DESC, outbox_publish_attempt_id DESC
+               LIMIT 1
+             ) opa ON true
+             WHERE oe.outbox_event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_outbox_event_row(&row)))
+}
+
+pub async fn load_latest_dead_letter_by_outbox_event_id(
+    client: &(impl GenericClient + Sync),
+    outbox_event_id: &str,
+) -> Result<Option<DeadLetterEventRecord>, Error> {
+    let rows = client
+        .query(
+            "SELECT
+               dead_letter_event_id::text,
+               outbox_event_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               event_type,
+               payload,
+               failed_reason,
+               request_id,
+               trace_id,
+               authority_scope,
+               source_of_truth,
+               target_bus,
+               target_topic,
+               failure_stage,
+               to_char(first_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               reprocess_status,
+               to_char(reprocessed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.dead_letter_event
+             WHERE outbox_event_id = $1::text::uuid
+             ORDER BY created_at DESC, dead_letter_event_id DESC
+             LIMIT 1",
+            &[&outbox_event_id],
+        )
+        .await?;
+    let Some(row) = rows.first() else {
+        return Ok(None);
+    };
+    let idempotency_map =
+        load_consumer_idempotency_for_event_ids(client, &[outbox_event_id.to_string()]).await?;
+    let consumer_records = idempotency_map
+        .get(outbox_event_id)
+        .cloned()
+        .unwrap_or_default();
+    Ok(Some(parse_dead_letter_row(row, consumer_records)))
+}
+
+pub async fn load_audit_trace_by_id(
+    client: &(impl GenericClient + Sync),
+    audit_id: &str,
+) -> Result<Option<AuditTraceView>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               audit_id::text,
+               event_schema_version,
+               event_class,
+               domain_name,
+               ref_type,
+               ref_id::text,
+               actor_id::text,
+               actor_org_id::text,
+               action_name,
+               result_code,
+               error_code,
+               request_id,
+               trace_id,
+               tx_hash,
+               evidence_manifest_id::text,
+               event_hash,
+               to_char(event_time AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.audit_event
+             WHERE audit_id = $1::text::uuid",
+            &[&audit_id],
+        )
+        .await?;
+    Ok(row.map(|row| parse_audit_trace_row(&row)))
+}
+
+pub async fn load_latest_audit_trace_by_tx_hash(
+    client: &(impl GenericClient + Sync),
+    tx_hash: &str,
+) -> Result<Option<AuditTraceView>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               audit_id::text,
+               event_schema_version,
+               event_class,
+               domain_name,
+               ref_type,
+               ref_id::text,
+               actor_id::text,
+               actor_org_id::text,
+               action_name,
+               result_code,
+               error_code,
+               request_id,
+               trace_id,
+               tx_hash,
+               evidence_manifest_id::text,
+               event_hash,
+               to_char(event_time AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.audit_event
+             WHERE tx_hash = $1
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT 1",
+            &[&tx_hash],
+        )
+        .await?;
+    Ok(row.map(|row| parse_audit_trace_row(&row)))
+}
+
+pub async fn load_chain_anchor_by_tx_hash(
+    client: &(impl GenericClient + Sync),
+    tx_hash: &str,
+) -> Result<Option<ChainAnchorRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               chain_anchor_id::text,
+               chain_id,
+               anchor_type,
+               ref_type,
+               ref_id::text,
+               digest,
+               tx_hash,
+               status,
+               to_char(anchored_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               authority_model,
+               reconcile_status,
+               to_char(last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM chain.chain_anchor
+             WHERE tx_hash = $1
+             ORDER BY created_at DESC, chain_anchor_id DESC
+             LIMIT 1",
+            &[&tx_hash],
+        )
+        .await?;
+    Ok(row.map(|row| parse_chain_anchor_row(&row)))
+}
+
+pub async fn load_latest_chain_projection_gap_by_tx_hash(
+    client: &(impl GenericClient + Sync),
+    tx_hash: &str,
+) -> Result<Option<ChainProjectionGapRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               chain_projection_gap_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               order_id::text,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               to_char(first_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               outbox_event_id::text,
+               anchor_id::text,
+               resolution_summary,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.chain_projection_gap
+             WHERE projected_tx_hash = $1
+             ORDER BY created_at DESC, chain_projection_gap_id DESC
+             LIMIT 1",
+            &[&tx_hash],
+        )
+        .await?;
+    Ok(row.map(|row| parse_chain_projection_gap_row(&row)))
+}
+
+pub async fn load_latest_trade_lifecycle_checkpoint_by_tx_hash(
+    client: &(impl GenericClient + Sync),
+    tx_hash: &str,
+) -> Result<Option<TradeLifecycleCheckpointRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               trade_lifecycle_checkpoint_id::text,
+               monitoring_policy_profile_id::text,
+               order_id::text,
+               ref_domain,
+               ref_type,
+               ref_id::text,
+               checkpoint_code,
+               lifecycle_stage,
+               checkpoint_status,
+               to_char(expected_by AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               source_type,
+               source_ref_type,
+               source_ref_id::text,
+               related_tx_hash,
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.trade_lifecycle_checkpoint
+             WHERE related_tx_hash = $1
+             ORDER BY COALESCE(occurred_at, expected_by, created_at) DESC,
+                      created_at DESC,
+                      trade_lifecycle_checkpoint_id DESC
+             LIMIT 1",
+            &[&tx_hash],
+        )
+        .await?;
+    Ok(row.map(|row| parse_trade_lifecycle_checkpoint_row(&row)))
+}
+
 pub async fn search_audit_traces(
     client: &(impl GenericClient + Sync),
     query: &AuditTraceQuery,

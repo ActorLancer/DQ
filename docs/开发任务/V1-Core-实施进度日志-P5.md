@@ -1552,3 +1552,42 @@
   - `./scripts/check-observability-stack.sh` 最初失败不是文档口径冲突，而是宿主机 `platform-core` 缺少正式 `/metrics`、`mock-payment-provider` 使用了 WireMock 保留的 `__admin` 路径、MinIO 指标抓取仍在旧配置。补齐正式 `/metrics` 与重建容器后已收口。
   - 手工 live 验证阶段，`ops.system_log` 被 append-only guard 拦截删除；该约束与 `audit.*` 一样属于正式留痕保护，本批按真实约束保留相关日志镜像记录，不通过绕过 trigger 的方式伪造“清理成功”。
   - 本批未发现新的 `CSV / Markdown / technical_reference / Prometheus scrape / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。
+### BATCH-237（计划中）
+- 任务：`AUD-024` Developer 状态联查接口
+- 状态：计划中
+- 说明：按 `AUD-024` 冻结口径，当前批次在 `apps/platform-core/src/modules/audit/**` 补齐 `GET /api/v1/developer/trace`，以 `order_id / event_id / tx_hash` 单 selector 快速定位订单、审计、outbox、dead letter、外部事实、投影缺口、链锚定与日志/trace 索引。实现必须保持 `PostgreSQL` 为正式查询权威源，`Loki / Tempo` 只通过 `ops.system_log / ops.trace_index` 镜像索引参与联查，不新建第二套 developer truth source；权限收口到 `developer.trace.read`，tenant 侧强制 `x-tenant-id + order scope`，读取动作真实写入 `audit.access_audit + ops.system_log`。
+- 追溯：已重新核对 `CSV / Markdown`、`全量领域模型与对象关系说明.md` 4.12、`页面说明书-V1-完整版.md` 11.3、`日志、可观测性与告警设计.md` 6 节、`全集成基线-V1.md` 中开发者通道/权限映射/状态联查页口径、`A04-AUD-Ops-接口与契约落地缺口.md`，以及现有 `audit/api|repo|dto|domain`、`ops.trace_index / ops.system_log / ops.outbox_event / ops.dead_letter_event / ops.external_fact_receipt / ops.chain_projection_gap / chain.chain_anchor` 实现。当前确认的正式完成标准是：接口、DTO、权限、调试留痕、错误码、最小测试和 OpenAPI 同步落盘；至少一条真实 API + DB 回查验证通过，能从 `order_id / event_id / tx_hash` 中任一输入定位到正式对象链路。
+### BATCH-237（待审批）
+- 任务：`AUD-024` Developer 状态联查接口
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/api/{router,handlers}.rs`、`domain/mod.rs`、`dto/mod.rs`、`repo/mod.rs`：补齐 `GET /api/v1/developer/trace`，支持 `order_id / event_id / tx_hash` 单 selector 联查；读取 `trade.order_main / audit.audit_event / ops.outbox_event / ops.dead_letter_event / ops.external_fact_receipt / ops.chain_projection_gap / ops.trade_lifecycle_checkpoint / ops.trace_index / ops.system_log / chain.chain_anchor` 正式对象，返回 `subject / matched_* / recent_*` 视图，并在每次读取后真实写入 `audit.access_audit(target_type='developer_trace_query')` 与 `ops.system_log`。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增 `developer_trace_requires_single_selector`、`rejects_developer_trace_without_permission` 路由负例和 `developer_trace_api_db_smoke`，真实覆盖 `order_id / event_id / tx_hash` 三类 selector、tenant scope、审计留痕与系统日志回查。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`、`scripts/check-openapi-schema.sh`：补齐 `GET /api/v1/developer/trace` 契约、`developer.trace.read`、`DeveloperTraceLookupResponse` schema 与归档校验。
+  - `docs/04-runbooks/developer-trace.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`：补齐宿主机 `curl + psql` 联调、`AUD-024` 验收矩阵、TODO 台账推进与 Go/Fabric 外围回写边界说明。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既存 `unused_*` warning，无新增编译失败。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core route_tests -- --nocapture` 通过，`developer trace` 权限与单 selector 负例均为绿色。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core developer_trace_api_db_smoke -- --nocapture` 通过：真实回查 `ops.outbox_event / ops.dead_letter_event / ops.external_fact_receipt / chain.chain_anchor / ops.chain_projection_gap / ops.trade_lifecycle_checkpoint / ops.trace_index / ops.system_log / audit.audit_event / audit.access_audit`。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core` 通过：`316 passed; 0 failed`。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-024`
+  - `全量领域模型与对象关系说明.md` 4.12
+  - `页面说明书-V1-完整版.md` 11.3
+  - `日志、可观测性与告警设计.md` 6 节
+  - `全集成基线-V1.md` 中开发者通道、权限映射、状态联查页
+  - `A04-AUD-Ops-接口与契约落地缺口.md`
+- 覆盖的任务清单条目：`AUD-024`
+- 未覆盖项：
+  - `AUD-025+` 其余 AUD 高风险控制面
+  - Go/Fabric 后续新执行动作与更深层回执编排，仍留给后续对应任务
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；仅把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 推进到 `AUD-024` 已完成的最新状态。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；`AUD-024` 按冻结口径属于 `platform-core` 的开发者联查控制面。Go 服务 `fabric-adapter / fabric-event-listener / fabric-ca-admin` 继续作为链提交、callback、CA 操作的外围写入层，本接口只读取它们回写到 PostgreSQL 的正式对象。
+  - smoke 首次失败不是文档冲突，而是测试断言误把种子订单的 `payment_status='paid'` 写成 `unpaid`；修正断言后，正式链路与 DB 回查全部通过。
+  - 当前实现兼容 `tenant_developer / developer_admin / platform_admin / platform_audit_security` 读取角色，以覆盖既有 seed 与全集成文档中的已存在角色漂移；tenant 侧仍强制 `x-tenant-id + buyer/seller order scope`，没有放宽对象边界。

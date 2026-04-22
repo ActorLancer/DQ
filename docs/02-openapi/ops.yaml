@@ -67,6 +67,176 @@ paths:
       responses:
         "200":
           description: developer overview
+  /api/v1/developer/trace:
+    get:
+      summary: lookup tenant-scoped developer trace status by one primary key
+      tags: [DeveloperOps]
+      description: |
+        Returns the formal V1 developer status lookup view for exactly one selector:
+        `order_id`, `event_id`, or `tx_hash`. The response reads PostgreSQL-backed
+        formal objects only: `trade.order_main`, `audit.audit_event`,
+        `ops.outbox_event`, `ops.dead_letter_event`, `ops.external_fact_receipt`,
+        `ops.chain_projection_gap`, `ops.trade_lifecycle_checkpoint`,
+        `ops.trace_index`, `ops.system_log`, and `chain.chain_anchor`.
+        The endpoint requires `developer.trace.read`; tenant-scoped callers must
+        also provide `x-tenant-id` and stay within the resolved order scope.
+        Go/Fabric services remain the write-back producers for proof / callback facts;
+        this endpoint never treats Fabric itself as the synchronous truth source.
+        Every lookup must append `audit.access_audit` and `ops.system_log`.
+      parameters:
+        - in: query
+          name: order_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: event_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: tx_hash
+          schema:
+            type: string
+      responses:
+        "200":
+          description: developer trace lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseDeveloperTraceLookupResponse"
+              example:
+                success: true
+                data:
+                  subject:
+                    lookup_mode: tx_hash
+                    lookup_value: 0xaud024anchor
+                    matched_object_type: chain_anchor
+                    matched_object_id: d34f857d-2d5b-4bb2-bdfd-5f0d6a5f8d44
+                    resolved_ref_type: order
+                    resolved_ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    resolved_order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    business_status: pending_delivery
+                    payment_status: paid
+                    delivery_status: pending_delivery
+                    acceptance_status: pending
+                    settlement_status: pending_settlement
+                    dispute_status: none
+                    proof_commit_state: anchored
+                    proof_commit_policy: async_evidence
+                    external_fact_status: confirmed
+                    reconcile_status: healthy
+                    last_reconciled_at: "2026-04-22T10:32:00.000Z"
+                    request_id: req-aud024-seed
+                    trace_id: trace-aud024-seed
+                    snapshot:
+                      authority_model: dual_layer
+                      business_state_version: 9
+                      chain_id: fabric-local
+                  matched_chain_anchor:
+                    chain_anchor_id: d34f857d-2d5b-4bb2-bdfd-5f0d6a5f8d44
+                    chain_id: fabric-local
+                    anchor_type: order_proof
+                    ref_type: order
+                    ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    digest: sha256:aud024-order-proof
+                    tx_hash: 0xaud024anchor
+                    status: anchored
+                    anchored_at: "2026-04-22T10:32:00.000Z"
+                    created_at: "2026-04-22T10:31:30.000Z"
+                    authority_model: dual_layer
+                    reconcile_status: healthy
+                    last_reconciled_at: "2026-04-22T10:32:00.000Z"
+                  matched_projection_gap: null
+                  matched_checkpoint:
+                    trade_lifecycle_checkpoint_id: 0c39ce08-6ad0-47f1-b3c2-24876c588888
+                    monitoring_policy_profile_id: null
+                    order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    ref_domain: trade
+                    ref_type: order
+                    ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    checkpoint_code: proof_submitted
+                    lifecycle_stage: settlement
+                    checkpoint_status: ok
+                    expected_by: fabric-event-listener
+                    occurred_at: "2026-04-22T10:32:00.000Z"
+                    source_type: chain_anchor
+                    source_ref_type: chain_anchor
+                    source_ref_id: d34f857d-2d5b-4bb2-bdfd-5f0d6a5f8d44
+                    related_tx_hash: 0xaud024anchor
+                    request_id: req-aud024-seed
+                    trace_id: trace-aud024-seed
+                    metadata:
+                      seed: aud024
+                    created_at: "2026-04-22T10:32:00.000Z"
+                    updated_at: "2026-04-22T10:32:00.000Z"
+                  trace:
+                    trace_index_id: 22084516-bd16-4657-aece-3dbff6b32e0c
+                    trace_id: trace-aud024-seed
+                    traceparent: 00-aud024trace-00000000000000000000000000000000-0000000000000000-01
+                    backend_key: tempo_main
+                    root_service_name: fabric-adapter
+                    root_span_name: SubmitProof
+                    request_id: req-aud024-seed
+                    ref_type: order
+                    ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    object_type: order
+                    object_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    status: ok
+                    span_count: 4
+                    started_at: "2026-04-22T10:31:58.000Z"
+                    ended_at: "2026-04-22T10:32:00.000Z"
+                    metadata:
+                      seed: aud024
+                  recent_logs:
+                    - system_log_id: e99f925e-e71f-4d60-a870-b251fe73f001
+                      service_name: fabric-event-listener
+                      logger_name: callback
+                      log_level: info
+                      severity_number: 9
+                      environment_code: local
+                      host_name: datab-local
+                      node_name: null
+                      pod_name: null
+                      backend_type: loki
+                      request_id: req-aud024-seed
+                      trace_id: trace-aud024-seed
+                      message_text: fabric callback applied to order proof
+                      structured_payload:
+                        tx_hash: 0xaud024anchor
+                      object_type: order
+                      object_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      masked_status: masked
+                      retention_class: standard
+                      legal_hold_status: none
+                      resource_attrs:
+                        seed: aud024
+                      created_at: "2026-04-22T10:32:00.000Z"
+                  recent_checkpoints: []
+                  recent_external_facts: []
+                  recent_projection_gaps: []
+                  recent_chain_anchors: []
+                  recent_outbox_events: []
+                  recent_dead_letters: []
+                  recent_audit_traces: []
+        "400":
+          description: invalid selector shape or UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or tenant scope mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: selector target not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /internal/notifications/templates/preview:
     post:
       summary: preview notification template rendering before dispatch
@@ -2758,6 +2928,15 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsTraceLookupResponse"
+    ApiResponseDeveloperTraceLookupResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/DeveloperTraceLookupResponse"
     ApiResponseOpsAlertPageResponse:
       type: object
       required: [success, data]
@@ -3559,6 +3738,208 @@ components:
           type: string
           nullable: true
         grafana_link:
+          type: string
+          nullable: true
+    DeveloperTraceLookupResponse:
+      type: object
+      required:
+        - subject
+        - recent_logs
+        - recent_checkpoints
+        - recent_external_facts
+        - recent_projection_gaps
+        - recent_chain_anchors
+        - recent_outbox_events
+        - recent_dead_letters
+        - recent_audit_traces
+      properties:
+        subject:
+          $ref: "#/components/schemas/DeveloperTraceSubjectRecord"
+        matched_audit_trace:
+          $ref: "#/components/schemas/DeveloperAuditTraceRecord"
+          nullable: true
+        matched_outbox_event:
+          $ref: "#/components/schemas/OutboxEventRecord"
+          nullable: true
+        matched_dead_letter:
+          $ref: "#/components/schemas/DeadLetterEventRecord"
+          nullable: true
+        matched_chain_anchor:
+          $ref: "#/components/schemas/ConsistencyChainAnchorRecord"
+          nullable: true
+        matched_projection_gap:
+          $ref: "#/components/schemas/ChainProjectionGapRecord"
+          nullable: true
+        matched_checkpoint:
+          $ref: "#/components/schemas/TradeLifecycleCheckpointRecord"
+          nullable: true
+        trace:
+          $ref: "#/components/schemas/TraceIndexRecord"
+          nullable: true
+        recent_logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemLogMirrorRecord"
+        recent_checkpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeLifecycleCheckpointRecord"
+        recent_external_facts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalFactReceiptRecord"
+        recent_projection_gaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChainProjectionGapRecord"
+        recent_chain_anchors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsistencyChainAnchorRecord"
+        recent_outbox_events:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutboxEventRecord"
+        recent_dead_letters:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeadLetterEventRecord"
+        recent_audit_traces:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeveloperAuditTraceRecord"
+    DeveloperTraceSubjectRecord:
+      type: object
+      required:
+        - lookup_mode
+        - lookup_value
+        - matched_object_type
+        - resolved_ref_type
+        - resolved_ref_id
+        - resolved_order_id
+        - business_status
+        - payment_status
+        - proof_commit_state
+        - proof_commit_policy
+        - external_fact_status
+        - reconcile_status
+        - snapshot
+      properties:
+        lookup_mode:
+          type: string
+          enum: [order_id, event_id, tx_hash]
+        lookup_value:
+          type: string
+        matched_object_type:
+          type: string
+        matched_object_id:
+          type: string
+          format: uuid
+          nullable: true
+        resolved_ref_type:
+          type: string
+        resolved_ref_id:
+          type: string
+          format: uuid
+        resolved_order_id:
+          type: string
+          format: uuid
+        business_status:
+          type: string
+        payment_status:
+          type: string
+        delivery_status:
+          type: string
+          nullable: true
+        acceptance_status:
+          type: string
+          nullable: true
+        settlement_status:
+          type: string
+          nullable: true
+        dispute_status:
+          type: string
+          nullable: true
+        proof_commit_state:
+          type: string
+        proof_commit_policy:
+          type: string
+        external_fact_status:
+          type: string
+        reconcile_status:
+          type: string
+        last_reconciled_at:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        snapshot:
+          $ref: "#/components/schemas/JsonObject"
+    DeveloperAuditTraceRecord:
+      type: object
+      required:
+        - event_schema_version
+        - event_class
+        - domain_name
+        - ref_type
+        - action_name
+        - result_code
+      properties:
+        audit_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_schema_version:
+          type: string
+        event_class:
+          type: string
+        domain_name:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        tenant_id:
+          type: string
+          nullable: true
+        action_name:
+          type: string
+        result_code:
+          type: string
+        error_code:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        tx_hash:
+          type: string
+          nullable: true
+        evidence_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_hash:
+          type: string
+          nullable: true
+        occurred_at:
           type: string
           nullable: true
     OpsAlertPageResponse:

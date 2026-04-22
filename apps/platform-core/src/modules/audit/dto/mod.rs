@@ -5,8 +5,8 @@ use audit_kit::{
 use serde::{Deserialize, Serialize};
 
 use crate::modules::audit::repo::{
-    AlertEventRecord, ChainProjectionGapRecord, ConsumerIdempotencyRecord, DeadLetterEventRecord,
-    ExternalFactReceiptRecord, FairnessIncidentRecord, IncidentTicketRecord,
+    AlertEventRecord, ChainAnchorRecord, ChainProjectionGapRecord, ConsumerIdempotencyRecord,
+    DeadLetterEventRecord, ExternalFactReceiptRecord, FairnessIncidentRecord, IncidentTicketRecord,
     ObservabilityBackendRecord, OutboxEventRecord, OutboxPublishAttemptRecord, SloRecord,
     SystemLogMirrorRecord, TraceIndexRecord, TradeLifecycleCheckpointRecord,
 };
@@ -403,6 +403,23 @@ pub struct ChainProjectionGapView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChainAnchorView {
+    pub chain_anchor_id: Option<String>,
+    pub chain_id: String,
+    pub anchor_type: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub digest: String,
+    pub tx_hash: Option<String>,
+    pub status: String,
+    pub anchored_at: Option<String>,
+    pub created_at: Option<String>,
+    pub authority_model: String,
+    pub reconcile_status: String,
+    pub last_reconciled_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TradeLifecycleCheckpointView {
     pub trade_lifecycle_checkpoint_id: Option<String>,
     pub monitoring_policy_profile_id: Option<String>,
@@ -735,6 +752,26 @@ impl From<&ChainProjectionGapRecord> for ChainProjectionGapView {
             metadata: record.metadata.clone(),
             created_at: record.created_at.clone(),
             updated_at: record.updated_at.clone(),
+        }
+    }
+}
+
+impl From<&ChainAnchorRecord> for ChainAnchorView {
+    fn from(record: &ChainAnchorRecord) -> Self {
+        Self {
+            chain_anchor_id: record.chain_anchor_id.clone(),
+            chain_id: record.chain_id.clone(),
+            anchor_type: record.anchor_type.clone(),
+            ref_type: record.ref_type.clone(),
+            ref_id: record.ref_id.clone(),
+            digest: record.digest.clone(),
+            tx_hash: record.tx_hash.clone(),
+            status: record.status.clone(),
+            anchored_at: record.anchored_at.clone(),
+            created_at: record.created_at.clone(),
+            authority_model: record.authority_model.clone(),
+            reconcile_status: record.reconcile_status.clone(),
+            last_reconciled_at: record.last_reconciled_at.clone(),
         }
     }
 }
