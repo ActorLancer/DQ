@@ -1235,3 +1235,46 @@
   - 无。搜索排序基线当前仍保持简单组合排序、动态权重 patch、正式审计与缓存失效闭环，没有新增 `V1-gap`。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-274（计划中）
+- 任务：`SEARCHREC-006` 逐任务复核与正式重验（搜索缓存与失效策略）
+- 状态：计划中
+- 说明：按 `SEARCHREC-006` 的冻结口径，重新核对 Redis 搜索缓存是否仍统一使用 `datab:v1:search:catalog:*` 正式 key 命名、`datab:v1:search:catalog:version:{scope}` 版本键、300 秒 TTL、scope 级联失效和 worker 成功路径失效；重点确认 `POST /api/v1/ops/search/cache/invalidate`、ranking patch、alias switch 与 `search-indexer` 都会推进相同版本键并删除相关缓存，而不是退回全局粗暴清空或假接入 Redis。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-006`，不提前进入 `SEARCHREC-007`。
+### BATCH-274（待审批）
+- 任务：`SEARCHREC-006` 逐任务复核与正式重验（搜索缓存与失效策略）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-006`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-005` 已重验搜索主链、目录搜索接口和排序基线，本批在该基线上重新确认 Redis 搜索缓存、版本键与失效策略。
+- 复核结论：
+  - `SEARCHREC-006` 当前实现满足冻结口径，无需额外代码修订。`apps/platform-core/src/modules/search/repo/mod.rs` 仍以 `datab:v1:search:catalog:{entity_scope}:{query_hash}` 存储候选缓存，缓存值带 `cache_version`，并通过 `datab:v1:search:catalog:version:{scope}` 控制 scope 级版本失效；TTL 继续固定为 300 秒。
+  - `POST /api/v1/ops/search/cache/invalidate`、`PATCH /api/v1/ops/search/ranking-profiles/{id}`、`POST /api/v1/ops/search/aliases/switch` 仍共用同一套正式失效逻辑：推进相关 scope 版本键并通过 `SCAN` 删除候选缓存，没有退回全局 `KEYS` 粗暴清空。
+  - `workers/search-indexer/src/main.rs` 成功写入 OpenSearch 后，仍按实体范围推进 `product/service/seller/all` 版本键并删除对应缓存；`search_indexer_db_smoke` 继续证明 worker 成功路径会真实联动 Redis，而不是只写 OpenSearch 不触碰缓存。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo check -p search-indexer`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_catalog_composite_ranking_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `search_api_and_ops_db_smoke` 通过，继续证明前台搜索真实使用 Redis 缓存、ops 手工失效会推进相关 scope 版本键并回写审计/系统日志。
+  - `search_catalog_composite_ranking_db_smoke` 通过，继续证明 ranking profile patch 会自动失效旧的 composite 搜索缓存，并在重新查询时拿到新排序结果。
+  - `search_catalog_pg_fallback_db_smoke` 通过，确认 `local` PostgreSQL fallback 路径仍真实命中 Redis 搜索短缓存，没有因版本化收口而回退到“无缓存”。
+  - `search_indexer_db_smoke` 通过，确认 `search-indexer` 成功消费 `dtp.search.sync` 后会推进版本键并删除相关候选缓存；Redis 在 worker 链路中是真接入。
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 0 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮没有新的查询编译漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-006`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`、`6. 搜索投影设计`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索缓存、ops 写接口与 PostgreSQL 最终校验边界
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+  - `A12-配置项与资源命名漂移.md`
+- 覆盖的任务清单条目：`SEARCHREC-006`
+- 未覆盖项：
+  - 无。Redis 搜索缓存、正式 key 命名、scope 级失效与 worker 成功路径失效仍保持正式闭环，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
