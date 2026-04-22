@@ -17,6 +17,7 @@
 - `audit-dead-letter-reprocess.md`：`AUD-010` SEARCHREC dead letter dry-run 重处理控制面的权限、step-up、DB / 审计回查与运行态边界。
 - `audit-consistency-lookup.md`：`AUD-011` 一致性联查接口的宿主机调用、正式 `refType`、DB / 审计回查与运行态边界。
 - `audit-consistency-reconcile.md`：`AUD-012` 一致性修复 dry-run 控制面的权限、step-up、`ops.chain_projection_gap` 预演建议、DB / 审计回查与“无执行副作用”边界。
+- `audit-authority-writer.md`：`AUD-029` 历史模块统一 `audit writer / evidence writer`、`support.evidence_object -> audit.evidence_*` 桥接与最小 smoke / SQL 回查。
 - `audit-external-facts.md`：`AUD-019` 外部事实查询 / 确认控制面的权限、step-up、`ops.external_fact_receipt` 回查与“不直接改业务主状态”边界。
 - `audit-fairness-incidents.md`：`AUD-020` 公平性事件查询 / 处理控制面的权限、step-up、`risk.fairness_incident` 回查与“只记录联动建议、不直接改业务主状态”边界。
 - `audit-projection-gaps.md`：`AUD-021` 投影缺口查询 / 关闭控制面的权限、step-up、`ops.chain_projection_gap` 回查、`dry_run` 预演与“只关闭正式 gap 对象、不派生 reconcile job”边界。

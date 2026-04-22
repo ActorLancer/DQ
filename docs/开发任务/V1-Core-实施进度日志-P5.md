@@ -1742,3 +1742,44 @@
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 - 备注：
   - 本批没有改动业务代码；复核结果显示现有 smoke 与 runbook 已能支撑 `AUD-028`，真实缺口在于 test-case 文档尚未把五类一致性场景显式绑定到正式对象与验证入口。已通过场景映射表和 README 索引把该 gap 收口。
+### BATCH-242（计划中）
+- 任务：`AUD-029` 收敛已完成阶段的历史模块到统一 `audit writer / evidence writer`
+- 状态：计划中
+- 说明：重新核对 `AUD-029` 的冻结要求后确认，当前主要分叉点集中在三类位置：`catalog` 仍通过 `modules/catalog/api/support.rs` 手写 `INSERT audit.audit_event`；`billing` 仍通过 `modules/billing/db.rs` 手写第二套审计 helper；`billing dispute` 虽已把证据对象桥接到 `audit.evidence_item / audit.evidence_manifest`，但仍需确认其 bridge 继续作为正式权威入口，而不是把 `support.evidence_object` 误当并行真相源。同时运行时 `platform-core` 仍默认注入 `NoopAuditWriter / NoopOutboxWriter`，与 `A03` 的冻结口径冲突。本批将优先抽出统一审计写入入口，改造 `catalog / billing` helper 接入该入口，保留 `support.evidence_object -> audit.evidence_item / evidence_manifest` 的正式桥接，并清理正式运行时里无意义的 no-op 默认注入。
+- 追溯：已重新核对 `CSV / Markdown`、`服务清单与服务边界正式版.md` 5.3.15、`审计、证据链与回放设计.md` 第 5 节、`055_audit_hardening.sql` 的 `audit.evidence_*` 表、`A03-统一事务模板-落地真实审计与Outbox-Writer.md`、`A06-Audit-Kit-统一模型漂移.md`、`A14-AUD-历史模块统一Writer与证据桥接缺口.md`，以及通用冻结文档 `事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`、`审计、证据链与回放设计.md`、`双层权威模型与链上链下一致性设计.md`、`链上链下技术架构与能力边界稿.md`、`日志、可观测性与告警设计.md`、`审计、证据链与回放接口协议正式版.md`、`一致性与事件接口协议正式版.md`、`fabric-local.md`、`kafka-topics.md`、`async-chain-write.md`、`072_canonical_outbox_route_policy.sql`、`074_event_topology_route_extensions.sql` 与 `infra/docker/docker-compose.local.yml`。当前确认的正式完成标准是：`catalog / search / billing dispute` 产生的审计与证据对象能够通过统一 `AuditEvent / EvidenceItem / EvidenceManifest` 联查；不再新增 ad-hoc `INSERT audit.audit_event` 或第二套证据权威表；至少一条真实集成测试能证明旧模块对象不会再游离在审计 authority model 之外。
+### BATCH-242（待审批）
+- 任务：`AUD-029` 收敛已完成阶段的历史模块到统一 `audit writer / evidence writer`
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/application/mod.rs`：新增统一 `AuditWriteCommand`、`build_audit_event(...)` 与 `write_audit_event(...)`，把 `AuditEvent` 的默认 schema/version、anchor policy、retention class、legal hold、sensitivity 与 metadata 包装逻辑收口到正式 `audit.application` 层，再由 `modules::audit::repo::insert_audit_event(...)` 落正式 `audit.audit_event`。
+  - `apps/platform-core/src/modules/catalog/api/support.rs`、`apps/platform-core/src/modules/billing/db.rs`、`apps/platform-core/src/modules/iam/api.rs`：移除各自手写的 `INSERT audit.audit_event` helper，统一改为调用 `modules::audit::application::write_audit_event(...)`。其中 `catalog` / `billing` / `iam` 仍保留自身 `actor_role`、`event_id`、`step_up_challenge_id`、`certificate_id`、`external_fact_receipt_id` 等业务 metadata，但不再派生第二套审计写入语义。
+  - `apps/platform-core/src/lib.rs`：删除正式运行时默认注入的 `NoopAuditWriter / NoopOutboxWriter`，避免生产路径继续静默落到 no-op writer；`db` crate 中的 no-op 仅保留在 rollback fixture 与测试边界。
+  - `apps/platform-core/src/modules/audit/tests/mod.rs`：新增 `application_writer_builds_unified_role_and_user_events` 单测，确认统一 writer 在 role / user 两种 actor 下都能保留 `actor_type`、`actor_id`、`step_up_challenge_id`、`sensitivity_level` 与 metadata 字段。
+  - `docs/04-runbooks/audit-authority-writer.md`、`docs/04-runbooks/README.md`：补充 `AUD-029` 的正式 authority runbook，明确 `catalog / search / billing` 的审计落点，以及 `support.evidence_object -> audit.evidence_item / audit.evidence_manifest / audit.evidence_manifest_item` 的兼容桥接边界与最小验证入口。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既有 warning，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`320 passed; 0 failed`，新增的 `application_writer_builds_unified_role_and_user_events` 绿色；`iam_fabric_ca_admin_db_smoke`、`search_api_and_ops_db_smoke`、`bil013_dispute_case_db_smoke`、`cat024_catalog_listing_review_end_to_end_db_smoke` 等既有链路未回归。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat024_catalog_listing_review_end_to_end_db_smoke -- --nocapture` 通过，证明 `catalog` 主链仍可完成端到端评审流程。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture` 通过；随后用 `psql` 回查 `audit.audit_event`，确认 `search.alias.switch`、`search.ranking_profile.patch`、`search.reindex.queue`、`search.cache.invalidate` 等事件持续落在正式 `audit.audit_event`，未退化成旁路日志。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil013_dispute_case_db_smoke -- --nocapture` 通过；该 smoke 内部已真实回查 `support.evidence_object.metadata.audit_evidence_item_id / audit_evidence_manifest_id`、`audit.evidence_item.metadata.legacy_bridge.legacy_table='support.evidence_object'` 与 `audit.evidence_manifest`，然后按规则清理临时业务测试数据，因此运行后库中不保留临时证据对象。
+  - `rg -n "INSERT INTO audit\\.audit_event" apps/platform-core/src/modules/{catalog,billing,iam,audit,search}` 复核通过：除了 `modules/audit/repo/mod.rs` 正式仓储和其测试断言外，`catalog / billing / iam / search` 已不再手写审计 SQL。
+  - `rg -n "NoopAuditWriter|NoopOutboxWriter" apps/platform-core/src/lib.rs apps/platform-core/src/modules apps/platform-core/crates/db/src` 复核通过：正式运行时入口已无 no-op 默认注入，仅测试夹具保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-029`
+  - `服务清单与服务边界正式版.md` 5.3.15
+  - `审计、证据链与回放设计.md` 第 5 节
+  - `055_audit_hardening.sql`
+  - `A03-统一事务模板-落地真实审计与Outbox-Writer.md`
+  - `A06-Audit-Kit-统一模型漂移.md`
+  - `A14-AUD-历史模块统一Writer与证据桥接缺口.md`
+- 覆盖的任务清单条目：`AUD-029`
+- 未覆盖项：
+  - `order / delivery` 模块仍存在历史 `INSERT audit.audit_event` 路径，但它们不在 `AUD-029` 的交付范围内；本批未越级改写后续主线模块。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - `search` 目前仍直接构造 `AuditEvent::business + insert_audit_event(...)`，这是正式 authority model 的既有正确实现，因此本批未强行改造成另一层 wrapper。
+  - `support.evidence_object` 仍保留为历史兼容表，但本批已通过 runbook 与 smoke 复核明确：它只承载 legacy bridge，不再定义正式导出 / replay / legal hold 的主查询口径。

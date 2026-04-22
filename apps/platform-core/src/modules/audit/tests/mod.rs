@@ -1,6 +1,7 @@
 mod api_db;
 
 use crate::modules::audit::api::{AuditPermission, canonical_role_key, is_allowed};
+use crate::modules::audit::application::{AuditWriteCommand, build_audit_event};
 use crate::modules::audit::dto::{
     AuditTraceView, EvidenceItemView, EvidenceManifestItemView, EvidenceManifestView,
 };
@@ -93,6 +94,69 @@ fn audit_trace_view_keeps_lookup_and_export_fields_aligned() {
         view.occurred_at.as_deref(),
         Some("2026-04-22T10:00:00.000Z")
     );
+}
+
+#[test]
+fn application_writer_builds_unified_role_and_user_events() {
+    let role_event = build_audit_event(&AuditWriteCommand {
+        domain_name: "catalog".to_string(),
+        ref_type: "product".to_string(),
+        ref_id: Some("11111111-1111-4111-8111-111111111111".to_string()),
+        actor_type: "role".to_string(),
+        actor_id: None,
+        actor_org_id: Some("22222222-2222-4222-8222-222222222222".to_string()),
+        tenant_id: Some("22222222-2222-4222-8222-222222222222".to_string()),
+        action_name: "catalog.product.review".to_string(),
+        result_code: "success".to_string(),
+        error_code: None,
+        request_id: Some("req-aud029-role".to_string()),
+        trace_id: Some("trace-aud029-role".to_string()),
+        auth_assurance_level: None,
+        step_up_challenge_id: None,
+        sensitivity_level: None,
+        metadata: serde_json::json!({
+            "actor_role": "platform_catalog_ops",
+            "writer": "audit.application.write_audit_event",
+        }),
+    });
+    assert_eq!(role_event.actor_type, "role");
+    assert!(role_event.actor_id.is_none());
+    assert_eq!(
+        role_event.metadata["actor_role"].as_str(),
+        Some("platform_catalog_ops")
+    );
+
+    let user_event = build_audit_event(&AuditWriteCommand {
+        domain_name: "iam".to_string(),
+        ref_type: "certificate".to_string(),
+        ref_id: Some("33333333-3333-4333-8333-333333333333".to_string()),
+        actor_type: "user".to_string(),
+        actor_id: Some("44444444-4444-4444-8444-444444444444".to_string()),
+        actor_org_id: None,
+        tenant_id: None,
+        action_name: "iam.certificate.revoke".to_string(),
+        result_code: "success".to_string(),
+        error_code: None,
+        request_id: Some("req-aud029-user".to_string()),
+        trace_id: Some("trace-aud029-user".to_string()),
+        auth_assurance_level: Some("step_up_required".to_string()),
+        step_up_challenge_id: Some("55555555-5555-4555-8555-555555555555".to_string()),
+        sensitivity_level: Some("high".to_string()),
+        metadata: serde_json::json!({
+            "actor_role": "platform_admin",
+            "certificate_id": "33333333-3333-4333-8333-333333333333",
+        }),
+    });
+    assert_eq!(user_event.actor_type, "user");
+    assert_eq!(
+        user_event.actor_id.as_deref(),
+        Some("44444444-4444-4444-8444-444444444444")
+    );
+    assert_eq!(
+        user_event.step_up_challenge_id.as_deref(),
+        Some("55555555-5555-4555-8555-555555555555")
+    );
+    assert_eq!(user_event.sensitivity_level, "high");
 }
 
 #[test]

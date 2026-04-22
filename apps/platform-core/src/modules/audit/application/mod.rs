@@ -1,7 +1,9 @@
-use crate::modules::audit::domain::{EvidenceItem, EvidenceManifest, EvidenceManifestItem};
+use crate::modules::audit::domain::{
+    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem,
+};
 use crate::modules::audit::repo::{
     INSERT_EVIDENCE_ITEM_SQL, INSERT_EVIDENCE_MANIFEST_ITEM_SQL, INSERT_EVIDENCE_MANIFEST_SQL,
-    metadata_object,
+    insert_audit_event, metadata_object,
 };
 use db::{Error, GenericClient, Row};
 use serde::{Deserialize, Serialize};
@@ -14,6 +16,82 @@ pub struct LegacyEvidenceBridge {
     pub legacy_object_id: String,
     pub legacy_parent_type: String,
     pub legacy_parent_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuditWriteCommand {
+    pub domain_name: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub actor_type: String,
+    pub actor_id: Option<String>,
+    pub actor_org_id: Option<String>,
+    pub tenant_id: Option<String>,
+    pub action_name: String,
+    pub result_code: String,
+    pub error_code: Option<String>,
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub auth_assurance_level: Option<String>,
+    pub step_up_challenge_id: Option<String>,
+    pub sensitivity_level: Option<String>,
+    pub metadata: Value,
+}
+
+pub fn build_audit_event(command: &AuditWriteCommand) -> AuditEvent {
+    AuditEvent {
+        audit_id: None,
+        event_schema_version: "v1".to_string(),
+        event_class: "business".to_string(),
+        domain_name: command.domain_name.clone(),
+        ref_type: command.ref_type.clone(),
+        ref_id: command.ref_id.clone(),
+        actor_type: command.actor_type.clone(),
+        actor_id: command.actor_id.clone(),
+        actor_org_id: command.actor_org_id.clone(),
+        tenant_id: command.tenant_id.clone(),
+        session_id: None,
+        trusted_device_id: None,
+        application_id: None,
+        request_id: command.request_id.clone(),
+        trace_id: command.trace_id.clone(),
+        parent_audit_id: None,
+        action_name: command.action_name.clone(),
+        result_code: command.result_code.clone(),
+        error_code: command.error_code.clone(),
+        source_ip: None,
+        client_fingerprint: None,
+        auth_assurance_level: command.auth_assurance_level.clone(),
+        step_up_challenge_id: command.step_up_challenge_id.clone(),
+        before_state_digest: None,
+        after_state_digest: None,
+        tx_hash: None,
+        previous_event_hash: None,
+        event_hash: None,
+        evidence_hash: None,
+        payload_digest: None,
+        evidence_manifest_id: None,
+        anchor_policy: "batched_fabric".to_string(),
+        retention_class: "audit_default".to_string(),
+        legal_hold_status: "none".to_string(),
+        sensitivity_level: command
+            .sensitivity_level
+            .clone()
+            .unwrap_or_else(|| "normal".to_string()),
+        occurred_at: None,
+        ingested_at: None,
+        metadata: Value::Object(metadata_object(command.metadata.clone())),
+        evidence: Vec::new(),
+    }
+}
+
+pub async fn write_audit_event(
+    client: &(impl GenericClient + Sync),
+    command: &AuditWriteCommand,
+) -> Result<AuditEvent, Error> {
+    let event = build_audit_event(command);
+    insert_audit_event(client, &event).await?;
+    Ok(event)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

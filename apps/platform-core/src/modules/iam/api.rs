@@ -1,5 +1,8 @@
 use crate::AppState;
 use crate::modules::access;
+use crate::modules::audit::application::{
+    AuditWriteCommand, write_audit_event as write_unified_audit_event,
+};
 use crate::modules::iam::domain::{
     AccessCheckRequest, AccessCheckView, AccessPermissionRuleView, ActionResultView,
     ApplicationListQuery, ApplicationView, CertificateView, ConnectorListQuery, ConnectorView,
@@ -2291,30 +2294,33 @@ async fn write_audit_event(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    client
-        .query_one(
-            "INSERT INTO audit.audit_event (
-               domain_name, ref_type, ref_id, actor_type, actor_id, action_name, result_code,
-               request_id, trace_id, metadata
-             ) VALUES (
-               'iam', $1, $2::text::uuid, 'role', NULL, $3, $4, $5, $6, $7::jsonb
-             )
-             RETURNING audit_id::text",
-            &[
-                &ref_type,
-                &ref_id,
-                &action_name,
-                &result_code,
-                &request_id,
-                &trace_id,
-                &serde_json::json!({
-                    "actor_role": actor_role,
-                    "event_id": new_external_readable_id("iam"),
-                }),
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_unified_audit_event(
+        client,
+        &AuditWriteCommand {
+            domain_name: "iam".to_string(),
+            ref_type: ref_type.to_string(),
+            ref_id: Some(ref_id.to_string()),
+            actor_type: "role".to_string(),
+            actor_id: None,
+            actor_org_id: None,
+            tenant_id: None,
+            action_name: action_name.to_string(),
+            result_code: result_code.to_string(),
+            error_code: None,
+            request_id: request_id.map(str::to_string),
+            trace_id: trace_id.map(str::to_string),
+            auth_assurance_level: None,
+            step_up_challenge_id: None,
+            sensitivity_level: None,
+            metadata: serde_json::json!({
+                "actor_role": actor_role,
+                "event_id": new_external_readable_id("iam"),
+                "writer": "audit.application.write_audit_event",
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 
@@ -2333,35 +2339,37 @@ async fn write_iam_actor_audit_event(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    client
-        .query_one(
-            "INSERT INTO audit.audit_event (
-               domain_name, ref_type, ref_id, actor_type, actor_id, action_name, result_code,
-               request_id, trace_id, metadata
-             ) VALUES (
-               'iam', $1, $2::text::uuid, 'user', $3::text::uuid, $4, $5, $6, $7, $8::jsonb
-             )
-             RETURNING audit_id::text",
-            &[
-                &ref_type,
-                &ref_id,
-                &actor_user_id,
-                &action_name,
-                &result_code,
-                &request_id,
-                &trace_id,
-                &serde_json::json!({
-                    "actor_role": actor_role,
-                    "event_id": new_external_readable_id("iam"),
-                    "step_up_challenge_id": step_up_challenge_id,
-                    "certificate_id": certificate_id,
-                    "external_fact_receipt_id": external_fact_receipt_id,
-                    "provider_reference": provider_reference,
-                }),
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_unified_audit_event(
+        client,
+        &AuditWriteCommand {
+            domain_name: "iam".to_string(),
+            ref_type: ref_type.to_string(),
+            ref_id: Some(ref_id.to_string()),
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: None,
+            tenant_id: None,
+            action_name: action_name.to_string(),
+            result_code: result_code.to_string(),
+            error_code: None,
+            request_id: request_id.map(str::to_string),
+            trace_id: trace_id.map(str::to_string),
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id: Some(step_up_challenge_id.to_string()),
+            sensitivity_level: Some("high".to_string()),
+            metadata: serde_json::json!({
+                "actor_role": actor_role,
+                "event_id": new_external_readable_id("iam"),
+                "step_up_challenge_id": step_up_challenge_id,
+                "certificate_id": certificate_id,
+                "external_fact_receipt_id": external_fact_receipt_id,
+                "provider_reference": provider_reference,
+                "writer": "audit.application.write_audit_event",
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

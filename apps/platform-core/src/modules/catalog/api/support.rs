@@ -4,6 +4,9 @@ use db::{Client, Error, GenericClient};
 use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
 
 use crate::AppState;
+use crate::modules::audit::application::{
+    AuditWriteCommand, write_audit_event as write_unified_audit_event,
+};
 use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::{CatalogPermission, is_allowed};
 use crate::shared::outbox::{CanonicalOutboxWrite, write_canonical_outbox_event};
@@ -263,30 +266,33 @@ pub(in crate::modules::catalog::api) async fn write_audit_event(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    client
-        .query_one(
-            "INSERT INTO audit.audit_event (
-               domain_name, ref_type, ref_id, actor_type, actor_id, action_name, result_code,
-               request_id, trace_id, metadata
-             ) VALUES (
-               'catalog', $1, $2::text::uuid, 'role', NULL, $3, $4, $5, $6, $7::jsonb
-             )
-             RETURNING audit_id::text",
-            &[
-                &ref_type,
-                &ref_id,
-                &action_name,
-                &result_code,
-                &request_id,
-                &trace_id,
-                &serde_json::json!({
-                    "actor_role": actor_role,
-                    "event_id": new_external_readable_id("cat"),
-                }),
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_unified_audit_event(
+        client,
+        &AuditWriteCommand {
+            domain_name: "catalog".to_string(),
+            ref_type: ref_type.to_string(),
+            ref_id: Some(ref_id.to_string()),
+            actor_type: "role".to_string(),
+            actor_id: None,
+            actor_org_id: None,
+            tenant_id: None,
+            action_name: action_name.to_string(),
+            result_code: result_code.to_string(),
+            error_code: None,
+            request_id: request_id.map(str::to_string),
+            trace_id: trace_id.map(str::to_string),
+            auth_assurance_level: None,
+            step_up_challenge_id: None,
+            sensitivity_level: None,
+            metadata: serde_json::json!({
+                "actor_role": actor_role,
+                "event_id": new_external_readable_id("cat"),
+                "writer": "audit.application.write_audit_event",
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

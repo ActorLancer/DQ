@@ -1,3 +1,6 @@
+use crate::modules::audit::application::{
+    AuditWriteCommand, write_audit_event as write_unified_audit_event,
+};
 use crate::modules::billing::models::PaymentIntentView;
 use axum::Json;
 use axum::http::StatusCode;
@@ -109,44 +112,32 @@ pub async fn write_audit_event(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    let request_id = request_id.map(str::to_string);
-    let trace_id = trace_id.map(str::to_string);
-    client
-        .execute(
-            "INSERT INTO audit.audit_event (
-               domain_name,
-               ref_type,
-               ref_id,
-               actor_type,
-               action_name,
-               result_code,
-               request_id,
-               trace_id,
-               metadata
-             ) VALUES (
-               $1,
-               $2,
-               $3::text::uuid,
-               'role',
-               $4,
-               $5,
-               $6,
-               $7,
-               jsonb_build_object('actor_role', $8::text)
-             )",
-            &[
-                &domain_name,
-                &ref_type,
-                &ref_id,
-                &action_name,
-                &result_code,
-                &request_id,
-                &trace_id,
-                &actor_role,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_unified_audit_event(
+        client,
+        &AuditWriteCommand {
+            domain_name: domain_name.to_string(),
+            ref_type: ref_type.to_string(),
+            ref_id: Some(ref_id.to_string()),
+            actor_type: "role".to_string(),
+            actor_id: None,
+            actor_org_id: None,
+            tenant_id: None,
+            action_name: action_name.to_string(),
+            result_code: result_code.to_string(),
+            error_code: None,
+            request_id: request_id.map(str::to_string),
+            trace_id: trace_id.map(str::to_string),
+            auth_assurance_level: None,
+            step_up_challenge_id: None,
+            sensitivity_level: None,
+            metadata: serde_json::json!({
+                "actor_role": actor_role,
+                "writer": "audit.application.write_audit_event",
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 
@@ -160,43 +151,32 @@ pub async fn write_audit_event_without_ref(
     request_id: Option<&str>,
     trace_id: Option<&str>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    let request_id = request_id.map(str::to_string);
-    let trace_id = trace_id.map(str::to_string);
-    client
-        .execute(
-            "INSERT INTO audit.audit_event (
-               domain_name,
-               ref_type,
-               ref_id,
-               actor_type,
-               action_name,
-               result_code,
-               request_id,
-               trace_id,
-               metadata
-             ) VALUES (
-               $1,
-               $2,
-               NULL,
-               'role',
-               $3,
-               $4,
-               $5,
-               $6,
-               jsonb_build_object('actor_role', $7::text)
-             )",
-            &[
-                &domain_name,
-                &ref_type,
-                &action_name,
-                &result_code,
-                &request_id,
-                &trace_id,
-                &actor_role,
-            ],
-        )
-        .await
-        .map_err(map_db_error)?;
+    write_unified_audit_event(
+        client,
+        &AuditWriteCommand {
+            domain_name: domain_name.to_string(),
+            ref_type: ref_type.to_string(),
+            ref_id: None,
+            actor_type: "role".to_string(),
+            actor_id: None,
+            actor_org_id: None,
+            tenant_id: None,
+            action_name: action_name.to_string(),
+            result_code: result_code.to_string(),
+            error_code: None,
+            request_id: request_id.map(str::to_string),
+            trace_id: trace_id.map(str::to_string),
+            auth_assurance_level: None,
+            step_up_challenge_id: None,
+            sensitivity_level: None,
+            metadata: serde_json::json!({
+                "actor_role": actor_role,
+                "writer": "audit.application.write_audit_event",
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
     Ok(())
 }
 

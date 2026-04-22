@@ -1,4 +1,3 @@
-use audit_kit::NoopAuditWriter;
 use auth::{
     AuthorizationFacade, MockJwtParser, NoopStepUpGateway, RolePermissionChecker,
     UnifiedAuthorizationFacade,
@@ -13,7 +12,6 @@ use kernel::{
     AppError, AppLauncher, AppResult, DomainEventEnvelope, InProcessEventBus, Module,
     ModuleContext, UtcTimestampMs, new_external_readable_id, validate_error_code_document,
 };
-use outbox_kit::NoopOutboxWriter;
 use provider_kit::{
     FabricWriterProvider, KycProvider, NotificationProvider, PaymentProvider, ProviderBackend,
     SigningProvider, build_fabric_writer_provider, build_kyc_provider, build_notification_provider,
@@ -136,8 +134,6 @@ impl Module for CoreModule {
                 Box::new(NoopStepUpGateway),
             )))
             .await;
-        ctx.container.insert(NoopAuditWriter).await;
-        ctx.container.insert(NoopOutboxWriter).await;
         ctx.container
             .insert::<Arc<dyn KycProvider>>(build_kyc_provider(self.provider_backend))
             .await;
