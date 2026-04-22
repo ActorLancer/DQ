@@ -122,3 +122,37 @@
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 - 备注：
   - 仓库内 `db/scripts/migrate-up.sh` / `migration-runner.sh` 仍依赖 `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` 而非 `DATABASE_URL`。由于本地 `datab` 库存在历史 `068` 校验和漂移，本批延续前序做法，仅把 `082` 定向执行到实际 smoke 库并补登 `schema_migration_history`，未改写任何既有历史 migration 内容。
+### BATCH-250（计划中）
+- 任务：`SEARCHREC-004` 实现 `GET /api/v1/catalog/search`
+- 状态：计划中
+- 说明：按 `SEARCHREC-004` 冻结口径复核后，当前目录搜索已经具备 `staging -> OpenSearch` 与 `local/demo -> PostgreSQL projection fallback` 的候选召回分流，也已保留 PostgreSQL 最终业务校验，但仍存在两处正式闭口未完全收紧：一是 `GET /api/v1/catalog/search` 成功路径尚未像其他搜索接口那样写入正式审计/访问留痕；二是 OpenAPI 对查询参数、`backend` 枚举与错误响应仍未完全反映当前运行时契约。当前批次将只围绕该接口补齐读链审计、参数/错误码契约与差异化 smoke，确保实现与 OpenAPI 一致。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，不提前合并搜索排序、搜索缓存或推荐任务。
+### BATCH-250（待审批）
+- 任务：`SEARCHREC-004` 实现 `GET /api/v1/catalog/search`
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-004`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 已收口 `staging -> OpenSearch` 与 `local/demo -> PostgreSQL projection fallback` 的候选召回边界，`SEARCHREC-002/003` 已补齐商品/卖方搜索投影字段，本批在该基线上完成目录搜索接口契约收口与读审计补齐。
+- 完成情况：
+  - `apps/platform-core/src/modules/search/api/handlers.rs`：为 `GET /api/v1/catalog/search` 增加正式查询校验，拒绝非法 `entity_scope` / `sort` 与反向价格区间，并在成功路径写入 `audit.access_audit + ops.system_log`，把目录搜索读链纳入与其他 search 接口一致的正式访问留痕。
+  - `apps/platform-core/src/modules/search/tests/mod.rs`：新增无效 `entity_scope` 与无效 `sort` 的路由级拒绝测试，确认目录搜索真正返回 `400 / SEARCH_QUERY_INVALID`，而不是静默回退到默认值。
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs`：扩展 `staging` 与 `local` 两条目录搜索 smoke，在验证 `backend=opensearch / postgresql`、Redis 缓存命中差异之外，新增回查 `audit.access_audit` 与 `ops.system_log`，确认缓存 miss/hit 两次目录搜索请求都会留下正式审计痕迹。
+  - `docs/02-openapi/search.yaml`、`packages/openapi/search.yaml`：把 `industry`、`tags`、`delivery_mode`、`price_min`、`price_max` 查询参数、`400/409` 错误响应与 `backend=opensearch|postgresql` 枚举同步写回 OpenAPI，消除接口文档与 `local/demo` fallback 运行时契约之间的漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo test -p platform-core rejects_catalog_search_with_invalid -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-004`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`、`local/demo 允许 PG 投影运行`、`PostgreSQL fallback 搜索`、`6. 搜索投影设计`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：`GET /api/v1/catalog/search` 查询参数、错误码与 PostgreSQL 最终业务校验边界
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`：目录搜索正式接口、运行模式分流与审计矩阵收口
+- 覆盖的任务清单条目：`SEARCHREC-004`
+- 未覆盖项：
+  - 无。`GET /api/v1/catalog/search` 当前已同时覆盖正式权限校验、`staging/local` 候选召回分流、Redis 搜索短缓存、PostgreSQL 最终业务放行、查询错误码与 OpenAPI 同步，不再保留目录搜索“有实现但无正式读审计/文档漂移”的缺口。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

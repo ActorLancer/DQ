@@ -41,12 +41,13 @@ pub(in crate::modules::search) async fn search_catalog(
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<ApiResponse<SearchResponse>>, (StatusCode, Json<ErrorResponse>)> {
     let request_id = request_id(&headers);
-    require_permission(
+    let subject = require_permission(
         &headers,
         SearchPermission::PortalRead,
         "catalog search read",
         &request_id,
     )?;
+    validate_search_query(&query, &request_id)?;
 
     let client = state_client(&state, &request_id)?;
     let (candidate_page, cache_hit) =
@@ -56,6 +57,34 @@ pub(in crate::modules::search) async fn search_catalog(
     let items = repo::hydrate_search_results(&client, &candidate_page.hits)
         .await
         .map_err(|message| map_search_error(&request_id, &message))?;
+
+    record_search_lookup_side_effects(
+        &client,
+        &headers,
+        &subject,
+        SearchPermission::PortalRead,
+        "search_catalog",
+        None,
+        "GET /api/v1/catalog/search",
+        "catalog search lookup executed",
+        json!({
+            "q": query.q,
+            "entity_scope": query.entity_scope,
+            "industry": query.industry,
+            "tags": query.tags,
+            "delivery_mode": query.delivery_mode,
+            "price_min": query.price_min,
+            "price_max": query.price_max,
+            "sort": query.sort,
+            "page": query.page.unwrap_or(1).max(1),
+            "page_size": query.page_size.unwrap_or(20).clamp(1, 50),
+            "backend": candidate_page.backend,
+            "cache_hit": cache_hit,
+            "total": candidate_page.total,
+            "result_count": items.len(),
+        }),
+    )
+    .await?;
 
     Ok(ApiResponse::ok(SearchResponse {
         entity_scope: candidate_page.query_scope,
@@ -93,6 +122,7 @@ pub(in crate::modules::search) async fn get_search_sync(
         "search_sync_query",
         None,
         "GET /api/v1/ops/search/sync",
+        "search ops lookup executed",
         json!({
             "entity_scope": query.entity_scope,
             "sync_status": query.sync_status,
@@ -310,6 +340,7 @@ pub(in crate::modules::search) async fn get_ranking_profiles(
         "search_ranking_profile",
         None,
         "GET /api/v1/ops/search/ranking-profiles",
+        "search ops lookup executed",
         json!({
             "result_count": profiles.len(),
         }),
@@ -612,6 +643,7 @@ async fn record_search_lookup_side_effects(
     target_type: &str,
     target_id: Option<String>,
     endpoint: &str,
+    log_message: &str,
     filters: Value,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     let request_id = header(headers, "x-request-id");
@@ -649,7 +681,7 @@ async fn record_search_lookup_side_effects(
             log_level: "INFO".to_string(),
             request_id: request_id.clone(),
             trace_id: Some(trace_id),
-            message_text: format!("search ops lookup executed: {endpoint}"),
+            message_text: format!("{log_message}: {endpoint}"),
             structured_payload: json!({
                 "module": "search",
                 "endpoint": endpoint,
@@ -662,6 +694,49 @@ async fn record_search_lookup_side_effects(
     )
     .await
     .map_err(|err| map_db_error(err, request_id.as_deref().unwrap_or("search-lookup")))?;
+
+    Ok(())
+}
+
+fn validate_search_query(
+    query: &SearchQuery,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    match query.entity_scope.trim().to_ascii_lowercase().as_str() {
+        "all" | "product" | "service" | "seller" => {}
+        other => {
+            return Err(search_bad_request(
+                request_id,
+                format!(
+                    "entity_scope must be one of: all, product, service, seller; got `{other}`"
+                ),
+            ));
+        }
+    }
+
+    match query.sort.trim().to_ascii_lowercase().as_str() {
+        "composite" | "latest" | "price_asc" | "price_desc" | "quality" | "reputation"
+        | "hotness" => {}
+        other => {
+            return Err(search_bad_request(
+                request_id,
+                format!(
+                    "sort must be one of: composite, latest, price_asc, price_desc, quality, reputation, hotness; got `{other}`"
+                ),
+            ));
+        }
+    }
+
+    if let (Some(price_min), Some(price_max)) = (query.price_min, query.price_max) {
+        if price_min > price_max {
+            return Err(search_bad_request(
+                request_id,
+                format!(
+                    "price_min must be less than or equal to price_max; got `{price_min}` > `{price_max}`"
+                ),
+            ));
+        }
+    }
 
     Ok(())
 }

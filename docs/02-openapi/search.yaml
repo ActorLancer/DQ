@@ -167,7 +167,7 @@ components:
           type: boolean
         backend:
           type: string
-          enum: [opensearch]
+          enum: [opensearch, postgresql]
         items:
           type: array
           items:
@@ -441,6 +441,32 @@ paths:
           schema:
             type: string
             enum: [all, product, service, seller]
+        - name: industry
+          in: query
+          schema:
+            type: string
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: delivery_mode
+          in: query
+          schema:
+            type: string
+        - name: price_min
+          in: query
+          schema:
+            type: number
+            format: double
+        - name: price_max
+          in: query
+          schema:
+            type: number
+            format: double
         - name: sort
           in: query
           schema:
@@ -461,6 +487,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiResponseSearchResponse"
+        "400":
+          description: query validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: missing or invalid bearer token
           content:
@@ -469,6 +501,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: current subject lacks `portal.search.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: search result became stale before final PostgreSQL check completed
           content:
             application/json:
               schema:

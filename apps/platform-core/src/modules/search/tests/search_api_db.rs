@@ -818,6 +818,24 @@ async fn search_api_and_ops_db_smoke() {
                 "staging search should use opensearch backend: {search_json_1}"
             ));
         }
+        if count_access_audit(&client, &req_search_1, "search_catalog")
+            .await
+            .map_err(|err| format!("count first search access audit failed: {err}"))?
+            != 1
+        {
+            return Err("first catalog search access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_search_1,
+            "catalog search lookup executed: GET /api/v1/catalog/search",
+        )
+        .await
+        .map_err(|err| format!("count first search system log failed: {err}"))?
+            != 1
+        {
+            return Err("first catalog search system log missing".to_string());
+        }
 
         let redis_client =
             redis::Client::open(redis_url()).map_err(|err| format!("init redis client failed: {err}"))?;
@@ -858,6 +876,24 @@ async fn search_api_and_ops_db_smoke() {
             return Err(format!(
                 "staging search should keep opensearch backend: {search_json_2}"
             ));
+        }
+        if count_access_audit(&client, &req_search_2, "search_catalog")
+            .await
+            .map_err(|err| format!("count second search access audit failed: {err}"))?
+            != 1
+        {
+            return Err("second catalog search access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_search_2,
+            "catalog search lookup executed: GET /api/v1/catalog/search",
+        )
+        .await
+        .map_err(|err| format!("count second search system log failed: {err}"))?
+            != 1
+        {
+            return Err("second catalog search system log missing".to_string());
         }
 
         let cache_resp = app
@@ -1404,6 +1440,24 @@ async fn search_catalog_pg_fallback_db_smoke() {
                 "first pg fallback search should be cache miss: {search_json_1}"
             ));
         }
+        if count_access_audit(&client, &req_search_1, "search_catalog")
+            .await
+            .map_err(|err| format!("count first pg fallback search access audit failed: {err}"))?
+            != 1
+        {
+            return Err("first pg fallback search access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_search_1,
+            "catalog search lookup executed: GET /api/v1/catalog/search",
+        )
+        .await
+        .map_err(|err| format!("count first pg fallback search system log failed: {err}"))?
+            != 1
+        {
+            return Err("first pg fallback search system log missing".to_string());
+        }
 
         let redis_client = redis::Client::open(redis_url())
             .map_err(|err| format!("init redis client failed: {err}"))?;
@@ -1448,6 +1502,24 @@ async fn search_catalog_pg_fallback_db_smoke() {
             return Err(format!(
                 "second pg fallback search should be cache hit: {search_json_2}"
             ));
+        }
+        if count_access_audit(&client, &req_search_2, "search_catalog")
+            .await
+            .map_err(|err| format!("count second pg fallback search access audit failed: {err}"))?
+            != 1
+        {
+            return Err("second pg fallback search access audit missing".to_string());
+        }
+        if count_system_logs(
+            &client,
+            &req_search_2,
+            "catalog search lookup executed: GET /api/v1/catalog/search",
+        )
+        .await
+        .map_err(|err| format!("count second pg fallback search system log failed: {err}"))?
+            != 1
+        {
+            return Err("second pg fallback search system log missing".to_string());
         }
 
         Ok(())

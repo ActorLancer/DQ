@@ -60,6 +60,46 @@ mod route_tests {
     }
 
     #[tokio::test]
+    async fn rejects_catalog_search_with_invalid_entity_scope() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/catalog/search?q=test&entity_scope=unknown")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["buyer_operator"],
+                ),
+            )
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn rejects_catalog_search_with_invalid_sort() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/catalog/search?q=test&sort=unknown")
+            .header(
+                "authorization",
+                authorization_header(
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                    &["buyer_operator"],
+                ),
+            )
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
     async fn rejects_search_ops_without_permission() {
         let app = crate::with_stub_test_state(router());
         let request = Request::builder()
