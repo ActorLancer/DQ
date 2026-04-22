@@ -1034,3 +1034,47 @@
   - 无。当前可执行的 SEARCHREC 阶段残留 TODO 已全部关闭，未新增新的 `V1-gap / V2-reserved / V3-reserved`。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-269（计划中）
+- 任务：`SEARCHREC-001` 逐任务复核与正式重验（按冻结清单重新从阶段起点执行）
+- 状态：计划中
+- 说明：按最新执行要求，从 `SEARCHREC-001` 重新逐任务推进，不直接沿用既有“阶段已完成”结论。本批先重新阅读 `CSV / Markdown / technical_reference / runbook / 现有实现`，并对 `workers/search-indexer`、`dtp.search.sync`、`search.index_sync_task` 的定位、`staging` 强制 OpenSearch、`local/demo` PostgreSQL 投影 fallback、Redis 搜索缓存与最终 PostgreSQL 放行校验做一次完整真实回归；若发现现有实现与冻结口径漂移，则在 `SEARCHREC-001` 当前批次内直接修正并补留痕。
+- 追溯：用户要求恢复“一次只完成 1 个 task、从 `SEARCHREC-001` 起顺序重验”的执行节奏；本批只处理 `SEARCHREC-001`，不提前进入 `SEARCHREC-002`。
+### BATCH-269（待审批）
+- 任务：`SEARCHREC-001` 逐任务复核与正式重验（按冻结清单重新从阶段起点执行）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-001`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已作为前序完成基线存在；`infra/kafka/topics.v1.json`、`ops.event_route_policy`、`search.product_search_document / seller_search_document`、`search.index_sync_task`、`workers/search-indexer` 与搜索 API/ops 链路在仓库中已有落地实现，可直接按冻结口径重验。
+- 复核结论：
+  - `SEARCHREC-001` 当前实现满足冻结口径，无需额外代码修订。`workers/search-indexer` 已正式消费 `dtp.search.sync`，并在成功路径回写搜索投影同步状态、失败路径进入统一 consumer 可靠性闭环；`search.index_sync_task` 当前仅承担同步状态与重建记录，不作为默认主消费路径。
+  - `apps/platform-core/src/modules/search/repo/mod.rs` 已把搜索候选源按 `RuntimeMode` 收口为 `staging -> OpenSearch`、`local / demo -> PostgreSQL projection fallback`；`apps/platform-core/src/lib.rs` 已把 OpenSearch alias/index 启动自检限定在 `staging`，没有把 `local / demo` 锁死在 OpenSearch 初始化前提上。
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs` 与 `workers/search-indexer/src/main.rs` 的现有 smoke 仍真实覆盖 `staging/OpenSearch`、`local/PG fallback`、Redis 搜索缓存以及 worker 主链；本轮重验未发现实现与 `CSV / Markdown / A07 / A01 / A02 / A15 / runbook` 冻结口径漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `cargo test -p search-indexer -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core search_catalog_pg_fallback_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 0 ignored`；其中搜索相关用例继续覆盖 `search_api_and_ops_db_smoke`、`search_catalog_pg_fallback_db_smoke`、`search_visibility_and_alias_consistency_db_smoke` 与搜索路由权限矩阵。
+  - `search_api_and_ops_db_smoke` 通过，继续证明 `staging` 正式路径使用 OpenSearch 候选集、Redis 搜索缓存、搜索 ops 控制面与审计/系统日志留痕。
+  - `search_catalog_pg_fallback_db_smoke` 通过，真实证明 `APP_MODE=local` 且 `OPENSEARCH_ENDPOINT` 不可用时，目录搜索仍通过 PostgreSQL 搜索投影返回 `backend=postgresql`，并在第二次查询命中 Redis 缓存，同时继续回 PostgreSQL 做最终放行。
+  - `search_indexer_db_smoke` 与 `cargo test -p search-indexer` 通过，证明 `search-indexer` 正式 worker 仍可消费 `dtp.search.sync` 并保持当前 worker 链路稳定。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮未引入新的 `.sqlx` 漂移或查询编译失败。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-001`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`、`local / demo` PG fallback、`PostgreSQL fallback 搜索`、`6. 搜索投影设计`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索读链、ops 搜索运维接口、`OpenSearch -> PostgreSQL 最终业务校验`
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+  - `A01-Kafka-Topic-口径统一.md`
+  - `A02-统一事件-Envelope-与路由权威源.md`
+  - `A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`
+- 覆盖的任务清单条目：`SEARCHREC-001`
+- 未覆盖项：
+  - 无。当前批次按 `SEARCHREC-001` 要求完成了 worker、topic、fallback 边界、启动检查与真实验证的重验，没有遗留新的 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
