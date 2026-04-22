@@ -2893,27 +2893,6 @@
   验收：至少一条集成测试或手工 API 验证通过，并能在审计/日志中看到对应痕迹。
   阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
   技术参考：../原始PRD/商品推荐与个性化发现设计.md:L54（3. 架构结论） | ../原始PRD/商品推荐与个性化发现设计.md:L112（6. 推荐位设计） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L23（3. 推荐请求接口） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约）
-- **SEARCHREC-015** [AGENT][P1][W3][no] 为搜索与推荐编写一致性与 worker 可靠性测试：商品下架后搜索结果消失、冻结后推荐不可见、重建后 alias 生效，并覆盖统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理口径。
-  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-019; SEARCHREC-020
-  交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**; workers/recommendation-aggregator/**
-  完成定义：业务规则、状态机、审计、事件与测试已齐备；统一鉴权、正式权限点、必要 `step-up`、审计、错误码、worker 侧副作用、失败隔离与重处理校验齐备；测试不再使用 `x-role` 占位。
-  验收：至少一条集成测试或手工 API 验证通过，并能覆盖 `Authorization`、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计痕迹、`SEARCH_*` 错误码、consumer 幂等、DB/Kafka 双层 DLQ 与 reprocess 路径。
-  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | ../权限设计/接口权限校验清单.md:L155（SEARCHREC 权限与 step-up） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
-- **SEARCHREC-016** [AGENT][P1][W3][no] 生成 `docs/02-openapi/search.yaml` / `recommendation.yaml` 第一版并与实现校验；冻结 `Authorization / 权限点 / Idempotency / Step-Up / 审计 / 错误码` 口径。
-  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-015
-  交付：docs/02-openapi/search.yaml; recommendation.yaml
-  完成定义：Search / Recommendation 归档占位已建立；当前实现期唯一设计参考固定为 `packages/openapi/search.yaml`、`packages/openapi/recommendation.yaml`；进入实现批次后必须把统一鉴权 / 权限点 / `X-Idempotency-Key` / 必要 `X-Step-Up-Token` / 审计 / 错误码补齐后再生成归档第一版。
-  验收：至少一条集成测试或手工 API 验证通过，并能证明 OpenAPI 不再使用 `x-role` 占位，且与正式权限和错误码口径一致。
-  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口）
-- **SEARCHREC-017** [AGENT][P1][W3][no] 生成 `docs/05-test-cases/search-rec-cases.md`，覆盖投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底，并登记统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项。
-  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-016; SEARCHREC-020
-  交付：docs/05-test-cases/search-rec-cases.md
-  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用，并明确登记统一鉴权 / `step-up` / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项，禁止继续使用 `x-role` 占位语义。
-  验收：至少一条集成测试或手工 API 验证通过，并能证明测试矩阵覆盖 `Authorization`、正式权限点、必要 `X-Step-Up-Token`、审计留痕、搜索域错误码、worker 侧副作用与 DLQ/reprocess 路径。
-  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
-  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
 - **SEARCHREC-018** [AGENT][P0][W1][no] 将搜索/推荐 handler 与 service 切到统一鉴权门面和正式权限点，移除 `x-role` 占位语义。
   依赖：AUD-022; SEARCHREC-004; SEARCHREC-009; SEARCHREC-010; SEARCHREC-011; SEARCHREC-012
   交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; docs/04-runbooks/search-reindex.md; docs/04-runbooks/recommendation-runtime.md
@@ -2935,6 +2914,27 @@
   验收：至少一条集成测试或手工 API 验证通过，并能证明 `search-indexer` 与 `recommendation-aggregator` 的 worker 侧副作用、幂等、DB/Kafka 双层 DLQ 与 reprocess 路径成立。
   阻塞风险：若 consumer 失败仍直接提交 offset，搜索投影与推荐行为流会出现静默丢数，后续审计、联查与回放都无法补救。
   技术参考：../原始PRD/双层权威模型与链上链下一致性设计.md:L307（consumer / DLQ / replay） | ../数据库设计/V1/upgrade/056_dual_authority_consistency.sql:L90（consumer_idempotency_record） | ../数据库设计/接口协议/一致性与事件接口协议正式版.md:L80（dead letter 重处理） | ../开发准备/事件模型与Topic清单正式版.md:L199（统一 DLQ topic） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **SEARCHREC-015** [AGENT][P1][W3][no] 为搜索与推荐编写一致性与 worker 可靠性测试：商品下架后搜索结果消失、冻结后推荐不可见、重建后 alias 生效，并覆盖统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理口径。
+  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-019; SEARCHREC-020
+  交付：apps/platform-core/src/modules/search/**; apps/platform-core/src/modules/recommendation/**; workers/search-indexer/**; workers/recommendation-aggregator/**
+  完成定义：业务规则、状态机、审计、事件与测试已齐备；统一鉴权、正式权限点、必要 `step-up`、审计、错误码、worker 侧副作用、失败隔离与重处理校验齐备；测试不再使用 `x-role` 占位。
+  验收：至少一条集成测试或手工 API 验证通过，并能覆盖 `Authorization`、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计痕迹、`SEARCH_*` 错误码、consumer 幂等、DB/Kafka 双层 DLQ 与 reprocess 路径。
+  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | ../权限设计/接口权限校验清单.md:L155（SEARCHREC 权限与 step-up） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A08-搜索Alias权威源与阶段边界冲突.md:L1（搜索 Alias 权威源与阶段边界） | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
+- **SEARCHREC-016** [AGENT][P1][W3][no] 生成 `docs/02-openapi/search.yaml` / `recommendation.yaml` 第一版并与实现校验；冻结 `Authorization / 权限点 / Idempotency / Step-Up / 审计 / 错误码` 口径。
+  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-015
+  交付：docs/02-openapi/search.yaml; recommendation.yaml
+  完成定义：Search / Recommendation 归档占位已建立；当前实现期唯一设计参考固定为 `packages/openapi/search.yaml`、`packages/openapi/recommendation.yaml`；进入实现批次后必须把统一鉴权 / 权限点 / `X-Idempotency-Key` / 必要 `X-Step-Up-Token` / 审计 / 错误码补齐后再生成归档第一版。
+  验收：至少一条集成测试或手工 API 验证通过，并能证明 OpenAPI 不再使用 `x-role` 占位，且与正式权限和错误码口径一致。
+  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口）
+- **SEARCHREC-017** [AGENT][P1][W3][no] 生成 `docs/05-test-cases/search-rec-cases.md`，覆盖投影延迟、回 PG 校验、推荐曝光幂等、零结果兜底，并登记统一鉴权 / step-up / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项。
+  依赖：CAT-001; DB-011; DB-012; CORE-008; SEARCHREC-016; SEARCHREC-020
+  交付：docs/05-test-cases/search-rec-cases.md
+  完成定义：文档/规则文件已落盘；主结构完整；与现有术语和命名一致；被 README、索引或上游任务引用，并明确登记统一鉴权 / `step-up` / 审计 / 错误码、consumer 幂等、双层 DLQ 与可重处理验收项，禁止继续使用 `x-role` 占位语义。
+  验收：至少一条集成测试或手工 API 验证通过，并能证明测试矩阵覆盖 `Authorization`、正式权限点、必要 `X-Step-Up-Token`、审计留痕、搜索域错误码、worker 侧副作用与 DLQ/reprocess 路径。
+  阻塞风险：依赖模块未就绪时容易出现返工或实现口径不一致。
+  技术参考：../原始PRD/商品搜索、排序与索引同步设计.md:L128（5. V1 正式方案） | ../原始PRD/商品搜索、排序与索引同步设计.md:L164（6. 搜索投影设计） | ../数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md:L34（4. V1 接口） | ../数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md:L129（推荐运维与权限口径） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md | 问题修复任务/A09-推荐主链路与行为流契约缺口.md:L1（推荐主链路与行为流契约） | 问题修复任务/A11-测试与Smoke口径误报风险.md:L1（测试与 Smoke 口径误报风险） | 问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md:L1（SEARCHREC 契约收口） | 问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md:L1（SEARCHREC Consumer 幂等与 DLQ 闭环）
 - **SEARCHREC-021** [AGENT][P0][W1][no] 收敛搜索 alias 权威源与阶段边界：统一 `product_search_read/write`、`seller_search_read/write` 与 `search.index_alias_binding`，同步初始化脚本、运行默认值、ops 接口与 runbook，明确 alias switch 属于 V1 最小运维能力。
   依赖：SEARCHREC-007; AUD-022; ENV-017
   交付：apps/platform-core/src/modules/search/**; workers/search-indexer/**; infra/opensearch/**; docs/04-runbooks/search-reindex.md
