@@ -242,6 +242,26 @@ pub struct OpsDeadLetterPageView {
     pub items: Vec<DeadLetterEventView>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct OpsDeadLetterReprocessRequest {
+    pub reason: String,
+    pub dry_run: Option<bool>,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsDeadLetterReprocessView {
+    pub dead_letter: DeadLetterEventView,
+    pub dry_run: bool,
+    pub step_up_bound: bool,
+    pub status: String,
+    pub consumer_names: Vec<String>,
+    pub consumer_groups: Vec<String>,
+    pub replay_target_topic: String,
+    pub replay_plan: serde_json::Value,
+}
+
 #[derive(Debug, Clone, Deserialize, Default, PartialEq)]
 pub struct ConsumerIdempotencyQuery {
     pub consumer_name: Option<String>,

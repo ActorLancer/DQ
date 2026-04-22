@@ -275,6 +275,56 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn rejects_dead_letter_reprocess_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/dead-letters/10000000-0000-0000-0000-000000000010/reprocess")
+            .header("x-role", "buyer_operator")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud010-reprocess-forbidden")
+            .header("x-step-up-token", "aud010-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"reason":"forbidden"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn dead_letter_reprocess_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/dead-letters/10000000-0000-0000-0000-000000000010/reprocess")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud010-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"reason":"missing step-up"}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn dead_letter_reprocess_enforces_dry_run_only() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/dead-letters/10000000-0000-0000-0000-000000000010/reprocess")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud010-dry-run")
+            .header("x-step-up-token", "aud010-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"reason":"dry-run only","dry_run":false}"#))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
 }
 
 #[tokio::test]
@@ -2075,6 +2125,252 @@ async fn audit_trace_api_db_smoke() {
     cleanup_business_rows(&client, &seed).await;
 }
 
+#[tokio::test]
+async fn audit_dead_letter_reprocess_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let operator_org_id: String = client
+        .query_one(
+            "INSERT INTO core.organization (org_name, org_type, status, metadata)
+             VALUES ($1, 'enterprise', 'active', '{}'::jsonb)
+             RETURNING org_id::text",
+            &[&format!("AUD010 Ops Org {suffix}")],
+        )
+        .await
+        .expect("insert ops org")
+        .get(0);
+    let operator_user_id = seed_user(&client, &operator_org_id, &format!("aud010-{suffix}"))
+        .await
+        .expect("seed aud010 user");
+
+    let search_dead_letter = seed_searchrec_dead_letter(
+        &client,
+        &suffix,
+        "dtp.search.sync",
+        "search-indexer",
+        "search.product.changed",
+        "search.index_sync_task",
+    )
+    .await
+    .expect("seed search dead letter");
+    let recommendation_dead_letter = seed_searchrec_dead_letter(
+        &client,
+        &format!("{suffix}-rec"),
+        "dtp.recommend.behavior",
+        "recommendation-aggregator",
+        "recommend.behavior_recorded",
+        "recommend.behavior_event",
+    )
+    .await
+    .expect("seed recommendation dead letter");
+
+    let search_step_up_id = seed_verified_step_up_challenge(
+        &client,
+        &operator_user_id,
+        "ops.dead_letter.reprocess",
+        "dead_letter_event",
+        Some(search_dead_letter.dead_letter_event_id.as_str()),
+        &format!("aud010-search-{suffix}"),
+    )
+    .await
+    .expect("seed search dead-letter step-up");
+    let recommendation_step_up_id = seed_verified_step_up_challenge(
+        &client,
+        &operator_user_id,
+        "ops.dead_letter.reprocess",
+        "dead_letter_event",
+        Some(recommendation_dead_letter.dead_letter_event_id.as_str()),
+        &format!("aud010-rec-{suffix}"),
+    )
+    .await
+    .expect("seed recommendation dead-letter step-up");
+
+    let app = crate::with_live_test_state(router()).await;
+    let search_request_id = format!("req-aud010-search-{suffix}");
+    let recommendation_request_id = format!("req-aud010-rec-{suffix}");
+    let search_trace_id = format!("trace-aud010-search-{suffix}");
+    let recommendation_trace_id = format!("trace-aud010-rec-{suffix}");
+
+    let search_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/ops/dead-letters/{}/reprocess",
+                    search_dead_letter.dead_letter_event_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &search_request_id)
+                .header("x-trace-id", &search_trace_id)
+                .header("x-step-up-challenge-id", &search_step_up_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"reason":"preview search-indexer reprocess","dry_run":true,"metadata":{"source":"aud010-smoke"}}"#,
+                ))
+                .expect("search request"),
+        )
+        .await
+        .expect("search response");
+    assert_eq!(search_response.status(), StatusCode::OK);
+    let search_json: Value = serde_json::from_slice(
+        &to_bytes(search_response.into_body(), usize::MAX)
+            .await
+            .expect("read search body"),
+    )
+    .expect("decode search response");
+    assert_eq!(search_json["data"]["status"], "dry_run_ready");
+    assert_eq!(search_json["data"]["dry_run"].as_bool(), Some(true));
+    assert_eq!(search_json["data"]["step_up_bound"].as_bool(), Some(true));
+    assert_eq!(
+        search_json["data"]["consumer_names"][0].as_str(),
+        Some("search-indexer")
+    );
+    assert_eq!(
+        search_json["data"]["consumer_groups"][0].as_str(),
+        Some("cg-search-indexer")
+    );
+    assert_eq!(
+        search_json["data"]["replay_target_topic"].as_str(),
+        Some("dtp.search.sync")
+    );
+
+    let recommendation_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/ops/dead-letters/{}/reprocess",
+                    recommendation_dead_letter.dead_letter_event_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &recommendation_request_id)
+                .header("x-trace-id", &recommendation_trace_id)
+                .header("x-step-up-challenge-id", &recommendation_step_up_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"reason":"preview recommendation reprocess","dry_run":true,"metadata":{"source":"aud010-smoke"}}"#,
+                ))
+                .expect("recommendation request"),
+        )
+        .await
+        .expect("recommendation response");
+    assert_eq!(recommendation_response.status(), StatusCode::OK);
+    let recommendation_json: Value = serde_json::from_slice(
+        &to_bytes(recommendation_response.into_body(), usize::MAX)
+            .await
+            .expect("read recommendation body"),
+    )
+    .expect("decode recommendation response");
+    assert_eq!(recommendation_json["data"]["status"], "dry_run_ready");
+    assert_eq!(
+        recommendation_json["data"]["consumer_names"][0].as_str(),
+        Some("recommendation-aggregator")
+    );
+    assert_eq!(
+        recommendation_json["data"]["consumer_groups"][0].as_str(),
+        Some("cg-recommendation-aggregator")
+    );
+    assert_eq!(
+        recommendation_json["data"]["replay_target_topic"].as_str(),
+        Some("dtp.recommend.behavior")
+    );
+
+    let reprocess_rows = client
+        .query(
+            "SELECT dead_letter_event_id::text, reprocess_status, reprocessed_at IS NULL
+             FROM ops.dead_letter_event
+             WHERE dead_letter_event_id::text = ANY($1::text[])
+             ORDER BY dead_letter_event_id::text",
+            &[&vec![
+                search_dead_letter.dead_letter_event_id.clone(),
+                recommendation_dead_letter.dead_letter_event_id.clone(),
+            ]],
+        )
+        .await
+        .expect("load dead-letter reprocess rows");
+    assert_eq!(reprocess_rows.len(), 2);
+    for row in reprocess_rows {
+        assert_eq!(row.get::<_, String>(1), "not_reprocessed");
+        assert!(row.get::<_, bool>(2));
+    }
+
+    let audit_rows = client
+        .query(
+            "SELECT action_name, result_code, request_id
+             FROM audit.audit_event
+             WHERE request_id = ANY($1::text[])
+               AND action_name = 'ops.dead_letter.reprocess.dry_run'
+             ORDER BY request_id",
+            &[&vec![
+                search_request_id.clone(),
+                recommendation_request_id.clone(),
+            ]],
+        )
+        .await
+        .expect("load aud010 audit rows");
+    assert_eq!(audit_rows.len(), 2);
+    assert_eq!(audit_rows[0].get::<_, String>(1), "dry_run_completed");
+    assert_eq!(audit_rows[1].get::<_, String>(1), "dry_run_completed");
+
+    let access_rows = client
+        .query(
+            "SELECT access_mode, target_type, request_id
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+             ORDER BY request_id, created_at",
+            &[&vec![
+                search_request_id.clone(),
+                recommendation_request_id.clone(),
+            ]],
+        )
+        .await
+        .expect("load aud010 access rows");
+    assert_eq!(access_rows.len(), 2);
+    for row in access_rows {
+        assert_eq!(row.get::<_, String>(0), "reprocess");
+        assert_eq!(row.get::<_, String>(1), "dead_letter_event");
+    }
+
+    let system_log_rows = client
+        .query(
+            "SELECT message_text, request_id
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = 'ops dead letter reprocess prepared: POST /api/v1/ops/dead-letters/{id}/reprocess'
+             ORDER BY request_id, created_at",
+            &[&vec![search_request_id.clone(), recommendation_request_id.clone()]],
+        )
+        .await
+        .expect("load aud010 system log rows");
+    assert_eq!(system_log_rows.len(), 2);
+
+    cleanup_searchrec_dead_letter(&client, &search_dead_letter)
+        .await
+        .expect("cleanup search dead letter");
+    cleanup_searchrec_dead_letter(&client, &recommendation_dead_letter)
+        .await
+        .expect("cleanup recommendation dead letter");
+}
+
 async fn seed_verified_step_up_challenge(
     client: &Client,
     user_id: &str,
@@ -2240,6 +2536,152 @@ async fn seed_user(client: &Client, org_id: &str, suffix: &str) -> Result<String
         )
         .await
         .map(|row| row.get(0))
+}
+
+#[derive(Debug)]
+struct SeededSearchrecDeadLetter {
+    dead_letter_event_id: String,
+    outbox_event_id: String,
+}
+
+async fn seed_searchrec_dead_letter(
+    client: &Client,
+    suffix: &str,
+    target_topic: &str,
+    consumer_name: &str,
+    event_type: &str,
+    aggregate_type: &str,
+) -> Result<SeededSearchrecDeadLetter, Error> {
+    let dead_letter_event_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await?
+        .get(0);
+    let outbox_event_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await?
+        .get(0);
+    let aggregate_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await?
+        .get(0);
+    let trace_id = format!("trace-aud010-seed-{suffix}");
+    let request_id = format!("req-aud010-seed-{suffix}");
+
+    client
+        .execute(
+            "INSERT INTO ops.dead_letter_event (
+               dead_letter_event_id,
+               outbox_event_id,
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               failed_reason,
+               request_id,
+               trace_id,
+               authority_scope,
+               source_of_truth,
+               target_bus,
+               target_topic,
+               failure_stage,
+               first_failed_at,
+               last_failed_at,
+               reprocess_status
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               $3,
+               $4::text::uuid,
+               $5,
+               jsonb_build_object(
+                 'event_id', $2,
+                 'event_type', $5,
+                 'target_topic', $6,
+                 'seed', $7
+               ),
+               $8,
+               $9,
+               $10,
+               'business',
+               'database',
+               'kafka',
+               $6,
+               'consumer_handler',
+               now() - interval '2 minutes',
+               now() - interval '1 minute',
+               'not_reprocessed'
+             )",
+            &[
+                &dead_letter_event_id,
+                &outbox_event_id,
+                &aggregate_type,
+                &aggregate_id,
+                &event_type,
+                &target_topic,
+                &suffix,
+                &format!("{consumer_name} failed while handling replay candidate"),
+                &request_id,
+                &trace_id,
+            ],
+        )
+        .await?;
+
+    client
+        .execute(
+            "INSERT INTO ops.consumer_idempotency_record (
+               consumer_name,
+               event_id,
+               aggregate_type,
+               aggregate_id,
+               trace_id,
+               result_code,
+               metadata
+             ) VALUES (
+               $1,
+               $2::text::uuid,
+               $3,
+               $4::text::uuid,
+               $5,
+               'dead_lettered',
+               jsonb_build_object('seed', $6, 'target_topic', $7)
+             )",
+            &[
+                &consumer_name,
+                &outbox_event_id,
+                &aggregate_type,
+                &aggregate_id,
+                &trace_id,
+                &suffix,
+                &target_topic,
+            ],
+        )
+        .await?;
+
+    Ok(SeededSearchrecDeadLetter {
+        dead_letter_event_id,
+        outbox_event_id,
+    })
+}
+
+async fn cleanup_searchrec_dead_letter(
+    client: &Client,
+    seed: &SeededSearchrecDeadLetter,
+) -> Result<(), Error> {
+    client
+        .execute(
+            "DELETE FROM ops.consumer_idempotency_record
+             WHERE event_id = $1::text::uuid",
+            &[&seed.outbox_event_id],
+        )
+        .await?;
+    client
+        .execute(
+            "DELETE FROM ops.dead_letter_event
+             WHERE dead_letter_event_id = $1::text::uuid",
+            &[&seed.dead_letter_event_id],
+        )
+        .await?;
+    Ok(())
 }
 
 fn parse_s3_uri(uri: &str) -> (String, String) {

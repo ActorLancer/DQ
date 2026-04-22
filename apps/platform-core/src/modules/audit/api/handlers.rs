@@ -15,7 +15,8 @@ use crate::modules::audit::domain::{
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
     AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OpsDeadLetterPageView,
-    OpsDeadLetterQuery, OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
+    OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
+    OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
 };
 use crate::modules::audit::dto::{
     AnchorBatchView, DeadLetterEventView, EvidenceManifestView, EvidencePackageView, LegalHoldView,
@@ -32,7 +33,11 @@ const EXPORT_STEP_UP_ACTION_COMPAT: &str = "audit.evidence.export";
 const REPLAY_STEP_UP_ACTION: &str = "audit.replay.execute";
 const LEGAL_HOLD_STEP_UP_ACTION: &str = "audit.legal_hold.manage";
 const ANCHOR_STEP_UP_ACTION: &str = "audit.anchor.manage";
+const DEAD_LETTER_REPROCESS_STEP_UP_ACTION: &str = "ops.dead_letter.reprocess";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
+const DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_DRY_RUN_ONLY";
+const DEAD_LETTER_REPROCESS_NOT_SUPPORTED_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_NOT_SUPPORTED";
+const DEAD_LETTER_REPROCESS_STATE_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_STATE_CONFLICT";
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
 
@@ -338,6 +343,160 @@ pub(in crate::modules::audit) async fn get_ops_dead_letters(
             .iter()
             .map(DeadLetterEventView::from)
             .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn reprocess_ops_dead_letter(
+    State(state): State<AppState>,
+    Path(dead_letter_event_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<OpsDeadLetterReprocessRequest>,
+) -> Result<Json<ApiResponse<OpsDeadLetterReprocessView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&dead_letter_event_id, "id", &request_id)?;
+    let reason = normalize_reason(&payload.reason, &request_id)?;
+    let dry_run = payload.dry_run.unwrap_or(true);
+    require_permission(
+        &headers,
+        AuditPermission::OpsDeadLetterReprocess,
+        "ops dead letter reprocess",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "ops dead letter reprocess")?;
+    if !dry_run {
+        return Err(dead_letter_reprocess_dry_run_only(&request_id));
+    }
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_dead_letter_reprocess(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        dead_letter_event_id.as_str(),
+    )
+    .await?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let dead_letter = repo::load_dead_letter_event(&client, dead_letter_event_id.as_str())
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("dead letter event not found: {dead_letter_event_id}"),
+            )
+        })?;
+    if dead_letter.reprocess_status != "not_reprocessed" {
+        return Err(dead_letter_reprocess_state_conflict(
+            &request_id,
+            dead_letter.reprocess_status.as_str(),
+        ));
+    }
+
+    let consumer_names = resolve_searchrec_dead_letter_consumers(&dead_letter)
+        .ok_or_else(|| dead_letter_reprocess_not_supported(&request_id, &dead_letter))?;
+    let consumer_groups = searchrec_consumer_groups_for_topic(dead_letter.target_topic.as_deref())
+        .ok_or_else(|| dead_letter_reprocess_not_supported(&request_id, &dead_letter))?;
+    let replay_target_topic = dead_letter
+        .target_topic
+        .clone()
+        .ok_or_else(|| dead_letter_reprocess_not_supported(&request_id, &dead_letter))?;
+    let replay_plan = build_dead_letter_reprocess_plan(
+        &dead_letter,
+        reason.as_str(),
+        dry_run,
+        &consumer_names,
+        &consumer_groups,
+        replay_target_topic.as_str(),
+        payload.metadata.clone(),
+        request_id.as_str(),
+        trace_id.as_str(),
+    );
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let audit_event = build_dead_letter_reprocess_audit_event(
+        &headers,
+        request_id.as_str(),
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        dead_letter_event_id.as_str(),
+        reason.as_str(),
+        &dead_letter,
+        dry_run,
+        &consumer_names,
+        &consumer_groups,
+        replay_target_topic.as_str(),
+        replay_plan.clone(),
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+
+    let access_audit_id = repo::record_access_audit(
+        &tx,
+        &AccessAuditInsert {
+            accessor_user_id: Some(actor_user_id.clone()),
+            accessor_role_key: Some(current_role(&headers)),
+            access_mode: "reprocess".to_string(),
+            target_type: "dead_letter_event".to_string(),
+            target_id: Some(dead_letter_event_id.clone()),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: step_up.challenge_id.clone(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            metadata: json!({
+                "endpoint": "POST /api/v1/ops/dead-letters/{id}/reprocess",
+                "reason": reason,
+                "dry_run": dry_run,
+                "dead_letter_event_id": dead_letter_event_id,
+                "consumer_names": consumer_names,
+                "consumer_groups": consumer_groups,
+                "replay_target_topic": replay_target_topic,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text:
+                "ops dead letter reprocess prepared: POST /api/v1/ops/dead-letters/{id}/reprocess"
+                    .to_string(),
+            structured_payload: json!({
+                "module": "ops",
+                "endpoint": "POST /api/v1/ops/dead-letters/{id}/reprocess",
+                "access_audit_id": access_audit_id,
+                "dead_letter_event_id": dead_letter_event_id,
+                "dry_run": dry_run,
+                "consumer_names": consumer_names,
+                "consumer_groups": consumer_groups,
+                "replay_target_topic": replay_target_topic,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(OpsDeadLetterReprocessView {
+        dead_letter: DeadLetterEventView::from(&dead_letter),
+        dry_run,
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+        status: "dry_run_ready".to_string(),
+        consumer_names,
+        consumer_groups,
+        replay_target_topic,
+        replay_plan,
     }))
 }
 
@@ -1785,6 +1944,7 @@ enum AuditPermission {
     TraceRead,
     OpsOutboxRead,
     OpsDeadLetterRead,
+    OpsDeadLetterReprocess,
     PackageExport,
     ReplayExecute,
     ReplayRead,
@@ -1821,6 +1981,14 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
                 | "node_ops_admin"
         ),
         AuditPermission::OpsDeadLetterRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_audit_security"
+                | "consistency_operator"
+                | "node_ops_admin"
+                | "audit_admin"
+        ),
+        AuditPermission::OpsDeadLetterReprocess => matches!(
             role,
             "platform_admin"
                 | "platform_audit_security"
@@ -2075,6 +2243,27 @@ async fn require_step_up_for_anchor_retry(
         Some("anchor_batch"),
         Some(anchor_batch_id),
         "audit anchor batch retry",
+    )
+    .await
+}
+
+async fn require_step_up_for_dead_letter_reprocess(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    dead_letter_event_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        DEAD_LETTER_REPROCESS_STEP_UP_ACTION,
+        None,
+        Some("dead_letter_event"),
+        Some(dead_letter_event_id),
+        "ops dead letter reprocess",
     )
     .await
 }
@@ -3747,6 +3936,148 @@ async fn record_ops_lookup_side_effects(
     Ok(())
 }
 
+fn resolve_searchrec_dead_letter_consumers(
+    dead_letter: &repo::DeadLetterEventRecord,
+) -> Option<Vec<String>> {
+    if dead_letter.failure_stage.as_deref() != Some("consumer_handler") {
+        return None;
+    }
+
+    let expected = match dead_letter.target_topic.as_deref() {
+        Some("dtp.search.sync") => vec!["search-indexer".to_string()],
+        Some("dtp.recommend.behavior") => vec!["recommendation-aggregator".to_string()],
+        _ => return None,
+    };
+
+    let mut observed: Vec<String> = dead_letter
+        .consumer_idempotency_records
+        .iter()
+        .map(|record| record.consumer_name.clone())
+        .collect();
+    observed.sort();
+    observed.dedup();
+    if observed.is_empty() {
+        return Some(expected);
+    }
+
+    if observed.iter().all(|consumer| expected.contains(consumer)) {
+        Some(observed)
+    } else {
+        None
+    }
+}
+
+fn searchrec_consumer_groups_for_topic(topic: Option<&str>) -> Option<Vec<String>> {
+    match topic {
+        Some("dtp.search.sync") => Some(vec!["cg-search-indexer".to_string()]),
+        Some("dtp.recommend.behavior") => Some(vec!["cg-recommendation-aggregator".to_string()]),
+        _ => None,
+    }
+}
+
+fn build_dead_letter_reprocess_plan(
+    dead_letter: &repo::DeadLetterEventRecord,
+    reason: &str,
+    dry_run: bool,
+    consumer_names: &[String],
+    consumer_groups: &[String],
+    replay_target_topic: &str,
+    request_metadata: Value,
+    request_id: &str,
+    trace_id: &str,
+) -> Value {
+    json!({
+        "mode": if dry_run { "dry_run" } else { "execute" },
+        "reason": reason,
+        "reprocess_strategy": "searchrec_worker_replay_preview",
+        "target_topic": replay_target_topic,
+        "target_consumers": consumer_names,
+        "target_consumer_groups": consumer_groups,
+        "lineage": {
+            "dead_letter_event_id": dead_letter.dead_letter_event_id,
+            "original_event_id": dead_letter.outbox_event_id,
+            "event_type": dead_letter.event_type,
+            "aggregate_type": dead_letter.aggregate_type,
+            "aggregate_id": dead_letter.aggregate_id,
+        },
+        "dead_letter_state": {
+            "failure_stage": dead_letter.failure_stage,
+            "reprocess_status": dead_letter.reprocess_status,
+            "first_failed_at": dead_letter.first_failed_at,
+            "last_failed_at": dead_letter.last_failed_at,
+            "failed_reason": dead_letter.failed_reason,
+        },
+        "request_context": {
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "request_metadata": request_metadata,
+        },
+        "v1_constraints": {
+            "dry_run_only": true,
+            "actual_worker_reprocess_pending_task": "SEARCHREC-020",
+        },
+    })
+}
+
+fn build_dead_letter_reprocess_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: String,
+    actor_user_id: &str,
+    dead_letter_event_id: &str,
+    reason: &str,
+    dead_letter: &repo::DeadLetterEventRecord,
+    dry_run: bool,
+    consumer_names: &[String],
+    consumer_groups: &[String],
+    replay_target_topic: &str,
+    replay_plan: Value,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> AuditEvent {
+    let mut event = AuditEvent::business(
+        "ops",
+        "dead_letter_event",
+        Some(dead_letter_event_id.to_string()),
+        "ops.dead_letter.reprocess.dry_run",
+        "dry_run_completed",
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id,
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "reason": reason,
+                "dry_run": dry_run,
+                "step_up_token_present": step_up_token_present,
+                "current_role": current_role(headers),
+                "target_topic": replay_target_topic,
+                "consumer_names": consumer_names,
+                "consumer_groups": consumer_groups,
+                "dead_letter": {
+                    "outbox_event_id": dead_letter.outbox_event_id,
+                    "event_type": dead_letter.event_type,
+                    "failure_stage": dead_letter.failure_stage,
+                    "reprocess_status": dead_letter.reprocess_status,
+                },
+                "replay_plan": replay_plan,
+            }),
+        },
+    );
+    event.sensitivity_level = "high".to_string();
+    event
+}
+
 fn state_client(state: &AppState) -> Result<db::Client, (StatusCode, Json<ErrorResponse>)> {
     state.db.client().map_err(map_db_error)
 }
@@ -3996,6 +4327,44 @@ fn replay_dry_run_only(request_id: &str) -> (StatusCode, Json<ErrorResponse>) {
         request_id,
         REPLAY_DRY_RUN_ONLY_ERROR,
         "V1 audit replay currently supports dry_run=true only",
+    )
+}
+
+fn dead_letter_reprocess_dry_run_only(request_id: &str) -> (StatusCode, Json<ErrorResponse>) {
+    conflict_error(
+        request_id,
+        DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR,
+        "V1 dead letter reprocess currently supports dry_run=true only",
+    )
+}
+
+fn dead_letter_reprocess_not_supported(
+    request_id: &str,
+    dead_letter: &repo::DeadLetterEventRecord,
+) -> (StatusCode, Json<ErrorResponse>) {
+    conflict_error(
+        request_id,
+        DEAD_LETTER_REPROCESS_NOT_SUPPORTED_ERROR,
+        format!(
+            "dead letter `{}` is not a SEARCHREC consumer failure eligible for AUD-010 dry-run reprocess",
+            dead_letter
+                .dead_letter_event_id
+                .as_deref()
+                .unwrap_or("unknown")
+        ),
+    )
+}
+
+fn dead_letter_reprocess_state_conflict(
+    request_id: &str,
+    reprocess_status: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    conflict_error(
+        request_id,
+        DEAD_LETTER_REPROCESS_STATE_ERROR,
+        format!(
+            "dead letter reprocess is only allowed when reprocess_status=`not_reprocessed`; got `{reprocess_status}`"
+        ),
     )
 }
 

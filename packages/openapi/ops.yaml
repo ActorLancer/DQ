@@ -570,7 +570,8 @@ paths:
       description: |
         Returns DB dead-letter rows from `ops.dead_letter_event` plus linked
         `ops.consumer_idempotency_record` entries. This is the formal V1 read model
-        for SEARCHREC consumer failure isolation before `AUD-010` adds reprocess.
+        for SEARCHREC consumer failure isolation, and `AUD-010` adds a dry-run
+        `POST /api/v1/ops/dead-letters/{id}/reprocess` control-plane preview on top.
       parameters:
         - in: query
           name: reprocess_status
@@ -633,7 +634,7 @@ paths:
                       failure_stage: consumer_handler
                       first_failed_at: "2026-04-22T10:05:00.000Z"
                       last_failed_at: "2026-04-22T10:05:00.000Z"
-                      reprocess_status: pending
+                      reprocess_status: not_reprocessed
                       created_at: "2026-04-22T10:05:01.000Z"
                       consumer_idempotency_records:
                         - consumer_idempotency_record_id: 710a62ec-e8f2-4055-a3e8-e7f2c0b16c3e
@@ -661,6 +662,115 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/dead-letters/{id}/reprocess:
+    post:
+      summary: dry-run reprocess preview for SEARCHREC dead letters
+      tags: [AuditOps]
+      description: |
+        Performs a high-risk control-plane preview for SEARCHREC consumer failures
+        recorded in `ops.dead_letter_event`. `V1` currently supports `dry_run=true`
+        only; actual worker-side replay remains on the later SEARCHREC reliability tasks.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpsDeadLetterReprocessRequest"
+            example:
+              reason: preview search-indexer dead letter recovery
+              dry_run: true
+              metadata:
+                source: aud010-manual
+      responses:
+        "200":
+          description: dry-run reprocess preview ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsDeadLetterReprocessResponse"
+              example:
+                success: true
+                data:
+                  dead_letter:
+                    dead_letter_event_id: 3e1cbc5f-1dc9-4135-a68a-a9442eaad874
+                    outbox_event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                    aggregate_type: search.document_projection
+                    aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    event_type: search.product.changed
+                    payload:
+                      event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                      event_type: search.product.changed
+                    failed_reason: opensearch bulk rejected payload
+                    request_id: req-aud010-search
+                    trace_id: trace-aud010-search
+                    authority_scope: business
+                    source_of_truth: database
+                    target_bus: kafka
+                    target_topic: dtp.search.sync
+                    failure_stage: consumer_handler
+                    first_failed_at: "2026-04-22T10:05:00.000Z"
+                    last_failed_at: "2026-04-22T10:05:00.000Z"
+                    reprocess_status: not_reprocessed
+                    reprocessed_at: null
+                    created_at: "2026-04-22T10:05:01.000Z"
+                    consumer_idempotency_records:
+                      - consumer_idempotency_record_id: 710a62ec-e8f2-4055-a3e8-e7f2c0b16c3e
+                        consumer_name: search-indexer
+                        event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                        aggregate_type: search.document_projection
+                        aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                        trace_id: trace-aud010-search
+                        result_code: dead_lettered
+                        processed_at: "2026-04-22T10:05:00.000Z"
+                        metadata:
+                          worker: search-indexer
+                          dlq_topic: dtp.dead-letter
+                  dry_run: true
+                  step_up_bound: true
+                  status: dry_run_ready
+                  consumer_names: [search-indexer]
+                  consumer_groups: [cg-search-indexer]
+                  replay_target_topic: dtp.search.sync
+                  replay_plan:
+                    mode: dry_run
+                    reprocess_strategy: searchrec_worker_replay_preview
+                    target_topic: dtp.search.sync
+                    target_consumers: [search-indexer]
+                    target_consumer_groups: [cg-search-indexer]
+                    v1_constraints:
+                      dry_run_only: true
+                      actual_worker_reprocess_pending_task: SEARCHREC-020
+        "400":
+          description: invalid payload or step-up binding mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or verified step-up missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: dead letter not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: dry_run=false, unsupported target, or dead letter already left `not_reprocessed`
           content:
             application/json:
               schema:
@@ -739,6 +849,15 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsDeadLetterPageResponse"
+    ApiResponseOpsDeadLetterReprocessResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsDeadLetterReprocessResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -1200,6 +1319,17 @@ components:
         last_failed_at:
           type: string
           nullable: true
+    OpsDeadLetterReprocessRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+        dry_run:
+          type: boolean
+          default: true
+        metadata:
+          $ref: "#/components/schemas/JsonObject"
     OpsOutboxPageResponse:
       type: object
       required: [total, page, page_size, items]
@@ -1228,6 +1358,39 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DeadLetterEventRecord"
+    OpsDeadLetterReprocessResponse:
+      type: object
+      required:
+        - dead_letter
+        - dry_run
+        - step_up_bound
+        - status
+        - consumer_names
+        - consumer_groups
+        - replay_target_topic
+        - replay_plan
+      properties:
+        dead_letter:
+          $ref: "#/components/schemas/DeadLetterEventRecord"
+        dry_run:
+          type: boolean
+        step_up_bound:
+          type: boolean
+        status:
+          type: string
+          enum: [dry_run_ready]
+        consumer_names:
+          type: array
+          items:
+            type: string
+        consumer_groups:
+          type: array
+          items:
+            type: string
+        replay_target_topic:
+          type: string
+        replay_plan:
+          $ref: "#/components/schemas/JsonObject"
     OutboxEventRecord:
       type: object
       required:

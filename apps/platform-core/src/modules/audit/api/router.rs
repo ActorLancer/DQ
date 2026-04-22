@@ -45,4 +45,8 @@ pub fn router() -> Router<AppState> {
             "/api/v1/ops/dead-letters",
             get(handlers::get_ops_dead_letters),
         )
+        .route(
+            "/api/v1/ops/dead-letters/{id}/reprocess",
+            post(handlers::reprocess_ops_dead_letter),
+        )
 }

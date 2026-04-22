@@ -1578,6 +1578,56 @@ pub async fn search_dead_letters(
     })
 }
 
+pub async fn load_dead_letter_event(
+    client: &(impl GenericClient + Sync),
+    dead_letter_event_id: &str,
+) -> Result<Option<DeadLetterEventRecord>, Error> {
+    let row = client
+        .query_opt(
+            "SELECT
+               dead_letter_event_id::text,
+               outbox_event_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               event_type,
+               payload,
+               failed_reason,
+               request_id,
+               trace_id,
+               authority_scope,
+               source_of_truth,
+               target_bus,
+               target_topic,
+               failure_stage,
+               to_char(first_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               reprocess_status,
+               to_char(reprocessed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.dead_letter_event
+             WHERE dead_letter_event_id = $1::text::uuid",
+            &[&dead_letter_event_id],
+        )
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let event_ids = row
+        .get::<_, Option<String>>(1)
+        .into_iter()
+        .collect::<Vec<String>>();
+    let idempotency_map = load_consumer_idempotency_for_event_ids(client, &event_ids).await?;
+    let consumer_records = row
+        .get::<_, Option<String>>(1)
+        .as_ref()
+        .and_then(|event_id| idempotency_map.get(event_id))
+        .cloned()
+        .unwrap_or_default();
+
+    Ok(Some(parse_dead_letter_row(&row, consumer_records)))
+}
+
 pub async fn search_consumer_idempotency_records(
     client: &(impl GenericClient + Sync),
     query: &ConsumerIdempotencyQuery,

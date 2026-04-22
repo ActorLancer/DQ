@@ -545,3 +545,80 @@
 - 备注：
   - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
   - `datab-prometheus` 在配置变更后需要重启/重载才能抓到新增 `outbox-publisher` job；当前已完成重载并验证 `up{job="outbox-publisher"}=1`。
+### BATCH-223（计划中）
+- 任务：`AUD-010` dead letter 重处理接口
+- 状态：计划中
+- 说明：在 `AUD-009` 已补齐 outbox publisher 与双层 DLQ 基座后，当前批次开始落地 `POST /api/v1/ops/dead-letters/{id}/reprocess` 正式控制面。按 `CSV > Markdown > technical_reference > 其他文档` 重新核对后，当前冻结目标聚焦 SEARCHREC consumer 失败事件：接口必须真实要求权限与 `step-up`，默认 `dry_run`，并能对 `search-indexer / recommendation-aggregator` 的 `ops.dead_letter_event + ops.consumer_idempotency_record + Kafka DLQ` 给出正式重处理预演、审计留痕和 runbook / 测试矩阵。Go/Fabric 仍按任务顺序留在 `AUD-013+`，本批不越级实现。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-010`，完成后再进入 `AUD-011`。
+### BATCH-223（待审批）
+- 任务：`AUD-010` dead letter 重处理接口
+- 状态：待审批
+- 当前任务编号：`AUD-010`
+- 前置依赖核对结果：`AUD-008` 已交付 `ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record` 仓储与查询接口，`AUD-009` 已交付 `outbox-publisher` 正式 worker 与双层 DLQ 基座；本地 `PostgreSQL / Kafka / Redis / Keycloak / Prometheus / Alertmanager / Loki / Tempo / Grafana / OpenSearch` 运行基线满足当前批次依赖。按任务顺序，Go/Fabric 相关能力仍留待 `AUD-013+`，本批不越级实现。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-010` DoD 为 `POST /api/v1/ops/dead-letters/{id}/reprocess`、DTO、权限、`step-up`、审计与测试齐备，并要求覆盖 `SEARCHREC` dead letter 重处理路径。
+  - `docs/开发任务/问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`：确认当前批次只先落控制面 dry-run 预演，不提前伪造 worker 侧正式 replay 成功闭环；正式 worker 可靠性仍由后续 `SEARCHREC` 任务补齐。
+  - `docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`、`docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`、`docs/开发任务/问题修复任务/A05-Outbox-Publisher-DLQ-统一闭环缺口.md`：确认 dead letter 重处理属于高风险 `ops` 控制面，必须真实要求权限、`step-up`、正式审计与 runbook / OpenAPI 落盘。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `AUD` 阶段边界，确认 `Kafka` 是事件总线、`PostgreSQL` 是 dead letter / 审计主权威、`Redis` 是辅助状态、`Keycloak/IAM` 必须真实参与高风险动作身份与 `step-up` 校验。
+  - `docs/原始PRD/审计、证据链与回放设计.md`、`docs/原始PRD/日志、可观测性与告警设计.md`：确认 dead letter 重处理属于高风险审计动作，观测域不能替代审计域。
+  - `docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：复核当前批次不新增 topic / route authority，`dtp.search.sync` / `dtp.recommend.behavior` 仍是正式 SEARCHREC 消费入口。
+  - `docs/04-runbooks/audit-ops-outbox-dead-letters.md`、`apps/platform-core/src/modules/audit/**`、`workers/search-indexer/src/main.rs`、`workers/recommendation-aggregator/src/main.rs`：确认当前 worker 侧仍存在 offset / replay 可靠性后续义务，因此 `AUD-010` 当前正确口径是“高风险重处理预演 + 正式留痕”，而不是提前伪造完整 worker 重放成功态。
+- 实现要点：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `POST /api/v1/ops/dead-letters/{id}/reprocess` 正式接口，要求 `x-request-id`、平台级 `ops.dead_letter.reprocess` 权限、`x-user-id`、`x-step-up-token / x-step-up-challenge-id` 至少其一；对 `dry_run=false` 明确返回 `409 AUDIT_DEAD_LETTER_REPROCESS_DRY_RUN_ONLY`。
+  - `apps/platform-core/src/modules/audit/repo/mod.rs`：新增单条 `ops.dead_letter_event` 装载接口，连带回读 `ops.consumer_idempotency_record`，用于控制面判定 SEARCHREC consumer lineage。
+  - `apps/platform-core/src/modules/audit/domain/mod.rs`：新增 `OpsDeadLetterReprocessRequest / OpsDeadLetterReprocessView`，明确返回 dead letter 正文、consumer 名称、consumer group、target topic 与 replay preview plan。
+  - SEARCHREC 口径收口：
+    - 仅允许 `failure_stage='consumer_handler'`
+    - 仅允许 `target_topic='dtp.search.sync'` 或 `target_topic='dtp.recommend.behavior'`
+    - 仅允许 `reprocess_status='not_reprocessed'`
+    - 返回 `search-indexer / cg-search-indexer` 或 `recommendation-aggregator / cg-recommendation-aggregator` 的正式预演计划
+  - 审计与访问留痕：
+    - `audit.audit_event(action_name='ops.dead_letter.reprocess.dry_run', result_code='dry_run_completed')`
+    - `audit.access_audit(access_mode='reprocess', target_type='dead_letter_event')`
+    - `ops.system_log(message_text='ops dead letter reprocess prepared: POST /api/v1/ops/dead-letters/{id}/reprocess')`
+  - 契约与文档：
+    - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml` 新增路径与 schema
+    - `docs/04-runbooks/audit-dead-letter-reprocess.md` 新增运行手册
+    - `docs/05-test-cases/audit-consistency-cases.md` 新增 `AUD-CASE-017`
+    - `docs/04-runbooks/README.md`、`docs/05-test-cases/README.md` 同步索引更新
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core dead_letter_reprocess -- --nocapture`
+  4. `cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  5. `cargo test -p platform-core`
+  6. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  7. `./scripts/check-query-compile.sh`
+  8. `./scripts/check-openapi-schema.sh`
+  9. `./scripts/check-topic-topology.sh`
+  10. 真实运行态联调：`cargo run -p platform-core-bin` + `curl POST /api/v1/ops/dead-letters/{id}/reprocess` + `psql` 回查
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core dead_letter_reprocess -- --nocapture` 通过，覆盖权限拒绝、缺失 `step-up`、`dry_run=false` 拒绝与 live smoke。
+  - `cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture` 通过，真实覆盖 `dtp.search.sync` 与 `dtp.recommend.behavior` 两条 SEARCHREC dead letter dry-run 预演。
+  - `cargo test -p platform-core` 通过：`283 passed; 0 failed`，确认本批改动未回归既有业务主链。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存；随后 `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+  - `./scripts/check-topic-topology.sh` 通过，确认通知 / Fabric / canonical 路由权威未被本批改坏。
+  - 真实运行态联调通过：
+    - `curl http://127.0.0.1:18080/healthz` 返回 `{"success":true,"data":"ok"}`
+    - 手工插入一条 `dtp.search.sync -> search-indexer` dead letter 与 verified `iam.step_up_challenge`
+    - `curl POST /api/v1/ops/dead-letters/{id}/reprocess` 返回 `200`，`data.status='dry_run_ready'`、`data.step_up_bound=true`、`consumer_names=['search-indexer']`、`consumer_groups=['cg-search-indexer']`、`replay_target_topic='dtp.search.sync'`
+    - `psql` 回查确认 `ops.dead_letter_event.reprocess_status` 仍为 `not_reprocessed`、`reprocessed_at IS NULL`
+    - `audit.audit_event / audit.access_audit / ops.system_log` 三层留痕全部按正式口径落盘
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-010`
+  - `一致性与事件接口协议正式版.md`：dead letter 重处理控制面、错误码与高风险动作口径
+  - `A04 / A05 / A15`：`ops` 控制面契约、双层 DLQ 与 SEARCHREC consumer 可靠性分层收口
+  - `kafka-topics.md`、`topics.v1.json`、`072/074`：SEARCHREC topic 与 route authority 不漂移
+- 覆盖的任务清单条目：`AUD-010`
+- 未覆盖项：
+  - `consistency/reconcile` 控制面与 projection-gap 公共接口，留待 `AUD-011 ~ AUD-012`
+  - Go/Fabric request / callback / CA / listener 正式链路，留待 `AUD-013+`
+  - SEARCHREC worker 侧正式 replay、offset 策略与副作用闭环，留待后续 `SEARCHREC` 可靠性任务
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛到包含 `AUD-010` 的最新状态。
+- 备注：
+  - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+  - 手工联调插入的 `ops.dead_letter_event / ops.consumer_idempotency_record` 已清理；与 append-only 审计链绑定的 `iam.step_up_challenge / core.user_account / core.organization` 继续按既有 `AUD-004 ~ AUD-009` 的运行态策略保留，不通过强删破坏审计引用关系。
