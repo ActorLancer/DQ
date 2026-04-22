@@ -43,6 +43,7 @@ const RECOMMENDATION_RANKING_INVALID_ERROR: &str = "RECOMMENDATION_RANKING_INVAL
 const RECOMMENDATION_RANKING_NOT_FOUND_ERROR: &str = "RECOMMENDATION_RANKING_NOT_FOUND";
 const RECOMMENDATION_RANKING_BACKEND_UNAVAILABLE_ERROR: &str =
     "RECOMMENDATION_RANKING_BACKEND_UNAVAILABLE";
+const RECOMMENDATION_RANKING_STEP_UP_ACTION: &str = "recommendation.ranking_profile.patch";
 const RECOMMENDATION_REBUILD_INVALID_ERROR: &str = "RECOMMENDATION_REBUILD_INVALID";
 const RECOMMENDATION_REBUILD_BACKEND_UNAVAILABLE_ERROR: &str =
     "RECOMMENDATION_REBUILD_BACKEND_UNAVAILABLE";
@@ -394,7 +395,8 @@ pub(in crate::modules::recommendation) async fn get_ranking_profiles(
     (StatusCode, Json<ErrorResponse>),
 > {
     let request_id = request_id(&headers);
-    let _subject = require_permission(
+    let trace_id = trace_id(&headers, Some(request_id.clone()));
+    let subject = require_permission(
         &headers,
         RecommendationPermission::RankingRead,
         "recommendation ranking profile read",
@@ -404,6 +406,25 @@ pub(in crate::modules::recommendation) async fn get_ranking_profiles(
     let response = repo::list_ranking_profiles(&client)
         .await
         .map_err(|message| map_recommendation_ranking_error(&request_id, &message))?;
+    record_recommendation_lookup_side_effects(
+        &client,
+        &subject,
+        RecommendationPermission::RankingRead,
+        "recommendation_ranking_profile",
+        None,
+        "GET /api/v1/ops/recommendation/ranking-profiles",
+        "recommendation ops lookup executed",
+        json!({
+            "result_count": response.len(),
+            "profile_keys": response
+                .iter()
+                .map(|profile| profile.profile_key.clone())
+                .collect::<Vec<_>>(),
+        }),
+        &request_id,
+        &trace_id,
+    )
+    .await?;
     Ok(ApiResponse::ok(response))
 }
 
@@ -423,12 +444,13 @@ pub(in crate::modules::recommendation) async fn patch_ranking_profile(
         "recommendation ranking profile manage",
         &request_id,
     )?;
-    let _idempotency_key = required_non_empty_idempotency_key(
+    let idempotency_key = required_non_empty_idempotency_key(
         &headers,
         "recommendation ranking profile manage",
         &request_id,
         RECOMMENDATION_RANKING_INVALID_ERROR,
     )?;
+    let actor_user_id = require_actor_user_id(&subject, &request_id)?;
     require_step_up_header(
         &headers,
         "recommendation ranking profile manage",
@@ -436,6 +458,19 @@ pub(in crate::modules::recommendation) async fn patch_ranking_profile(
         RECOMMENDATION_RANKING_INVALID_ERROR,
     )?;
     let client = state_client_with_request_id(&state, &request_id)?;
+    let step_up = require_ops_write_controls(
+        &client,
+        &headers,
+        &subject,
+        RecommendationPermission::RankingManage,
+        "recommendation ranking profile manage",
+        RECOMMENDATION_RANKING_STEP_UP_ACTION,
+        Some("recommendation_ranking_profile"),
+        Some(id.as_str()),
+        &request_id,
+        RECOMMENDATION_RANKING_INVALID_ERROR,
+    )
+    .await?;
     let accessor_role_key =
         first_matching_role(&subject.roles, RecommendationPermission::RankingManage)
             .unwrap_or_else(|| "unknown".to_string());
@@ -449,6 +484,37 @@ pub(in crate::modules::recommendation) async fn patch_ranking_profile(
     )
     .await
     .map_err(|message| map_recommendation_ranking_error(&request_id, &message))?;
+    record_recommendation_write_side_effects(
+        &client,
+        &subject,
+        RecommendationPermission::RankingManage,
+        &step_up,
+        "recommendation_ranking_profile",
+        Some(id.clone()),
+        "recommendation.ranking_profile.patch",
+        "updated",
+        "PATCH /api/v1/ops/recommendation/ranking-profiles/{id}",
+        json!({
+            "ranking_profile_id": id,
+            "profile_key": response.profile_key.clone(),
+            "placement_scope": response.placement_scope.clone(),
+            "backend_type": response.backend_type.clone(),
+            "status": response.status.clone(),
+            "idempotency_key": idempotency_key,
+            "request_patch": {
+                "weights_json": payload.weights_json,
+                "diversity_policy_json": payload.diversity_policy_json,
+                "exploration_policy_json": payload.exploration_policy_json,
+                "explain_codes": payload.explain_codes,
+                "status": payload.status,
+                "metadata": payload.metadata,
+            },
+        }),
+        actor_user_id.as_str(),
+        &request_id,
+        &trace_id,
+    )
+    .await?;
     Ok(ApiResponse::ok(response))
 }
 

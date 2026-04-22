@@ -697,6 +697,8 @@ paths:
   /api/v1/ops/recommendation/ranking-profiles:
     get:
       summary: list recommendation ranking profiles
+      security:
+        - BearerAuth: []
       responses:
         "200":
           description: ranking profile list
@@ -712,15 +714,47 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/RecommendationRankingProfileView"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: caller lacks `ops.recommendation.read`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/recommendation/ranking-profiles/{id}:
     patch:
       summary: update recommendation ranking profile
+      security:
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: string
+            format: uuid
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+          description: required idempotency key for ranking profile patch
+        - in: header
+          name: X-Step-Up-Token
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: >
+            verified step-up challenge id bound to
+            `recommendation.ranking_profile.patch` and
+            `recommendation_ranking_profile/<id>`
       requestBody:
         required: true
         content:
@@ -740,6 +774,36 @@ paths:
                     type: boolean
                   data:
                     $ref: "#/components/schemas/RecommendationRankingProfileView"
+        "400":
+          description: invalid ranking profile payload, empty idempotency key, or invalid step-up binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: caller lacks `ops.recommendation.manage` or step-up is not verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ranking profile or referenced step-up challenge missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: recommendation ranking dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/recommendation/rebuild:
     post:
       summary: rebuild recommendation cache and derived features

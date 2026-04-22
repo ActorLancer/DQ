@@ -729,3 +729,50 @@
   - 无。`SEARCHREC-018` 要求的统一鉴权门面、正式权限点接入与 `x-role` 占位移除已在搜索/推荐运行态和 ranking-profile 运维接口上同时落地；更进一步的搜索域错误码、高风险写接口 Step-Up 绑定与审计补齐留在 `SEARCHREC-019` 按冻结顺序继续处理。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；既有 `TODO-SEARCHREC-AUTH-001` 继续覆盖后续 `SEARCHREC-019/015/016/017` 的剩余统一鉴权缺口。
+### BATCH-262（计划中）
+- 任务：`SEARCHREC-019` 为 SEARCHREC 运维写接口补齐正式 Step-Up、审计留痕与搜索域错误码收口
+- 状态：计划中
+- 说明：重新核对 `SEARCHREC-019` 后，搜索侧 `reindex / aliases/switch / cache/invalidate / ranking-profile patch` 已基本具备正式 `SEARCH_*` 错误码、真实 `iam.step_up_challenge` 绑定和审计链；当前主要残留缺口集中在 `PATCH /api/v1/ops/recommendation/ranking-profiles/{id}`，仍只有 `X-Step-Up-Token` header presence 检查，没有真实 challenge 绑定，也没有 `audit.audit_event + audit.access_audit + ops.system_log` 正式留痕，同时 runbook / OpenAPI / 测试用例对这条高风险写接口的约束仍未同步。
+- 追溯：本批以 `SEARCHREC-019` 冻结 DoD 为准，只收口 recommendation ranking-profile 高风险写接口和相关契约漂移；搜索侧以复核和回归验证为主，不重复改写已满足正式口径的 `SEARCH_*` 运维链路。
+### BATCH-262（待审批）
+- 任务：`SEARCHREC-019` 为 SEARCHREC 运维写接口补齐正式 Step-Up、审计留痕与搜索域错误码收口
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-019`
+- 前置依赖核对结果：`AUD-022` 已完成搜索运维控制面的正式 `SEARCH_*` 错误码、真实 `iam.step_up_challenge` 绑定与审计基线；`SEARCHREC-018` 已完成搜索/推荐运行态统一鉴权门面与正式权限点收口。本批在此基础上收口 recommendation ranking-profile 高风险写接口，并同步修正契约文档漂移。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-019` DoD 为搜索运维写接口正式 `X-Step-Up-Token`、审计与 `SEARCH_*` 错误码，以及推荐运维写接口高风险控制与审计落地。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 SEARCHREC 阶段的 PostgreSQL/Kafka/OpenSearch/Redis/Keycloak/IAM/审计边界，确认搜索运维与推荐运维高风险写接口都必须真实绑定 step-up 并进入正式审计链。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`、`docs/原始PRD/商品推荐与个性化发现设计.md`：确认搜索运维、推荐运营配置和重建都属于高风险控制面，不能停留在 header presence 占位语义。
+  - `docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：核对搜索运维接口族、`SEARCH_*` 错误码与推荐配置修改/重建的正式契约。
+  - `docs/权限设计/接口权限校验清单.md`、`docs/开发任务/问题修复任务/A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`：确认 `PATCH /api/v1/ops/recommendation/ranking-profiles/{id}` 必须真实绑定 `step-up`、进入审计链，并与 `ops.recommendation.manage` 正式权限点保持一致。
+  - `docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/057_search_sync_architecture.sql`、`docs/数据库设计/V1/upgrade/058_recommendation_module.sql`、`docs/数据库设计/V1/upgrade/073_recommendation_runtime_alignment.sql`、`infra/docker/docker-compose.local.yml`：复核本地联调方式和 SEARCHREC 主链，确认本批只收口控制面，不改写搜索/推荐主链闭环。
+  - `apps/platform-core/src/modules/search/**`、`apps/platform-core/src/modules/recommendation/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/04-runbooks/**`、`docs/05-test-cases/**`：定位现有 drift，确认搜索侧运维写接口已满足正式口径，真正残留缺口在 recommendation ranking-profile PATCH 与对应 OpenAPI / runbook / test cases。
+- 完成情况：
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`：为 recommendation ranking-profile 读写接口补齐正式控制面语义。`GET /api/v1/ops/recommendation/ranking-profiles` 现在成功后会写入 `audit.access_audit(target_type='recommendation_ranking_profile') + ops.system_log`；`PATCH /api/v1/ops/recommendation/ranking-profiles/{id}` 现在要求真实 `iam.step_up_challenge(target_action='recommendation.ranking_profile.patch', target_ref_type='recommendation_ranking_profile', target_ref_id=<ranking_profile_id>)` 绑定，并写入 `audit.audit_event(action_name='recommendation.ranking_profile.patch') + audit.access_audit + ops.system_log`，不再只是检查 header 是否存在。
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：扩展 live DB smoke，新增 recommendation ranking-profile list 的访问审计断言、ranking PATCH 缺失 challenge 的 `404` 负例，以及成功 PATCH 后对 `recommend.ranking_profile`、`audit.audit_event`、`audit.access_audit(step_up_challenge_id)`、`ops.system_log` 的真实回查。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`、`docs/04-runbooks/search-reindex.md`、`packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`：同步 recommendation ranking-profile 高风险写接口与搜索运维 `SEARCH_*` 错误码的正式口径，消除实现与契约漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core recommendation::tests::route_tests -- --nocapture`
+  - `cargo test -p platform-core search::tests::route_tests -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `recommendation_api_full_runtime_db_smoke` 通过：新增断言已真实证明 `PATCH /api/v1/ops/recommendation/ranking-profiles/{id}` 对随机不存在的 `X-Step-Up-Token` 返回 `404`，对已验证 challenge 则成功更新 `recommend.ranking_profile.metadata.smoke_suffix`，并落下 `audit.audit_event(action_name='recommendation.ranking_profile.patch', result_code='updated')`、`audit.access_audit(target_type='recommendation_ranking_profile', step_up_challenge_id=...)` 与 `ops.system_log(message_text='recommendation ops action executed: PATCH /api/v1/ops/recommendation/ranking-profiles/{id}')`。
+  - 同一条 smoke 还验证了 `GET /api/v1/ops/recommendation/ranking-profiles` 已写入 `audit.access_audit(target_type='recommendation_ranking_profile')` 与 `ops.system_log(message_text='recommendation ops lookup executed: GET /api/v1/ops/recommendation/ranking-profiles')`，证明 recommendation 运维读取链路也回到正式审计口径。
+  - `search_api_and_ops_db_smoke` 再次通过，继续证明搜索运维写接口的真实 `step-up`、审计链和 `SEARCH_*` 错误码没有在本批回归；`search-reindex.md` 现已明确记录 `SEARCH_QUERY_INVALID / SEARCH_RESULT_STALE / SEARCH_BACKEND_UNAVAILABLE / SEARCH_*_FORBIDDEN` 的正式映射。
+  - 全量回归通过：`cargo test -p platform-core` 最终 `353 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，workspace `.sqlx` 已保持最新。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-019`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索运维接口与 `SEARCH_*` 错误码
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐配置修改/重建的正式鉴权与审计要求
+  - `接口权限校验清单.md`、`A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`：recommendation ranking-profile 高风险写接口的正式 step-up / 审计收口
+- 覆盖的任务清单条目：`SEARCHREC-019`
+- 未覆盖项：
+  - 无。`SEARCHREC-019` 要求的搜索运维 `SEARCH_*` 错误码收口与 recommendation 高风险运维写接口 step-up / 审计要求已同步落到运行时代码、DB smoke、runbook、测试用例与 OpenAPI 契约。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；既有 `TODO-SEARCHREC-AUTH-001` 在 `SEARCHREC-018/019` 上的 recommendation runtime 控制面缺口已基本收口，后续仅继续覆盖 `SEARCHREC-015/016/017` 的剩余统一鉴权边界。

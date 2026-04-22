@@ -1021,11 +1021,16 @@ async fn recommendation_api_full_runtime_db_smoke() {
     let click_trace_id = format!("recommend-click-trace-{suffix}");
     let placement_list_request_id = format!("recommend-placement-list-{suffix}");
     let placement_list_trace_id = format!("recommend-placement-list-trace-{suffix}");
+    let ranking_list_request_id = format!("recommend-ranking-list-{suffix}");
+    let ranking_list_trace_id = format!("recommend-ranking-list-trace-{suffix}");
     let placement_patch_request_id = format!("recommend-placement-patch-{suffix}");
     let placement_patch_trace_id = format!("recommend-placement-patch-trace-{suffix}");
+    let ranking_patch_request_id = format!("recommend-ranking-patch-{suffix}");
+    let ranking_patch_trace_id = format!("recommend-ranking-patch-trace-{suffix}");
     let rebuild_request_id = format!("recommend-rebuild-{suffix}");
     let rebuild_trace_id = format!("recommend-rebuild-trace-{suffix}");
     let placement_idempotency_key = format!("recommend-placement-{suffix}");
+    let ranking_idempotency_key = format!("recommend-ranking-{suffix}");
     let rebuild_idempotency_key = format!("recommend-rebuild-{suffix}");
     let exposure_idempotency_key = format!("recommend-exposure-{suffix}");
     let click_idempotency_key = format!("recommend-click-{suffix}");
@@ -1218,6 +1223,8 @@ async fn recommendation_api_full_runtime_db_smoke() {
                 .method("GET")
                 .uri("/api/v1/ops/recommendation/ranking-profiles")
                 .header("authorization", &admin_auth)
+                .header("x-request-id", &ranking_list_request_id)
+                .header("x-trace-id", &ranking_list_trace_id)
                 .body(Body::empty())
                 .expect("ranking profiles request"),
         )
@@ -1356,6 +1363,26 @@ async fn recommendation_api_full_runtime_db_smoke() {
         1
     );
     assert_eq!(
+        count_access_audit(
+            &client,
+            &ranking_list_request_id,
+            "recommendation_ranking_profile"
+        )
+        .await
+        .expect("count ranking list access audit"),
+        1
+    );
+    assert_eq!(
+        count_system_logs(
+            &client,
+            &ranking_list_request_id,
+            "recommendation ops lookup executed: GET /api/v1/ops/recommendation/ranking-profiles",
+        )
+        .await
+        .expect("count ranking list system log"),
+        1
+    );
+    assert_eq!(
         count_audit_events(
             &client,
             &placement_patch_request_id,
@@ -1436,6 +1463,62 @@ async fn recommendation_api_full_runtime_db_smoke() {
             .is_none()
     );
 
+    let missing_ranking_step_up: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate missing ranking step-up id")
+        .get(0);
+    let missing_ranking_step_up_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!(
+                    "/api/v1/ops/recommendation/ranking-profiles/{ranking_profile_id}"
+                ))
+                .header("content-type", "application/json")
+                .header("authorization", &admin_auth)
+                .header(
+                    "x-request-id",
+                    format!("{ranking_patch_request_id}-missing"),
+                )
+                .header("x-trace-id", format!("{ranking_patch_trace_id}-missing"))
+                .header(
+                    "x-idempotency-key",
+                    format!("{ranking_idempotency_key}-missing"),
+                )
+                .header("x-step-up-token", &missing_ranking_step_up)
+                .body(Body::from(
+                    json!({
+                      "metadata": { "smoke_suffix": format!("{suffix}-missing") }
+                    })
+                    .to_string(),
+                ))
+                .expect("patch ranking missing step-up request"),
+        )
+        .await
+        .expect("patch ranking missing step-up response");
+    let missing_ranking_step_up_status = missing_ranking_step_up_response.status();
+    let missing_ranking_step_up_json = response_json(missing_ranking_step_up_response)
+        .await
+        .expect("patch ranking missing step-up json");
+    assert_eq!(
+        missing_ranking_step_up_status,
+        StatusCode::NOT_FOUND,
+        "{missing_ranking_step_up_json}"
+    );
+
+    let ranking_step_up = seed_verified_step_up_challenge(
+        &client,
+        &ids.operator_user_id,
+        "recommendation.ranking_profile.patch",
+        "recommendation_ranking_profile",
+        Some(ranking_profile_id),
+        &format!("recommend-ranking-step-up-{suffix}"),
+    )
+    .await
+    .expect("seed ranking step-up");
+
     let patch_ranking_response = app
         .clone()
         .oneshot(
@@ -1446,8 +1529,10 @@ async fn recommendation_api_full_runtime_db_smoke() {
                 ))
                 .header("content-type", "application/json")
                 .header("authorization", &admin_auth)
-                .header("x-idempotency-key", format!("recommend-ranking-{suffix}"))
-                .header("x-step-up-token", "step-up-ok")
+                .header("x-request-id", &ranking_patch_request_id)
+                .header("x-trace-id", &ranking_patch_trace_id)
+                .header("x-idempotency-key", &ranking_idempotency_key)
+                .header("x-step-up-token", &ranking_step_up)
                 .body(Body::from(
                     json!({
                       "metadata": { "smoke_suffix": suffix }
@@ -1458,7 +1543,98 @@ async fn recommendation_api_full_runtime_db_smoke() {
         )
         .await
         .expect("patch ranking response");
-    assert_eq!(patch_ranking_response.status(), StatusCode::OK);
+    let patch_ranking_status = patch_ranking_response.status();
+    let patch_ranking_json = response_json(patch_ranking_response)
+        .await
+        .expect("patch ranking json");
+    assert_eq!(patch_ranking_status, StatusCode::OK, "{patch_ranking_json}");
+    assert_eq!(
+        patch_ranking_json["data"]["metadata"]["smoke_suffix"].as_str(),
+        Some(suffix.as_str())
+    );
+    let ranking_row = client
+        .query_one(
+            "SELECT metadata ->> 'smoke_suffix'
+             FROM recommend.ranking_profile
+             WHERE recommendation_ranking_profile_id = $1::text::uuid",
+            &[&ranking_profile_id],
+        )
+        .await
+        .expect("load patched ranking row");
+    assert_eq!(
+        ranking_row.get::<_, Option<String>>(0).as_deref(),
+        Some(suffix.as_str())
+    );
+    assert_eq!(
+        count_audit_events(
+            &client,
+            &ranking_patch_request_id,
+            "recommendation.ranking_profile.patch",
+        )
+        .await
+        .expect("count ranking patch audit event"),
+        1
+    );
+    assert_eq!(
+        count_access_audit(
+            &client,
+            &ranking_patch_request_id,
+            "recommendation_ranking_profile"
+        )
+        .await
+        .expect("count ranking patch access audit"),
+        1
+    );
+    assert_eq!(
+        latest_access_step_up(&client, &ranking_patch_request_id)
+            .await
+            .expect("load ranking patch step-up")
+            .as_deref(),
+        Some(ranking_step_up.as_str())
+    );
+    assert_eq!(
+        count_system_logs(
+            &client,
+            &ranking_patch_request_id,
+            "recommendation ops action executed: PATCH /api/v1/ops/recommendation/ranking-profiles/{id}",
+        )
+        .await
+        .expect("count ranking patch system log"),
+        1
+    );
+    let ranking_audit_row = client
+        .query_one(
+            "SELECT
+               result_code,
+               metadata ->> 'endpoint',
+               metadata ->> 'permission_code',
+               metadata -> 'details' ->> 'idempotency_key',
+               metadata -> 'details' -> 'request_patch' -> 'metadata' ->> 'smoke_suffix'
+             FROM audit.audit_event
+             WHERE request_id = $1
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT 1",
+            &[&ranking_patch_request_id],
+        )
+        .await
+        .expect("load ranking audit row");
+    assert_eq!(ranking_audit_row.get::<_, String>(0), "updated");
+    assert_eq!(
+        ranking_audit_row.get::<_, Option<String>>(1).as_deref(),
+        Some("PATCH /api/v1/ops/recommendation/ranking-profiles/{id}")
+    );
+    assert_eq!(
+        ranking_audit_row.get::<_, Option<String>>(2).as_deref(),
+        Some("ops.recommendation.manage")
+    );
+    assert_eq!(
+        ranking_audit_row.get::<_, Option<String>>(3).as_deref(),
+        Some(ranking_idempotency_key.as_str())
+    );
+    assert_eq!(
+        ranking_audit_row.get::<_, Option<String>>(4).as_deref(),
+        Some(suffix.as_str())
+    );
 
     seed_redis_value(&rebuild_cache_key, "{\"seed\":true}", 300)
         .await

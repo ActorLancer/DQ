@@ -18,6 +18,7 @@
 - `ops.search_sync.read / ops.search_cache.invalidate` 当前开放 `platform_admin + platform_audit_security`
 - V1 当前 `X-Step-Up-Token` 承载已验证 `iam.step_up_challenge.step_up_challenge_id`
 - 服务端会真实回查 `iam.step_up_challenge.user_id / challenge_status / target_action / target_ref_type / target_ref_id`
+- 搜索运维控制面统一使用搜索域错误码：参数/step-up 绑定错误返回 `SEARCH_QUERY_INVALID`，冲突返回 `SEARCH_RESULT_STALE`，下游依赖不可用返回 `SEARCH_BACKEND_UNAVAILABLE`，权限拒绝返回 `SEARCH_REINDEX_FORBIDDEN / SEARCH_ALIAS_SWITCH_FORBIDDEN / SEARCH_CACHE_INVALIDATE_FORBIDDEN`
 - 成功写操作会真实写入 `audit.audit_event + audit.access_audit + ops.system_log`
 - 读操作会真实写入 `audit.access_audit + ops.system_log`
 
