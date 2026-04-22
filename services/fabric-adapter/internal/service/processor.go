@@ -48,7 +48,7 @@ func (processor *Processor) ProcessMessage(ctx context.Context, topic string, va
 	}
 
 	// TODO(V1-gap, AUD-013): fold duplicate Kafka deliveries into ops.consumer_idempotency_record
-	// plus Redis short-lock semantics once AUD-026 closes Fabric consumer idempotency/DLQ/reprocess.
+	// plus Redis short-lock semantics in a later dedicated Fabric consumer reliability batch.
 	receipt, err := processor.provider.Submit(ctx, request)
 	if err != nil {
 		return fmt.Errorf("submit to fabric provider: %w", err)

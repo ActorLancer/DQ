@@ -1634,3 +1634,49 @@
   - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-025` 的冻结目标是审计与 ops 控制面的正式权限矩阵收口，不是新增链交互服务。Go 与 Fabric 的真实交互继续保持 `AUD-013 ~ AUD-017` 已落地的 `fabric-adapter / fabric-event-listener / fabric-ca-admin / chaincode` 分层。
   - 旧别名角色没有被恢复为正式角色，只降级为 `audit/api/handlers.rs` 中的过渡兼容映射，用于消化历史 header/文档漂移；正式 bearer/seed/runbook/test 已全部切回 `060` 的 12 个核心角色。
   - `cargo sqlx prepare --workspace` 与本地 `psql` 回查需要宿主机数据库访问，沙箱内被 `Operation not permitted` 拦截；切到宿主机执行后通过，属于环境权限差异，不是冻结文档冲突。
+### BATCH-239（计划中）
+- 任务：`AUD-026` 审计 / 一致性 / Fabric / Ops 集成测试闭环
+- 状态：计划中
+- 说明：按用户要求先对 `AUD-026` 做完整复核，不把已有代码、README、runbook 或旧 smoke 直接视为已完成。复核结果已确认当前仓库还不能签收 `AUD-026`：`outbox-publisher` 的 live smoke 已在 `AUD-009` 落地，`audit package export / replay dry-run / Fabric receipt write-back` 也已有各自 smoke，但 `SEARCHREC` consumer 闭环仍未完成，其中 `workers/search-indexer` 还在失败后无条件 `commit_message`，也没有 `ops.consumer_idempotency_record + ops.dead_letter_event + dtp.dead-letter` 双层隔离；`workers/recommendation-aggregator` 只有部分幂等 smoke，没有正式双层 DLQ、失败隔离和 offset 提交策略验证；相应 runbook / test-case 仍把这些项标记为“后续任务”。本批将据此补齐正式 worker 可靠性实现与集成测试，并把文档更新到“已落地可验证”状态。
+- 追溯：已重新核对 `CSV / Markdown`、`审计、证据链与回放设计.md` 第 3 节、`审计、证据链与回放接口协议正式版.md` 第 5 节、`全量领域模型与对象关系说明.md` 4.9、`事件模型与Topic清单正式版.md`、`kafka-topics.md`、`async-chain-write.md`、`A04-AUD-Ops-接口与契约落地缺口.md`、`A05-Outbox-Publisher-DLQ-统一闭环缺口.md`、`A11-测试与Smoke口径误报风险.md`、`A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`，以及现有 `workers/search-indexer`、`workers/recommendation-aggregator`、`workers/outbox-publisher`、`services/fabric-adapter`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md` 与 `audit-consistency-cases.md`。当前确认的正式完成标准是：至少覆盖 SEARCHREC consumer 的正式 `event_id` 幂等、失败隔离、DB/Kafka 双层 DLQ、worker 侧副作用和 dry-run reprocess 联查；并能用真实 smoke / DB / Kafka / Redis / OpenSearch 回查证明 outbox publish、consumer 幂等、receipt write-back、审计包导出和 dry-run replay 口径一致，不再依赖“只看 outbox 行存在”或“只看手工 seed OpenSearch”式误报验证。
+### BATCH-239（待审批）
+- 任务：`AUD-026` 审计 / 一致性 / Fabric / Ops 集成测试闭环
+- 状态：待审批
+- 实现摘要：
+  - `workers/search-indexer/src/main.rs`：补齐正式 consumer 可靠性闭环。`search-indexer` 现在基于统一 envelope `event_id` 写入 `ops.consumer_idempotency_record`，只有在成功处理或失败已安全落入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离后才提交 offset；失败时同步回写 `search.index_sync_task(sync_status='failed')`，成功时真实写 OpenSearch 并失效 Redis 搜索缓存。补充 `search_indexer_db_smoke`，真实验证副作用、重复投递去重、双层 DLQ、Kafka 隔离消息与缓存删除。
+  - `workers/recommendation-aggregator/src/main.rs`：把现有“部分幂等”收口成正式 consumer 闭环。先通过 `ops.consumer_idempotency_record` 做 `event_id` 幂等门禁，再执行热度聚合、关系边更新、`search.index_sync_task` 回流与推荐缓存失效；失败时统一写 `ops.dead_letter_event + dtp.dead-letter`，并把幂等状态更新为 `dead_lettered`。补充 `recommendation_aggregator_db_smoke`，真实验证推荐行为副作用、重复投递、双层 DLQ 与失败隔离。
+  - `docs/04-runbooks/{search-reindex,recommendation-runtime}.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/{search-rec-cases,README.md}`：把仍写成“后续任务”的 SEARCHREC consumer 可靠性口径改成已落地可验证，补齐宿主机回归命令、双层 DLQ / `dry_run reprocess` 回查项，并把 runbook 索引同步到 `recommendation-runtime.md`。
+  - `services/fabric-adapter/internal/service/processor.go`、`docs/开发任务/V1-Core-TODO与预留清单.md`：修正 Fabric reliability 遗留注释与 TODO 台账，不再错误宣称 `AUD-026` 会清空 Fabric consumer 自身的 idempotency / Redis 短锁缺口；本批仅重新复验 `fabric-adapter` Go 单测、`check-fabric-local.sh` 与 `fabric-adapter-live-smoke.sh`，保持该 gap 继续留给后续专门批次。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既有 `unused_*` warning，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`319 passed; 0 failed; 1 ignored`。
+  - `cargo check -p search-indexer`、`cargo test -p search-indexer` 通过；`SEARCHREC_WORKER_DB_SMOKE=1 ... cargo test -p search-indexer search_indexer_db_smoke -- --nocapture` 通过，真实回查 OpenSearch 文档、Redis 缓存失效、`ops.consumer_idempotency_record(result_code='processed'/'dead_lettered')`、`ops.dead_letter_event(target_topic='dtp.search.sync')` 与 Kafka `dtp.dead-letter`。
+  - `cargo check -p recommendation-aggregator`、`cargo test -p recommendation-aggregator` 通过；`SEARCHREC_WORKER_DB_SMOKE=1 ... cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture` 通过，真实回查 `search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation`、`search.index_sync_task`、Redis 推荐缓存、`ops.consumer_idempotency_record`、`ops.dead_letter_event(target_topic='dtp.recommend.behavior')` 与 Kafka `dtp.dead-letter`。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p outbox-publisher outbox_publisher_db_smoke -- --nocapture` 通过，证明 canonical outbox publish / retry / DB+Kafka 双层 DLQ 仍保持正式闭环。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture` 通过，真实覆盖 `search-indexer` 与 `recommendation-aggregator` 的 SEARCHREC dead letter `dry_run` 重处理预演、`step-up` 绑定、`audit.audit_event`、`audit.access_audit` 与 `ops.system_log`。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_trace_api_db_smoke -- --nocapture` 通过，重新验证审计包导出、MinIO 对象回查与 replay dry-run 报告路径。
+  - `go test ./...`、`go build ./...` 在 `services/fabric-adapter` 与 `services/fabric-event-listener` 下通过；`./scripts/check-fabric-local.sh` 与 `./scripts/fabric-adapter-live-smoke.sh` 通过，真实验证 Fabric test-network、Gateway 提交、账本回查以及 `ops.external_fact_receipt / chain.chain_anchor` 回写。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新工作区 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过；首次并行误报是 `check-query-compile.sh` 在 `.sqlx` 刷新前抢先读取旧 cache，串行重跑后已恢复绿色。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-026`
+  - `审计、证据链与回放设计.md` 第 3 节
+  - `审计、证据链与回放接口协议正式版.md` 第 5 节
+  - `全量领域模型与对象关系说明.md` 4.9
+  - `事件模型与Topic清单正式版.md`
+  - `kafka-topics.md`
+  - `async-chain-write.md`
+  - `A04-AUD-Ops-接口与契约落地缺口.md`
+  - `A05-Outbox-Publisher-DLQ-统一闭环缺口.md`
+  - `A11-测试与Smoke口径误报风险.md`
+  - `A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`
+- 覆盖的任务清单条目：`AUD-026`
+- 未覆盖项：
+  - Fabric consumer 自身的 `ops.consumer_idempotency_record + Redis` 短锁闭环仍保留为 `TODO-AUD-FABRIC-001`，留待后续专门批次收口；本批只复验当前 `fabric-adapter` 的 live smoke 与回执写回链路。
+  - `SEARCHREC-015 / SEARCHREC-017 / SEARCHREC-020` 仍会在对应阶段继续补齐更宽的统一鉴权 / step-up / OpenAPI / test-case 矩阵；本批不越级改写其主任务边界。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；仅更新 `TODO-AUD-FABRIC-001` 的原因与补齐条件，避免继续把 Fabric consumer reliability 错绑到 `AUD-026`。
+- 备注：
+  - 本批开始时 `./scripts/check-fabric-local.sh` 和 `fabric-adapter-live-smoke.sh` 失败，根因是本地 Fabric test-network 尚未启动，`fabric-adapter` 的 Gateway 目标 `127.0.0.1:7051` 不可达。执行 `make up-fabric` 后，`check-fabric-local.sh` 与 live smoke 恢复通过，属于环境基线缺失，不是冻结文档冲突。
+  - 早期失败的 `search-indexer` smoke 使用了随机 `event_id`，没有对应正式 `ops.outbox_event`，因此触发 `search.index_sync_task.source_event_id` 外键失败；已将 smoke 修正为真实 outbox event 语义，并清理该次失败残留的业务测试数据。`audit.audit_event` / `audit.access_audit` 等 append-only 审计记录按规则保留未清理。

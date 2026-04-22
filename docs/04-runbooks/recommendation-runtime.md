@@ -42,8 +42,8 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
 - `POST /api/v1/ops/recommendation/rebuild` 对应正式权限点为 `ops.recommend_rebuild.execute`，并要求审计；是否强制 `step-up` 以后续实现批次按风险级别落地。
 - 推荐行为写接口必须使用 `X-Idempotency-Key`，不得继续以“header 存在即可”的占位方式定义正式幂等语义。
 - 当前 runbook 只冻结正式口径，不代表统一鉴权 / 审计 / OpenAPI / 测试已经补齐；进入 `SEARCHREC` 实现批次后，Agent 必须按 `A13` 同步修改代码与契约。
-- `recommendation-aggregator` 的正式 consumer 口径还必须收敛为：统一 envelope `event_id` 幂等、`ops.consumer_idempotency_record`、失败进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，并且只有在成功处理或失败已安全隔离后才允许提交 offset。
-- 当前若只验证推荐行为写库、outbox 行存在或缓存发生变化，仍不能视为 consumer 可靠性闭环完成；进入实现批次后必须按 `A15` 补齐 worker 失败路径、双层 DLQ 与 `reprocess` 验证。
+- `recommendation-aggregator` 已按 `AUD-026` 收口为正式 consumer：统一使用 envelope `event_id` 做幂等，写入 `ops.consumer_idempotency_record`，失败时先进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，再决定 offset 提交。
+- 当前若只验证推荐行为写库、outbox 行存在或缓存发生变化，仍不能视为 consumer 可靠性闭环完成；验收必须同时覆盖 worker 副作用、失败路径、双层 DLQ 与 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 `dry_run` 预演。
 
 ## 本地核对点
 
@@ -61,12 +61,17 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
 RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture
 
-RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
   cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture
+
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture
 ```
 
 说明：
 
 - 第一条命令覆盖推荐请求、曝光、点击、ops 配置与 rebuild 主链路。
-- 第二条命令覆盖 `dtp.recommend.behavior` 消费后的幂等记录、热度聚合、关系边增量、`search.index_sync_task` 回流与缓存失效。
+- 第二条命令覆盖 `dtp.recommend.behavior` 消费后的幂等记录、热度聚合、关系边增量、`search.index_sync_task` 回流、缓存失效，以及失败时写入 `ops.dead_letter_event + dtp.dead-letter`。
+- 第三条命令覆盖 `recommendation-aggregator -> dtp.recommend.behavior` 的 SEARCHREC dead letter `dry_run` 重处理预演、`step-up` 绑定、`audit.audit_event`、`audit.access_audit` 与 `ops.system_log`。
 - 当前 OpenSearch 推荐召回应对齐现有搜索索引映射：`status`、`seller_id`、`id` 为直接 keyword 字段，不应误写成 `status.keyword`、`seller_id.keyword`、`id.keyword`。

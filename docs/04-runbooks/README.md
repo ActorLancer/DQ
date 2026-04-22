@@ -3,7 +3,8 @@
 用于收敛本地联调、中间件运行、故障排查与应急操作手册。
 
 - `notification-worker.md`：通知正式链路、审计联查、DLQ、人工补发 / replay。
-- `search-reindex.md`：`AUD-022` 搜索运维控制面的 Bearer 鉴权、step-up、Redis 缓存失效、OpenSearch alias 切换、排序配置更新与审计回查。
+- `search-reindex.md`：`AUD-022 / AUD-026` 搜索运维控制面与 `search-indexer` worker 的 Bearer 鉴权、step-up、Redis 缓存失效、OpenSearch alias 切换、排序配置更新、consumer 幂等、双层 DLQ、dry-run reprocess 与审计回查。
+- `recommendation-runtime.md`：`SEARCHREC / AUD-026` 推荐主链路、`recommendation-aggregator` worker、副作用、consumer 幂等、双层 DLQ、dry-run reprocess 与缓存失效回归。
 - `fabric-local.md`：Fabric 本地网络、Gateway、anchor / callback 联调。
 - `fabric-adapter.md`：`AUD-013 / AUD-014` Go 版 `fabric-adapter` 的 bootstrap / test / run、四类摘要 handler、Kafka canonical smoke、回执回写与排障。
 - `fabric-event-listener.md`：`AUD-015` Go 版 `fabric-event-listener` 的 bootstrap / test / run、mock callback 链路、`dtp.fabric.callbacks`、外部事实回执回写与排障。

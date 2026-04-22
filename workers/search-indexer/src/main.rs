@@ -2,17 +2,23 @@ use db::{AppDb, DbPoolConfig, GenericClient};
 use rdkafka::Message;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
+use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::util::Timeout;
 use redis::AsyncCommands;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::time::Duration;
 use tokio::time;
 use tracing::{error, info, warn};
+
+const SERVICE_NAME: &str = "search-indexer";
+const FAILURE_STAGE_CONSUMER_HANDLER: &str = "consumer_handler";
 
 #[derive(Debug, Clone)]
 struct WorkerConfig {
     database_url: String,
     kafka_brokers: String,
     topic_search_sync: String,
+    dead_letter_topic: String,
     consumer_group: String,
     opensearch_endpoint: String,
     redis_namespace: String,
@@ -30,6 +36,12 @@ struct IndexedDocument {
 #[derive(Debug, Clone)]
 struct AliasBinding {
     write_alias: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessingGate {
+    Proceed,
+    Duplicate,
 }
 
 #[tokio::main]
@@ -57,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set("auto.offset.reset", "earliest")
         .create()?;
     consumer.subscribe(&[&cfg.topic_search_sync])?;
+    let producer = build_producer(&cfg)?;
 
     info!(
         topic = %cfg.topic_search_sync,
@@ -69,11 +82,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::select! {
             message = consumer.recv() => match message {
                 Ok(message) => {
-                    if let Err(err) = handle_kafka_message(&db, &cfg, &message).await {
-                        error!(error = %err, "search-indexer kafka event handling failed");
-                    }
-                    if let Err(err) = consumer.commit_message(&message, CommitMode::Async) {
-                        warn!(error = %err, "search-indexer commit offset failed");
+                    match process_kafka_message(&db, &cfg, &producer, &message).await {
+                        Ok(result_code) => {
+                            if let Err(err) = consumer.commit_message(&message, CommitMode::Async) {
+                                warn!(error = %err, result_code, "search-indexer commit offset failed");
+                            }
+                        }
+                        Err(err) => error!(error = %err, "search-indexer kafka event handling failed before safe isolation"),
                     }
                 }
                 Err(err) => warn!(error = %err, "search-indexer kafka receive failed"),
@@ -98,6 +113,8 @@ impl WorkerConfig {
                 .unwrap_or_else(|_| "127.0.0.1:9092".to_string()),
             topic_search_sync: std::env::var("TOPIC_SEARCH_SYNC")
                 .unwrap_or_else(|_| "dtp.search.sync".to_string()),
+            dead_letter_topic: std::env::var("TOPIC_DEAD_LETTER_EVENTS")
+                .unwrap_or_else(|_| "dtp.dead-letter".to_string()),
             consumer_group: std::env::var("SEARCH_INDEXER_CONSUMER_GROUP")
                 .unwrap_or_else(|_| "cg-search-indexer".to_string()),
             opensearch_endpoint: std::env::var("OPENSEARCH_ENDPOINT")
@@ -113,26 +130,124 @@ impl WorkerConfig {
     }
 }
 
-async fn handle_kafka_message(
+fn build_producer(cfg: &WorkerConfig) -> Result<FutureProducer, rdkafka::error::KafkaError> {
+    ClientConfig::new()
+        .set("bootstrap.servers", &cfg.kafka_brokers)
+        .create()
+}
+
+async fn process_kafka_message(
     db: &AppDb,
     cfg: &WorkerConfig,
+    producer: &FutureProducer,
     message: &rdkafka::message::BorrowedMessage<'_>,
-) -> Result<(), String> {
+) -> Result<&'static str, String> {
     let Some(payload) = message.payload() else {
-        return Ok(());
+        return Ok("ignored");
     };
+    process_kafka_payload(db, cfg, producer, payload).await
+}
+
+async fn process_kafka_payload(
+    db: &AppDb,
+    cfg: &WorkerConfig,
+    producer: &FutureProducer,
+    payload: &[u8],
+) -> Result<&'static str, String> {
     let envelope: Value = serde_json::from_slice(payload)
         .map_err(|err| format!("decode kafka payload failed: {err}"))?;
+    if !is_search_sync_envelope(&envelope) {
+        return Ok("ignored");
+    }
+
+    let event_id = envelope["event_id"]
+        .as_str()
+        .ok_or_else(|| "search-indexer envelope missing event_id".to_string())?;
+    let aggregate_type = envelope["aggregate_type"].as_str();
+    let aggregate_id = envelope["aggregate_id"].as_str();
+    let trace_id = envelope["trace_id"].as_str();
+
+    let client = db
+        .client()
+        .map_err(|err| format!("acquire db client failed: {err}"))?;
+    match begin_processing_gate(
+        &client,
+        event_id,
+        aggregate_type,
+        aggregate_id,
+        trace_id,
+        &cfg.topic_search_sync,
+    )
+    .await?
+    {
+        ProcessingGate::Duplicate => return Ok("duplicate"),
+        ProcessingGate::Proceed => {}
+    }
+
+    match process_search_envelope(db, cfg, &envelope).await {
+        Ok(()) => {
+            update_processing_result(
+                &client,
+                event_id,
+                "processed",
+                None,
+                json!({
+                    "source_topic": cfg.topic_search_sync,
+                    "dead_letter_topic": cfg.dead_letter_topic,
+                }),
+            )
+            .await?;
+            Ok("processed")
+        }
+        Err(err) => {
+            let dead_letter_event_id =
+                ensure_dead_letter_event(&client, &envelope, &err, &cfg.topic_search_sync).await?;
+            publish_dead_letter_message(
+                producer,
+                &cfg.topic_search_sync,
+                &cfg.dead_letter_topic,
+                &cfg.consumer_group,
+                &dead_letter_event_id,
+                &envelope,
+                &err,
+            )
+            .await?;
+            update_processing_result(
+                &client,
+                event_id,
+                "dead_lettered",
+                Some(&err),
+                json!({
+                    "source_topic": cfg.topic_search_sync,
+                    "dead_letter_topic": cfg.dead_letter_topic,
+                    "dead_letter_event_id": dead_letter_event_id,
+                    "consumer_group": cfg.consumer_group,
+                }),
+            )
+            .await?;
+            Ok("dead_lettered")
+        }
+    }
+}
+
+fn is_search_sync_envelope(envelope: &Value) -> bool {
     let event_type = envelope["event_type"].as_str().unwrap_or_default();
+    event_type == "search.product.changed" || event_type.starts_with("search.")
+}
+
+async fn process_search_envelope(
+    db: &AppDb,
+    cfg: &WorkerConfig,
+    envelope: &Value,
+) -> Result<(), String> {
     let aggregate_type = envelope["aggregate_type"].as_str().unwrap_or_default();
     let aggregate_id = envelope["aggregate_id"].as_str().unwrap_or_default();
     let source_event_id = envelope["event_id"].as_str();
 
-    if event_type != "search.product.changed" && !event_type.starts_with("search.") {
-        return Ok(());
-    }
-
-    if aggregate_type == "product" && !aggregate_id.is_empty() {
+    if aggregate_type == "product" {
+        if aggregate_id.is_empty() {
+            return Err("search-indexer envelope missing product aggregate_id".to_string());
+        }
         process_entity(
             db,
             cfg,
@@ -158,10 +273,305 @@ async fn handle_kafka_message(
         return Ok(());
     }
 
-    if aggregate_type == "seller" && !aggregate_id.is_empty() {
+    if aggregate_type == "seller" {
+        if aggregate_id.is_empty() {
+            return Err("search-indexer envelope missing seller aggregate_id".to_string());
+        }
         process_entity(db, cfg, "seller", aggregate_id, source_event_id, None, None).await?;
     }
+
     Ok(())
+}
+
+async fn begin_processing_gate(
+    client: &(impl GenericClient + Sync),
+    event_id: &str,
+    aggregate_type: Option<&str>,
+    aggregate_id: Option<&str>,
+    trace_id: Option<&str>,
+    source_topic: &str,
+) -> Result<ProcessingGate, String> {
+    let row = client
+        .query_opt(
+            "SELECT result_code
+             FROM ops.consumer_idempotency_record
+             WHERE consumer_name = $1
+               AND event_id = $2::text::uuid",
+            &[&SERVICE_NAME, &event_id],
+        )
+        .await
+        .map_err(|err| format!("load search-indexer idempotency gate failed: {err}"))?;
+
+    if let Some(row) = row {
+        let result_code: String = row.get(0);
+        if matches!(result_code.as_str(), "processed" | "dead_lettered") {
+            return Ok(ProcessingGate::Duplicate);
+        }
+
+        let metadata = json!({
+            "source_topic": source_topic,
+            "trace_id": trace_id,
+            "updated_at": now_iso8601(),
+        })
+        .to_string();
+        client
+            .execute(
+                "UPDATE ops.consumer_idempotency_record
+                 SET result_code = 'processing',
+                     processed_at = now(),
+                     metadata = coalesce(metadata, '{}'::jsonb) || $3::jsonb
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &event_id, &metadata],
+            )
+            .await
+            .map_err(|err| format!("reset search-indexer idempotency gate failed: {err}"))?;
+        return Ok(ProcessingGate::Proceed);
+    }
+
+    let metadata = json!({
+        "source_topic": source_topic,
+        "trace_id": trace_id,
+    })
+    .to_string();
+    client
+        .execute(
+            "INSERT INTO ops.consumer_idempotency_record (
+               consumer_name,
+               event_id,
+               aggregate_type,
+               aggregate_id,
+               trace_id,
+               result_code,
+               metadata
+             ) VALUES (
+               $1,
+               $2::text::uuid,
+               $3,
+               $4::text::uuid,
+               $5,
+               'processing',
+               $6::jsonb
+             )",
+            &[
+                &SERVICE_NAME,
+                &event_id,
+                &aggregate_type,
+                &aggregate_id,
+                &trace_id,
+                &metadata,
+            ],
+        )
+        .await
+        .map_err(|err| format!("insert search-indexer idempotency gate failed: {err}"))?;
+    Ok(ProcessingGate::Proceed)
+}
+
+async fn update_processing_result(
+    client: &(impl GenericClient + Sync),
+    event_id: &str,
+    result_code: &str,
+    error_message: Option<&str>,
+    extra_metadata: Value,
+) -> Result<(), String> {
+    let metadata = json!({
+        "updated_at": now_iso8601(),
+        "last_error": error_message,
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default();
+    let mut merged = serde_json::Map::new();
+    merged.extend(metadata);
+    if let Some(extra) = extra_metadata.as_object() {
+        for (key, value) in extra {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    let metadata_json = Value::Object(merged).to_string();
+
+    client
+        .execute(
+            "UPDATE ops.consumer_idempotency_record
+             SET result_code = $3,
+                 processed_at = now(),
+                 metadata = coalesce(metadata, '{}'::jsonb) || $4::jsonb
+             WHERE consumer_name = $1
+               AND event_id = $2::text::uuid",
+            &[&SERVICE_NAME, &event_id, &result_code, &metadata_json],
+        )
+        .await
+        .map_err(|err| format!("update search-indexer idempotency result failed: {err}"))?;
+    Ok(())
+}
+
+async fn ensure_dead_letter_event(
+    client: &(impl GenericClient + Sync),
+    envelope: &Value,
+    error_message: &str,
+    source_topic: &str,
+) -> Result<String, String> {
+    let event_id = envelope["event_id"]
+        .as_str()
+        .ok_or_else(|| "search-indexer dead letter requires event_id".to_string())?;
+    let payload = envelope.to_string();
+    let aggregate_type = envelope["aggregate_type"].as_str();
+    let aggregate_id = envelope["aggregate_id"].as_str();
+    let event_type = envelope["event_type"].as_str();
+    let request_id = envelope["request_id"].as_str();
+    let trace_id = effective_trace_id(envelope);
+
+    let row = client
+        .query_one(
+            "WITH existing AS (
+               SELECT dead_letter_event_id
+                 FROM ops.dead_letter_event
+                WHERE outbox_event_id = $1::text::uuid
+                  AND failure_stage = $10
+                ORDER BY created_at DESC, dead_letter_event_id DESC
+                LIMIT 1
+             ),
+             updated AS (
+               UPDATE ops.dead_letter_event
+                  SET payload = $5::jsonb,
+                      failed_reason = $6,
+                      last_failed_at = now(),
+                      target_topic = $9
+                WHERE dead_letter_event_id IN (SELECT dead_letter_event_id FROM existing)
+                RETURNING dead_letter_event_id::text
+             ),
+             inserted AS (
+               INSERT INTO ops.dead_letter_event (
+                  outbox_event_id,
+                  aggregate_type,
+                  aggregate_id,
+                  event_type,
+                  payload,
+                  failed_reason,
+                  request_id,
+                  trace_id,
+                  authority_scope,
+                  source_of_truth,
+                  target_bus,
+                  target_topic,
+                  failure_stage,
+                  last_failed_at
+               )
+               SELECT
+                  $1::text::uuid,
+                  $2,
+                  $3::text::uuid,
+                  $4,
+                  $5::jsonb,
+                  $6,
+                  $7,
+                  $8,
+                  'business',
+                  'database',
+                  'kafka',
+                  $9,
+                  $10,
+                  now()
+               WHERE NOT EXISTS (SELECT 1 FROM updated)
+               RETURNING dead_letter_event_id::text
+             )
+             SELECT dead_letter_event_id FROM updated
+             UNION ALL
+             SELECT dead_letter_event_id FROM inserted
+             LIMIT 1",
+            &[
+                &event_id,
+                &aggregate_type,
+                &aggregate_id,
+                &event_type,
+                &payload,
+                &error_message,
+                &request_id,
+                &trace_id,
+                &source_topic,
+                &FAILURE_STAGE_CONSUMER_HANDLER,
+            ],
+        )
+        .await
+        .map_err(|err| format!("insert search-indexer dead letter failed: {err}"))?;
+    Ok(row.get(0))
+}
+
+async fn publish_dead_letter_message(
+    producer: &FutureProducer,
+    source_topic: &str,
+    dead_letter_topic: &str,
+    consumer_group: &str,
+    dead_letter_event_id: &str,
+    envelope: &Value,
+    error_message: &str,
+) -> Result<(), String> {
+    let payload = build_dead_letter_message(
+        dead_letter_event_id,
+        source_topic,
+        dead_letter_topic,
+        consumer_group,
+        envelope,
+        error_message,
+    );
+    let raw = serde_json::to_string(&payload)
+        .map_err(|err| format!("encode search-indexer dead letter message failed: {err}"))?;
+    producer
+        .send(
+            FutureRecord::to(dead_letter_topic)
+                .payload(&raw)
+                .key(dead_letter_event_id),
+            Timeout::After(Duration::from_secs(3)),
+        )
+        .await
+        .map_err(|(err, _)| format!("publish search-indexer dead letter failed: {err}"))?;
+    Ok(())
+}
+
+fn build_dead_letter_message(
+    dead_letter_event_id: &str,
+    source_topic: &str,
+    dead_letter_topic: &str,
+    consumer_group: &str,
+    envelope: &Value,
+    error_message: &str,
+) -> Value {
+    json!({
+        "dead_letter_event_id": dead_letter_event_id,
+        "source_topic": source_topic,
+        "target_topic": dead_letter_topic,
+        "consumer_name": SERVICE_NAME,
+        "consumer_group": consumer_group,
+        "event_id": envelope["event_id"],
+        "event_type": envelope["event_type"],
+        "aggregate_type": envelope["aggregate_type"],
+        "aggregate_id": envelope["aggregate_id"],
+        "request_id": envelope["request_id"],
+        "trace_id": effective_trace_id(envelope),
+        "failure_stage": FAILURE_STAGE_CONSUMER_HANDLER,
+        "failure_reason": error_message,
+        "reprocess_status": "not_reprocessed",
+        "payload": envelope,
+    })
+}
+
+fn effective_trace_id(envelope: &Value) -> String {
+    envelope["trace_id"]
+        .as_str()
+        .or_else(|| envelope["request_id"].as_str())
+        .or_else(|| envelope["event_id"].as_str())
+        .unwrap_or("trace-search-indexer-unknown")
+        .to_string()
+}
+
+fn now_iso8601() -> String {
+    format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    )
 }
 
 async fn process_queued_reindex_tasks(db: &AppDb, cfg: &WorkerConfig) -> Result<(), String> {
@@ -599,4 +1009,652 @@ fn resolve_redis_url() -> String {
     let password =
         std::env::var("REDIS_PASSWORD").unwrap_or_else(|_| "datab_redis_pass".to_string());
     format!("redis://:{}@{}:{}/0", password, host, port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use db::{Client, Error, NoTls, connect};
+    use tokio::time::timeout;
+
+    #[derive(Debug)]
+    struct SeedGraph {
+        org_id: String,
+        asset_id: String,
+        asset_version_id: String,
+        product_id: String,
+        cache_key: String,
+    }
+
+    fn live_db_enabled() -> bool {
+        std::env::var("SEARCHREC_WORKER_DB_SMOKE").ok().as_deref() == Some("1")
+            || std::env::var("SEARCH_DB_SMOKE").ok().as_deref() == Some("1")
+    }
+
+    fn database_url() -> String {
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string()
+        })
+    }
+
+    fn kafka_brokers() -> String {
+        std::env::var("KAFKA_BROKERS")
+            .or_else(|_| std::env::var("KAFKA_BOOTSTRAP_SERVERS"))
+            .unwrap_or_else(|_| "127.0.0.1:9094".to_string())
+    }
+
+    fn redis_url() -> String {
+        resolve_redis_url()
+    }
+
+    fn opensearch_endpoint() -> String {
+        std::env::var("OPENSEARCH_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:9200".to_string())
+    }
+
+    fn worker_config() -> WorkerConfig {
+        WorkerConfig {
+            database_url: database_url(),
+            kafka_brokers: kafka_brokers(),
+            topic_search_sync: "dtp.search.sync".to_string(),
+            dead_letter_topic: "dtp.dead-letter".to_string(),
+            consumer_group: "cg-search-indexer-test".to_string(),
+            opensearch_endpoint: opensearch_endpoint(),
+            redis_namespace: "datab:v1".to_string(),
+            redis_url: redis_url(),
+            reindex_poll_interval_secs: 5,
+        }
+    }
+
+    async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, Error> {
+        let org_row = client
+            .query_one(
+                "INSERT INTO core.organization (
+                   org_name, org_type, status, country_code, metadata
+                 ) VALUES (
+                   $1, 'enterprise', 'active', 'CN', jsonb_build_object('source', 'search-indexer-smoke')
+                 )
+                 RETURNING org_id::text",
+                &[&format!("search-indexer-org-{suffix}")],
+            )
+            .await?;
+        let org_id: String = org_row.get(0);
+
+        let asset_row = client
+            .query_one(
+                "INSERT INTO catalog.data_asset (
+                   owner_org_id, title, category, sensitivity_level, status
+                 ) VALUES (
+                   $1::text::uuid, $2, 'manufacturing', 'internal', 'draft'
+                 )
+                 RETURNING asset_id::text",
+                &[&org_id, &format!("search-indexer-asset-{suffix}")],
+            )
+            .await?;
+        let asset_id: String = asset_row.get(0);
+
+        let asset_version_row = client
+            .query_one(
+                "INSERT INTO catalog.asset_version (
+                   asset_id, version_no, schema_version, schema_hash, sample_hash, full_hash,
+                   data_size_bytes, origin_region, allowed_region, requires_controlled_execution, trust_boundary_snapshot, status
+                 ) VALUES (
+                   $1::text::uuid, 1, 'v1', 'schema-hash', 'sample-hash', 'full-hash',
+                   1024, 'CN', ARRAY['CN']::text[], false, '{}'::jsonb, 'active'
+                 )
+                 RETURNING asset_version_id::text",
+                &[&asset_id],
+            )
+            .await?;
+        let asset_version_id: String = asset_version_row.get(0);
+
+        let product_row = client
+            .query_one(
+                "INSERT INTO catalog.product (
+                   asset_id, asset_version_id, seller_org_id, title, category, product_type,
+                   description, status, price_mode, price, currency_code, delivery_type,
+                   allowed_usage, searchable_text, metadata
+                 ) VALUES (
+                   $1::text::uuid,
+                   $2::text::uuid,
+                   $3::text::uuid,
+                   $4,
+                   'manufacturing',
+                   'data_product',
+                   $5,
+                   'listed',
+                   'one_time',
+                   128.0,
+                   'CNY',
+                   'file_download',
+                   ARRAY['internal_use']::text[],
+                   $6,
+                   jsonb_build_object(
+                     'subtitle', $7,
+                     'industry', 'industrial_manufacturing',
+                     'quality_score', '0.92'
+                   )
+                 )
+                 RETURNING product_id::text",
+                &[
+                    &asset_id,
+                    &asset_version_id,
+                    &org_id,
+                    &format!("search-indexer-product-{suffix}"),
+                    &format!("search-indexer product {suffix}"),
+                    &format!("search indexer keyword {suffix}"),
+                    &format!("search indexer subtitle {suffix}"),
+                ],
+            )
+            .await?;
+        let product_id: String = product_row.get(0);
+
+        client
+            .execute(
+                "SELECT search.refresh_product_search_document_by_id($1::text::uuid)",
+                &[&product_id],
+            )
+            .await?;
+        client
+            .execute(
+                "SELECT search.refresh_seller_search_document_by_id($1::text::uuid)",
+                &[&org_id],
+            )
+            .await?;
+
+        Ok(SeedGraph {
+            org_id: org_id.clone(),
+            asset_id,
+            asset_version_id,
+            product_id,
+            cache_key: format!("datab:v1:search:catalog:product:search-indexer-{suffix}"),
+        })
+    }
+
+    async fn seed_outbox_event(
+        client: &Client,
+        event_id: &str,
+        seed: &SeedGraph,
+        request_id: &str,
+        trace_id: &str,
+    ) -> Result<(), Error> {
+        client
+            .execute(
+                "INSERT INTO ops.outbox_event (
+                   outbox_event_id,
+                   aggregate_type,
+                   aggregate_id,
+                   event_type,
+                   payload,
+                   status,
+                   request_id,
+                   trace_id,
+                   authority_scope,
+                   source_of_truth,
+                   proof_commit_policy,
+                   target_bus,
+                   target_topic,
+                   partition_key,
+                   ordering_key
+                 ) VALUES (
+                   $1::text::uuid,
+                   'product',
+                   $2::text::uuid,
+                   'search.product.changed',
+                   jsonb_build_object(
+                     'seller_org_id', $3::text::uuid,
+                     'source', 'search-indexer-smoke'
+                   ),
+                   'published',
+                   $4,
+                   $5,
+                   'business',
+                   'database',
+                   'async_evidence',
+                   'kafka',
+                   'dtp.search.sync',
+                   $2,
+                   $2
+                 )",
+                &[
+                    &event_id,
+                    &seed.product_id,
+                    &seed.org_id,
+                    &request_id,
+                    &trace_id,
+                ],
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn cleanup_event_artifacts(client: &Client, event_id: &str) {
+        let _ = client
+            .execute(
+                "DELETE FROM ops.consumer_idempotency_record
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &event_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM ops.dead_letter_event
+                 WHERE outbox_event_id = $1::text::uuid
+                   AND failure_stage = $2",
+                &[&event_id, &FAILURE_STAGE_CONSUMER_HANDLER],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM search.index_sync_task
+                 WHERE source_event_id = $1::text::uuid",
+                &[&event_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM ops.outbox_event
+                 WHERE outbox_event_id = $1::text::uuid",
+                &[&event_id],
+            )
+            .await;
+    }
+
+    async fn cleanup_graph(client: &Client, cfg: &WorkerConfig, seed: &SeedGraph) {
+        let _ = delete_opensearch_document(cfg, "product", &seed.product_id).await;
+        let _ = delete_opensearch_document(cfg, "seller", &seed.org_id).await;
+        let _ = client
+            .execute(
+                "DELETE FROM search.index_sync_task
+                 WHERE entity_id IN ($1::text::uuid, $2::text::uuid)",
+                &[&seed.product_id, &seed.org_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM search.product_search_document WHERE product_id = $1::text::uuid",
+                &[&seed.product_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM search.seller_search_document WHERE org_id = $1::text::uuid",
+                &[&seed.org_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM catalog.product WHERE product_id = $1::text::uuid",
+                &[&seed.product_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM catalog.asset_version WHERE asset_version_id = $1::text::uuid",
+                &[&seed.asset_version_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM catalog.data_asset WHERE asset_id = $1::text::uuid",
+                &[&seed.asset_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM core.organization WHERE org_id = $1::text::uuid",
+                &[&seed.org_id],
+            )
+            .await;
+    }
+
+    async fn lookup_write_alias(client: &Client, entity_scope: &str) -> String {
+        client
+            .query_one(
+                "SELECT write_alias
+                 FROM search.index_alias_binding
+                 WHERE entity_scope = $1
+                   AND backend_type = 'opensearch'
+                 LIMIT 1",
+                &[&entity_scope],
+            )
+            .await
+            .expect("load write alias")
+            .get(0)
+    }
+
+    async fn seed_cache(cfg: &WorkerConfig, key: &str) {
+        let client = redis::Client::open(cfg.redis_url.as_str()).expect("redis client");
+        let mut connection = client
+            .get_multiplexed_async_connection()
+            .await
+            .expect("redis connect");
+        connection
+            .set_ex::<_, _, ()>(key, "{\"seed\":true}", 600)
+            .await
+            .expect("seed search cache");
+    }
+
+    async fn cache_exists(cfg: &WorkerConfig, key: &str) -> bool {
+        let client = redis::Client::open(cfg.redis_url.as_str()).expect("redis client");
+        let mut connection = client
+            .get_multiplexed_async_connection()
+            .await
+            .expect("redis connect");
+        let value: Option<String> = connection.get(key).await.expect("get search cache");
+        value.is_some()
+    }
+
+    fn build_consumer(group_id: &str, topic: &str) -> StreamConsumer {
+        let consumer: StreamConsumer = ClientConfig::new()
+            .set("bootstrap.servers", &kafka_brokers())
+            .set("group.id", group_id)
+            .set("enable.auto.commit", "false")
+            .set("auto.offset.reset", "earliest")
+            .create()
+            .expect("create kafka consumer");
+        consumer.subscribe(&[topic]).expect("subscribe topic");
+        consumer
+    }
+
+    async fn wait_for_dead_letter_message(
+        consumer: &StreamConsumer,
+        expected_event_id: &str,
+    ) -> Value {
+        timeout(Duration::from_secs(10), async {
+            loop {
+                let message = consumer.recv().await.expect("recv kafka message");
+                let Some(payload) = message.payload() else {
+                    continue;
+                };
+                let decoded: Value =
+                    serde_json::from_slice(payload).expect("decode dead letter message");
+                if decoded["event_id"].as_str() == Some(expected_event_id) {
+                    return decoded;
+                }
+            }
+        })
+        .await
+        .expect("wait for dead letter message")
+    }
+
+    async fn fetch_indexed_document(
+        cfg: &WorkerConfig,
+        entity_scope: &str,
+        entity_id: &str,
+    ) -> Value {
+        let alias = if entity_scope == "seller" {
+            "seller"
+        } else {
+            "product"
+        };
+        let write_alias = {
+            let (client, connection) = connect(&cfg.database_url, NoTls)
+                .await
+                .expect("connect database");
+            tokio::spawn(async move {
+                let _ = connection.await;
+            });
+            lookup_write_alias(&client, alias).await
+        };
+        reqwest::Client::new()
+            .get(format!(
+                "{}/{}/_doc/{}",
+                cfg.opensearch_endpoint.trim_end_matches('/'),
+                write_alias,
+                entity_id
+            ))
+            .send()
+            .await
+            .expect("fetch indexed document")
+            .json::<Value>()
+            .await
+            .expect("decode indexed document")
+    }
+
+    async fn delete_opensearch_document(
+        cfg: &WorkerConfig,
+        entity_scope: &str,
+        entity_id: &str,
+    ) -> Result<(), String> {
+        let (client, connection) = connect(&cfg.database_url, NoTls)
+            .await
+            .map_err(|err| format!("connect database for opensearch cleanup failed: {err}"))?;
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+        let write_alias = lookup_write_alias(&client, entity_scope).await;
+        let response = reqwest::Client::new()
+            .delete(format!(
+                "{}/{}/_doc/{}?refresh=wait_for",
+                cfg.opensearch_endpoint.trim_end_matches('/'),
+                write_alias,
+                entity_id
+            ))
+            .send()
+            .await
+            .map_err(|err| format!("delete opensearch document failed: {err}"))?;
+        let status = response.status();
+        if status.is_success() || status.as_u16() == 404 {
+            Ok(())
+        } else {
+            Err(format!(
+                "delete opensearch document failed with status {status}"
+            ))
+        }
+    }
+
+    async fn dead_letter_row(client: &Client, event_id: &str) -> (String, String, String) {
+        let row = client
+            .query_one(
+                "SELECT dead_letter_event_id::text, target_topic, reprocess_status
+                 FROM ops.dead_letter_event
+                 WHERE outbox_event_id = $1::text::uuid
+                   AND failure_stage = $2",
+                &[&event_id, &FAILURE_STAGE_CONSUMER_HANDLER],
+            )
+            .await
+            .expect("load dead letter row");
+        (row.get(0), row.get(1), row.get(2))
+    }
+
+    #[tokio::test]
+    async fn search_indexer_db_smoke() {
+        if !live_db_enabled() {
+            return;
+        }
+
+        let cfg = worker_config();
+        let producer = build_producer(&cfg).expect("create kafka producer");
+        let db = AppDb::connect(
+            DbPoolConfig {
+                dsn: cfg.database_url.clone(),
+                max_connections: 4,
+            }
+            .into(),
+        )
+        .await
+        .expect("connect app db");
+        let (client, connection) = connect(&cfg.database_url, NoTls)
+            .await
+            .expect("connect database");
+        tokio::spawn(async move {
+            let _ = connection.await;
+        });
+
+        let suffix = format!(
+            "{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_millis()
+        );
+        let seed = seed_graph(&client, &suffix).await.expect("seed graph");
+        seed_cache(&cfg, &seed.cache_key).await;
+        assert!(cache_exists(&cfg, &seed.cache_key).await);
+
+        let success_event_id: String = client
+            .query_one("SELECT gen_random_uuid()::text", &[])
+            .await
+            .expect("generate success event id")
+            .get(0);
+        let success_request_id = format!("req-search-indexer-success-{suffix}");
+        let success_trace_id = format!("trace-search-indexer-success-{suffix}");
+        seed_outbox_event(
+            &client,
+            &success_event_id,
+            &seed,
+            &success_request_id,
+            &success_trace_id,
+        )
+        .await
+        .expect("seed success outbox event");
+        let success_envelope = json!({
+            "event_id": success_event_id,
+            "event_type": "search.product.changed",
+            "aggregate_type": "product",
+            "aggregate_id": seed.product_id,
+            "request_id": success_request_id,
+            "trace_id": success_trace_id,
+            "payload": {
+                "seller_org_id": seed.org_id
+            }
+        });
+        let success_result = process_kafka_payload(
+            &db,
+            &cfg,
+            &producer,
+            success_envelope.to_string().as_bytes(),
+        )
+        .await
+        .expect("process search sync envelope");
+        assert_eq!(success_result, "processed");
+
+        let indexed_document = fetch_indexed_document(&cfg, "product", &seed.product_id).await;
+        assert_eq!(
+            indexed_document["_source"]["id"].as_str(),
+            Some(seed.product_id.as_str())
+        );
+        assert!(!cache_exists(&cfg, &seed.cache_key).await);
+
+        let success_idempotency = client
+            .query_one(
+                "SELECT result_code
+                 FROM ops.consumer_idempotency_record
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &success_event_id],
+            )
+            .await
+            .expect("load success idempotency row");
+        assert_eq!(success_idempotency.get::<_, String>(0), "processed");
+
+        let duplicate_result = process_kafka_payload(
+            &db,
+            &cfg,
+            &producer,
+            success_envelope.to_string().as_bytes(),
+        )
+        .await
+        .expect("process duplicated search sync envelope");
+        assert_eq!(duplicate_result, "duplicate");
+
+        let failure_event_id: String = client
+            .query_one("SELECT gen_random_uuid()::text", &[])
+            .await
+            .expect("generate failure event id")
+            .get(0);
+        let failure_request_id = format!("req-search-indexer-failure-{suffix}");
+        let failure_trace_id = format!("trace-search-indexer-failure-{suffix}");
+        seed_outbox_event(
+            &client,
+            &failure_event_id,
+            &seed,
+            &failure_request_id,
+            &failure_trace_id,
+        )
+        .await
+        .expect("seed failure outbox event");
+        let failure_consumer = build_consumer(
+            &format!("cg-search-indexer-dlq-{suffix}"),
+            &cfg.dead_letter_topic,
+        );
+        let failure_cfg = WorkerConfig {
+            opensearch_endpoint: "http://127.0.0.1:1".to_string(),
+            ..cfg.clone()
+        };
+        seed_cache(&failure_cfg, &seed.cache_key).await;
+        let failure_envelope = json!({
+            "event_id": failure_event_id,
+            "event_type": "search.product.changed",
+            "aggregate_type": "product",
+            "aggregate_id": seed.product_id,
+            "request_id": failure_request_id,
+            "trace_id": failure_trace_id,
+            "payload": {
+                "seller_org_id": seed.org_id
+            }
+        });
+        let failure_result = process_kafka_payload(
+            &db,
+            &failure_cfg,
+            &producer,
+            failure_envelope.to_string().as_bytes(),
+        )
+        .await
+        .expect("process failing search sync envelope");
+        assert_eq!(failure_result, "dead_lettered");
+
+        let dead_letter_message =
+            wait_for_dead_letter_message(&failure_consumer, &failure_event_id).await;
+        let (dead_letter_event_id, target_topic, reprocess_status) =
+            dead_letter_row(&client, &failure_event_id).await;
+        assert_eq!(target_topic, cfg.topic_search_sync);
+        assert_eq!(reprocess_status, "not_reprocessed");
+        assert_eq!(
+            dead_letter_message["dead_letter_event_id"].as_str(),
+            Some(dead_letter_event_id.as_str())
+        );
+        assert_eq!(
+            dead_letter_message["source_topic"].as_str(),
+            Some(cfg.topic_search_sync.as_str())
+        );
+        assert_eq!(
+            dead_letter_message["target_topic"].as_str(),
+            Some(cfg.dead_letter_topic.as_str())
+        );
+        assert_eq!(
+            dead_letter_message["consumer_name"].as_str(),
+            Some(SERVICE_NAME)
+        );
+
+        let failure_idempotency = client
+            .query_one(
+                "SELECT result_code
+                 FROM ops.consumer_idempotency_record
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &failure_event_id],
+            )
+            .await
+            .expect("load failure idempotency row");
+        assert_eq!(failure_idempotency.get::<_, String>(0), "dead_lettered");
+
+        let failed_task_count: i64 = client
+            .query_one(
+                "SELECT count(*)::bigint
+                 FROM search.index_sync_task
+                 WHERE source_event_id = $1::text::uuid
+                   AND sync_status = 'failed'",
+                &[&failure_event_id],
+            )
+            .await
+            .expect("count failed search sync tasks")
+            .get(0);
+        assert!(failed_task_count >= 1);
+
+        cleanup_event_artifacts(&client, &success_event_id).await;
+        cleanup_event_artifacts(&client, &failure_event_id).await;
+        cleanup_graph(&client, &cfg, &seed).await;
+    }
 }

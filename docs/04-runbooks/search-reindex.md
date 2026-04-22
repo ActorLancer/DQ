@@ -274,4 +274,35 @@ ORDER BY created_at;
 - 正式 alias：`product_search_read/write`、`seller_search_read/write`
 - 搜索域错误码：`SEARCH_QUERY_INVALID`、`SEARCH_BACKEND_UNAVAILABLE`、`SEARCH_RESULT_STALE`，以及写权限专属 `SEARCH_REINDEX_FORBIDDEN / SEARCH_ALIAS_SWITCH_FORBIDDEN / SEARCH_CACHE_INVALIDATE_FORBIDDEN`
 - 宿主机直连 Kafka 时使用 `127.0.0.1:9094`；容器内监听地址 `kafka:9092` 只供 compose 网络内部使用
-- `search-indexer` 的 consumer 幂等 / 双层 DLQ / reprocess 仍由后续 `SEARCHREC` / `AUD-026` 收口，不允许把当前 `AUD-022` 控制面完成误报为 consumer 全链路完成
+- `search-indexer` 已按 `AUD-026` 收口为正式 consumer：统一使用 envelope `event_id` 写 `ops.consumer_idempotency_record`，处理失败时先写 `ops.dead_letter_event + dtp.dead-letter` 双层隔离，再决定 offset 提交；`AUD-010` 的 `POST /api/v1/ops/dead-letters/{id}/reprocess` 可对该失败记录执行 `dry_run + step-up` 预演。
+
+## Worker 可靠性回归
+
+运行 `search-indexer` worker 侧 smoke：
+
+```bash
+SEARCHREC_WORKER_DB_SMOKE=1 \
+DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+KAFKA_BROKERS=127.0.0.1:9094 \
+KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
+cargo test -p search-indexer search_indexer_db_smoke -- --nocapture
+```
+
+该 smoke 当前必须同时证明：
+
+- 成功路径会写入 OpenSearch `write alias`，并删除 `datab:v1:search:catalog:*` Redis 缓存
+- `ops.consumer_idempotency_record(consumer_name='search-indexer', result_code='processed')` 真实存在
+- 重复投递同一 `event_id` 返回 `duplicate`，不会重复写副作用
+- 失败路径会先写 `ops.dead_letter_event(failure_stage='consumer_handler', target_topic='dtp.search.sync')`
+- Kafka `dtp.dead-letter` 会收到与同一 `event_id` 对齐的隔离消息
+- `search.index_sync_task(sync_status='failed')` 与 `ops.consumer_idempotency_record(result_code='dead_lettered')` 真实可回查
+
+对 SEARCHREC dead letter 做正式 `dry_run` 重处理预演：
+
+```bash
+AUD_DB_SMOKE=1 \
+DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture
+```
+
+该 smoke 会真实回查 `search-indexer -> dtp.search.sync` 的 reprocess 计划、`step-up` 绑定、`audit.audit_event`、`audit.access_audit` 与 `ops.system_log`。

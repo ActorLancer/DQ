@@ -2,20 +2,33 @@ use db::{AppDb, DbPoolConfig, GenericClient};
 use rdkafka::Message;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
+use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::util::Timeout;
 use redis::AsyncCommands;
-use serde_json::Value;
+use serde_json::{Value, json};
+use std::time::Duration;
 use tracing::{error, info, warn};
+
+const SERVICE_NAME: &str = "recommendation-aggregator";
+const FAILURE_STAGE_CONSUMER_HANDLER: &str = "consumer_handler";
 
 #[derive(Debug, Clone)]
 struct WorkerConfig {
     database_url: String,
     kafka_brokers: String,
     topic_recommend_behavior: String,
+    dead_letter_topic: String,
     consumer_group: String,
     redis_url: String,
     redis_namespace: String,
     product_write_alias: String,
     seller_write_alias: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessingGate {
+    Proceed,
+    Duplicate,
 }
 
 #[tokio::main]
@@ -43,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set("auto.offset.reset", "earliest")
         .create()?;
     consumer.subscribe(&[&cfg.topic_recommend_behavior])?;
+    let producer = build_producer(&cfg)?;
 
     info!(
         topic = %cfg.topic_recommend_behavior,
@@ -52,14 +66,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         match consumer.recv().await {
-            Ok(message) => {
-                if let Err(err) = handle_kafka_message(&db, &cfg, &message).await {
-                    error!(error = %err, "recommendation-aggregator event handling failed");
+            Ok(message) => match process_kafka_message(&db, &cfg, &producer, &message).await {
+                Ok(result_code) => {
+                    if let Err(err) = consumer.commit_message(&message, CommitMode::Async) {
+                        warn!(error = %err, result_code, "recommendation-aggregator commit offset failed");
+                    }
                 }
-                if let Err(err) = consumer.commit_message(&message, CommitMode::Async) {
-                    warn!(error = %err, "recommendation-aggregator commit offset failed");
-                }
-            }
+                Err(err) => error!(
+                    error = %err,
+                    "recommendation-aggregator event handling failed before safe isolation"
+                ),
+            },
             Err(err) => warn!(error = %err, "recommendation-aggregator kafka receive failed"),
         }
     }
@@ -76,6 +93,8 @@ impl WorkerConfig {
                 .unwrap_or_else(|_| "127.0.0.1:9092".to_string()),
             topic_recommend_behavior: std::env::var("TOPIC_RECOMMENDATION_BEHAVIOR")
                 .unwrap_or_else(|_| "dtp.recommend.behavior".to_string()),
+            dead_letter_topic: std::env::var("TOPIC_DEAD_LETTER_EVENTS")
+                .unwrap_or_else(|_| "dtp.dead-letter".to_string()),
             consumer_group: std::env::var("RECOMMENDATION_AGGREGATOR_CONSUMER_GROUP")
                 .unwrap_or_else(|_| "cg-recommendation-aggregator".to_string()),
             redis_url: std::env::var("REDIS_URL")
@@ -90,42 +109,123 @@ impl WorkerConfig {
     }
 }
 
-async fn handle_kafka_message(
-    db: &AppDb,
-    cfg: &WorkerConfig,
-    message: &rdkafka::message::BorrowedMessage<'_>,
-) -> Result<(), String> {
-    let Some(payload) = message.payload() else {
-        return Ok(());
-    };
-    handle_kafka_payload(db, cfg, payload).await
+fn build_producer(cfg: &WorkerConfig) -> Result<FutureProducer, rdkafka::error::KafkaError> {
+    ClientConfig::new()
+        .set("bootstrap.servers", &cfg.kafka_brokers)
+        .create()
 }
 
-async fn handle_kafka_payload(
+async fn process_kafka_message(
     db: &AppDb,
     cfg: &WorkerConfig,
+    producer: &FutureProducer,
+    message: &rdkafka::message::BorrowedMessage<'_>,
+) -> Result<&'static str, String> {
+    let Some(payload) = message.payload() else {
+        return Ok("ignored");
+    };
+    process_kafka_payload(db, cfg, producer, payload).await
+}
+
+async fn process_kafka_payload(
+    db: &AppDb,
+    cfg: &WorkerConfig,
+    producer: &FutureProducer,
     payload: &[u8],
-) -> Result<(), String> {
+) -> Result<&'static str, String> {
     let envelope: Value = serde_json::from_slice(payload)
         .map_err(|err| format!("decode recommendation kafka payload failed: {err}"))?;
-    handle_behavior_envelope(db, cfg, &envelope).await
+    if envelope["event_type"].as_str() != Some("recommend.behavior_recorded") {
+        return Ok("ignored");
+    }
+    process_behavior_envelope(db, cfg, producer, &envelope).await
 }
 
-async fn handle_behavior_envelope(
+async fn process_behavior_envelope(
     db: &AppDb,
     cfg: &WorkerConfig,
+    producer: &FutureProducer,
     envelope: &Value,
-) -> Result<(), String> {
-    if envelope["event_type"].as_str() != Some("recommend.behavior_recorded") {
-        return Ok(());
-    }
-
+) -> Result<&'static str, String> {
     let Some(event_id) = envelope["event_id"].as_str() else {
-        return Ok(());
+        return Err("recommendation-aggregator envelope missing event_id".to_string());
     };
     let aggregate_type = envelope["aggregate_type"].as_str();
     let aggregate_id = envelope["aggregate_id"].as_str();
     let trace_id = envelope["trace_id"].as_str();
+
+    let client = db
+        .client()
+        .map_err(|err| format!("acquire recommendation aggregator db client failed: {err}"))?;
+    match begin_processing_gate(
+        &client,
+        event_id,
+        aggregate_type,
+        aggregate_id,
+        trace_id,
+        &cfg.topic_recommend_behavior,
+    )
+    .await?
+    {
+        ProcessingGate::Duplicate => return Ok("duplicate"),
+        ProcessingGate::Proceed => {}
+    }
+
+    match apply_behavior_envelope(db, cfg, envelope).await {
+        Ok(()) => {
+            update_processing_result(
+                &client,
+                event_id,
+                "processed",
+                None,
+                json!({
+                    "source_topic": cfg.topic_recommend_behavior,
+                    "dead_letter_topic": cfg.dead_letter_topic,
+                }),
+            )
+            .await?;
+            Ok("processed")
+        }
+        Err(err) => {
+            let dead_letter_event_id =
+                ensure_dead_letter_event(&client, envelope, &err, &cfg.topic_recommend_behavior)
+                    .await?;
+            publish_dead_letter_message(
+                producer,
+                &cfg.topic_recommend_behavior,
+                &cfg.dead_letter_topic,
+                &cfg.consumer_group,
+                &dead_letter_event_id,
+                envelope,
+                &err,
+            )
+            .await?;
+            update_processing_result(
+                &client,
+                event_id,
+                "dead_lettered",
+                Some(&err),
+                json!({
+                    "source_topic": cfg.topic_recommend_behavior,
+                    "dead_letter_topic": cfg.dead_letter_topic,
+                    "dead_letter_event_id": dead_letter_event_id,
+                    "consumer_group": cfg.consumer_group,
+                }),
+            )
+            .await?;
+            Ok("dead_lettered")
+        }
+    }
+}
+
+async fn apply_behavior_envelope(
+    db: &AppDb,
+    cfg: &WorkerConfig,
+    envelope: &Value,
+) -> Result<(), String> {
+    let event_id = envelope["event_id"]
+        .as_str()
+        .ok_or_else(|| "recommendation-aggregator envelope missing event_id".to_string())?;
     let business = &envelope["payload"];
     let behavior_type = business["event_type"].as_str().unwrap_or_default();
     let entity_scope = business["entity_scope"].as_str();
@@ -138,22 +238,6 @@ async fn handle_behavior_envelope(
         .transaction()
         .await
         .map_err(|err| format!("open recommendation aggregator transaction failed: {err}"))?;
-    let processed = register_consumer_idempotency(
-        &tx,
-        "recommendation-aggregator",
-        event_id,
-        aggregate_type,
-        aggregate_id,
-        trace_id,
-        behavior_type,
-    )
-    .await?;
-    if !processed {
-        tx.rollback()
-            .await
-            .map_err(|err| format!("rollback duplicated recommendation event failed: {err}"))?;
-        return Ok(());
-    }
 
     if let (Some(entity_scope), Some(entity_id)) = (entity_scope, entity_id) {
         refresh_search_signal_aggregate(&tx, entity_scope, entity_id).await?;
@@ -181,17 +265,59 @@ async fn handle_behavior_envelope(
     Ok(())
 }
 
-async fn register_consumer_idempotency(
+async fn begin_processing_gate(
     client: &(impl GenericClient + Sync),
-    consumer_name: &str,
     event_id: &str,
     aggregate_type: Option<&str>,
     aggregate_id: Option<&str>,
     trace_id: Option<&str>,
-    behavior_type: &str,
-) -> Result<bool, String> {
+    source_topic: &str,
+) -> Result<ProcessingGate, String> {
     let row = client
         .query_opt(
+            "SELECT result_code
+             FROM ops.consumer_idempotency_record
+             WHERE consumer_name = $1
+               AND event_id = $2::text::uuid",
+            &[&SERVICE_NAME, &event_id],
+        )
+        .await
+        .map_err(|err| format!("load recommendation idempotency gate failed: {err}"))?;
+
+    if let Some(row) = row {
+        let result_code: String = row.get(0);
+        if matches!(result_code.as_str(), "processed" | "dead_lettered") {
+            return Ok(ProcessingGate::Duplicate);
+        }
+
+        let metadata = json!({
+            "source_topic": source_topic,
+            "trace_id": trace_id,
+            "updated_at": now_unix_ms_string(),
+        })
+        .to_string();
+        client
+            .execute(
+                "UPDATE ops.consumer_idempotency_record
+                 SET result_code = 'processing',
+                     processed_at = now(),
+                     metadata = coalesce(metadata, '{}'::jsonb) || $3::jsonb
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &event_id, &metadata],
+            )
+            .await
+            .map_err(|err| format!("reset recommendation idempotency gate failed: {err}"))?;
+        return Ok(ProcessingGate::Proceed);
+    }
+
+    let metadata = json!({
+        "source_topic": source_topic,
+        "trace_id": trace_id,
+    })
+    .to_string();
+    client
+        .execute(
             "INSERT INTO ops.consumer_idempotency_record (
                consumer_name,
                event_id,
@@ -206,23 +332,228 @@ async fn register_consumer_idempotency(
                $3,
                $4::text::uuid,
                $5,
-               'processed',
-               jsonb_build_object('behavior_type', $6)
-             )
-             ON CONFLICT (consumer_name, event_id) DO NOTHING
-             RETURNING consumer_idempotency_record_id::text",
+               'processing',
+               $6::jsonb
+             )",
             &[
-                &consumer_name,
+                &SERVICE_NAME,
                 &event_id,
                 &aggregate_type,
                 &aggregate_id,
                 &trace_id,
-                &behavior_type,
+                &metadata,
             ],
         )
         .await
-        .map_err(|err| format!("register recommendation consumer idempotency failed: {err}"))?;
-    Ok(row.is_some())
+        .map_err(|err| format!("insert recommendation idempotency gate failed: {err}"))?;
+    Ok(ProcessingGate::Proceed)
+}
+
+async fn update_processing_result(
+    client: &(impl GenericClient + Sync),
+    event_id: &str,
+    result_code: &str,
+    error_message: Option<&str>,
+    extra_metadata: Value,
+) -> Result<(), String> {
+    let metadata = json!({
+        "updated_at": now_unix_ms_string(),
+        "last_error": error_message,
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default();
+    let mut merged = serde_json::Map::new();
+    merged.extend(metadata);
+    if let Some(extra) = extra_metadata.as_object() {
+        for (key, value) in extra {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    let metadata_json = Value::Object(merged).to_string();
+
+    client
+        .execute(
+            "UPDATE ops.consumer_idempotency_record
+             SET result_code = $3,
+                 processed_at = now(),
+                 metadata = coalesce(metadata, '{}'::jsonb) || $4::jsonb
+             WHERE consumer_name = $1
+               AND event_id = $2::text::uuid",
+            &[&SERVICE_NAME, &event_id, &result_code, &metadata_json],
+        )
+        .await
+        .map_err(|err| format!("update recommendation idempotency result failed: {err}"))?;
+    Ok(())
+}
+
+async fn ensure_dead_letter_event(
+    client: &(impl GenericClient + Sync),
+    envelope: &Value,
+    error_message: &str,
+    source_topic: &str,
+) -> Result<String, String> {
+    let event_id = envelope["event_id"]
+        .as_str()
+        .ok_or_else(|| "recommendation dead letter requires event_id".to_string())?;
+    let payload = envelope.to_string();
+    let aggregate_type = envelope["aggregate_type"].as_str();
+    let aggregate_id = envelope["aggregate_id"].as_str();
+    let event_type = envelope["event_type"].as_str();
+    let request_id = envelope["request_id"].as_str();
+    let trace_id = effective_trace_id(envelope);
+
+    let row = client
+        .query_one(
+            "WITH existing AS (
+               SELECT dead_letter_event_id
+                 FROM ops.dead_letter_event
+                WHERE outbox_event_id = $1::text::uuid
+                  AND failure_stage = $10
+                ORDER BY created_at DESC, dead_letter_event_id DESC
+                LIMIT 1
+             ),
+             updated AS (
+               UPDATE ops.dead_letter_event
+                  SET payload = $5::jsonb,
+                      failed_reason = $6,
+                      last_failed_at = now(),
+                      target_topic = $9
+                WHERE dead_letter_event_id IN (SELECT dead_letter_event_id FROM existing)
+                RETURNING dead_letter_event_id::text
+             ),
+             inserted AS (
+               INSERT INTO ops.dead_letter_event (
+                  outbox_event_id,
+                  aggregate_type,
+                  aggregate_id,
+                  event_type,
+                  payload,
+                  failed_reason,
+                  request_id,
+                  trace_id,
+                  authority_scope,
+                  source_of_truth,
+                  target_bus,
+                  target_topic,
+                  failure_stage,
+                  last_failed_at
+               )
+               SELECT
+                  $1::text::uuid,
+                  $2,
+                  $3::text::uuid,
+                  $4,
+                  $5::jsonb,
+                  $6,
+                  $7,
+                  $8,
+                  'business',
+                  'database',
+                  'kafka',
+                  $9,
+                  $10,
+                  now()
+               WHERE NOT EXISTS (SELECT 1 FROM updated)
+               RETURNING dead_letter_event_id::text
+             )
+             SELECT dead_letter_event_id FROM updated
+             UNION ALL
+             SELECT dead_letter_event_id FROM inserted
+             LIMIT 1",
+            &[
+                &event_id,
+                &aggregate_type,
+                &aggregate_id,
+                &event_type,
+                &payload,
+                &error_message,
+                &request_id,
+                &trace_id,
+                &source_topic,
+                &FAILURE_STAGE_CONSUMER_HANDLER,
+            ],
+        )
+        .await
+        .map_err(|err| format!("insert recommendation dead letter failed: {err}"))?;
+    Ok(row.get(0))
+}
+
+async fn publish_dead_letter_message(
+    producer: &FutureProducer,
+    source_topic: &str,
+    dead_letter_topic: &str,
+    consumer_group: &str,
+    dead_letter_event_id: &str,
+    envelope: &Value,
+    error_message: &str,
+) -> Result<(), String> {
+    let payload = build_dead_letter_message(
+        dead_letter_event_id,
+        source_topic,
+        dead_letter_topic,
+        consumer_group,
+        envelope,
+        error_message,
+    );
+    let raw = serde_json::to_string(&payload)
+        .map_err(|err| format!("encode recommendation dead letter message failed: {err}"))?;
+    producer
+        .send(
+            FutureRecord::to(dead_letter_topic)
+                .payload(&raw)
+                .key(dead_letter_event_id),
+            Timeout::After(Duration::from_secs(3)),
+        )
+        .await
+        .map_err(|(err, _)| format!("publish recommendation dead letter failed: {err}"))?;
+    Ok(())
+}
+
+fn build_dead_letter_message(
+    dead_letter_event_id: &str,
+    source_topic: &str,
+    dead_letter_topic: &str,
+    consumer_group: &str,
+    envelope: &Value,
+    error_message: &str,
+) -> Value {
+    json!({
+        "dead_letter_event_id": dead_letter_event_id,
+        "source_topic": source_topic,
+        "target_topic": dead_letter_topic,
+        "consumer_name": SERVICE_NAME,
+        "consumer_group": consumer_group,
+        "event_id": envelope["event_id"],
+        "event_type": envelope["event_type"],
+        "aggregate_type": envelope["aggregate_type"],
+        "aggregate_id": envelope["aggregate_id"],
+        "request_id": envelope["request_id"],
+        "trace_id": effective_trace_id(envelope),
+        "failure_stage": FAILURE_STAGE_CONSUMER_HANDLER,
+        "failure_reason": error_message,
+        "reprocess_status": "not_reprocessed",
+        "payload": envelope,
+    })
+}
+
+fn effective_trace_id(envelope: &Value) -> String {
+    envelope["trace_id"]
+        .as_str()
+        .or_else(|| envelope["request_id"].as_str())
+        .or_else(|| envelope["event_id"].as_str())
+        .unwrap_or("trace-recommendation-aggregator-unknown")
+        .to_string()
+}
+
+fn now_unix_ms_string() -> String {
+    format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    )
 }
 
 async fn refresh_search_signal_aggregate(
@@ -632,6 +963,7 @@ mod tests {
 
     fn live_db_enabled() -> bool {
         std::env::var("RECOMMEND_DB_SMOKE").ok().as_deref() == Some("1")
+            || std::env::var("SEARCHREC_WORKER_DB_SMOKE").ok().as_deref() == Some("1")
     }
 
     fn database_url() -> String {
@@ -650,6 +982,7 @@ mod tests {
             database_url: database_url(),
             kafka_brokers: "127.0.0.1:9094".to_string(),
             topic_recommend_behavior: "dtp.recommend.behavior".to_string(),
+            dead_letter_topic: "dtp.dead-letter".to_string(),
             consumer_group: "cg-recommendation-aggregator-test".to_string(),
             redis_url: redis_url(),
             redis_namespace: "datab:v1".to_string(),
@@ -930,16 +1263,8 @@ mod tests {
     async fn cleanup_graph(client: &Client, seed: &SeedGraph) {
         let _ = client
             .execute(
-                "DELETE FROM ops.consumer_idempotency_record
-                 WHERE consumer_name = 'recommendation-aggregator'
-                   AND event_id = $1::text::uuid",
-                &[&seed.outbox_event_id],
-            )
-            .await;
-        let _ = client
-            .execute(
                 "DELETE FROM search.index_sync_task
-                 WHERE entity_id = ANY($1::text[]::uuid[])",
+                WHERE entity_id = ANY($1::text[]::uuid[])",
                 &[&seed.product_ids],
             )
             .await;
@@ -1063,12 +1388,79 @@ mod tests {
         value.is_some()
     }
 
+    fn build_consumer(group_id: &str, topic: &str) -> StreamConsumer {
+        let consumer: StreamConsumer = ClientConfig::new()
+            .set("bootstrap.servers", "127.0.0.1:9094")
+            .set("group.id", group_id)
+            .set("enable.auto.commit", "false")
+            .set("auto.offset.reset", "earliest")
+            .create()
+            .expect("create kafka consumer");
+        consumer.subscribe(&[topic]).expect("subscribe topic");
+        consumer
+    }
+
+    async fn wait_for_dead_letter_message(
+        consumer: &StreamConsumer,
+        expected_event_id: &str,
+    ) -> Value {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let message = consumer.recv().await.expect("recv kafka message");
+                let Some(payload) = message.payload() else {
+                    continue;
+                };
+                let decoded: Value =
+                    serde_json::from_slice(payload).expect("decode dead letter message");
+                if decoded["event_id"].as_str() == Some(expected_event_id) {
+                    return decoded;
+                }
+            }
+        })
+        .await
+        .expect("wait for dead letter message")
+    }
+
+    async fn dead_letter_row(client: &Client, event_id: &str) -> (String, String, String) {
+        let row = client
+            .query_one(
+                "SELECT dead_letter_event_id::text, target_topic, reprocess_status
+                 FROM ops.dead_letter_event
+                 WHERE outbox_event_id = $1::text::uuid
+                   AND failure_stage = $2",
+                &[&event_id, &FAILURE_STAGE_CONSUMER_HANDLER],
+            )
+            .await
+            .expect("load dead letter row");
+        (row.get(0), row.get(1), row.get(2))
+    }
+
+    async fn cleanup_event_artifacts(client: &Client, event_id: &str) {
+        let _ = client
+            .execute(
+                "DELETE FROM ops.consumer_idempotency_record
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &event_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM ops.dead_letter_event
+                 WHERE outbox_event_id = $1::text::uuid
+                   AND failure_stage = $2",
+                &[&event_id, &FAILURE_STAGE_CONSUMER_HANDLER],
+            )
+            .await;
+    }
+
     #[tokio::test]
     async fn recommendation_aggregator_db_smoke() {
         if !live_db_enabled() {
             return;
         }
         let cfg = worker_config();
+        let producer = build_producer(&cfg).expect("create kafka producer");
         let db = AppDb::connect(
             DbPoolConfig {
                 dsn: cfg.database_url.clone(),
@@ -1117,9 +1509,10 @@ mod tests {
             }
         });
 
-        handle_behavior_envelope(&db, &cfg, &envelope)
+        let processed = process_behavior_envelope(&db, &cfg, &producer, &envelope)
             .await
             .expect("handle recommendation envelope");
+        assert_eq!(processed, "processed");
 
         let click_status: String = client
             .query_one(
@@ -1200,9 +1593,9 @@ mod tests {
             .query_one(
                 "SELECT count(*)::bigint
                  FROM ops.consumer_idempotency_record
-                 WHERE consumer_name = 'recommendation-aggregator'
-                   AND event_id = $1::text::uuid",
-                &[&seed.outbox_event_id],
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &seed.outbox_event_id],
             )
             .await
             .expect("load consumer idempotency count")
@@ -1210,9 +1603,10 @@ mod tests {
         assert_eq!(idempotency_count, 1);
         assert!(!cache_exists(&cfg, &seed.cache_key).await);
 
-        handle_behavior_envelope(&db, &cfg, &envelope)
+        let duplicate = process_behavior_envelope(&db, &cfg, &producer, &envelope)
             .await
             .expect("re-handle duplicated recommendation envelope");
+        assert_eq!(duplicate, "duplicate");
 
         let duplicated_similarity_score: String = client
             .query_one(
@@ -1230,6 +1624,86 @@ mod tests {
             .get(0);
         assert_eq!(duplicated_similarity_score, "1.000000");
 
+        seed_cache(&cfg, &seed.cache_key).await;
+        assert!(cache_exists(&cfg, &seed.cache_key).await);
+        let failure_event_id: String = client
+            .query_one("SELECT gen_random_uuid()::text", &[])
+            .await
+            .expect("generate failure event id")
+            .get(0);
+        let missing_product_id: String = client
+            .query_one("SELECT gen_random_uuid()::text", &[])
+            .await
+            .expect("generate missing product id")
+            .get(0);
+        let failure_consumer = build_consumer(
+            &format!("cg-recommendation-dlq-{suffix}"),
+            &cfg.dead_letter_topic,
+        );
+        let failing_envelope = json!({
+            "event_id": failure_event_id,
+            "event_type": "recommend.behavior_recorded",
+            "aggregate_type": "recommend.behavior_event",
+            "aggregate_id": seed.behavior_event_id,
+            "request_id": format!("worker-req-failure-{suffix}"),
+            "trace_id": format!("worker-trace-failure-{suffix}"),
+            "payload": {
+                "event_type": "recommendation_item_clicked",
+                "placement_code": "home_featured",
+                "subject_scope": "organization",
+                "subject_org_id": seed.org_id,
+                "recommendation_request_id": seed.recommendation_request_id,
+                "recommendation_result_id": seed.recommendation_result_id,
+                "entity_scope": "product",
+                "entity_id": missing_product_id,
+                "attrs": {
+                    "recommendation_result_item_id": seed.recommendation_result_item_ids[0]
+                }
+            }
+        });
+        let dead_lettered = process_behavior_envelope(&db, &cfg, &producer, &failing_envelope)
+            .await
+            .expect("handle failing recommendation envelope");
+        assert_eq!(dead_lettered, "dead_lettered");
+        assert!(cache_exists(&cfg, &seed.cache_key).await);
+
+        let dead_letter_message =
+            wait_for_dead_letter_message(&failure_consumer, &failure_event_id).await;
+        let (dead_letter_event_id, target_topic, reprocess_status) =
+            dead_letter_row(&client, &failure_event_id).await;
+        assert_eq!(target_topic, cfg.topic_recommend_behavior);
+        assert_eq!(reprocess_status, "not_reprocessed");
+        assert_eq!(
+            dead_letter_message["dead_letter_event_id"].as_str(),
+            Some(dead_letter_event_id.as_str())
+        );
+        assert_eq!(
+            dead_letter_message["source_topic"].as_str(),
+            Some(cfg.topic_recommend_behavior.as_str())
+        );
+        assert_eq!(
+            dead_letter_message["target_topic"].as_str(),
+            Some(cfg.dead_letter_topic.as_str())
+        );
+        assert_eq!(
+            dead_letter_message["consumer_name"].as_str(),
+            Some(SERVICE_NAME)
+        );
+
+        let failure_idempotency = client
+            .query_one(
+                "SELECT result_code
+                 FROM ops.consumer_idempotency_record
+                 WHERE consumer_name = $1
+                   AND event_id = $2::text::uuid",
+                &[&SERVICE_NAME, &failure_event_id],
+            )
+            .await
+            .expect("load failure idempotency row");
+        assert_eq!(failure_idempotency.get::<_, String>(0), "dead_lettered");
+
+        cleanup_event_artifacts(&client, &seed.outbox_event_id).await;
+        cleanup_event_artifacts(&client, &failure_event_id).await;
         cleanup_graph(&client, &seed).await;
     }
 }

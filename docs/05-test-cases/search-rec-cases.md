@@ -9,7 +9,11 @@
   - `search.index_sync_task` 真实排队
   - OpenSearch alias 与 `search.index_alias_binding.active_index_name` 真实切换
   - `search.ranking_profile` 真实更新
-- `SEARCHREC` 后续批次仍必须补齐 consumer 侧 `event_id` 幂等、`ops.consumer_idempotency_record`、`ops.dead_letter_event + dtp.dead-letter` 双层隔离、worker 副作用与 `reprocess` 验收项，不允许继续用“手工 seed OpenSearch”“只断言 outbox 行存在”冒充 worker 可靠性验证。
+- `AUD-026` 已真实补齐 SEARCHREC consumer 可靠性闭环：
+  - `search-indexer` 与 `recommendation-aggregator` 都基于统一 envelope `event_id` 写入 `ops.consumer_idempotency_record`
+  - 失败路径都会进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离
+  - worker 侧副作用、重复投递去重和 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 `dry_run` 预演都已有真实 smoke
+  - 验收时不允许继续用“手工 seed OpenSearch”“只断言 outbox 行存在”冒充 worker 可靠性验证
 
 ## Search V1
 
@@ -31,6 +35,9 @@
 - `search-indexer` 必须以统一事件 envelope 的 `event_id` 做 consumer 幂等，并把幂等记录写入 `ops.consumer_idempotency_record`。
 - `search-indexer` 处理失败时，必须先落 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter`，再决定是否提交 offset。
 - `search-indexer` 的测试不得只用手工 seed OpenSearch 证明通过，必须验证 worker 侧真实副作用、失败隔离与 reprocess 路径。
+- 推荐回归命令：
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
 
 ## Recommendation V1
 
@@ -47,3 +54,6 @@
 - `recommendation-aggregator` 必须同样基于 `event_id` 做 consumer 幂等，并写入 `ops.consumer_idempotency_record`。
 - `recommendation-aggregator` 处理失败时，必须进入 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter` 双层隔离，且不得在失败后直接提交 offset。
 - 推荐行为流测试不得只断言 `ops.outbox_event` 有行存在，还必须验证 consumer 侧派生状态、副作用、DLQ 与 `POST /api/v1/ops/dead-letters/{id}/reprocess` 路径。
+- 推荐回归命令：
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
