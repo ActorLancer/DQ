@@ -325,6 +325,34 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::CONFLICT);
     }
+
+    #[tokio::test]
+    async fn rejects_ops_consistency_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/consistency/order/10000000-0000-0000-0000-000000000011")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud011-consistency-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_ops_consistency_with_unsupported_ref_type() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/consistency/unsupported/10000000-0000-0000-0000-000000000011")
+            .header("x-role", "platform_audit_security")
+            .header("x-request-id", "req-aud011-consistency-invalid-ref-type")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -2369,6 +2397,571 @@ async fn audit_dead_letter_reprocess_db_smoke() {
     cleanup_searchrec_dead_letter(&client, &recommendation_dead_letter)
         .await
         .expect("cleanup recommendation dead letter");
+}
+
+#[tokio::test]
+async fn audit_consistency_lookup_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let seed = seed_order_graph(&client, &format!("aud011-{suffix}"))
+        .await
+        .expect("seed order graph");
+    let operator_user_id = seed_user(&client, &seed.buyer_org_id, &format!("aud011-{suffix}"))
+        .await
+        .expect("seed aud011 operator");
+    let app = crate::with_live_test_state(router()).await;
+    let consistency_request_id = format!("req-aud011-consistency-{suffix}");
+    let consistency_trace_id = format!("trace-aud011-consistency-{suffix}");
+    let seed_request_id = format!("req-aud011-seed-{suffix}");
+    let seed_trace_id = format!("trace-aud011-seed-{suffix}");
+
+    client
+        .execute(
+            "UPDATE trade.order_main
+             SET authority_model = 'dual_layer',
+                 business_state_version = 7,
+                 proof_commit_state = 'pending_anchor',
+                 proof_commit_policy = 'async_evidence',
+                 external_fact_status = 'confirmed',
+                 reconcile_status = 'pending_check',
+                 last_reconciled_at = now() - interval '3 minutes'
+             WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await
+        .expect("update consistency fields");
+
+    let outbox_event_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud011 outbox id")
+        .get(0);
+    let external_fact_receipt_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud011 external fact id")
+        .get(0);
+    let chain_projection_gap_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud011 projection gap id")
+        .get(0);
+    let chain_anchor_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud011 chain anchor id")
+        .get(0);
+
+    client
+        .execute(
+            "INSERT INTO ops.outbox_event (
+               outbox_event_id,
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               status,
+               retry_count,
+               max_retries,
+               available_at,
+               published_at,
+               created_at,
+               event_schema_version,
+               request_id,
+               trace_id,
+               idempotency_key,
+               authority_scope,
+               source_of_truth,
+               proof_commit_policy,
+               target_bus,
+               target_topic,
+               partition_key,
+               ordering_key,
+               payload_hash
+             ) VALUES (
+               $1::text::uuid,
+               'order',
+               $2::text::uuid,
+               'fabric.proof_submit_requested',
+               jsonb_build_object(
+                 'event_id', $1,
+                 'event_type', 'fabric.proof_submit_requested',
+                 'aggregate_type', 'order',
+                 'aggregate_id', $2,
+                 'request_id', $3,
+                 'trace_id', $4,
+                 'payload', jsonb_build_object('seed', $5)
+               ),
+               'published',
+               0,
+               16,
+               now() - interval '4 minutes',
+               now() - interval '3 minutes',
+               now() - interval '5 minutes',
+               'v1',
+               $3,
+               $4,
+               $6,
+               'business',
+               'database',
+               'async_evidence',
+               'kafka',
+               'dtp.fabric.requests',
+               $2,
+               $2,
+               $7
+             )",
+            &[
+                &outbox_event_id,
+                &seed.order_id,
+                &seed_request_id,
+                &seed_trace_id,
+                &suffix,
+                &format!("aud011-idempotency-{suffix}"),
+                &format!("aud011-payload-hash-{suffix}"),
+            ],
+        )
+        .await
+        .expect("insert aud011 outbox event");
+
+    client
+        .execute(
+            "INSERT INTO ops.outbox_publish_attempt (
+               outbox_event_id,
+               worker_id,
+               target_bus,
+               target_topic,
+               attempt_no,
+               result_code,
+               attempted_at,
+               completed_at,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'outbox-publisher-local',
+               'kafka',
+               'dtp.fabric.requests',
+               1,
+               'published',
+               now() - interval '4 minutes',
+               now() - interval '4 minutes' + interval '1 second',
+               jsonb_build_object('seed', $2, 'worker', 'outbox-publisher-local')
+             )",
+            &[&outbox_event_id, &suffix],
+        )
+        .await
+        .expect("insert aud011 outbox publish attempt");
+
+    client
+        .execute(
+            "INSERT INTO ops.dead_letter_event (
+               dead_letter_event_id,
+               outbox_event_id,
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               failed_reason,
+               created_at,
+               request_id,
+               trace_id,
+               authority_scope,
+               source_of_truth,
+               target_bus,
+               target_topic,
+               failure_stage,
+               first_failed_at,
+               last_failed_at,
+               reprocess_status
+             ) VALUES (
+               gen_random_uuid(),
+               $1::text::uuid,
+               'order',
+               $2::text::uuid,
+               'fabric.proof_submit_requested',
+               jsonb_build_object('event_id', $1, 'seed', $3, 'target_topic', 'dtp.fabric.requests'),
+               'fabric callback projection gap isolated after repeated retry',
+               now() - interval '2 minutes',
+               $4,
+               $5,
+               'business',
+               'database',
+               'kafka',
+               'dtp.fabric.requests',
+               'consumer_handler',
+               now() - interval '125 seconds',
+               now() - interval '120 seconds',
+               'not_reprocessed'
+             )",
+            &[
+                &outbox_event_id,
+                &seed.order_id,
+                &suffix,
+                &seed_request_id,
+                &seed_trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud011 dead letter");
+
+    client
+        .execute(
+            "INSERT INTO ops.consumer_idempotency_record (
+               consumer_name,
+               event_id,
+               aggregate_type,
+               aggregate_id,
+               trace_id,
+               result_code,
+               metadata
+             ) VALUES (
+               'platform-core.consistency',
+               $1::text::uuid,
+               'order',
+               $2::text::uuid,
+               $3,
+               'dead_lettered',
+               jsonb_build_object('seed', $4, 'dlq_topic', 'dtp.dead-letter')
+             )",
+            &[&outbox_event_id, &seed.order_id, &seed_trace_id, &suffix],
+        )
+        .await
+        .expect("insert aud011 consumer idempotency");
+
+    client
+        .execute(
+            "INSERT INTO ops.external_fact_receipt (
+               external_fact_receipt_id,
+               order_id,
+               ref_domain,
+               ref_type,
+               ref_id,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               occurred_at,
+               received_at,
+               confirmed_at,
+               request_id,
+               trace_id,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               $2::text::uuid,
+               'payment',
+               'order',
+               $2::text::uuid,
+               'payment_callback',
+               'mock_payment_provider',
+               'mockpay',
+               $3,
+               'confirmed',
+               jsonb_build_object('seed', $4, 'provider_status', 'confirmed'),
+               $5,
+               now() - interval '4 minutes',
+               now() - interval '4 minutes' + interval '3 seconds',
+               now() - interval '4 minutes' + interval '10 seconds',
+               $6,
+               $7,
+               jsonb_build_object('seed', $4)
+             )",
+            &[
+                &external_fact_receipt_id,
+                &seed.order_id,
+                &format!("provider-ref-aud011-{suffix}"),
+                &suffix,
+                &format!("aud011-receipt-hash-{suffix}"),
+                &seed_request_id,
+                &seed_trace_id,
+            ],
+        )
+        .await
+        .expect("insert aud011 external fact receipt");
+
+    client
+        .execute(
+            "INSERT INTO chain.chain_anchor (
+               chain_anchor_id,
+               chain_id,
+               anchor_type,
+               ref_type,
+               ref_id,
+               digest,
+               tx_hash,
+               status,
+               anchored_at,
+               created_at,
+               authority_model,
+               reconcile_status,
+               last_reconciled_at
+             ) VALUES (
+               $1::text::uuid,
+               'fabric-local',
+               'order_proof',
+               'order',
+               $2::text::uuid,
+               $3,
+               '0xaud011anchor',
+               'anchored',
+               now() - interval '3 minutes',
+               now() - interval '3 minutes' - interval '10 seconds',
+               'proof_layer',
+               'matched',
+               now() - interval '2 minutes'
+             )",
+            &[
+                &chain_anchor_id,
+                &seed.order_id,
+                &format!("aud011-digest-{suffix}"),
+            ],
+        )
+        .await
+        .expect("insert aud011 chain anchor");
+
+    client
+        .execute(
+            "INSERT INTO ops.chain_projection_gap (
+               chain_projection_gap_id,
+               aggregate_type,
+               aggregate_id,
+               order_id,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               first_detected_at,
+               last_detected_at,
+               request_id,
+               trace_id,
+               outbox_event_id,
+               anchor_id,
+               resolution_summary,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'order',
+               $2::text::uuid,
+               $2::text::uuid,
+               'fabric-local',
+               'fabric.proof_submit_requested',
+               $3,
+               '0xaud011anchor',
+               'missing_callback',
+               'open',
+               now() - interval '100 seconds',
+               now() - interval '90 seconds',
+               $4,
+               $5,
+               $6::text::uuid,
+               $7::text::uuid,
+               jsonb_build_object('recommendation', 'trigger reconcile dry-run'),
+               jsonb_build_object('seed', $8)
+             )",
+            &[
+                &chain_projection_gap_id,
+                &seed.order_id,
+                &format!("expected-tx-aud011-{suffix}"),
+                &seed_request_id,
+                &seed_trace_id,
+                &outbox_event_id,
+                &chain_anchor_id,
+                &suffix,
+            ],
+        )
+        .await
+        .expect("insert aud011 projection gap");
+
+    write_trade_audit_event(
+        &client,
+        "order",
+        &seed.order_id,
+        "platform_audit_security",
+        "trade.order.consistency_seeded",
+        "accepted",
+        Some(&seed_request_id),
+        Some(&seed_trace_id),
+    )
+    .await
+    .expect("write aud011 audit trace");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/ops/consistency/order/{}", seed.order_id))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &consistency_request_id)
+                .header("x-trace-id", &consistency_trace_id)
+                .body(Body::empty())
+                .expect("consistency request"),
+        )
+        .await
+        .expect("call ops consistency");
+    let response_status = response.status();
+    let response_body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read consistency body");
+    assert_eq!(
+        response_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&response_body)
+    );
+    let response_json: Value =
+        serde_json::from_slice(&response_body).expect("decode consistency response");
+    assert_eq!(response_json["data"]["ref_type"].as_str(), Some("order"));
+    assert_eq!(
+        response_json["data"]["ref_id"].as_str(),
+        Some(seed.order_id.as_str())
+    );
+    assert_eq!(
+        response_json["data"]["business_state"]["business_status"].as_str(),
+        Some("buyer_locked")
+    );
+    assert_eq!(
+        response_json["data"]["business_state"]["proof_commit_state"].as_str(),
+        Some("pending_anchor")
+    );
+    assert_eq!(
+        response_json["data"]["business_state"]["external_fact_status"].as_str(),
+        Some("confirmed")
+    );
+    assert_eq!(
+        response_json["data"]["proof_state"]["latest_chain_anchor"]["status"].as_str(),
+        Some("anchored")
+    );
+    assert_eq!(
+        response_json["data"]["proof_state"]["open_projection_gap_count"].as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        response_json["data"]["proof_state"]["latest_projection_gap"]["chain_projection_gap_id"]
+            .as_str(),
+        Some(chain_projection_gap_id.as_str())
+    );
+    assert_eq!(
+        response_json["data"]["external_fact_state"]["total_receipts"].as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        response_json["data"]["external_fact_state"]["latest_receipt"]["external_fact_receipt_id"]
+            .as_str(),
+        Some(external_fact_receipt_id.as_str())
+    );
+    assert_eq!(
+        response_json["data"]["recent_outbox_events"][0]["outbox_event_id"].as_str(),
+        Some(outbox_event_id.as_str())
+    );
+    assert_eq!(
+        response_json["data"]["recent_dead_letters"][0]["outbox_event_id"].as_str(),
+        Some(outbox_event_id.as_str())
+    );
+    assert_eq!(
+        response_json["data"]["recent_audit_traces"][0]["ref_type"].as_str(),
+        Some("order")
+    );
+
+    let access_row = client
+        .query_one(
+            "SELECT access_mode, target_type, target_id::text
+             FROM audit.access_audit
+             WHERE request_id = $1",
+            &[&consistency_request_id],
+        )
+        .await
+        .expect("load aud011 access audit");
+    assert_eq!(access_row.get::<_, String>(0), "masked");
+    assert_eq!(access_row.get::<_, String>(1), "consistency_query");
+    assert_eq!(
+        access_row.get::<_, Option<String>>(2).as_deref(),
+        Some(seed.order_id.as_str())
+    );
+
+    let system_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = $1
+               AND message_text = 'ops lookup executed: GET /api/v1/ops/consistency/{refType}/{refId}'",
+            &[&consistency_request_id],
+        )
+        .await
+        .expect("load aud011 system log count")
+        .get(0);
+    assert_eq!(system_log_count, 1);
+
+    let _ = client
+        .execute(
+            "DELETE FROM ops.chain_projection_gap WHERE chain_projection_gap_id = $1::text::uuid",
+            &[&chain_projection_gap_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.external_fact_receipt WHERE external_fact_receipt_id = $1::text::uuid",
+            &[&external_fact_receipt_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.consumer_idempotency_record WHERE event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.dead_letter_event WHERE outbox_event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.outbox_publish_attempt WHERE outbox_event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.outbox_event WHERE outbox_event_id = $1::text::uuid",
+            &[&outbox_event_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM chain.chain_anchor WHERE chain_anchor_id = $1::text::uuid",
+            &[&chain_anchor_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+            &[&operator_user_id],
+        )
+        .await;
+    cleanup_business_rows(&client, &seed).await;
 }
 
 async fn seed_verified_step_up_challenge(

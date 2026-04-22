@@ -10,3 +10,4 @@
 - `audit-ops-outbox-dead-letters.md`：`AUD-008` canonical outbox / dead letter 查询、SEARCHREC consumer 幂等联查、审计留痕与运行态边界。
 - `outbox-publisher.md`：`AUD-009` canonical outbox publisher 的宿主机/compose 启动、Kafka 发布、双层 DLQ、Billing bridge 手工回放边界与 Prometheus 指标。
 - `audit-dead-letter-reprocess.md`：`AUD-010` SEARCHREC dead letter dry-run 重处理控制面的权限、step-up、DB / 审计回查与运行态边界。
+- `audit-consistency-lookup.md`：`AUD-011` 一致性联查接口的宿主机调用、正式 `refType`、DB / 审计回查与运行态边界。

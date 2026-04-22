@@ -351,3 +351,49 @@ pub struct ChainProjectionGapPageView {
     pub page_size: u32,
     pub items: Vec<ChainProjectionGapView>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsConsistencyBusinessStateView {
+    pub ref_type: String,
+    pub ref_id: String,
+    pub order_id: Option<String>,
+    pub business_status: String,
+    pub authority_model: String,
+    pub business_state_version: i64,
+    pub proof_commit_state: String,
+    pub proof_commit_policy: String,
+    pub external_fact_status: String,
+    pub reconcile_status: String,
+    pub last_reconciled_at: Option<String>,
+    pub snapshot: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsConsistencyProofStateView {
+    pub proof_commit_state: String,
+    pub proof_commit_policy: String,
+    pub latest_chain_anchor: Option<serde_json::Value>,
+    pub projection_gap_status_breakdown: serde_json::Value,
+    pub open_projection_gap_count: i64,
+    pub latest_projection_gap: Option<ChainProjectionGapView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsConsistencyExternalFactStateView {
+    pub summary_status: String,
+    pub total_receipts: i64,
+    pub receipt_status_breakdown: serde_json::Value,
+    pub latest_receipt: Option<ExternalFactReceiptView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsConsistencyView {
+    pub ref_type: String,
+    pub ref_id: String,
+    pub business_state: OpsConsistencyBusinessStateView,
+    pub proof_state: OpsConsistencyProofStateView,
+    pub external_fact_state: OpsConsistencyExternalFactStateView,
+    pub recent_outbox_events: Vec<OutboxEventView>,
+    pub recent_dead_letters: Vec<DeadLetterEventView>,
+    pub recent_audit_traces: Vec<AuditTraceView>,
+}

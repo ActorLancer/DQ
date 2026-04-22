@@ -759,6 +759,39 @@ pub struct ChainProjectionGapPage {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ChainAnchorRecord {
+    pub chain_anchor_id: Option<String>,
+    pub chain_id: String,
+    pub anchor_type: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub digest: String,
+    pub tx_hash: Option<String>,
+    pub status: String,
+    pub anchored_at: Option<String>,
+    pub created_at: Option<String>,
+    pub authority_model: String,
+    pub reconcile_status: String,
+    pub last_reconciled_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConsistencySubjectRecord {
+    pub ref_type: String,
+    pub ref_id: String,
+    pub order_id: Option<String>,
+    pub business_status: String,
+    pub authority_model: String,
+    pub business_state_version: i64,
+    pub proof_commit_state: String,
+    pub proof_commit_policy: String,
+    pub external_fact_status: String,
+    pub reconcile_status: String,
+    pub last_reconciled_at: Option<String>,
+    pub snapshot: Value,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SystemLogInsert {
     pub service_name: String,
     pub log_level: String,
@@ -1941,6 +1974,605 @@ pub async fn load_chain_projection_gap(
     Ok(row.map(|row| parse_chain_projection_gap_row(&row)))
 }
 
+pub async fn load_consistency_subject(
+    client: &(impl GenericClient + Sync),
+    ref_type: &str,
+    ref_id: &str,
+) -> Result<Option<ConsistencySubjectRecord>, Error> {
+    let row = match ref_type {
+        "order" => {
+            client
+                .query_opt(
+                    "SELECT
+                       order_id::text,
+                       order_id::text,
+                       status,
+                       authority_model,
+                       business_state_version,
+                       proof_commit_state,
+                       proof_commit_policy,
+                       external_fact_status,
+                       reconcile_status,
+                       to_char(last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                       jsonb_build_object(
+                         'buyer_org_id', buyer_org_id::text,
+                         'seller_org_id', seller_org_id::text,
+                         'payment_status', payment_status,
+                         'delivery_status', delivery_status,
+                         'acceptance_status', acceptance_status,
+                         'settlement_status', settlement_status,
+                         'dispute_status', dispute_status,
+                         'amount', amount,
+                         'currency_code', currency_code,
+                         'chain_tx_create', chain_tx_create,
+                         'chain_tx_settle', chain_tx_settle
+                       )
+                     FROM trade.order_main
+                     WHERE order_id = $1::text::uuid",
+                    &[&ref_id],
+                )
+                .await?
+        }
+        "digital_contract" => {
+            client
+                .query_opt(
+                    "SELECT
+                       contract_id::text,
+                       order_id::text,
+                       status,
+                       authority_model,
+                       business_state_version,
+                       proof_commit_state,
+                       proof_commit_policy,
+                       external_fact_status,
+                       reconcile_status,
+                       to_char(last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                       jsonb_build_object(
+                         'order_id', order_id::text,
+                         'data_contract_id', data_contract_id::text,
+                         'data_contract_digest', data_contract_digest,
+                         'contract_digest', contract_digest,
+                         'signed_at', to_char(signed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                       )
+                     FROM contract.digital_contract
+                     WHERE contract_id = $1::text::uuid",
+                    &[&ref_id],
+                )
+                .await?
+        }
+        "delivery_record" => {
+            client
+                .query_opt(
+                    "SELECT
+                       delivery_id::text,
+                       order_id::text,
+                       status,
+                       authority_model,
+                       business_state_version,
+                       proof_commit_state,
+                       proof_commit_policy,
+                       external_fact_status,
+                       reconcile_status,
+                       to_char(last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                       jsonb_build_object(
+                         'order_id', order_id::text,
+                         'delivery_type', delivery_type,
+                         'delivery_route', delivery_route,
+                         'executor_type', executor_type,
+                         'delivery_commit_hash', delivery_commit_hash,
+                         'receipt_hash', receipt_hash,
+                         'disclosure_review_status', disclosure_review_status
+                       )
+                     FROM delivery.delivery_record
+                     WHERE delivery_id = $1::text::uuid",
+                    &[&ref_id],
+                )
+                .await?
+        }
+        "settlement_record" => {
+            client
+                .query_opt(
+                    "SELECT
+                       settlement_id::text,
+                       order_id::text,
+                       settlement_status,
+                       authority_model,
+                       business_state_version,
+                       proof_commit_state,
+                       proof_commit_policy,
+                       external_fact_status,
+                       reconcile_status,
+                       to_char(last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                       jsonb_build_object(
+                         'order_id', order_id::text,
+                         'settlement_type', settlement_type,
+                         'settlement_mode', settlement_mode,
+                         'payable_amount', payable_amount,
+                         'net_receivable_amount', net_receivable_amount,
+                         'refund_amount', refund_amount,
+                         'compensation_amount', compensation_amount,
+                         'settled_at', to_char(settled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                       )
+                     FROM billing.settlement_record
+                     WHERE settlement_id = $1::text::uuid",
+                    &[&ref_id],
+                )
+                .await?
+        }
+        "payment_intent" => {
+            client
+                .query_opt(
+                    "SELECT
+                       payment_intent_id::text,
+                       order_id::text,
+                       status,
+                       authority_model,
+                       business_state_version,
+                       proof_commit_state,
+                       proof_commit_policy,
+                       external_fact_status,
+                       reconcile_status,
+                       to_char(last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                       jsonb_build_object(
+                         'order_id', order_id::text,
+                         'provider_key', provider_key,
+                         'provider_intent_no', provider_intent_no,
+                         'channel_reference_no', channel_reference_no,
+                         'amount', amount,
+                         'currency_code', currency_code
+                       )
+                     FROM payment.payment_intent
+                     WHERE payment_intent_id = $1::text::uuid",
+                    &[&ref_id],
+                )
+                .await?
+        }
+        "refund_intent" => {
+            client
+                .query_opt(
+                    "SELECT
+                       refund_intent_id::text,
+                       pi.order_id::text,
+                       ri.status,
+                       ri.authority_model,
+                       ri.business_state_version,
+                       ri.proof_commit_state,
+                       ri.proof_commit_policy,
+                       ri.external_fact_status,
+                       ri.reconcile_status,
+                       to_char(ri.last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                       jsonb_build_object(
+                         'payment_intent_id', ri.payment_intent_id::text,
+                         'provider_key', ri.provider_key,
+                         'provider_refund_no', ri.provider_refund_no,
+                         'reason_code', ri.reason_code,
+                         'amount', ri.amount,
+                         'currency_code', ri.currency_code
+                       )
+                     FROM payment.refund_intent ri
+                     LEFT JOIN payment.payment_intent pi
+                       ON pi.payment_intent_id = ri.payment_intent_id
+                     WHERE ri.refund_intent_id = $1::text::uuid",
+                    &[&ref_id],
+                )
+                .await?
+        }
+        "payout_instruction" => {
+            client
+                .query_opt(
+                    "SELECT
+                       payout_instruction_id::text,
+                       sr.order_id::text,
+                       pi.status,
+                       pi.authority_model,
+                       pi.business_state_version,
+                       pi.proof_commit_state,
+                       pi.proof_commit_policy,
+                       pi.external_fact_status,
+                       pi.reconcile_status,
+                       to_char(pi.last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                       jsonb_build_object(
+                         'settlement_id', pi.settlement_id::text,
+                         'provider_key', pi.provider_key,
+                         'provider_payout_no', pi.provider_payout_no,
+                         'payout_mode', pi.payout_mode,
+                         'amount', pi.amount,
+                         'currency_code', pi.currency_code
+                       )
+                     FROM payment.payout_instruction pi
+                     LEFT JOIN billing.settlement_record sr
+                       ON sr.settlement_id = pi.settlement_id
+                     WHERE pi.payout_instruction_id = $1::text::uuid",
+                    &[&ref_id],
+                )
+                .await?
+        }
+        _ => None,
+    };
+
+    Ok(row.map(|row| ConsistencySubjectRecord {
+        ref_type: ref_type.to_string(),
+        ref_id: row.get(0),
+        order_id: row.get(1),
+        business_status: row.get(2),
+        authority_model: row.get(3),
+        business_state_version: row.get(4),
+        proof_commit_state: row.get(5),
+        proof_commit_policy: row.get(6),
+        external_fact_status: row.get(7),
+        reconcile_status: row.get(8),
+        last_reconciled_at: row.get(9),
+        snapshot: row.get(10),
+    }))
+}
+
+pub async fn search_recent_outbox_events_for_aggregates(
+    client: &(impl GenericClient + Sync),
+    aggregate_types: &[String],
+    aggregate_id: &str,
+    limit: i64,
+) -> Result<Vec<OutboxEventRecord>, Error> {
+    let rows = client
+        .query(
+            "SELECT
+               oe.outbox_event_id::text,
+               oe.aggregate_type,
+               oe.aggregate_id::text,
+               oe.event_type,
+               oe.payload,
+               oe.status,
+               oe.retry_count,
+               oe.max_retries,
+               to_char(oe.available_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(oe.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(oe.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               oe.request_id,
+               oe.trace_id,
+               oe.idempotency_key,
+               oe.authority_scope,
+               oe.source_of_truth,
+               oe.proof_commit_policy,
+               oe.target_bus,
+               oe.target_topic,
+               oe.partition_key,
+               oe.ordering_key,
+               oe.payload_hash,
+               oe.last_error_code,
+               oe.last_error_message,
+               opa.outbox_publish_attempt_id::text,
+               opa.worker_id,
+               opa.target_bus,
+               opa.target_topic,
+               opa.attempt_no,
+               opa.result_code,
+               opa.error_code,
+               opa.error_message,
+               to_char(opa.attempted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(opa.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               opa.metadata
+             FROM ops.outbox_event oe
+             LEFT JOIN LATERAL (
+               SELECT
+                 outbox_publish_attempt_id,
+                 worker_id,
+                 target_bus,
+                 target_topic,
+                 attempt_no,
+                 result_code,
+                 error_code,
+                 error_message,
+                 attempted_at,
+                 completed_at,
+                 metadata
+               FROM ops.outbox_publish_attempt
+               WHERE outbox_event_id = oe.outbox_event_id
+               ORDER BY attempt_no DESC, attempted_at DESC, outbox_publish_attempt_id DESC
+               LIMIT 1
+             ) opa ON true
+             WHERE oe.aggregate_type = ANY($1::text[])
+               AND oe.aggregate_id = $2::text::uuid
+             ORDER BY oe.created_at DESC, oe.outbox_event_id DESC
+             LIMIT $3",
+            &[&aggregate_types, &aggregate_id, &limit],
+        )
+        .await?;
+
+    Ok(rows.iter().map(parse_outbox_event_row).collect())
+}
+
+pub async fn search_recent_dead_letters_for_aggregates(
+    client: &(impl GenericClient + Sync),
+    aggregate_types: &[String],
+    aggregate_id: &str,
+    limit: i64,
+) -> Result<Vec<DeadLetterEventRecord>, Error> {
+    let rows = client
+        .query(
+            "SELECT
+               dead_letter_event_id::text,
+               outbox_event_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               event_type,
+               payload,
+               failed_reason,
+               request_id,
+               trace_id,
+               authority_scope,
+               source_of_truth,
+               target_bus,
+               target_topic,
+               failure_stage,
+               to_char(first_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_failed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               reprocess_status,
+               to_char(reprocessed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.dead_letter_event
+             WHERE aggregate_type = ANY($1::text[])
+               AND aggregate_id = $2::text::uuid
+             ORDER BY created_at DESC, dead_letter_event_id DESC
+             LIMIT $3",
+            &[&aggregate_types, &aggregate_id, &limit],
+        )
+        .await?;
+
+    let outbox_event_ids: Vec<String> = rows
+        .iter()
+        .filter_map(|row| row.get::<_, Option<String>>(1))
+        .collect();
+    let idempotency_by_event =
+        load_consumer_idempotency_for_event_ids(client, &outbox_event_ids).await?;
+
+    Ok(rows
+        .iter()
+        .map(|row| {
+            let outbox_event_id = row.get::<_, Option<String>>(1);
+            let records = outbox_event_id
+                .as_ref()
+                .and_then(|event_id| idempotency_by_event.get(event_id))
+                .cloned()
+                .unwrap_or_default();
+            parse_dead_letter_row(row, records)
+        })
+        .collect())
+}
+
+pub async fn search_recent_external_fact_receipts_for_refs(
+    client: &(impl GenericClient + Sync),
+    ref_types: &[String],
+    ref_id: &str,
+    order_id: Option<&str>,
+    limit: i64,
+) -> Result<ExternalFactReceiptPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.external_fact_receipt efr
+             WHERE (efr.ref_type = ANY($1::text[]) AND efr.ref_id = $2::text::uuid)
+                OR ($3::text IS NOT NULL AND efr.order_id = $3::text::uuid)",
+            &[&ref_types, &ref_id, &order_id],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               external_fact_receipt_id::text,
+               order_id::text,
+               ref_domain,
+               ref_type,
+               ref_id::text,
+               fact_type,
+               provider_type,
+               provider_key,
+               provider_reference,
+               receipt_status,
+               receipt_payload,
+               receipt_hash,
+               to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(confirmed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.external_fact_receipt efr
+             WHERE (efr.ref_type = ANY($1::text[]) AND efr.ref_id = $2::text::uuid)
+                OR ($3::text IS NOT NULL AND efr.order_id = $3::text::uuid)
+             ORDER BY efr.received_at DESC, efr.external_fact_receipt_id DESC
+             LIMIT $4",
+            &[&ref_types, &ref_id, &order_id, &limit],
+        )
+        .await?;
+
+    Ok(ExternalFactReceiptPage {
+        total,
+        items: rows.iter().map(parse_external_fact_receipt_row).collect(),
+    })
+}
+
+pub async fn count_external_fact_receipts_by_status_for_refs(
+    client: &(impl GenericClient + Sync),
+    ref_types: &[String],
+    ref_id: &str,
+    order_id: Option<&str>,
+) -> Result<Value, Error> {
+    let rows = client
+        .query(
+            "SELECT receipt_status, COUNT(*)::bigint
+             FROM ops.external_fact_receipt efr
+             WHERE (efr.ref_type = ANY($1::text[]) AND efr.ref_id = $2::text::uuid)
+                OR ($3::text IS NOT NULL AND efr.order_id = $3::text::uuid)
+             GROUP BY receipt_status
+             ORDER BY receipt_status ASC",
+            &[&ref_types, &ref_id, &order_id],
+        )
+        .await?;
+
+    let mut counts = Map::new();
+    for row in rows {
+        counts.insert(row.get::<_, String>(0), Value::from(row.get::<_, i64>(1)));
+    }
+    Ok(Value::Object(counts))
+}
+
+pub async fn search_recent_chain_projection_gaps_for_aggregates(
+    client: &(impl GenericClient + Sync),
+    aggregate_types: &[String],
+    aggregate_id: &str,
+    order_id: Option<&str>,
+    limit: i64,
+) -> Result<ChainProjectionGapPage, Error> {
+    let total: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.chain_projection_gap cpg
+             WHERE (cpg.aggregate_type = ANY($1::text[]) AND cpg.aggregate_id = $2::text::uuid)
+                OR ($3::text IS NOT NULL AND cpg.order_id = $3::text::uuid)",
+            &[&aggregate_types, &aggregate_id, &order_id],
+        )
+        .await?
+        .get(0);
+
+    let rows = client
+        .query(
+            "SELECT
+               chain_projection_gap_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               order_id::text,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               to_char(first_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               outbox_event_id::text,
+               anchor_id::text,
+               resolution_summary,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM ops.chain_projection_gap cpg
+             WHERE (cpg.aggregate_type = ANY($1::text[]) AND cpg.aggregate_id = $2::text::uuid)
+                OR ($3::text IS NOT NULL AND cpg.order_id = $3::text::uuid)
+             ORDER BY cpg.created_at DESC, cpg.chain_projection_gap_id DESC
+             LIMIT $4",
+            &[&aggregate_types, &aggregate_id, &order_id, &limit],
+        )
+        .await?;
+
+    Ok(ChainProjectionGapPage {
+        total,
+        items: rows.iter().map(parse_chain_projection_gap_row).collect(),
+    })
+}
+
+pub async fn count_chain_projection_gaps_by_status_for_aggregates(
+    client: &(impl GenericClient + Sync),
+    aggregate_types: &[String],
+    aggregate_id: &str,
+    order_id: Option<&str>,
+) -> Result<Value, Error> {
+    let rows = client
+        .query(
+            "SELECT gap_status, COUNT(*)::bigint
+             FROM ops.chain_projection_gap cpg
+             WHERE (cpg.aggregate_type = ANY($1::text[]) AND cpg.aggregate_id = $2::text::uuid)
+                OR ($3::text IS NOT NULL AND cpg.order_id = $3::text::uuid)
+             GROUP BY gap_status
+             ORDER BY gap_status ASC",
+            &[&aggregate_types, &aggregate_id, &order_id],
+        )
+        .await?;
+
+    let mut counts = Map::new();
+    for row in rows {
+        counts.insert(row.get::<_, String>(0), Value::from(row.get::<_, i64>(1)));
+    }
+    Ok(Value::Object(counts))
+}
+
+pub async fn search_recent_chain_anchors_for_refs(
+    client: &(impl GenericClient + Sync),
+    ref_types: &[String],
+    ref_id: &str,
+    limit: i64,
+) -> Result<Vec<ChainAnchorRecord>, Error> {
+    let rows = client
+        .query(
+            "SELECT
+               chain_anchor_id::text,
+               chain_id,
+               anchor_type,
+               ref_type,
+               ref_id::text,
+               digest,
+               tx_hash,
+               status,
+               to_char(anchored_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               authority_model,
+               reconcile_status,
+               to_char(last_reconciled_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM chain.chain_anchor
+             WHERE ref_type = ANY($1::text[])
+               AND ref_id = $2::text::uuid
+             ORDER BY created_at DESC, chain_anchor_id DESC
+             LIMIT $3",
+            &[&ref_types, &ref_id, &limit],
+        )
+        .await?;
+
+    Ok(rows.iter().map(parse_chain_anchor_row).collect())
+}
+
+pub async fn search_recent_audit_traces_for_refs(
+    client: &(impl GenericClient + Sync),
+    ref_types: &[String],
+    ref_id: &str,
+    limit: i64,
+) -> Result<Vec<AuditTraceView>, Error> {
+    let rows = client
+        .query(
+            "SELECT
+               audit_id::text,
+               event_schema_version,
+               event_class,
+               domain_name,
+               ref_type,
+               ref_id::text,
+               actor_id::text,
+               actor_org_id::text,
+               action_name,
+               result_code,
+               error_code,
+               request_id,
+               trace_id,
+               tx_hash,
+               evidence_manifest_id::text,
+               event_hash,
+               to_char(event_time AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.audit_event
+             WHERE ref_type = ANY($1::text[])
+               AND ref_id = $2::text::uuid
+             ORDER BY event_time DESC, audit_id DESC
+             LIMIT $3",
+            &[&ref_types, &ref_id, &limit],
+        )
+        .await?;
+
+    Ok(rows.iter().map(parse_audit_trace_row).collect())
+}
+
 async fn load_consumer_idempotency_for_event_ids(
     client: &(impl GenericClient + Sync),
     event_ids: &[String],
@@ -2376,5 +3008,23 @@ fn parse_chain_projection_gap_row(row: &Row) -> ChainProjectionGapRecord {
         metadata: row.get(18),
         created_at: row.get(19),
         updated_at: row.get(20),
+    }
+}
+
+fn parse_chain_anchor_row(row: &Row) -> ChainAnchorRecord {
+    ChainAnchorRecord {
+        chain_anchor_id: row.get(0),
+        chain_id: row.get(1),
+        anchor_type: row.get(2),
+        ref_type: row.get(3),
+        ref_id: row.get(4),
+        digest: row.get(5),
+        tx_hash: row.get(6),
+        status: row.get(7),
+        anchored_at: row.get(8),
+        created_at: row.get(9),
+        authority_model: row.get(10),
+        reconcile_status: row.get(11),
+        last_reconciled_at: row.get(12),
     }
 }

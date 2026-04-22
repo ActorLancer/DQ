@@ -14,13 +14,15 @@ use crate::modules::audit::domain::{
     AnchorBatchPageView, AnchorBatchQuery, AuditAnchorBatchRetryRequest, AuditAnchorBatchRetryView,
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
-    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OpsDeadLetterPageView,
-    OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
-    OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
+    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, OpsConsistencyBusinessStateView,
+    OpsConsistencyExternalFactStateView, OpsConsistencyProofStateView, OpsConsistencyView,
+    OpsDeadLetterPageView, OpsDeadLetterQuery, OpsDeadLetterReprocessRequest,
+    OpsDeadLetterReprocessView, OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery, OrderAuditView,
 };
 use crate::modules::audit::dto::{
-    AnchorBatchView, DeadLetterEventView, EvidenceManifestView, EvidencePackageView, LegalHoldView,
-    OutboxEventView, ReplayJobView, ReplayResultView,
+    AnchorBatchView, ChainProjectionGapView, DeadLetterEventView, EvidenceManifestView,
+    EvidencePackageView, ExternalFactReceiptView, LegalHoldView, OutboxEventView, ReplayJobView,
+    ReplayResultView,
 };
 use crate::modules::audit::repo::{self, AccessAuditInsert, OrderAuditScope, SystemLogInsert};
 use crate::modules::storage::application::{delete_object, put_object_bytes};
@@ -343,6 +345,177 @@ pub(in crate::modules::audit) async fn get_ops_dead_letters(
             .iter()
             .map(DeadLetterEventView::from)
             .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_consistency(
+    State(state): State<AppState>,
+    Path((ref_type, ref_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<OpsConsistencyView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&ref_id, "refId", &request_id)?;
+    let normalized_ref_type = normalize_consistency_ref_type(ref_type.as_str(), &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsConsistencyRead,
+        "ops consistency read",
+    )?;
+
+    let client = state_client(&state)?;
+    let subject =
+        repo::load_consistency_subject(&client, normalized_ref_type.as_str(), ref_id.as_str())
+            .await
+            .map_err(map_db_error)?
+            .ok_or_else(|| {
+                not_found(
+                    &request_id,
+                    format!(
+                        "consistency subject not found: ref_type={} ref_id={ref_id}",
+                        normalized_ref_type
+                    ),
+                )
+            })?;
+    let ref_type_candidates = consistency_ref_type_candidates(normalized_ref_type.as_str());
+    let aggregate_type_candidates =
+        consistency_aggregate_type_candidates(normalized_ref_type.as_str());
+    let recent_outbox_events = repo::search_recent_outbox_events_for_aggregates(
+        &client,
+        &aggregate_type_candidates,
+        subject.ref_id.as_str(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_dead_letters = repo::search_recent_dead_letters_for_aggregates(
+        &client,
+        &aggregate_type_candidates,
+        subject.ref_id.as_str(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_receipts = repo::search_recent_external_fact_receipts_for_refs(
+        &client,
+        &ref_type_candidates,
+        subject.ref_id.as_str(),
+        subject.order_id.as_deref(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let receipt_status_breakdown = repo::count_external_fact_receipts_by_status_for_refs(
+        &client,
+        &ref_type_candidates,
+        subject.ref_id.as_str(),
+        subject.order_id.as_deref(),
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_projection_gaps = repo::search_recent_chain_projection_gaps_for_aggregates(
+        &client,
+        &aggregate_type_candidates,
+        subject.ref_id.as_str(),
+        subject.order_id.as_deref(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let projection_gap_status_breakdown =
+        repo::count_chain_projection_gaps_by_status_for_aggregates(
+            &client,
+            &aggregate_type_candidates,
+            subject.ref_id.as_str(),
+            subject.order_id.as_deref(),
+        )
+        .await
+        .map_err(map_db_error)?;
+    let recent_chain_anchors = repo::search_recent_chain_anchors_for_refs(
+        &client,
+        &ref_type_candidates,
+        subject.ref_id.as_str(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+    let recent_audit_traces = repo::search_recent_audit_traces_for_refs(
+        &client,
+        &ref_type_candidates,
+        subject.ref_id.as_str(),
+        10,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "consistency_query",
+        Some(subject.ref_id.clone()),
+        "GET /api/v1/ops/consistency/{refType}/{refId}",
+        json!({
+            "ref_type": normalized_ref_type,
+            "ref_id": subject.ref_id,
+            "order_id": subject.order_id,
+            "recent_outbox_total": recent_outbox_events.len(),
+            "recent_dead_letter_total": recent_dead_letters.len(),
+            "recent_receipt_total": recent_receipts.total,
+            "recent_projection_gap_total": recent_projection_gaps.total,
+            "recent_audit_trace_total": recent_audit_traces.len(),
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(OpsConsistencyView {
+        ref_type: subject.ref_type.clone(),
+        ref_id: subject.ref_id.clone(),
+        business_state: OpsConsistencyBusinessStateView {
+            ref_type: subject.ref_type.clone(),
+            ref_id: subject.ref_id.clone(),
+            order_id: subject.order_id.clone(),
+            business_status: subject.business_status.clone(),
+            authority_model: subject.authority_model.clone(),
+            business_state_version: subject.business_state_version,
+            proof_commit_state: subject.proof_commit_state.clone(),
+            proof_commit_policy: subject.proof_commit_policy.clone(),
+            external_fact_status: subject.external_fact_status.clone(),
+            reconcile_status: subject.reconcile_status.clone(),
+            last_reconciled_at: subject.last_reconciled_at.clone(),
+            snapshot: subject.snapshot.clone(),
+        },
+        proof_state: OpsConsistencyProofStateView {
+            proof_commit_state: subject.proof_commit_state.clone(),
+            proof_commit_policy: subject.proof_commit_policy.clone(),
+            latest_chain_anchor: recent_chain_anchors
+                .first()
+                .map(build_consistency_chain_anchor_view),
+            projection_gap_status_breakdown: projection_gap_status_breakdown.clone(),
+            open_projection_gap_count: count_open_projection_gaps(
+                projection_gap_status_breakdown.as_object(),
+            ),
+            latest_projection_gap: recent_projection_gaps
+                .items
+                .first()
+                .map(ChainProjectionGapView::from),
+        },
+        external_fact_state: OpsConsistencyExternalFactStateView {
+            summary_status: subject.external_fact_status.clone(),
+            total_receipts: recent_receipts.total,
+            receipt_status_breakdown,
+            latest_receipt: recent_receipts
+                .items
+                .first()
+                .map(ExternalFactReceiptView::from),
+        },
+        recent_outbox_events: recent_outbox_events
+            .iter()
+            .map(OutboxEventView::from)
+            .collect(),
+        recent_dead_letters: recent_dead_letters
+            .iter()
+            .map(DeadLetterEventView::from)
+            .collect(),
+        recent_audit_traces,
     }))
 }
 
@@ -1944,6 +2117,7 @@ enum AuditPermission {
     TraceRead,
     OpsOutboxRead,
     OpsDeadLetterRead,
+    OpsConsistencyRead,
     OpsDeadLetterReprocess,
     PackageExport,
     ReplayExecute,
@@ -1981,6 +2155,14 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
                 | "node_ops_admin"
         ),
         AuditPermission::OpsDeadLetterRead => matches!(
+            role,
+            "platform_admin"
+                | "platform_audit_security"
+                | "consistency_operator"
+                | "node_ops_admin"
+                | "audit_admin"
+        ),
+        AuditPermission::OpsConsistencyRead => matches!(
             role,
             "platform_admin"
                 | "platform_audit_security"
@@ -4189,6 +4371,30 @@ fn normalize_reason(
     Ok(reason.to_string())
 }
 
+fn normalize_consistency_ref_type(
+    raw: &str,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let normalized = match raw.trim() {
+        "order" => "order",
+        "contract" | "digital_contract" => "digital_contract",
+        "delivery" | "delivery_record" => "delivery_record",
+        "settlement" | "settlement_record" => "settlement_record",
+        "payment" | "payment_intent" => "payment_intent",
+        "refund" | "refund_intent" => "refund_intent",
+        "payout" | "payout_instruction" => "payout_instruction",
+        other => {
+            return Err(bad_request(
+                request_id,
+                format!(
+                    "refType must be one of: order, contract, digital_contract, delivery, delivery_record, settlement, settlement_record, payment, payment_intent, refund, refund_intent, payout, payout_instruction; got `{other}`"
+                ),
+            ));
+        }
+    };
+    Ok(normalized.to_string())
+}
+
 fn normalize_anchor_retry_reason(
     raw: &str,
     request_id: &str,
@@ -4226,6 +4432,83 @@ fn normalize_optional_filter(
         ));
     }
     Ok(Some(value.to_string()))
+}
+
+fn consistency_ref_type_candidates(ref_type: &str) -> Vec<String> {
+    match ref_type {
+        "order" => vec!["order".to_string()],
+        "digital_contract" => vec!["digital_contract".to_string(), "contract".to_string()],
+        "delivery_record" => vec!["delivery_record".to_string(), "delivery".to_string()],
+        "settlement_record" => vec!["settlement_record".to_string(), "settlement".to_string()],
+        "payment_intent" => vec!["payment_intent".to_string(), "payment".to_string()],
+        "refund_intent" => vec!["refund_intent".to_string(), "refund".to_string()],
+        "payout_instruction" => vec!["payout_instruction".to_string(), "payout".to_string()],
+        _ => vec![ref_type.to_string()],
+    }
+}
+
+fn consistency_aggregate_type_candidates(ref_type: &str) -> Vec<String> {
+    match ref_type {
+        "order" => vec!["order".to_string(), "trade.order_main".to_string()],
+        "digital_contract" => vec![
+            "digital_contract".to_string(),
+            "contract".to_string(),
+            "contract.digital_contract".to_string(),
+        ],
+        "delivery_record" => vec![
+            "delivery_record".to_string(),
+            "delivery".to_string(),
+            "delivery.delivery_record".to_string(),
+        ],
+        "settlement_record" => vec![
+            "settlement_record".to_string(),
+            "settlement".to_string(),
+            "billing.settlement_record".to_string(),
+        ],
+        "payment_intent" => vec![
+            "payment_intent".to_string(),
+            "payment".to_string(),
+            "payment.payment_intent".to_string(),
+        ],
+        "refund_intent" => vec![
+            "refund_intent".to_string(),
+            "refund".to_string(),
+            "payment.refund_intent".to_string(),
+        ],
+        "payout_instruction" => vec![
+            "payout_instruction".to_string(),
+            "payout".to_string(),
+            "payment.payout_instruction".to_string(),
+        ],
+        _ => vec![ref_type.to_string()],
+    }
+}
+
+fn build_consistency_chain_anchor_view(anchor: &repo::ChainAnchorRecord) -> Value {
+    json!({
+        "chain_anchor_id": anchor.chain_anchor_id,
+        "chain_id": anchor.chain_id,
+        "anchor_type": anchor.anchor_type,
+        "ref_type": anchor.ref_type,
+        "ref_id": anchor.ref_id,
+        "digest": anchor.digest,
+        "tx_hash": anchor.tx_hash,
+        "status": anchor.status,
+        "anchored_at": anchor.anchored_at,
+        "created_at": anchor.created_at,
+        "authority_model": anchor.authority_model,
+        "reconcile_status": anchor.reconcile_status,
+        "last_reconciled_at": anchor.last_reconciled_at,
+    })
+}
+
+fn count_open_projection_gaps(counts: Option<&serde_json::Map<String, Value>>) -> i64 {
+    counts
+        .into_iter()
+        .flat_map(|map| map.iter())
+        .filter(|(status, _)| status.as_str() != "resolved")
+        .filter_map(|(_, value)| value.as_i64())
+        .sum()
 }
 
 fn normalize_replay_ref_type(

@@ -46,6 +46,10 @@ pub fn router() -> Router<AppState> {
             get(handlers::get_ops_dead_letters),
         )
         .route(
+            "/api/v1/ops/consistency/{refType}/{refId}",
+            get(handlers::get_ops_consistency),
+        )
+        .route(
             "/api/v1/ops/dead-letters/{id}/reprocess",
             post(handlers::reprocess_ops_dead_letter),
         )

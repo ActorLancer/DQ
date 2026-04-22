@@ -775,6 +775,173 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/consistency/{refType}/{refId}:
+    get:
+      summary: query dual-authority consistency state for a business reference
+      tags: [AuditOps]
+      description: |
+        Returns the formal V1 consistency read model for a canonical business object.
+        The response folds together business-state mirror fields, latest proof / chain
+        anchor state, external fact receipts, recent canonical outbox rows, recent dead
+        letters, and recent audit traces.
+      parameters:
+        - in: path
+          name: refType
+          required: true
+          schema:
+            type: string
+            enum:
+              - order
+              - contract
+              - digital_contract
+              - delivery
+              - delivery_record
+              - settlement
+              - settlement_record
+              - payment
+              - payment_intent
+              - refund
+              - refund_intent
+              - payout
+              - payout_instruction
+        - in: path
+          name: refId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: consistency lookup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsConsistencyResponse"
+              example:
+                success: true
+                data:
+                  ref_type: order
+                  ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                  business_state:
+                    ref_type: order
+                    ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    business_status: buyer_locked
+                    authority_model: dual_layer
+                    business_state_version: 7
+                    proof_commit_state: pending_anchor
+                    proof_commit_policy: async_evidence
+                    external_fact_status: confirmed
+                    reconcile_status: pending_check
+                    last_reconciled_at: "2026-04-22T10:09:00.000Z"
+                    snapshot:
+                      payment_status: paid
+                      delivery_status: pending_delivery
+                      settlement_status: pending_settlement
+                  proof_state:
+                    proof_commit_state: pending_anchor
+                    proof_commit_policy: async_evidence
+                    latest_chain_anchor:
+                      chain_anchor_id: d34f857d-2d5b-4bb2-bdfd-5f0d6a5f8d44
+                      chain_id: fabric-local
+                      anchor_type: order_proof
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      digest: sha256:aud011-order-proof
+                      tx_hash: 0xaud011anchor
+                      status: anchored
+                      anchored_at: "2026-04-22T10:10:00.000Z"
+                      authority_model: proof_layer
+                      reconcile_status: matched
+                    projection_gap_status_breakdown:
+                      open: 1
+                    open_projection_gap_count: 1
+                    latest_projection_gap:
+                      chain_projection_gap_id: 27ab93df-f0f1-4d43-84e6-40c77625cf86
+                      aggregate_type: order
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      chain_id: fabric-local
+                      source_event_type: fabric.proof_submit_requested
+                      gap_type: missing_callback
+                      gap_status: open
+                  external_fact_state:
+                    summary_status: confirmed
+                    total_receipts: 1
+                    receipt_status_breakdown:
+                      confirmed: 1
+                    latest_receipt:
+                      external_fact_receipt_id: 991f69a0-ae84-4c5e-89f4-d764354e955d
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      ref_domain: payment
+                      ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      fact_type: payment_callback
+                      provider_type: mock_payment_provider
+                      receipt_status: confirmed
+                  recent_outbox_events:
+                    - outbox_event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                      aggregate_type: order
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      event_type: fabric.proof_submit_requested
+                      payload:
+                        event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                        event_type: fabric.proof_submit_requested
+                      status: published
+                      retry_count: 0
+                      max_retries: 16
+                      authority_scope: business
+                      source_of_truth: database
+                      proof_commit_policy: async_evidence
+                      target_bus: kafka
+                  recent_dead_letters:
+                    - dead_letter_event_id: 3e1cbc5f-1dc9-4135-a68a-a9442eaad874
+                      outbox_event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                      aggregate_type: order
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      event_type: fabric.proof_submit_requested
+                      payload:
+                        event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                      authority_scope: business
+                      source_of_truth: database
+                      target_bus: kafka
+                      reprocess_status: not_reprocessed
+                      consumer_idempotency_records:
+                        - consumer_name: platform-core.consistency
+                          event_id: 699910fb-3405-4ef1-833b-7905a221db9f
+                          result_code: dead_lettered
+                          metadata:
+                            dlq_topic: dtp.dead-letter
+                  recent_audit_traces:
+                    - ref_type: order
+                      ref_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      action_name: trade.order.consistency_seeded
+                      result_code: accepted
+                      event_time: "2026-04-22T10:12:00.000Z"
+        "400":
+          description: invalid refType or refId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: consistency subject not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     ApiResponseString:
@@ -858,6 +1025,15 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsDeadLetterReprocessResponse"
+    ApiResponseOpsConsistencyResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsConsistencyResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -1391,6 +1567,226 @@ components:
           type: string
         replay_plan:
           $ref: "#/components/schemas/JsonObject"
+    OpsConsistencyResponse:
+      type: object
+      required:
+        - ref_type
+        - ref_id
+        - business_state
+        - proof_state
+        - external_fact_state
+        - recent_outbox_events
+        - recent_dead_letters
+        - recent_audit_traces
+      properties:
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        business_state:
+          $ref: "#/components/schemas/OpsConsistencyBusinessState"
+        proof_state:
+          $ref: "#/components/schemas/OpsConsistencyProofState"
+        external_fact_state:
+          $ref: "#/components/schemas/OpsConsistencyExternalFactState"
+        recent_outbox_events:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutboxEventRecord"
+        recent_dead_letters:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeadLetterEventRecord"
+        recent_audit_traces:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpsAuditTraceRecord"
+    OpsConsistencyBusinessState:
+      type: object
+      required:
+        - ref_type
+        - ref_id
+        - business_status
+        - authority_model
+        - business_state_version
+        - proof_commit_state
+        - proof_commit_policy
+        - external_fact_status
+        - reconcile_status
+        - snapshot
+      properties:
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+          nullable: true
+        business_status:
+          type: string
+        authority_model:
+          type: string
+        business_state_version:
+          type: integer
+          format: int64
+        proof_commit_state:
+          type: string
+        proof_commit_policy:
+          type: string
+        external_fact_status:
+          type: string
+        reconcile_status:
+          type: string
+        last_reconciled_at:
+          type: string
+          nullable: true
+        snapshot:
+          $ref: "#/components/schemas/JsonObject"
+    OpsConsistencyProofState:
+      type: object
+      required:
+        - proof_commit_state
+        - proof_commit_policy
+        - projection_gap_status_breakdown
+        - open_projection_gap_count
+      properties:
+        proof_commit_state:
+          type: string
+        proof_commit_policy:
+          type: string
+        latest_chain_anchor:
+          $ref: "#/components/schemas/ConsistencyChainAnchorRecord"
+        projection_gap_status_breakdown:
+          $ref: "#/components/schemas/JsonObject"
+        open_projection_gap_count:
+          type: integer
+          format: int64
+        latest_projection_gap:
+          $ref: "#/components/schemas/ChainProjectionGapRecord"
+    OpsConsistencyExternalFactState:
+      type: object
+      required:
+        - summary_status
+        - total_receipts
+        - receipt_status_breakdown
+      properties:
+        summary_status:
+          type: string
+        total_receipts:
+          type: integer
+          format: int64
+        receipt_status_breakdown:
+          $ref: "#/components/schemas/JsonObject"
+        latest_receipt:
+          $ref: "#/components/schemas/ExternalFactReceiptRecord"
+    ConsistencyChainAnchorRecord:
+      type: object
+      required:
+        - chain_id
+        - anchor_type
+        - ref_type
+        - digest
+        - status
+        - authority_model
+        - reconcile_status
+      properties:
+        chain_anchor_id:
+          type: string
+          format: uuid
+          nullable: true
+        chain_id:
+          type: string
+        anchor_type:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        digest:
+          type: string
+        tx_hash:
+          type: string
+          nullable: true
+        status:
+          type: string
+        anchored_at:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          nullable: true
+        authority_model:
+          type: string
+        reconcile_status:
+          type: string
+        last_reconciled_at:
+          type: string
+          nullable: true
+    OpsAuditTraceRecord:
+      type: object
+      required: [ref_type, action_name, result_code]
+      properties:
+        audit_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_schema_version:
+          type: string
+          nullable: true
+        event_class:
+          type: string
+          nullable: true
+        domain_name:
+          type: string
+          nullable: true
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_org_id:
+          type: string
+          format: uuid
+          nullable: true
+        tenant_id:
+          type: string
+          nullable: true
+        action_name:
+          type: string
+        result_code:
+          type: string
+        error_code:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        trace_id:
+          type: string
+          nullable: true
+        tx_hash:
+          type: string
+          nullable: true
+        evidence_manifest_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_hash:
+          type: string
+          nullable: true
+        event_time:
+          type: string
+          nullable: true
     OutboxEventRecord:
       type: object
       required:

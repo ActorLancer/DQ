@@ -622,3 +622,80 @@
 - 备注：
   - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
   - 手工联调插入的 `ops.dead_letter_event / ops.consumer_idempotency_record` 已清理；与 append-only 审计链绑定的 `iam.step_up_challenge / core.user_account / core.organization` 继续按既有 `AUD-004 ~ AUD-009` 的运行态策略保留，不通过强删破坏审计引用关系。
+### BATCH-224（计划中）
+- 任务：`AUD-011` 一致性联查接口
+- 状态：计划中
+- 说明：在 `AUD-008 ~ AUD-010` 已补齐 `ops` 查询基座、outbox publisher 与 dead letter reprocess 控制面后，当前批次开始落地 `GET /api/v1/ops/consistency/{refType}/{refId}`。按 `CSV > Markdown > technical_reference > 其他文档` 重新核对后，本批冻结目标是提供统一一致性联查视图，返回业务状态、证明状态、外部事实状态、最近 outbox / dead letter / 审计链路，并真实要求正式权限与查询留痕；`consistency/reconcile` 动作仍留给 `AUD-012`，Go/Fabric request / callback 仍留给 `AUD-013+`，本批不越级实现。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-011`，完成后再进入 `AUD-012`。
+### BATCH-224（待审批）
+- 任务：`AUD-011` 一致性联查接口
+- 状态：待审批
+- 当前任务编号：`AUD-011`
+- 前置依赖核对结果：`AUD-008` 已交付 `ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record / ops.external_fact_receipt / ops.chain_projection_gap` 查询基座，`AUD-009` 已交付 `outbox-publisher` 正式 worker 与双层 DLQ 基座，`AUD-010` 已交付 SEARCHREC dead letter dry-run 重处理控制面；本地 `PostgreSQL / Kafka / Redis / Keycloak / Prometheus / Alertmanager / Loki / Tempo / Grafana / OpenSearch` 运行基线满足当前批次依赖。按任务顺序，Go/Fabric request / callback / CA / listener 仍留待 `AUD-013+`，本批不越级实现。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-011` DoD 为 `GET /api/v1/ops/consistency/{refType}/{refId}`、DTO、权限、审计、错误码与最小测试齐备，并要求实现与 OpenAPI 不漂移。
+  - `docs/原始PRD/双层权威模型与链上链下一致性设计.md`、`docs/数据库设计/接口协议/一致性与事件接口协议正式版.md`、`docs/领域模型/全量领域模型与对象关系说明.md`：确认正式返回面必须覆盖业务状态、Fabric/证明状态、外部事实状态，以及最近 outbox / dead letter / audit trace。
+  - `docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`：确认 `AUD-011` 只是只读联查控制面，`POST /api/v1/ops/consistency/reconcile` 留给 `AUD-012`，`projection-gaps` 公共接口留给 `AUD-021`。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL` 是一致性镜像和查询主权威、`Kafka` 是事件总线、`Redis` 是辅助状态、观测域不能替代审计域。
+  - `docs/原始PRD/审计、证据链与回放设计.md`、`docs/原始PRD/日志、可观测性与告警设计.md`、`docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：确认当前批次不新增 topic / route authority，只消费已冻结的 dual-authority / Fabric / outbox / DLQ 只读状态。
+  - `apps/platform-core/src/modules/audit/**`、`apps/platform-core/src/modules/order/**`、`apps/platform-core/src/modules/delivery/**`、`apps/platform-core/src/modules/billing/**`：确认 `056_dual_authority_consistency.sql` 已为 `order / digital_contract / delivery_record / settlement_record / payment_intent / refund_intent / payout_instruction` 七类正式对象补齐一致性镜像字段，本批按此作为支持范围。
+- 实现要点：
+  - `apps/platform-core/src/modules/audit/repo/mod.rs`：补齐一致性对象仓储装载与聚合查询，支持七类正式 dual-authority 对象的主状态读取，以及最近 `ops.outbox_event`、`ops.dead_letter_event`、`ops.external_fact_receipt`、`ops.chain_projection_gap`、`chain.chain_anchor`、`audit.audit_event` 联查。
+  - `apps/platform-core/src/modules/audit/domain/mod.rs`：新增 `OpsConsistencyBusinessStateView / OpsConsistencyProofStateView / OpsConsistencyExternalFactStateView / OpsConsistencyView` 正式返回 DTO。
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `GET /api/v1/ops/consistency/{refType}/{refId}`；要求 `x-request-id`、正式 `OpsConsistencyRead` 权限；对 path `refType` 做正式规范化，拒绝未冻结对象；读取后写入 `audit.access_audit(target_type='consistency_query')` 与 `ops.system_log`。
+  - 支持的 `refType` 规范化：
+    - `order`
+    - `contract / digital_contract`
+    - `delivery / delivery_record`
+    - `settlement / settlement_record`
+    - `payment / payment_intent`
+    - `refund / refund_intent`
+    - `payout / payout_instruction`
+  - 契约与文档：
+    - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml` 新增 `GET /api/v1/ops/consistency/{refType}/{refId}` 路径和 schema
+    - `docs/04-runbooks/audit-consistency-lookup.md` 新增宿主机调用、正式 `refType`、SQL 回查和排障手册
+    - `docs/05-test-cases/audit-consistency-cases.md` 新增 `AUD-CASE-018`
+    - `docs/04-runbooks/README.md`、`docs/05-test-cases/README.md` 同步索引更新
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core rejects_ops_consistency_without_permission -- --nocapture`
+  4. `cargo test -p platform-core rejects_ops_consistency_with_unsupported_ref_type -- --nocapture`
+  5. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_consistency_lookup_db_smoke -- --nocapture`
+  6. `cargo test -p platform-core`
+  7. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. `./scripts/check-openapi-schema.sh`
+  10. `./scripts/check-topic-topology.sh`
+  11. 真实运行态联调：`cargo run -p platform-core-bin` + `curl GET /api/v1/ops/consistency/order/{order_id}` + `psql` 回查
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core rejects_ops_consistency_without_permission -- --nocapture` 通过。
+  - `cargo test -p platform-core rejects_ops_consistency_with_unsupported_ref_type -- --nocapture` 通过。
+  - `AUD_DB_SMOKE=1 ... cargo test -p platform-core audit_consistency_lookup_db_smoke -- --nocapture` 通过，真实插入 `trade.order_main + ops.outbox_event + ops.dead_letter_event + ops.consumer_idempotency_record + ops.external_fact_receipt + chain.chain_anchor + ops.chain_projection_gap`，并回查 `audit.access_audit + ops.system_log`。
+  - `cargo test -p platform-core` 通过：`286 passed; 0 failed`。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存；随后 `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过。
+  - `./scripts/check-topic-topology.sh` 通过，确认 `AUD-011` 未破坏 canonical topic / route authority。
+  - 真实运行态联调通过：
+    - `curl http://127.0.0.1:18080/healthz` 返回 `{"success":true,"data":"ok"}`
+    - 手工插入一条 `order` 一致性样本，补齐 `trade.order_main` dual-authority 字段、`ops.external_fact_receipt`、`ops.chain_projection_gap`、`chain.chain_anchor`、`ops.outbox_event`、`ops.dead_letter_event`
+    - `curl GET /api/v1/ops/consistency/order/{order_id}` 返回 `200`，响应中可见 `business_state / proof_state / external_fact_state / recent_outbox_events / recent_dead_letters / recent_audit_traces`
+    - `psql` 回查确认 `audit.access_audit(access_mode='masked', target_type='consistency_query')` 与 `ops.system_log(message_text='ops lookup executed: GET /api/v1/ops/consistency/{refType}/{refId}')` 已落盘
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-011`
+  - `双层权威模型与链上链下一致性设计.md`：一致性联查返回面
+  - `一致性与事件接口协议正式版.md`：`GET /api/v1/ops/consistency/{refType}/{refId}`
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：只读 consistency 接口与后续 reconcile / projection-gap 边界
+- 覆盖的任务清单条目：`AUD-011`
+- 未覆盖项：
+  - `POST /api/v1/ops/consistency/reconcile` 干预动作，留待 `AUD-012`
+  - `GET/POST /api/v1/ops/projection-gaps` 公共接口，留待 `AUD-021`
+  - Go/Fabric request / callback / CA / listener 正式链路，留待 `AUD-013+`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛到包含 `AUD-011` 的最新状态。
+- 备注：
+  - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+  - 手工联调产生的 `ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record / ops.external_fact_receipt / ops.chain_projection_gap / chain.chain_anchor / trade.order_main / catalog.*` 业务测试数据已清理。
+  - 手工联调中尝试删除 `core.user_account / core.organization` 时，因 `audit.access_audit` 与 `audit.audit_event` 的 append-only trigger 阻止 `ON DELETE SET NULL` 更新而失败；这与既有 `AUD-004 ~ AUD-010` 的留痕对象策略一致，因此保留该最小主体样本，不通过强删破坏审计引用关系。

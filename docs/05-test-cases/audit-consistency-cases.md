@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -12,6 +12,7 @@
 - canonical outbox 查询：`GET /api/v1/ops/outbox`
 - dead letter 查询：`GET /api/v1/ops/dead-letters`
 - dead letter dry-run 重处理：`POST /api/v1/ops/dead-letters/{id}/reprocess`
+- 一致性联查：`GET /api/v1/ops/consistency/{refType}/{refId}`
 - outbox publisher：`ops.outbox_event -> workers/outbox-publisher -> Kafka / ops.outbox_publish_attempt / ops.dead_letter_event`
 
 后续 Fabric callback、reconcile 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
@@ -29,6 +30,9 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 
 AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture
+
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_consistency_lookup_db_smoke -- --nocapture
 ```
 
 ## 验收矩阵
@@ -52,11 +56,57 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-015` | outbox publisher 发布成功 | 写入一条 `ops.outbox_event(status=pending,target_topic=dtp.outbox.domain-events)`，运行 `cargo test -p outbox-publisher outbox_publisher_db_smoke -- --nocapture` | `workers/outbox-publisher` 把事件发到 Kafka，`ops.outbox_event.status=published`，并写入 `ops.outbox_publish_attempt(result_code='published')`、`audit.audit_event(action_name='outbox.publisher.publish')`、`ops.system_log(service_name='outbox-publisher')` | Kafka 消息、`ops.outbox_event`、`ops.outbox_publish_attempt`、`audit.audit_event`、`ops.system_log` |
 | `AUD-CASE-016` | outbox publisher 失败隔离 | 写入一条 `ops.outbox_event(status=pending,target_topic=dtp.missing.topic,max_retries=1)`，运行同一 smoke | 事件进入 `ops.dead_letter_event(failure_stage='outbox.publish')`，并向 Kafka `dtp.dead-letter` 发布隔离消息；原 outbox 行变为 `dead_lettered` | `ops.dead_letter_event`、Kafka `dtp.dead-letter`、`ops.outbox_publish_attempt(result_code='dead_lettered')`、`audit.audit_event`、`ops.system_log` |
 | `AUD-CASE-017` | SEARCHREC dead letter dry-run 重处理 | `POST /api/v1/ops/dead-letters/{id}/reprocess` + verified `x-step-up-challenge-id` + `{"reason":"...","dry_run":true}` | 仅允许 `reprocess_status=not_reprocessed` 的 SEARCHREC consumer dead letter；返回 `dry_run_ready` 预演计划，不改变 `ops.dead_letter_event.reprocess_status`，并写入 `audit.audit_event(action_name='ops.dead_letter.reprocess.dry_run')`、`audit.access_audit(access_mode='reprocess')`、`ops.system_log` | API 响应、`ops.dead_letter_event`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-018` | 一致性联查 | `GET /api/v1/ops/consistency/order/{order_id}` | 返回业务状态、proof/anchor 状态、外部事实状态，以及最近 `ops.outbox_event / ops.dead_letter_event / audit.audit_event`；查询动作写入 `audit.access_audit(target_type='consistency_query')` 与 `ops.system_log` | API 响应、`trade.order_main`、`chain.chain_anchor`、`ops.chain_projection_gap`、`ops.external_fact_receipt`、`ops.outbox_event`、`ops.dead_letter_event`、`audit.access_audit`、`ops.system_log` |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
+
+## `AUD-011` 手工一致性联查验证
+
+1. 启动服务：
+
+```bash
+set -a
+source infra/docker/.env.local
+set +a
+
+APP_PORT=18080 \
+KAFKA_BROKERS=127.0.0.1:9094 \
+KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 \
+cargo run -p platform-core-bin
+```
+
+2. 触发 live smoke 或自行准备一笔带双层权威字段的对象：
+
+```bash
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_consistency_lookup_db_smoke -- --nocapture
+```
+
+3. 查询一致性视图：
+
+```bash
+curl -sS "http://127.0.0.1:18080/api/v1/ops/consistency/order/<order_id>" \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud011-manual' \
+  -H 'x-trace-id: trace-aud011-manual'
+```
+
+4. 回查查询留痕：
+
+```sql
+SELECT access_mode, target_type, target_id::text
+FROM audit.access_audit
+WHERE request_id = 'req-aud011-manual';
+
+SELECT message_text, structured_payload
+FROM ops.system_log
+WHERE request_id = 'req-aud011-manual'
+  AND message_text = 'ops lookup executed: GET /api/v1/ops/consistency/{refType}/{refId}';
+```
 
 ## `AUD-005` 手工回放验证
 
