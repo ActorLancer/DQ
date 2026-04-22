@@ -1680,3 +1680,32 @@
 - 备注：
   - 本批开始时 `./scripts/check-fabric-local.sh` 和 `fabric-adapter-live-smoke.sh` 失败，根因是本地 Fabric test-network 尚未启动，`fabric-adapter` 的 Gateway 目标 `127.0.0.1:7051` 不可达。执行 `make up-fabric` 后，`check-fabric-local.sh` 与 live smoke 恢复通过，属于环境基线缺失，不是冻结文档冲突。
   - 早期失败的 `search-indexer` smoke 使用了随机 `event_id`，没有对应正式 `ops.outbox_event`，因此触发 `search.index_sync_task.source_event_id` 外键失败；已将 smoke 修正为真实 outbox event 语义，并清理该次失败残留的业务测试数据。`audit.audit_event` / `audit.access_audit` 等 append-only 审计记录按规则保留未清理。
+### BATCH-240（计划中）
+- 任务：`AUD-027` 生成 `docs/02-openapi/audit.yaml`、`ops.yaml` 第一版并与实现校验
+- 状态：计划中
+- 说明：重新核对 `AUD-027` 的冻结要求后确认，本仓库当前已经存在 `packages/openapi/{audit,ops}.yaml` 与 `docs/02-openapi/{audit,ops}.yaml`，但这本身不能视为任务完成；必须进一步证明两份归档副本与当前 `platform-core.audit` 路由、当前已实现的 AUD/Ops 控制面路径、正式术语命名和 README 索引已对齐，且 `check-openapi-schema.sh` 不再只校验局部路径。本批将据此补强 OpenAPI 契约校验脚本、同步 README/索引文字，并用真实脚本校验和至少一条已落地 AUD smoke 证明“OpenAPI 文件已落盘且与实现同口径”。
+- 追溯：已重新核对 `CSV / Markdown`、`审计、证据链与回放设计.md` 第 3 节、`审计、证据链与回放接口协议正式版.md` 第 5 节、`全量领域模型与对象关系说明.md` 4.9、`A04-AUD-Ops-接口与契约落地缺口.md`，以及通用冻结文档 `服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`、`fabric-local.md`、`kafka-topics.md`、`async-chain-write.md`、`072_canonical_outbox_route_policy.sql`、`074_event_topology_route_extensions.sql` 与 `infra/docker/docker-compose.local.yml`。当前确认的正式完成标准是：`docs/02-openapi/audit.yaml`、`docs/02-openapi/ops.yaml` 与 `packages/openapi` 同步、被 README 索引引用、覆盖当前 `apps/platform-core/src/modules/audit/api/router.rs` 已落地路径，并通过 `./scripts/check-openapi-schema.sh` 与至少一条 AUD API smoke 共同证明契约没有漂移。
+### BATCH-240（待审批）
+- 任务：`AUD-027` 生成 `docs/02-openapi/audit.yaml`、`ops.yaml` 第一版并与实现校验
+- 状态：待审批
+- 实现摘要：
+  - `scripts/check-openapi-schema.sh`：补强 `audit.yaml / ops.yaml` 的 drift guard，不再只校验局部骨架路径。当前脚本已覆盖 `apps/platform-core/src/modules/audit/api/router.rs` 中全部已落地 audit / ops / developer 路径，包括 anchor batch、dead letter reprocess、external facts、fairness incidents、projection gaps、consistency lookup / reconcile、trade monitor、observability、logs alias / export、trace、alerts、incidents、slos，并额外校验关键 response schema、权限点和术语 token，继续强制 `packages/openapi/{audit,ops}.yaml` 与 `docs/02-openapi/{audit,ops}.yaml` 逐字同步。
+  - `docs/02-openapi/README.md`、`packages/openapi/README.md`：把 `audit.yaml` / `ops.yaml` 的索引说明更新到 `AUD-027` 正式口径，明确这两份文件已经进入“归档副本 + 实现对齐校验”状态，不再只是“未来待补”；同时补充 `AUD-027` 之后的三条硬约束：包内文件与归档副本必须逐字同步、必须被 README 索引引用、必须通过 `./scripts/check-openapi-schema.sh` 校验当前已落地路径与关键术语。
+  - `docs/02-openapi/{audit,ops}.yaml` 与 `packages/openapi/{audit,ops}.yaml`：本批复核确认两组文件当前已逐字同步，且路径覆盖与当前 `platform-core.audit` 路由一致，因此未额外改写 YAML 内容，只通过更严格的脚本校验和 README 索引把“文件存在”提升为“正式校验绑定”。
+- 验证：
+  - `./scripts/check-openapi-schema.sh` 通过，确认 `packages/openapi/{audit,ops}.yaml` 的 OpenAPI 头、路径、关键术语和 `docs/02-openapi/{audit,ops}.yaml` 归档副本同步状态均符合当前实现期要求。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core modules::audit::tests::api_db::audit_trace_api_db_smoke -- --nocapture` 通过，重新验证 `audit.package.export`、MinIO 导出对象回查、`audit.replay-jobs` dry-run、`audit.replay_result`、`audit.access_audit` 与 `ops.system_log`，证明 `audit.yaml` 所述主控制面路径和当前实现一致。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture` 通过，重新验证 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 dry-run 预演、`step-up` 绑定、`audit.audit_event`、`audit.access_audit` 与 `ops.system_log`，证明 `ops.yaml` 对高风险 ops 控制面的归档和当前实现一致。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-027`
+  - `审计、证据链与回放设计.md` 第 3 节
+  - `审计、证据链与回放接口协议正式版.md` 第 5 节
+  - `全量领域模型与对象关系说明.md` 4.9
+  - `A04-AUD-Ops-接口与契约落地缺口.md`
+- 覆盖的任务清单条目：`AUD-027`
+- 未覆盖项：
+  - 无。当前任务目标是 `docs/02-openapi/audit.yaml`、`ops.yaml` 第一版归档与实现对齐校验；搜索运维控制面仍由 `search.yaml` 正式承接，不属于本任务范围。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - 本批没有重写 `audit.yaml / ops.yaml` 的大段内容，因为复核结果显示两份 YAML 与当前 `platform-core.audit` 路由已一致；真实缺口在于校验脚本和 README 索引仍停留在局部路径 / “未来待补”口径。已通过脚本与索引同步把该 gap 收口。

@@ -51,7 +51,26 @@ for path in \
   "/internal/notifications/dead-letters/{dead_letter_event_id}/replay" \
   "/api/v1/developer/trace" \
   "/api/v1/ops/outbox" \
-  "/api/v1/ops/dead-letters"; do
+  "/api/v1/ops/dead-letters" \
+  "/api/v1/ops/dead-letters/{id}/reprocess" \
+  "/api/v1/ops/external-facts" \
+  "/api/v1/ops/external-facts/{id}/confirm" \
+  "/api/v1/ops/fairness-incidents" \
+  "/api/v1/ops/fairness-incidents/{id}/handle" \
+  "/api/v1/ops/projection-gaps" \
+  "/api/v1/ops/projection-gaps/{id}/resolve" \
+  "/api/v1/ops/consistency/{refType}/{refId}" \
+  "/api/v1/ops/consistency/reconcile" \
+  "/api/v1/ops/trade-monitor/orders/{orderId}" \
+  "/api/v1/ops/trade-monitor/orders/{orderId}/checkpoints" \
+  "/api/v1/ops/observability/overview" \
+  "/api/v1/ops/logs/query" \
+  "/api/v1/ops/logs" \
+  "/api/v1/ops/logs/export" \
+  "/api/v1/ops/traces/{traceId}" \
+  "/api/v1/ops/alerts" \
+  "/api/v1/ops/incidents" \
+  "/api/v1/ops/slos"; do
   grep -q "$path" "$ops_file" || {
     echo "[error] $ops_file missing path: $path" >&2
     exit 1
@@ -69,7 +88,18 @@ for token in \
   "matched_projection_gap" \
   "OpsOutboxPageResponse" \
   "OpsDeadLetterPageResponse" \
-  "consumer_idempotency_records"; do
+  "consumer_idempotency_records" \
+  "ApiResponseExternalFactReceiptPageResponse" \
+  "ApiResponseOpsExternalFactConfirmResponse" \
+  "ApiResponseFairnessIncidentPageResponse" \
+  "ApiResponseOpsFairnessIncidentHandleResponse" \
+  "ApiResponseChainProjectionGapPageResponse" \
+  "ApiResponseOpsConsistencyResponse" \
+  "ApiResponseOpsConsistencyReconcileResponse" \
+  "ApiResponseTradeMonitorOverviewResponse" \
+  "ApiResponseOpsObservabilityOverviewResponse" \
+  "risk.fairness_incident.handle" \
+  "ops.log.export"; do
   grep -q "$token" "$ops_file" || {
     echo "[error] $ops_file missing notification contract token: $token" >&2
     exit 1
@@ -94,14 +124,28 @@ for path in \
   "/api/v1/audit/replay-jobs" \
   "/api/v1/audit/replay-jobs/{id}" \
   "/api/v1/audit/legal-holds" \
-  "/api/v1/audit/legal-holds/{id}/release"; do
+  "/api/v1/audit/legal-holds/{id}/release" \
+  "/api/v1/audit/anchor-batches" \
+  "/api/v1/audit/anchor-batches/{id}/retry"; do
   grep -q "$path" "$audit_file" || {
     echo "[error] $audit_file missing path: $path" >&2
     exit 1
   }
 done
 
-for token in "AUDIT_REPLAY_DRY_RUN_ONLY" "AUDIT_LEGAL_HOLD_ACTIVE" "state_replay" "execution_policy" "audit.legal_hold.manage"; do
+for token in \
+  "AUDIT_REPLAY_DRY_RUN_ONLY" \
+  "AUDIT_LEGAL_HOLD_ACTIVE" \
+  "state_replay" \
+  "execution_policy" \
+  "audit.package.export" \
+  "audit.legal_hold.manage" \
+  "AuditReplayJobDetailResponse" \
+  "AuditLegalHoldActionResponse" \
+  "AuditAnchorBatchPageResponse" \
+  "anchor_status" \
+  "storage_uri" \
+  "step_up_bound"; do
   grep -q "$token" "$audit_file" || {
     echo "[error] $audit_file missing audit control-plane token: $token" >&2
     exit 1
