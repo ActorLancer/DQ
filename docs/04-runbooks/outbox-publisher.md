@@ -9,6 +9,7 @@
   - Kafka：`dtp.dead-letter`
 - Billing bridge 边界：
   - `POST /api/v1/billing/{order_id}/bridge-events/process` 只处理**已由 publisher 发布过**的 `billing.trigger.bridge`
+  - 准入条件必须同时命中最新 `ops.outbox_publish_attempt.result_code='published'`
   - 不再把 `ops.outbox_event.status='pending'` 当 Billing 私有工作队列
 
 ## 启动方式
@@ -144,8 +145,10 @@ docker exec datab-kafka /opt/kafka/bin/kafka-console-consumer.sh \
 - 但 Billing 手工桥接现在只处理：
   - `status='published'`
   - `published_at IS NOT NULL`
+  - 最新 `ops.outbox_publish_attempt.result_code='published'`
   - `target_topic='dtp.outbox.domain-events'`
-- 这样保留了显式人工桥接 / 回放入口，同时移除了“Billing 把 pending outbox 当主工作队列”的默认路径
+- 物化后的 `billing.billing_event.metadata` 必须携带 `bridge_outbox_event_id / bridge_publish_attempt_id`
+- 这样保留了显式人工桥接 / 回放入口，同时移除了“Billing 把 pending outbox 当主工作队列”的默认路径，也把 BillingEvent 回溯绑定到正式 publish authority
 
 ## 观测
 
@@ -177,4 +180,5 @@ curl -fsS 'http://127.0.0.1:9090/api/v1/query?query=outbox_publisher_pending_eve
 
 3. Billing bridge API 处理不到刚写入的 `billing.trigger.bridge`
    - 先确认该 outbox 是否已被 publisher 标记为 `published`
+   - 再查最新 `ops.outbox_publish_attempt` 是否存在且 `result_code='published'`
    - 若仍是 `pending`，问题在 publisher，不在 Billing bridge API

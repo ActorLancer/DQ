@@ -23,6 +23,8 @@ pub struct BillingBridgeProcessResult {
 struct PendingBridgeEvent {
     outbox_event_id: String,
     payload: Value,
+    publish_attempt_id: String,
+    publish_attempt_no: i32,
 }
 
 #[derive(Debug)]
@@ -62,7 +64,13 @@ pub async fn process_billing_bridge_events_for_order(
     };
 
     for event in events {
-        match derive_bridge_decision(order_id, &event.outbox_event_id, &event.payload) {
+        match derive_bridge_decision(
+            order_id,
+            &event.outbox_event_id,
+            &event.publish_attempt_id,
+            event.publish_attempt_no,
+            &event.payload,
+        ) {
             Ok(BridgeDecision::Record {
                 event_type,
                 event_source,
@@ -171,16 +179,28 @@ async fn load_published_bridge_events(
     let rows = if let Some(outbox_event_id) = outbox_event_id {
         client
             .query(
-                "SELECT outbox_event_id::text, payload
-                 FROM ops.outbox_event
-                 WHERE aggregate_type = 'trade.order_main'
-                   AND aggregate_id = $1::text::uuid
-                   AND event_type = 'billing.trigger.bridge'
-                   AND status = 'published'
-                   AND published_at IS NOT NULL
-                   AND target_topic = 'dtp.outbox.domain-events'
-                   AND outbox_event_id = $2::text::uuid
-                 ORDER BY published_at ASC, created_at ASC, outbox_event_id ASC",
+                "SELECT
+                    oe.outbox_event_id::text,
+                    oe.payload,
+                    latest_attempt.outbox_publish_attempt_id::text,
+                    latest_attempt.attempt_no
+                 FROM ops.outbox_event oe
+                 JOIN LATERAL (
+                   SELECT outbox_publish_attempt_id, attempt_no, result_code
+                     FROM ops.outbox_publish_attempt
+                    WHERE outbox_event_id = oe.outbox_event_id
+                    ORDER BY attempt_no DESC, attempted_at DESC, outbox_publish_attempt_id DESC
+                    LIMIT 1
+                 ) latest_attempt
+                   ON latest_attempt.result_code = 'published'
+                 WHERE oe.aggregate_type = 'trade.order_main'
+                   AND oe.aggregate_id = $1::text::uuid
+                   AND oe.event_type = 'billing.trigger.bridge'
+                   AND oe.status = 'published'
+                   AND oe.published_at IS NOT NULL
+                   AND oe.target_topic = 'dtp.outbox.domain-events'
+                   AND oe.outbox_event_id = $2::text::uuid
+                 ORDER BY oe.published_at ASC, oe.created_at ASC, oe.outbox_event_id ASC",
                 &[&order_id, &outbox_event_id],
             )
             .await
@@ -188,15 +208,27 @@ async fn load_published_bridge_events(
     } else {
         client
             .query(
-                "SELECT outbox_event_id::text, payload
-                 FROM ops.outbox_event
-                 WHERE aggregate_type = 'trade.order_main'
-                   AND aggregate_id = $1::text::uuid
-                   AND event_type = 'billing.trigger.bridge'
-                   AND status = 'published'
-                   AND published_at IS NOT NULL
-                   AND target_topic = 'dtp.outbox.domain-events'
-                 ORDER BY published_at ASC, created_at ASC, outbox_event_id ASC",
+                "SELECT
+                    oe.outbox_event_id::text,
+                    oe.payload,
+                    latest_attempt.outbox_publish_attempt_id::text,
+                    latest_attempt.attempt_no
+                 FROM ops.outbox_event oe
+                 JOIN LATERAL (
+                   SELECT outbox_publish_attempt_id, attempt_no, result_code
+                     FROM ops.outbox_publish_attempt
+                    WHERE outbox_event_id = oe.outbox_event_id
+                    ORDER BY attempt_no DESC, attempted_at DESC, outbox_publish_attempt_id DESC
+                    LIMIT 1
+                 ) latest_attempt
+                   ON latest_attempt.result_code = 'published'
+                 WHERE oe.aggregate_type = 'trade.order_main'
+                   AND oe.aggregate_id = $1::text::uuid
+                   AND oe.event_type = 'billing.trigger.bridge'
+                   AND oe.status = 'published'
+                   AND oe.published_at IS NOT NULL
+                   AND oe.target_topic = 'dtp.outbox.domain-events'
+                 ORDER BY oe.published_at ASC, oe.created_at ASC, oe.outbox_event_id ASC",
                 &[&order_id],
             )
             .await
@@ -208,6 +240,8 @@ async fn load_published_bridge_events(
         .map(|row| PendingBridgeEvent {
             outbox_event_id: row.get(0),
             payload: row.get(1),
+            publish_attempt_id: row.get(2),
+            publish_attempt_no: row.get(3),
         })
         .collect())
 }
@@ -215,6 +249,8 @@ async fn load_published_bridge_events(
 fn derive_bridge_decision(
     order_id: &str,
     outbox_event_id: &str,
+    publish_attempt_id: &str,
+    publish_attempt_no: i32,
     payload: &Value,
 ) -> Result<BridgeDecision, (StatusCode, Json<ErrorResponse>)> {
     let sku_type = payload
@@ -261,6 +297,8 @@ fn derive_bridge_decision(
                     matrix,
                     payload,
                     "billing_bridge_delivery_acceptance",
+                    publish_attempt_id,
+                    publish_attempt_no,
                 ),
             }
         }
@@ -279,6 +317,8 @@ fn derive_bridge_decision(
                 matrix,
                 payload,
                 "billing_bridge_query_run_success",
+                publish_attempt_id,
+                publish_attempt_no,
             ),
         },
         "SBX_STD" if trigger_stage == "delivery_committed" => BridgeDecision::Record {
@@ -296,6 +336,8 @@ fn derive_bridge_decision(
                 matrix,
                 payload,
                 "billing_bridge_sandbox_workspace_enable",
+                publish_attempt_id,
+                publish_attempt_no,
             ),
         },
         "SHARE_RO" if trigger_stage == "delivery_committed" => BridgeDecision::Record {
@@ -313,6 +355,8 @@ fn derive_bridge_decision(
                 matrix,
                 payload,
                 "billing_bridge_share_grant_effective",
+                publish_attempt_id,
+                publish_attempt_no,
             ),
         },
         "API_SUB" => BridgeDecision::Ignore {
@@ -342,11 +386,15 @@ fn bridge_metadata(
     matrix: Value,
     payload: &Value,
     reason_code: &str,
+    publish_attempt_id: &str,
+    publish_attempt_no: i32,
 ) -> Value {
     json!({
         "idempotency_key": format!("billing_bridge:{outbox_event_id}:{sku_type}:{trigger_stage}:{trigger_action}"),
         "reason_code": reason_code,
         "bridge_outbox_event_id": outbox_event_id,
+        "bridge_publish_attempt_id": publish_attempt_id,
+        "bridge_publish_attempt_no": publish_attempt_no,
         "bridge_order_id": order_id,
         "bridge_sku_type": sku_type,
         "bridge_trigger_stage": trigger_stage,

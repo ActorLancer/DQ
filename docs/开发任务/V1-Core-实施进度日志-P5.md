@@ -1832,3 +1832,36 @@
 - 备注：
   - `common.tg_write_outbox()` 仍保留函数名仅用于显式失败与历史迁移识别，这不构成正式主链路回退；当前数据库没有任何正式 trigger 继续引用它。
   - 本批没有改动 canonical writer 主逻辑，真实缺口在于验收证据未被显式冻结。已通过更严的 smoke 断言和专用文档把 `AUD-030` 收口成可重复复核的正式基线。
+### BATCH-244（计划中）
+- 任务：`AUD-031` 清理把 `ops.outbox_event` 当私有工作队列的旁路实现
+- 状态：计划中
+- 说明：重新核对 `AUD-031` 的冻结要求后确认，当前 canonical `outbox -> publisher -> Kafka -> dead-letter` 主链已经在 `AUD-009 / AUD-010 / AUD-026 / AUD-030` 落地，但 Billing 侧仍保留 `POST /api/v1/billing/{order_id}/bridge-events/process` 这条会直接读取 `ops.outbox_event(event_type=billing.trigger.bridge)` 的人工桥接路径。现状相较旧版已收紧到“只处理 `status='published'`、`published_at IS NOT NULL`、`target_topic='dtp.outbox.domain-events'` 的已发布事件”，不再把 `pending` outbox 当默认私有工作队列；但当前缺少针对这一边界的显式负例与 publish attempt 联查验收，后续 Agent 仍可能误把这条 API 当成对 pending outbox 的默认消费入口。本批将优先补强 Billing bridge 代码约束、`bil024` / AUD smoke 断言、runbook 与 test-case，显式证明历史旁路已经被桥接到正式 publisher 链路，而不是继续绕过 `outbox_publish_attempt / dead_letter / reprocess` 主闭环。
+- 追溯：已重新核对 `CSV / Markdown`、`双层权威模型与链上链下一致性设计.md` 6.3~7.2、`056_dual_authority_consistency.sql`、`一致性与事件接口协议正式版.md` 2~5、`A05-Outbox-Publisher-DLQ-统一闭环缺口.md`，以及通用冻结文档 `服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`、`审计、证据链与回放设计.md`、`审计、证据链与回放接口协议正式版.md`、`fabric-local.md`、`kafka-topics.md`、`async-chain-write.md`、`072_canonical_outbox_route_policy.sql`、`074_event_topology_route_extensions.sql` 与 `infra/docker/docker-compose.local.yml`。当前确认的正式完成标准是：`outbox-publisher` 与 `ops.outbox_publish_attempt` 仍是唯一正式 publish authority；Billing bridge 不再把 `ops.outbox_event` 当 `pending` 私有工作队列，且至少一条真实 smoke 或手工回查能够证明 `billing.trigger.bridge` 只能在 publish attempt 成功后被显式人工桥接、失败隔离与 `ops.outbox_publish_attempt` 可联查，并与 `dtp.dead-letter / reprocess` 总体口径不冲突。
+### BATCH-244（待审批）
+- 任务：`AUD-031` 清理把 `ops.outbox_event` 当私有工作队列的旁路实现
+- 状态：待审批
+- 完成情况：
+  - `apps/platform-core/src/modules/billing/repo/billing_bridge_repository.rs`：Billing bridge 读取 `billing.trigger.bridge` 时，新增对最新 `ops.outbox_publish_attempt` 的 lateral 联查，只允许 `result_code='published'` 的已发布 outbox 进入物化；同时把 `bridge_publish_attempt_id / bridge_publish_attempt_no` 写入 `billing.billing_event.metadata`，让桥接结果能回溯到正式 publish authority。
+  - `apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs`：现有八类 SKU smoke 全部补充 `bridge_publish_attempt_id` 断言；新增“outbox 已标 published 但不存在 publish attempt”负例，显式证明该事件不会被 bridge API 处理，也不会生成 `billing.billing_event`。
+  - `docs/04-runbooks/outbox-publisher.md`、`docs/04-runbooks/README.md`：冻结 Billing bridge 只处理 `status='published'`、`published_at IS NOT NULL`、最新 `ops.outbox_publish_attempt.result_code='published'` 的正式边界，并要求物化结果保留 `bridge_outbox_event_id / bridge_publish_attempt_id`。
+  - `docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：新增 `AUD-CASE-016A`，把 “Billing bridge published-only + publish-attempt gating” 纳入正式验收矩阵，避免后续再把该 API 解读为对 `pending` outbox 的默认消费入口。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core bil024_billing_trigger_bridge_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p outbox-publisher outbox_publisher_db_smoke -- --nocapture`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-031`
+  - `双层权威模型与链上链下一致性设计.md` 6.3~7.2
+  - `一致性与事件接口协议正式版.md` 2~5
+  - `A05-Outbox-Publisher-DLQ-统一闭环缺口.md`
+- 覆盖的任务清单条目：`AUD-031`
+- 未覆盖项：
+  - 无。当前任务要求的“移除或桥接旁路消费、收口到正式 publisher 语义、补 publish attempt 联查”已经由代码约束、负例 smoke、runbook 与 test-case 一并固定。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - `POST /api/v1/billing/{order_id}/bridge-events/process` 仍保留为显式人工桥接入口，但它不再具备“扫描 pending outbox”的隐式工作队列语义；当前已被收口为“只消费正式 publish authority 已成功发布的 bridge 事件”的受控补桥路径。

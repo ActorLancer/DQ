@@ -19,6 +19,7 @@ mod tests {
         sku_id: String,
         order_id: String,
         outbox_event_id: String,
+        publish_attempt_id: String,
         sku_type: String,
     }
 
@@ -161,7 +162,11 @@ mod tests {
                         .expect("processed billing event id");
                     let row = client
                         .query_one(
-                            "SELECT event_type, event_source, metadata ->> 'bridge_outbox_event_id'
+                            "SELECT
+                                event_type,
+                                event_source,
+                                metadata ->> 'bridge_outbox_event_id',
+                                metadata ->> 'bridge_publish_attempt_id'
                              FROM billing.billing_event
                              WHERE billing_event_id = $1::text::uuid",
                             &[&billing_event_id],
@@ -173,6 +178,10 @@ mod tests {
                         row.get::<_, Option<String>>(2).as_deref(),
                         Some(seed.outbox_event_id.as_str())
                     );
+                    assert_eq!(
+                        row.get::<_, Option<String>>(3).as_deref(),
+                        Some(seed.publish_attempt_id.as_str())
+                    );
                 }
                 _ => {
                     assert_eq!(data["processed_count"].as_u64(), Some(1));
@@ -181,7 +190,10 @@ mod tests {
                         .expect("processed billing event id");
                     let row = client
                         .query_one(
-                            "SELECT event_type, metadata ->> 'bridge_outbox_event_id'
+                            "SELECT
+                                event_type,
+                                metadata ->> 'bridge_outbox_event_id',
+                                metadata ->> 'bridge_publish_attempt_id'
                              FROM billing.billing_event
                              WHERE billing_event_id = $1::text::uuid",
                             &[&billing_event_id],
@@ -192,6 +204,10 @@ mod tests {
                     assert_eq!(
                         row.get::<_, Option<String>>(1).as_deref(),
                         Some(seed.outbox_event_id.as_str())
+                    );
+                    assert_eq!(
+                        row.get::<_, Option<String>>(2).as_deref(),
+                        Some(seed.publish_attempt_id.as_str())
                     );
                 }
             }
@@ -207,6 +223,40 @@ mod tests {
             assert_eq!(outbox_row.get::<_, String>(0), "published");
             assert!(outbox_row.get::<_, bool>(1));
         }
+
+        let unpublished_seed = seed_order_without_publish_attempt(
+            &client,
+            &suffix,
+            "FILE_STD",
+            "accepted",
+            "one_time",
+            "one_time",
+            "delivery.accept",
+            "acceptance_passed",
+            "file",
+        )
+        .await;
+        let unpublished_response = process_bridge(
+            &app,
+            &unpublished_seed.order_id,
+            &unpublished_seed.outbox_event_id,
+            &format!("{suffix}-unpublished"),
+        )
+        .await;
+        let unpublished_data = &unpublished_response["data"];
+        assert_eq!(unpublished_data["processed_count"].as_u64(), Some(0));
+        assert_eq!(unpublished_data["ignored_count"].as_u64(), Some(0));
+        let unpublished_billing_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM billing.billing_event
+                 WHERE order_id = $1::text::uuid",
+                &[&unpublished_seed.order_id],
+            )
+            .await
+            .expect("count unpublished billing events")
+            .get(0);
+        assert_eq!(unpublished_billing_count, 0);
 
         let processed_settlement_count: i64 = client
             .query_one(
@@ -224,7 +274,9 @@ mod tests {
             .get(0);
         assert_eq!(processed_settlement_count, 6);
 
-        cleanup_seed_orders(&client, &cases).await;
+        let mut cleanup_orders = cases.clone();
+        cleanup_orders.push(unpublished_seed);
+        cleanup_seed_orders(&client, &cleanup_orders).await;
     }
 
     async fn process_bridge(
@@ -278,6 +330,61 @@ mod tests {
         trigger_action: &str,
         trigger_stage: &str,
         delivery_branch: &str,
+    ) -> SeedOrder {
+        seed_order_with_publish_attempt(
+            client,
+            suffix,
+            sku_type,
+            order_status,
+            pricing_mode,
+            billing_mode,
+            trigger_action,
+            trigger_stage,
+            delivery_branch,
+            true,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn seed_order_without_publish_attempt(
+        client: &Client,
+        suffix: &str,
+        sku_type: &str,
+        order_status: &str,
+        pricing_mode: &str,
+        billing_mode: &str,
+        trigger_action: &str,
+        trigger_stage: &str,
+        delivery_branch: &str,
+    ) -> SeedOrder {
+        seed_order_with_publish_attempt(
+            client,
+            suffix,
+            sku_type,
+            order_status,
+            pricing_mode,
+            billing_mode,
+            trigger_action,
+            trigger_stage,
+            delivery_branch,
+            false,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn seed_order_with_publish_attempt(
+        client: &Client,
+        suffix: &str,
+        sku_type: &str,
+        order_status: &str,
+        pricing_mode: &str,
+        billing_mode: &str,
+        trigger_action: &str,
+        trigger_stage: &str,
+        delivery_branch: &str,
+        include_publish_attempt: bool,
     ) -> SeedOrder {
         let buyer_org_id: String = client
             .query_one(
@@ -484,6 +591,37 @@ mod tests {
             .await
             .expect("query bridge outbox")
             .get(0);
+        let publish_attempt_id = if include_publish_attempt {
+            client
+                .query_one(
+                    "INSERT INTO ops.outbox_publish_attempt (
+                       outbox_event_id,
+                       worker_id,
+                       target_bus,
+                       target_topic,
+                       attempt_no,
+                       result_code,
+                       attempted_at,
+                       completed_at
+                     ) VALUES (
+                       $1::text::uuid,
+                       'seed-bil024-outbox-publisher',
+                       'kafka',
+                       'dtp.outbox.domain-events',
+                       1,
+                       'published',
+                       now(),
+                       now()
+                     )
+                     RETURNING outbox_publish_attempt_id::text",
+                    &[&outbox_event_id],
+                )
+                .await
+                .expect("insert bridge publish attempt")
+                .get(0)
+        } else {
+            format!("missing-publish-attempt-{outbox_event_id}")
+        };
         client
             .execute(
                 "UPDATE ops.outbox_event
@@ -504,6 +642,7 @@ mod tests {
             sku_id,
             order_id,
             outbox_event_id,
+            publish_attempt_id,
             sku_type: sku_type.to_string(),
         }
     }
