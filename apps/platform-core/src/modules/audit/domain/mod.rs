@@ -9,7 +9,9 @@ pub use audit_kit::{
 };
 
 use crate::modules::audit::dto::AuditTraceView;
-use crate::modules::audit::dto::{EvidenceManifestView, EvidencePackageView};
+use crate::modules::audit::dto::{
+    EvidenceManifestView, EvidencePackageView, ReplayJobView, ReplayResultView,
+};
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct AuditTraceQuery {
@@ -96,4 +98,21 @@ pub struct AuditPackageExportView {
     pub evidence_item_count: i64,
     pub legal_hold_status: String,
     pub step_up_bound: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct AuditReplayJobCreateRequest {
+    pub replay_type: String,
+    pub ref_type: String,
+    pub ref_id: String,
+    pub reason: String,
+    pub dry_run: Option<bool>,
+    #[serde(default)]
+    pub options: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuditReplayJobDetailView {
+    pub replay_job: ReplayJobView,
+    pub results: Vec<ReplayResultView>,
 }

@@ -1,5 +1,6 @@
 use audit_kit::{
-    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage,
+    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, ReplayJob,
+    ReplayResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -176,6 +177,72 @@ impl From<&EvidencePackage> for EvidencePackageView {
             retention_class: package.retention_class.clone(),
             legal_hold_status: package.legal_hold_status.clone(),
             metadata: package.metadata.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReplayJobView {
+    pub replay_job_id: Option<String>,
+    pub replay_type: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub dry_run: bool,
+    pub replay_status: String,
+    pub created_by: Option<String>,
+    pub request_reason: Option<String>,
+    pub step_up_challenge_id: Option<String>,
+    pub created_at: Option<String>,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub options: serde_json::Value,
+}
+
+impl From<&ReplayJob> for ReplayJobView {
+    fn from(job: &ReplayJob) -> Self {
+        Self {
+            replay_job_id: job.replay_job_id.clone(),
+            replay_type: job.replay_type.clone(),
+            ref_type: job.ref_type.clone(),
+            ref_id: job.ref_id.clone(),
+            dry_run: job.dry_run,
+            replay_status: job.status.clone(),
+            created_by: job.requested_by.clone(),
+            request_reason: job.request_reason.clone(),
+            step_up_challenge_id: job.step_up_challenge_id.clone(),
+            created_at: job.created_at.clone(),
+            started_at: job.started_at.clone(),
+            finished_at: job.finished_at.clone(),
+            updated_at: job.updated_at.clone(),
+            options: job.options_json.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReplayResultView {
+    pub replay_result_id: Option<String>,
+    pub replay_job_id: Option<String>,
+    pub step_name: String,
+    pub result_code: String,
+    pub expected_digest: Option<String>,
+    pub actual_digest: Option<String>,
+    pub diff_summary: serde_json::Value,
+    pub created_at: Option<String>,
+}
+
+impl From<&ReplayResult> for ReplayResultView {
+    fn from(result: &ReplayResult) -> Self {
+        Self {
+            replay_result_id: result.replay_result_id.clone(),
+            replay_job_id: result.replay_job_id.clone(),
+            step_name: result.step_name.clone(),
+            result_code: result.result_code.clone(),
+            expected_digest: result.expected_digest.clone(),
+            actual_digest: result.actual_digest.clone(),
+            diff_summary: result.diff_summary.clone(),
+            created_at: result.created_at.clone(),
         }
     }
 }

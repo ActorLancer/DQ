@@ -76,9 +76,18 @@ audit_file="$OPENAPI_DIR/audit.yaml"
 for path in \
   "/api/v1/audit/orders/{id}" \
   "/api/v1/audit/traces" \
-  "/api/v1/audit/packages/export"; do
+  "/api/v1/audit/packages/export" \
+  "/api/v1/audit/replay-jobs" \
+  "/api/v1/audit/replay-jobs/{id}"; do
   grep -q "$path" "$audit_file" || {
     echo "[error] $audit_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+for token in "AUDIT_REPLAY_DRY_RUN_ONLY" "state_replay" "execution_policy"; do
+  grep -q "$token" "$audit_file" || {
+    echo "[error] $audit_file missing audit replay token: $token" >&2
     exit 1
   }
 done

@@ -234,3 +234,89 @@
 - 备注：
   - 本批没有发现需要人工确认的 `CSV / Markdown / technical_reference` 冲突，不触发暂停条件。
   - 手工清理验证时，尝试删除已被 append-only `audit.audit_event` 引用的 `iam.step_up_challenge` 会触发 FK 的 `SET NULL -> UPDATE audit.audit_event`，被 append-only trigger 正常拒绝；因此高风险动作验证产生的 challenge 记录按运行态现状保留，不把审计域强行改造成可回写对象。
+### BATCH-218（计划中）
+- 任务：AUD-005 审计回放任务接口
+- 状态：计划中
+- 说明：在 `AUD-003` 的审计联查读取控制面与 `AUD-004` 的证据导出控制面基础上，当前批次补齐 `POST /api/v1/audit/replay-jobs`、`GET /api/v1/audit/replay-jobs/{id}`。实现将覆盖平台级 `audit.replay.execute / audit.replay.read` 权限、`V1` 默认 `dry-run` 约束、`x-step-up-token / x-step-up-challenge-id` 校验、`audit.replay_job + audit.replay_result` 正式落库、`audit.audit_event + audit.access_audit + ops.system_log` 三层留痕，以及 `packages/openapi/audit.yaml` / `docs/02-openapi/audit.yaml` / `docs/05-test-cases/audit-consistency-cases.md` 的同步更新，并通过真实 API + DB 手工/集成验证证明 replay 不是占位接口。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-005`，完成后再进入 `AUD-006`。
+### BATCH-218（待审批）
+- 任务：`AUD-005` 审计回放任务接口
+- 状态：待审批
+- 当前任务编号：`AUD-005`
+- 前置依赖核对结果：`AUD-001` 统一 `AuditEvent` authority model、`AUD-002` 统一 `EvidenceItem / EvidenceManifest` authority model、`AUD-003` 审计读取控制面、`AUD-004` 证据包导出控制面均已本地提交完成；`audit.replay_job / audit.replay_result` schema、MinIO 证据存储基线与平台级审计权限门面已满足当前批次依赖。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-005` DoD 为 `POST /api/v1/audit/replay-jobs`、`GET /api/v1/audit/replay-jobs/{id}` 的接口、DTO、权限、审计、错误码和最小测试齐备，且 `V1` 默认 `dry-run`。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/技术选型正式版.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `PostgreSQL + MinIO + Kafka + Redis + Keycloak/IAM + 观测栈` 在 `AUD` 高风险控制面中的职责边界，确认 replay 需要真实 step-up、正式审计留痕与对象存储回查，不允许只返回占位 DTO。
+  - `docs/原始PRD/审计、证据链与回放设计.md`：确认 replay 类型包含 `forensic_replay / state_replay / reconciliation_replay / compensation_replay`，有副作用的 replay 必须二次认证，`V1` 仅允许 dry-run。
+  - `docs/数据库设计/接口协议/审计、证据链与回放接口协议正式版.md`：确认 `POST /api/v1/audit/replay-jobs`、`GET /api/v1/audit/replay-jobs/{id}` 是正式 `V1` 接口，错误码必须包含 `AUDIT_REPLAY_DRY_RUN_ONLY`，访问模式属于 `replay`。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：确认 replay 目标围绕 order / dispute_case / evidence_package 等审计与证据聚合对象展开。
+  - `docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`：确认 replay 控制面必须落到正式 router、OpenAPI、runbook 与 test-case，而不是只写 README/草稿。
+  - `docs/开发任务/问题修复任务/A06-Audit-Kit-统一模型漂移.md`：确认 `ReplayJob / ReplayResult` 必须复用统一 authority model，不能再发明第二套 ad-hoc 结构。
+  - `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/072_canonical_outbox_route_policy.sql`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`、`infra/docker/docker-compose.local.yml`：确认本批不新增 topic / route authority；replay 为 `platform-core` 内部高风险控制面，不通过旁路 worker 定义业务主状态。
+  - `apps/platform-core/src/modules/audit/**`、`packages/openapi/**`、`docs/02-openapi/**`、`docs/04-runbooks/**`、`docs/05-test-cases/**`、`scripts/check-openapi-schema.sh`：确认现有实现只覆盖 `AUD-003/004` 查询+导出控制面，replay 契约、runbook 与验收矩阵仍未正式落盘。
+- 实现要点：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`：新增 `POST /api/v1/audit/replay-jobs` 与 `GET /api/v1/audit/replay-jobs/{id}`，要求 `x-request-id`；创建 replay 时要求 `x-user-id`、平台级 `audit.replay.execute` 权限与 `x-step-up-token / x-step-up-challenge-id` 至少其一，读取 replay 时要求 `audit.replay.read` 权限。
+  - `POST /api/v1/audit/replay-jobs`：统一规范化 `replay_type / ref_type / reason`；`dry_run` 缺省为 `true`，显式传 `false` 会返回 `409 + AUDIT_REPLAY_DRY_RUN_ONLY`；`x-step-up-challenge-id` 必须绑定当前 actor、状态 `verified`、未过期，并与 `audit.replay.execute + ref_type/ref_id` 目标一致。
+  - replay 目标当前真实支持 `order / case(dispute_case) / evidence_package`，以及存在正式 `audit.audit_event` 记录的其他 UUID 型审计对象；实现会读取目标快照、审计时间线、evidence manifests/items 与 legal hold 摘要，生成 dry-run replay report。
+  - `apps/platform-core/src/modules/audit/repo/mod.rs`：新增 `insert_replay_job`、`insert_replay_result`、`load_replay_job_detail` 等正式 writer / reader，把 `audit.replay_job + audit.replay_result` 结构化落库。
+  - replay report 会通过既有 MinIO writer 落到 `s3://evidence-packages/replays/{ref_type}/{ref_id}/replay-{job_id}.json`，并通过统一 evidence writer 以 `audit_replay_report` 形式桥接到 `audit.evidence_item / evidence_manifest`；同事务追加 `audit.audit_event(audit.replay.requested / audit.replay.completed)`、`audit.access_audit(access_mode='replay')`、`ops.system_log`。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：扩展 replay 路由级权限 / step-up / dry-run 约束测试，并将 `AUD_DB_SMOKE=1` 的 live smoke 扩展为真实 replay create + lookup + DB + MinIO 回查。
+  - `packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`、`scripts/check-openapi-schema.sh`：补齐 replay 路径、schema、错误码 token 与归档同步校验。
+  - `docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`、`docs/04-runbooks/audit-replay.md`、`docs/04-runbooks/README.md`：补齐 replay dry-run 的正式验收矩阵、手工 SQL 种数与 `curl` 示例、DB/MinIO 回查、故障处理与清理约束。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `./scripts/check-openapi-schema.sh`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  6. `./scripts/check-query-compile.sh`
+  7. `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core modules::audit::tests::api_db::audit_trace_api_db_smoke -- --nocapture`
+  8. 真实 HTTP 联调：
+     - `set -a; source infra/docker/.env.local; set +a; APP_PORT=18080 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core-bin`
+     - `curl -X POST http://127.0.0.1:18080/api/v1/audit/replay-jobs ...`
+     - `curl http://127.0.0.1:18080/api/v1/audit/replay-jobs/{id} ...`
+     - `psql` 回查 `audit.replay_job / audit.replay_result / audit.audit_event / audit.access_audit / ops.system_log`
+     - 使用 `minio/mc` 容器镜像读取 replay report 对象
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过，确认 replay 路径、`AUDIT_REPLAY_DRY_RUN_ONLY` token 与 `docs/02-openapi/audit.yaml` 归档同步一致。
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`272 passed; 0 failed`，包含 replay 路由权限 / step-up / dry-run 约束单测。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线查询缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `AUD_DB_SMOKE=1 ... audit_trace_api_db_smoke` 通过：真实完成 replay create + lookup、`audit.replay_job / audit.replay_result / audit.audit_event / audit.access_audit / ops.system_log` 回查，以及 MinIO replay report 读取验证。
+  - 真实 HTTP 联调通过：
+    - `GET /health/live`、`GET /health/ready` 返回 `200`。
+    - 手工 `POST /api/v1/audit/replay-jobs` 返回 `200`，得到 `replay_job_id=09f87d7b-604b-492f-8fb9-640852696505`、`replay_status=completed`、`dry_run=true`、4 条 replay results。
+    - 手工 `GET /api/v1/audit/replay-jobs/{id}` 返回 `200`，读取结果与创建响应一致。
+    - `psql` 回查：
+      - `audit.replay_job`：`replay_type=state_replay`、`ref_type=order`、`dry_run=true`、`status=completed`、`request_reason='manual replay verification'`
+      - `audit.replay_result`：存在 `target_snapshot / audit_timeline / evidence_projection / execution_policy` 四步；其中 `execution_policy.result_code='AUDIT_REPLAY_DRY_RUN_ONLY'`
+      - `audit.audit_event`：存在 `audit.replay.requested`、`audit.replay.completed`
+      - `audit.access_audit`：创建与读取两次记录均为 `access_mode='replay'`
+      - `ops.system_log`：存在 `audit replay job executed: POST /api/v1/audit/replay-jobs` 与 `audit replay lookup executed: GET /api/v1/audit/replay-jobs/{id}`
+    - MinIO replay report 已真实存在并可读取，内容包含：
+      - `replay_job_id=09f87d7b-604b-492f-8fb9-640852696505`
+      - `dry_run=true`
+      - `recommendation=collect_evidence_before_replay`
+      - `results[*].step_name`
+      - `target.order_id=181ab37d-fb63-45a1-a4bc-da9cc7b180e0`
+  - 运行态校正证明：第一次手工启动直接 `source infra/docker/.env.local` 时，应用拿到容器内 Kafka 地址 `kafka:9092` 导致启动失败；已按 `docs/04-runbooks/local-startup.md` 的宿主机正式入口改为显式覆盖 `KAFKA_BROKERS / KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 后复验通过，不构成冻结文档冲突。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-005`
+  - `审计、证据链与回放设计.md`：replay 类型、dry-run 边界、高风险动作 step-up
+  - `审计、证据链与回放接口协议正式版.md`：`/api/v1/audit/replay-jobs`、`/api/v1/audit/replay-jobs/{id}`、`AUDIT_REPLAY_DRY_RUN_ONLY`
+  - `全量领域模型与对象关系说明.md`：order / dispute_case / evidence_package 等审计聚合边界
+  - `A04`、`A06`：replay 控制面契约落地与统一 authority model 收口
+  - `docs/04-runbooks/local-startup.md`：宿主机启动 `platform-core` 必须显式使用 `127.0.0.1:9094`
+- 覆盖的任务清单条目：`AUD-005`
+- 未覆盖项：
+  - `AUD-006` legal hold 控制面
+  - anchor / Fabric request / callback / reconcile
+  - dead letter reprocess 与一致性修复高风险接口
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 收敛为“`AUD-003~005` 已交付查询 + 导出 + replay，后续仅跟踪 legal hold / anchor / ops 控制面缺口”，并把 `TODO-AUD-TEST-001` 收敛为继续追加后续 `AUD`/Fabric/一致性验收矩阵。
+- 备注：
+  - 本批没有发现需要人工确认的 `CSV / Markdown / technical_reference` 冲突，不触发暂停条件。
+  - 手工联调结束后，已清理可删除的业务测试对象：`trade.order_main`、`catalog.product_sku`、`catalog.product`、`catalog.asset_version`、`catalog.data_asset` 与卖方组织。
+  - 与高风险动作强绑定的 `iam.step_up_challenge`、其关联用户和买方组织在本地尝试删除时，会触发 `audit.audit_event` 的 FK `SET NULL -> UPDATE`，被 append-only trigger 正常拒绝；因此这类由正式审计对象引用的支持记录按运行态现状保留，不绕过审计域约束做强删。

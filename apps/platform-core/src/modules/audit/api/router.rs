@@ -16,4 +16,12 @@ pub fn router() -> Router<AppState> {
             "/api/v1/audit/packages/export",
             post(handlers::export_audit_package),
         )
+        .route(
+            "/api/v1/audit/replay-jobs",
+            post(handlers::create_audit_replay_job),
+        )
+        .route(
+            "/api/v1/audit/replay-jobs/{id}",
+            get(handlers::get_audit_replay_job),
+        )
 }

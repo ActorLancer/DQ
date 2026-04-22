@@ -90,6 +90,76 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn rejects_replay_job_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/replay-jobs")
+            .header("x-role", "buyer_operator")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud005-forbidden")
+            .header("x-step-up-token", "aud005-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"replay_type":"state_replay","ref_type":"order","ref_id":"10000000-0000-0000-0000-000000000001","reason":"forbidden"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn replay_job_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/replay-jobs")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud005-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"replay_type":"state_replay","ref_type":"order","ref_id":"10000000-0000-0000-0000-000000000001","reason":"missing step-up"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn replay_job_enforces_dry_run_only() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/audit/replay-jobs")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud005-dry-run")
+            .header("x-step-up-token", "aud005-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"replay_type":"state_replay","ref_type":"order","ref_id":"10000000-0000-0000-0000-000000000001","reason":"dry-run only","dry_run":false}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn rejects_replay_lookup_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/audit/replay-jobs/10000000-0000-0000-0000-000000000005")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud005-read-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
 }
 
 #[tokio::test]
@@ -119,6 +189,8 @@ async fn audit_trace_api_db_smoke() {
     let trace_request_id = format!("req-aud003-traces-{suffix}");
     let tenant_request_id = format!("req-aud003-tenant-{suffix}");
     let export_request_id = format!("req-aud004-export-{suffix}");
+    let replay_request_id = format!("req-aud005-replay-{suffix}");
+    let replay_lookup_request_id = format!("req-aud005-replay-get-{suffix}");
     let trace_id = format!("trace-aud003-{suffix}");
 
     write_trade_audit_event(
@@ -279,9 +351,16 @@ async fn audit_trace_api_db_smoke() {
     let audit_user_id = seed_user(&client, &seed.buyer_org_id, &suffix)
         .await
         .expect("seed audit export user");
-    let challenge_id = seed_verified_step_up_challenge(&client, &audit_user_id, &seed.order_id)
-        .await
-        .expect("seed verified step-up challenge");
+    let challenge_id = seed_verified_step_up_challenge(
+        &client,
+        &audit_user_id,
+        "audit.package.export",
+        "order",
+        Some(seed.order_id.as_str()),
+        "aud004",
+    )
+    .await
+    .expect("seed verified export step-up challenge");
     let source_bucket = std::env::var("BUCKET_EVIDENCE_PACKAGES")
         .unwrap_or_else(|_| "evidence-packages".to_string());
     let source_key = format!("audit-source/orders/{}/{}.json", seed.order_id, suffix);
@@ -509,10 +588,227 @@ async fn audit_trace_api_db_smoke() {
         .get(0);
     assert!(manifest_item_count >= 2);
 
+    let replay_challenge_id = seed_verified_step_up_challenge(
+        &client,
+        &audit_user_id,
+        "audit.replay.execute",
+        "order",
+        Some(seed.order_id.as_str()),
+        "aud005",
+    )
+    .await
+    .expect("seed verified replay step-up challenge");
+
+    let replay_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/audit/replay-jobs")
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &replay_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &replay_challenge_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "replay_type": "state_replay",
+                        "ref_type": "order",
+                        "ref_id": seed.order_id,
+                        "reason": "investigate audit drift",
+                        "dry_run": true,
+                        "options": {
+                            "trigger": "integration_test",
+                            "source_export_id": evidence_package_id,
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("replay request"),
+        )
+        .await
+        .expect("call audit replay create");
+    let replay_status = replay_resp.status();
+    let replay_body = to_bytes(replay_resp.into_body(), usize::MAX)
+        .await
+        .expect("read replay body");
+    assert_eq!(
+        replay_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&replay_body)
+    );
+    let replay_json: Value = serde_json::from_slice(&replay_body).expect("decode replay body");
+    let replay_job_id = replay_json["data"]["replay_job"]["replay_job_id"]
+        .as_str()
+        .expect("replay_job_id")
+        .to_string();
+    assert_eq!(
+        replay_json["data"]["replay_job"]["replay_status"].as_str(),
+        Some("completed")
+    );
+    assert_eq!(
+        replay_json["data"]["replay_job"]["dry_run"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        replay_json["data"]["results"]
+            .as_array()
+            .map(|items| items.len())
+            .unwrap_or_default(),
+        4
+    );
+    assert_eq!(
+        replay_json["data"]["results"][3]["result_code"].as_str(),
+        Some("AUDIT_REPLAY_DRY_RUN_ONLY")
+    );
+
+    let replay_lookup_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/v1/audit/replay-jobs/{replay_job_id}"))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &audit_user_id)
+                .header("x-request-id", &replay_lookup_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("replay lookup request"),
+        )
+        .await
+        .expect("call audit replay lookup");
+    assert_eq!(replay_lookup_resp.status(), StatusCode::OK);
+    let replay_lookup_body = to_bytes(replay_lookup_resp.into_body(), usize::MAX)
+        .await
+        .expect("read replay lookup body");
+    let replay_lookup_json: Value =
+        serde_json::from_slice(&replay_lookup_body).expect("decode replay lookup body");
+    assert_eq!(
+        replay_lookup_json["data"]["replay_job"]["replay_job_id"].as_str(),
+        Some(replay_job_id.as_str())
+    );
+
+    let replay_job_row = client
+        .query_one(
+            "SELECT replay_type,
+                    ref_type,
+                    ref_id::text,
+                    dry_run,
+                    status,
+                    requested_by::text,
+                    request_reason,
+                    options_json ->> 'report_storage_uri'
+             FROM audit.replay_job
+             WHERE replay_job_id = $1::text::uuid",
+            &[&replay_job_id],
+        )
+        .await
+        .expect("query replay job row");
+    let replay_report_uri: Option<String> = replay_job_row.get(7);
+    assert_eq!(replay_job_row.get::<_, String>(0), "state_replay");
+    assert_eq!(replay_job_row.get::<_, String>(1), "order");
+    assert_eq!(
+        replay_job_row.get::<_, Option<String>>(2).as_deref(),
+        Some(seed.order_id.as_str())
+    );
+    assert!(replay_job_row.get::<_, bool>(3));
+    assert_eq!(replay_job_row.get::<_, String>(4), "completed");
+    assert_eq!(
+        replay_job_row.get::<_, Option<String>>(5).as_deref(),
+        Some(audit_user_id.as_str())
+    );
+    assert_eq!(
+        replay_job_row.get::<_, Option<String>>(6).as_deref(),
+        Some("investigate audit drift")
+    );
+
+    let replay_report_uri = replay_report_uri.expect("replay report uri");
+    let (replay_bucket, replay_key) = parse_s3_uri(&replay_report_uri);
+    let replay_report = fetch_object_bytes(&replay_bucket, &replay_key)
+        .await
+        .expect("fetch replay report");
+    let replay_report_json: Value =
+        serde_json::from_slice(&replay_report.bytes).expect("decode replay report");
+    assert_eq!(
+        replay_report_json["recommendation"].as_str(),
+        Some("dry_run_completed")
+    );
+    assert_eq!(
+        replay_report_json["target"]["order_id"].as_str(),
+        Some(seed.order_id.as_str())
+    );
+
+    let replay_result_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.replay_result
+             WHERE replay_job_id = $1::text::uuid",
+            &[&replay_job_id],
+        )
+        .await
+        .expect("count replay results")
+        .get(0);
+    assert_eq!(replay_result_count, 4);
+
+    let replay_audit_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = $1
+               AND ref_type = 'replay_job'
+               AND ref_id = $2::text::uuid
+               AND action_name IN ('audit.replay.requested', 'audit.replay.completed')",
+            &[&replay_request_id, &replay_job_id],
+        )
+        .await
+        .expect("count replay audit events")
+        .get(0);
+    assert_eq!(replay_audit_count, 2);
+
+    let replay_access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND access_mode = 'replay'",
+            &[&vec![
+                replay_request_id.clone(),
+                replay_lookup_request_id.clone(),
+            ]],
+        )
+        .await
+        .expect("count replay access audit")
+        .get(0);
+    assert_eq!(replay_access_count, 2);
+
+    let replay_log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text LIKE 'audit replay%'",
+            &[&vec![
+                replay_request_id.clone(),
+                replay_lookup_request_id.clone(),
+            ]],
+        )
+        .await
+        .expect("count replay logs")
+        .get(0);
+    assert_eq!(replay_log_count, 2);
+
     let _ = client
         .execute(
             "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
             &[&challenge_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&replay_challenge_id],
         )
         .await;
     let _ = client
@@ -527,7 +823,10 @@ async fn audit_trace_api_db_smoke() {
 async fn seed_verified_step_up_challenge(
     client: &Client,
     user_id: &str,
-    order_id: &str,
+    target_action: &str,
+    target_ref_type: &str,
+    target_ref_id: Option<&str>,
+    seed_label: &str,
 ) -> Result<String, Error> {
     client
         .query_one(
@@ -544,16 +843,22 @@ async fn seed_verified_step_up_challenge(
              ) VALUES (
                $1::text::uuid,
                'mock_otp',
-               'audit.package.export',
-               'order',
-               $2::text::uuid,
+               $2,
+               $3,
+               $4::text::uuid,
                'verified',
                now() + interval '10 minutes',
                now(),
-               '{\"seed\":\"aud004\"}'::jsonb
+               jsonb_build_object('seed', $5)
              )
              RETURNING step_up_challenge_id::text",
-            &[&user_id, &order_id],
+            &[
+                &user_id,
+                &target_action,
+                &target_ref_type,
+                &target_ref_id,
+                &seed_label,
+            ],
         )
         .await
         .map(|row| row.get(0))

@@ -1,5 +1,6 @@
 use audit_kit::{
-    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage,
+    AuditEvent, EvidenceItem, EvidenceManifest, EvidenceManifestItem, EvidencePackage, ReplayJob,
+    ReplayResult,
 };
 use db::{Error, GenericClient, Row};
 use serde_json::{Map, Value};
@@ -175,6 +176,78 @@ RETURNING
   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
   retention_class,
   legal_hold_status
+"#;
+
+pub const INSERT_REPLAY_JOB_SQL: &str = r#"
+INSERT INTO audit.replay_job (
+  replay_job_id,
+  replay_type,
+  ref_type,
+  ref_id,
+  dry_run,
+  status,
+  requested_by,
+  step_up_challenge_id,
+  request_reason,
+  options_json,
+  started_at,
+  finished_at
+) VALUES (
+  $1::text::uuid,
+  $2,
+  $3,
+  $4::text::uuid,
+  $5,
+  $6,
+  $7::text::uuid,
+  $8::text::uuid,
+  $9,
+  $10::jsonb,
+  $11::timestamptz,
+  $12::timestamptz
+)
+RETURNING
+  replay_job_id::text,
+  replay_type,
+  ref_type,
+  ref_id::text,
+  dry_run,
+  status,
+  requested_by::text,
+  step_up_challenge_id::text,
+  request_reason,
+  options_json,
+  to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+  to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+"#;
+
+pub const INSERT_REPLAY_RESULT_SQL: &str = r#"
+INSERT INTO audit.replay_result (
+  replay_job_id,
+  step_name,
+  result_code,
+  expected_digest,
+  actual_digest,
+  diff_summary
+) VALUES (
+  $1::text::uuid,
+  $2,
+  $3,
+  $4,
+  $5,
+  $6::jsonb
+)
+RETURNING
+  replay_result_id::text,
+  replay_job_id::text,
+  step_name,
+  result_code,
+  expected_digest,
+  actual_digest,
+  diff_summary,
+  to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
 "#;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -382,6 +455,70 @@ impl From<&EvidencePackage> for EvidencePackageInsert {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReplayJobInsert {
+    pub replay_job_id: Option<String>,
+    pub replay_type: String,
+    pub ref_type: String,
+    pub ref_id: Option<String>,
+    pub dry_run: bool,
+    pub status: String,
+    pub requested_by: Option<String>,
+    pub step_up_challenge_id: Option<String>,
+    pub request_reason: Option<String>,
+    pub options_json: Value,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+}
+
+impl From<&ReplayJob> for ReplayJobInsert {
+    fn from(job: &ReplayJob) -> Self {
+        Self {
+            replay_job_id: job.replay_job_id.clone(),
+            replay_type: job.replay_type.clone(),
+            ref_type: job.ref_type.clone(),
+            ref_id: job.ref_id.clone(),
+            dry_run: job.dry_run,
+            status: job.status.clone(),
+            requested_by: job.requested_by.clone(),
+            step_up_challenge_id: job.step_up_challenge_id.clone(),
+            request_reason: job.request_reason.clone(),
+            options_json: metadata_value(job.options_json.clone()),
+            started_at: job.started_at.clone(),
+            finished_at: job.finished_at.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplayResultInsert {
+    pub replay_job_id: Option<String>,
+    pub step_name: String,
+    pub result_code: String,
+    pub expected_digest: Option<String>,
+    pub actual_digest: Option<String>,
+    pub diff_summary: Value,
+}
+
+impl From<&ReplayResult> for ReplayResultInsert {
+    fn from(result: &ReplayResult) -> Self {
+        Self {
+            replay_job_id: result.replay_job_id.clone(),
+            step_name: result.step_name.clone(),
+            result_code: result.result_code.clone(),
+            expected_digest: result.expected_digest.clone(),
+            actual_digest: result.actual_digest.clone(),
+            diff_summary: metadata_value(result.diff_summary.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplayJobDetail {
+    pub replay_job: ReplayJob,
+    pub results: Vec<ReplayResult>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SystemLogInsert {
     pub service_name: String,
     pub log_level: String,
@@ -528,6 +665,112 @@ pub async fn insert_evidence_package(
     let mut stored = parse_evidence_package_row(&row);
     stored.metadata = insert.metadata;
     Ok(stored)
+}
+
+pub async fn insert_replay_job(
+    client: &(impl GenericClient + Sync),
+    replay_job: &ReplayJob,
+) -> Result<ReplayJob, Error> {
+    let insert = ReplayJobInsert::from(replay_job);
+    let row = client
+        .query_one(
+            INSERT_REPLAY_JOB_SQL,
+            &[
+                &insert.replay_job_id,
+                &insert.replay_type,
+                &insert.ref_type,
+                &insert.ref_id,
+                &insert.dry_run,
+                &insert.status,
+                &insert.requested_by,
+                &insert.step_up_challenge_id,
+                &insert.request_reason,
+                &insert.options_json,
+                &insert.started_at,
+                &insert.finished_at,
+            ],
+        )
+        .await?;
+    Ok(parse_replay_job_row(&row))
+}
+
+pub async fn insert_replay_result(
+    client: &(impl GenericClient + Sync),
+    replay_result: &ReplayResult,
+) -> Result<ReplayResult, Error> {
+    let insert = ReplayResultInsert::from(replay_result);
+    let row = client
+        .query_one(
+            INSERT_REPLAY_RESULT_SQL,
+            &[
+                &insert.replay_job_id,
+                &insert.step_name,
+                &insert.result_code,
+                &insert.expected_digest,
+                &insert.actual_digest,
+                &insert.diff_summary,
+            ],
+        )
+        .await?;
+    Ok(parse_replay_result_row(&row))
+}
+
+pub async fn load_replay_job_detail(
+    client: &(impl GenericClient + Sync),
+    replay_job_id: &str,
+) -> Result<Option<ReplayJobDetail>, Error> {
+    let replay_job_row = client
+        .query_opt(
+            "SELECT
+               replay_job_id::text,
+               replay_type,
+               ref_type,
+               ref_id::text,
+               dry_run,
+               status,
+               requested_by::text,
+               step_up_challenge_id::text,
+               request_reason,
+               options_json,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.replay_job
+             WHERE replay_job_id = $1::text::uuid",
+            &[&replay_job_id],
+        )
+        .await?;
+
+    let Some(replay_job_row) = replay_job_row else {
+        return Ok(None);
+    };
+
+    let results = client
+        .query(
+            "SELECT
+               replay_result_id::text,
+               replay_job_id::text,
+               step_name,
+               result_code,
+               expected_digest,
+               actual_digest,
+               diff_summary,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+             FROM audit.replay_result
+             WHERE replay_job_id = $1::text::uuid
+             ORDER BY created_at ASC, replay_result_id ASC",
+            &[&replay_job_id],
+        )
+        .await?
+        .iter()
+        .map(parse_replay_result_row)
+        .collect();
+
+    Ok(Some(ReplayJobDetail {
+        replay_job: parse_replay_job_row(&replay_job_row),
+        results,
+    }))
 }
 
 pub async fn load_order_audit_scope(
@@ -735,6 +978,38 @@ fn parse_evidence_package_row(row: &Row) -> EvidencePackage {
         retention_class: row.get(9),
         legal_hold_status: row.get(10),
         metadata: Value::Object(Map::new()),
+    }
+}
+
+fn parse_replay_job_row(row: &Row) -> ReplayJob {
+    ReplayJob {
+        replay_job_id: row.get(0),
+        replay_type: row.get(1),
+        ref_type: row.get(2),
+        ref_id: row.get(3),
+        dry_run: row.get(4),
+        status: row.get(5),
+        requested_by: row.get(6),
+        step_up_challenge_id: row.get(7),
+        request_reason: row.get(8),
+        options_json: row.get(9),
+        created_at: row.get(10),
+        started_at: row.get(11),
+        finished_at: row.get(12),
+        updated_at: row.get(13),
+    }
+}
+
+fn parse_replay_result_row(row: &Row) -> ReplayResult {
+    ReplayResult {
+        replay_result_id: row.get(0),
+        replay_job_id: row.get(1),
+        step_name: row.get(2),
+        result_code: row.get(3),
+        expected_digest: row.get(4),
+        actual_digest: row.get(5),
+        diff_summary: row.get(6),
+        created_at: row.get(7),
     }
 }
 

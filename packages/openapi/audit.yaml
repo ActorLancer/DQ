@@ -130,6 +130,63 @@ paths:
           description: forbidden
         "404":
           description: target not found
+  /api/v1/audit/replay-jobs:
+    post:
+      summary: create one audit replay job
+      description: >
+        Creates one audit replay dry-run for `order`, `case` / `dispute_case`,
+        `evidence_package`, or another UUID-addressable audit object. `V1` only supports
+        `dry_run=true`; any attempt to submit `dry_run=false` must fail with
+        `AUDIT_REPLAY_DRY_RUN_ONLY`. Successful requests persist `audit.replay_job`,
+        `audit.replay_result`, a replay report object in MinIO, and append
+        `audit.audit_event`, `audit.access_audit`, and `ops.system_log`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditReplayJobCreateRequest"
+      responses:
+        "200":
+          description: replay job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReplayJobDetailResponse"
+        "400":
+          description: bad request
+        "403":
+          description: forbidden
+        "404":
+          description: replay target not found
+        "409":
+          description: replay dry-run only
+  /api/v1/audit/replay-jobs/{id}:
+    get:
+      summary: lookup one audit replay job
+      description: >
+        Returns one persisted replay job together with its replay results. Access is
+        masked and mirrored into `audit.access_audit` plus `ops.system_log`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: replay job detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReplayJobDetailResponse"
+        "400":
+          description: bad request
+        "403":
+          description: forbidden
+        "404":
+          description: replay job not found
 components:
   schemas:
     AuditTrace:
@@ -179,7 +236,11 @@ components:
           format: date-time
     AuditTracePage:
       type: object
-      required: [total, page, page_size, items]
+      required:
+        - total
+        - page
+        - page_size
+        - items
       properties:
         total:
           type: integer
@@ -229,7 +290,9 @@ components:
             $ref: "#/components/schemas/AuditTrace"
     AuditTracePageResponse:
       type: object
-      required: [success, data]
+      required:
+        - success
+        - data
       properties:
         success:
           type: boolean
@@ -237,7 +300,9 @@ components:
           $ref: "#/components/schemas/AuditTracePage"
     OrderAuditResponse:
       type: object
-      required: [success, data]
+      required:
+        - success
+        - data
       properties:
         success:
           type: boolean
@@ -272,6 +337,7 @@ components:
           format: date-time
         metadata:
           type: object
+          additionalProperties: true
     EvidencePackage:
       type: object
       required:
@@ -305,9 +371,13 @@ components:
           type: string
         metadata:
           type: object
+          additionalProperties: true
     AuditPackageExportRequest:
       type: object
-      required: [ref_type, ref_id, reason]
+      required:
+        - ref_type
+        - ref_id
+        - reason
       properties:
         ref_type:
           type: string
@@ -319,7 +389,10 @@ components:
           type: string
         masked_level:
           type: string
-          enum: [summary, masked, unmasked]
+          enum:
+            - summary
+            - masked
+            - unmasked
         package_type:
           type: string
     AuditPackageExportView:
@@ -346,9 +419,148 @@ components:
           type: boolean
     AuditPackageExportResponse:
       type: object
-      required: [success, data]
+      required:
+        - success
+        - data
       properties:
         success:
           type: boolean
         data:
           $ref: "#/components/schemas/AuditPackageExportView"
+    AuditReplayJobCreateRequest:
+      type: object
+      required:
+        - replay_type
+        - ref_type
+        - ref_id
+        - reason
+      properties:
+        replay_type:
+          type: string
+          enum:
+            - forensic_replay
+            - state_replay
+            - reconciliation_replay
+            - compensation_replay
+        ref_type:
+          type: string
+          description: >
+            Supports `order`, `case`, `dispute_case`, `evidence_package`, or another
+            UUID-addressable audit object `ref_type`.
+        ref_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        dry_run:
+          type: boolean
+          default: true
+          description: `V1` only accepts `true`; `false` fails with `AUDIT_REPLAY_DRY_RUN_ONLY`.
+        options:
+          type: object
+          additionalProperties: true
+    ReplayJob:
+      type: object
+      required:
+        - replay_job_id
+        - replay_type
+        - ref_type
+        - dry_run
+        - replay_status
+        - options
+      properties:
+        replay_job_id:
+          type: string
+          format: uuid
+        replay_type:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        dry_run:
+          type: boolean
+        replay_status:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+        request_reason:
+          type: string
+        step_up_challenge_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        options:
+          type: object
+          additionalProperties: true
+    ReplayResult:
+      type: object
+      required:
+        - replay_result_id
+        - replay_job_id
+        - step_name
+        - result_code
+        - diff_summary
+      properties:
+        replay_result_id:
+          type: string
+          format: uuid
+        replay_job_id:
+          type: string
+          format: uuid
+        step_name:
+          type: string
+          enum:
+            - target_snapshot
+            - audit_timeline
+            - evidence_projection
+            - execution_policy
+        result_code:
+          type: string
+          description: >
+            `execution_policy` always returns `AUDIT_REPLAY_DRY_RUN_ONLY` in `V1`.
+        expected_digest:
+          type: string
+        actual_digest:
+          type: string
+        diff_summary:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    AuditReplayJobDetail:
+      type: object
+      required:
+        - replay_job
+        - results
+      properties:
+        replay_job:
+          $ref: "#/components/schemas/ReplayJob"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReplayResult"
+    AuditReplayJobDetailResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AuditReplayJobDetail"
