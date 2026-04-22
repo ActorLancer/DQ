@@ -1078,3 +1078,42 @@
   - 无。当前批次按 `SEARCHREC-001` 要求完成了 worker、topic、fallback 边界、启动检查与真实验证的重验，没有遗留新的 `V1-gap`。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-270（计划中）
+- 任务：`SEARCHREC-002` 逐任务复核与正式重验（商品搜索投影字段闭环）
+- 状态：计划中
+- 说明：按 `SEARCHREC-002` 的冻结口径，重新核对 `search.product_search_document`、刷新函数、`search-indexer` 写入文档、OpenSearch 索引模板和搜索查询过滤，重点确认标题、摘要、行业、标签、类目、SKU、卖方、价格区间、上架状态、审核状态、可见性这些字段不是只存在于 schema 或历史批次日志里，而是真实进入 PostgreSQL 权威投影、OpenSearch 文档与读链过滤条件；若本轮回归发现字段缺口或链路漂移，则在当前 task 内直接修正。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-002`，不提前进入 `SEARCHREC-003`。
+### BATCH-270（待审批）
+- 任务：`SEARCHREC-002` 逐任务复核与正式重验（商品搜索投影字段闭环）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-002`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已作为完成基线存在；`search.product_search_document`、刷新函数、`search-indexer` 和搜索读链在仓库中已有实现，可直接按冻结口径做字段级重验。
+- 复核结论：
+  - `SEARCHREC-002` 当前实现满足冻结口径，无需额外代码修订。`search.product_search_document` 及相关刷新链路已真实覆盖标题、摘要、行业、标签、类目、SKU、卖方、价格区间、上架状态、审核状态、可见性；这些字段不只存在于 schema，也已经进入 `search-indexer` 写入的 OpenSearch 文档和搜索候选过滤。
+  - `docs/数据库设计/V1/upgrade/057_search_sync_architecture.sql` 与后续 `081` 对齐结果仍有效：商品搜索投影刷新函数会同步维护 `price_min / price_max / listing_status / review_status / visibility_status / visible_to_search`，并把审核与可见性语义写回 PostgreSQL 权威投影。
+  - `workers/search-indexer/src/main.rs` 当前仍把 `subtitle / industry / seller_name / price_min / price_max / review_status / visibility_status / visible_to_search` 写入 OpenSearch 文档；`apps/platform-core/src/modules/search/repo/mod.rs` 的 OpenSearch 与 PostgreSQL fallback 查询也继续显式过滤 `visible_to_search=true`，未发现字段闭环漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat024_catalog_listing_review_end_to_end_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cat024_catalog_listing_review_end_to_end_db_smoke` 通过，继续证明商品在 `pending_review / approved / frozen / rejected` 等状态切换时，`search.product_search_document` 中的审核与可见性字段会随权威状态刷新，不是静态列占位。
+  - `search_indexer_db_smoke` 通过，继续证明 worker 能把最新商品投影写入 OpenSearch 文档，且文档内保留本 task 关注的投影字段集。
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 0 ignored`；搜索相关 smoke 继续覆盖 `search_api_and_ops_db_smoke`、`search_visibility_and_alias_consistency_db_smoke` 和 `search_catalog_pg_fallback_db_smoke`，没有发现字段闭环回退。
+  - `cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮未引入新的 `.sqlx` 漂移或查询编译错误。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-002`
+  - `商品搜索、排序与索引同步设计.md`：`6.1 商品搜索投影`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索字段与 `OpenSearch -> PostgreSQL` 边界
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+  - `057_search_sync_architecture.sql`、`081_search_product_projection_visibility_alignment.sql`
+- 覆盖的任务清单条目：`SEARCHREC-002`
+- 未覆盖项：
+  - 无。当前批次已对商品搜索投影字段、刷新链路、worker 文档写入与读链过滤完成重验，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
