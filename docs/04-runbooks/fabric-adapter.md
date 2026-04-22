@@ -1,4 +1,4 @@
-# Fabric Adapter（AUD-013）
+# Fabric Adapter（AUD-013 / AUD-014）
 
 `AUD-013` 起，`services/fabric-adapter/` 作为正式 Go 进程落地，负责消费：
 
@@ -14,9 +14,10 @@
 
 当前批次边界：
 
-- 已落地 Go module、Kafka consumer、canonical envelope 解析、mock provider、PostgreSQL 回执写回
+- `AUD-013` 已落地 Go module、Kafka consumer、canonical envelope 解析、mock provider、PostgreSQL 回执写回
+- `AUD-014` 已在 Go 侧补齐四类正式消息处理占位：`evidence_batch_root / order_summary / authorization_summary / acceptance_summary`
 - 当前 provider 仍是 `mock`
-- `fabric-test-network / Gateway / chaincode / listener / CA admin` 留待 `AUD-014~AUD-017`
+- `fabric-test-network / Gateway / chaincode / listener / CA admin` 留待 `AUD-015~AUD-017`
 - 当前不消费 `dtp.outbox.domain-events`
 
 ## 命令入口
@@ -61,6 +62,24 @@ third_party/external-deps/go
 - PostgreSQL：`postgres://datab:datab_local_pass@127.0.0.1:5432/datab`
 - consumer group：`cg-fabric-adapter`
 
+## 消息处理占位（AUD-014）
+
+当前 `fabric-adapter` 仍保持正式单入口：
+
+- `audit.anchor_requested -> dtp.audit.anchor`
+- `fabric.proof_submit_requested -> dtp.fabric.requests`
+
+但在 Go 进程内部已显式拆成四类 handler，占位契约如下：
+
+| `submission_kind` | 来源事件 | 目标链码占位名 | 目标交易占位名 |
+| --- | --- | --- | --- |
+| `evidence_batch_root` | `audit.anchor_requested` | `evidence_batch_root` | `SubmitEvidenceBatchRoot` |
+| `order_summary` | `fabric.proof_submit_requested` + `summary_type=order_summary` | `order_digest` | `SubmitOrderDigest` |
+| `authorization_summary` | `fabric.proof_submit_requested` + `summary_type=authorization_summary` | `authorization_digest` | `SubmitAuthorizationDigest` |
+| `acceptance_summary` | `fabric.proof_submit_requested` + `summary_type=acceptance_summary` | `acceptance_digest` | `SubmitAcceptanceDigest` |
+
+如果 `summary_type` 缺失或不是上述三种之一，Go handler 会直接拒绝消费，不会伪造默认摘要类型。
+
 ## 手工 Smoke
 
 1. 启动适配器：
@@ -73,109 +92,145 @@ set +a
 ./scripts/fabric-adapter-run.sh
 ```
 
-2. 准备最小测试对象：
+2. 准备最小测试对象。
+
+建议使用 `psql -v ON_ERROR_STOP=1`，避免 SQL 失败后 shell 仍继续向 Kafka 注入消息，污染 append-only 审计留痕：
 
 ```sql
 INSERT INTO chain.chain_anchor (chain_anchor_id, chain_id, anchor_type, ref_type, ref_id, digest, status)
 VALUES
-  ('11111111-1111-4111-8111-111111111111'::uuid, 'fabric-local', 'audit_anchor_batch', 'anchor_batch', '22222222-2222-4222-8222-222222222222'::uuid, 'aud013-root-1', 'pending'),
-  ('33333333-3333-4333-8333-333333333333'::uuid, 'fabric-local', 'order_summary', 'chain_anchor', NULL, 'aud013-proof-root', 'pending')
-ON CONFLICT (chain_anchor_id) DO NOTHING;
+  ('77777777-7777-4777-8777-777777777777'::uuid, 'fabric-local', 'audit_anchor_batch', 'anchor_batch', '66666666-6666-4666-8666-666666666666'::uuid, 'aud014b-root-evidence', 'pending'),
+  ('88888888-8888-4888-8888-888888888888'::uuid, 'fabric-local', 'order_summary', 'chain_anchor', NULL, 'aud014b-root-order', 'pending'),
+  ('99999999-9999-4999-8999-999999999999'::uuid, 'fabric-local', 'authorization_summary', 'chain_anchor', NULL, 'aud014b-root-auth', 'pending'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid, 'fabric-local', 'acceptance_summary', 'chain_anchor', NULL, 'aud014b-root-accept', 'pending');
 
 INSERT INTO audit.anchor_batch (
   anchor_batch_id, batch_scope, chain_id, record_count, batch_root, status, chain_anchor_id, metadata
 ) VALUES (
-  '22222222-2222-4222-8222-222222222222'::uuid,
+  '66666666-6666-4666-8666-666666666666'::uuid,
   'audit_event',
   'fabric-local',
   1,
-  'aud013-root-1',
+  'aud014b-root-evidence',
   'retry_requested',
-  '11111111-1111-4111-8111-111111111111'::uuid,
+  '77777777-7777-4777-8777-777777777777'::uuid,
   '{}'::jsonb
-)
-ON CONFLICT (anchor_batch_id) DO NOTHING;
+);
 ```
 
-3. 用 `kcat` 容器注入单条 canonical 事件：
+3. 用 `kcat` 容器注入四类 canonical 事件：
 
 ```bash
 cat <<'JSON' | docker run --rm -i --network container:datab-kafka edenhill/kcat:1.7.1 -P -b localhost:9092 -t dtp.audit.anchor
-{"event_id":"aud013-anchor-evt-kcat","event_type":"audit.anchor_requested","event_version":1,"occurred_at":"2026-04-22T04:45:00Z","producer_service":"platform-core.audit","aggregate_type":"audit.anchor_batch","aggregate_id":"22222222-2222-4222-8222-222222222222","request_id":"req-aud013-anchor-kcat","trace_id":"trace-aud013-anchor-kcat","idempotency_key":"idemp-aud013-anchor-kcat","event_schema_version":"v1","authority_scope":"audit_authority","source_of_truth":"postgresql","proof_commit_policy":"async_anchor","payload":{"anchor_batch_id":"22222222-2222-4222-8222-222222222222","batch_scope":"audit_event","chain_id":"fabric-local","record_count":1,"batch_root":"aud013-root-1","anchor_status":"retry_requested"},"anchor_batch_id":"22222222-2222-4222-8222-222222222222","batch_scope":"audit_event","chain_id":"fabric-local","record_count":1,"batch_root":"aud013-root-1","anchor_status":"retry_requested","chain_anchor_id":"11111111-1111-4111-8111-111111111111"}
+{"event_id":"aud014b-anchor-evt-kcat","event_type":"audit.anchor_requested","event_version":1,"occurred_at":"2026-04-22T05:02:00Z","producer_service":"platform-core.audit","aggregate_type":"audit.anchor_batch","aggregate_id":"66666666-6666-4666-8666-666666666666","request_id":"req-aud014b-anchor-kcat","trace_id":"trace-aud014b-anchor-kcat","idempotency_key":"idemp-aud014b-anchor-kcat","event_schema_version":"v1","authority_scope":"governance","source_of_truth":"postgresql","proof_commit_policy":"async_evidence","payload":{"anchor_batch_id":"66666666-6666-4666-8666-666666666666","batch_scope":"audit_event","chain_id":"fabric-local","record_count":1,"batch_root":"aud014b-root-evidence","anchor_status":"retry_requested"},"anchor_batch_id":"66666666-6666-4666-8666-666666666666","batch_scope":"audit_event","chain_id":"fabric-local","record_count":1,"batch_root":"aud014b-root-evidence","anchor_status":"retry_requested","chain_anchor_id":"77777777-7777-4777-8777-777777777777"}
 JSON
 
 cat <<'JSON' | docker run --rm -i --network container:datab-kafka edenhill/kcat:1.7.1 -P -b localhost:9092 -t dtp.fabric.requests
-{"event_id":"aud013-proof-evt-kcat","event_type":"fabric.proof_submit_requested","event_version":1,"occurred_at":"2026-04-22T04:45:01Z","producer_service":"platform-core.integration","aggregate_type":"chain.chain_anchor","aggregate_id":"33333333-3333-4333-8333-333333333333","request_id":"req-aud013-proof-kcat","trace_id":"trace-aud013-proof-kcat","idempotency_key":"idemp-aud013-proof-kcat","event_schema_version":"v1","authority_scope":"dual_authority","source_of_truth":"postgresql","proof_commit_policy":"async_anchor","payload":{"chain_anchor_id":"33333333-3333-4333-8333-333333333333","chain_id":"fabric-local","summary_type":"order_summary","summary_digest":"aud013-proof-root"},"chain_anchor_id":"33333333-3333-4333-8333-333333333333","chain_id":"fabric-local","summary_type":"order_summary","summary_digest":"aud013-proof-root"}
+{"event_id":"aud014b-order-evt-kcat","event_type":"fabric.proof_submit_requested","event_version":1,"occurred_at":"2026-04-22T05:02:01Z","producer_service":"platform-core.integration","aggregate_type":"chain.chain_anchor","aggregate_id":"88888888-8888-4888-8888-888888888888","request_id":"req-aud014b-order-kcat","trace_id":"trace-aud014b-order-kcat","idempotency_key":"idemp-aud014b-order-kcat","event_schema_version":"v1","authority_scope":"governance","source_of_truth":"postgresql","proof_commit_policy":"async_evidence","payload":{"chain_anchor_id":"88888888-8888-4888-8888-888888888888","chain_id":"fabric-local","summary_type":"order_summary","summary_digest":"aud014b-root-order"},"chain_anchor_id":"88888888-8888-4888-8888-888888888888","chain_id":"fabric-local","summary_type":"order_summary","summary_digest":"aud014b-root-order"}
+JSON
+
+cat <<'JSON' | docker run --rm -i --network container:datab-kafka edenhill/kcat:1.7.1 -P -b localhost:9092 -t dtp.fabric.requests
+{"event_id":"aud014b-auth-evt-kcat","event_type":"fabric.proof_submit_requested","event_version":1,"occurred_at":"2026-04-22T05:02:02Z","producer_service":"platform-core.integration","aggregate_type":"chain.chain_anchor","aggregate_id":"99999999-9999-4999-8999-999999999999","request_id":"req-aud014b-auth-kcat","trace_id":"trace-aud014b-auth-kcat","idempotency_key":"idemp-aud014b-auth-kcat","event_schema_version":"v1","authority_scope":"governance","source_of_truth":"postgresql","proof_commit_policy":"async_evidence","payload":{"chain_anchor_id":"99999999-9999-4999-8999-999999999999","chain_id":"fabric-local","summary_type":"authorization_summary","summary_digest":"aud014b-root-auth"},"chain_anchor_id":"99999999-9999-4999-8999-999999999999","chain_id":"fabric-local","summary_type":"authorization_summary","summary_digest":"aud014b-root-auth"}
+JSON
+
+cat <<'JSON' | docker run --rm -i --network container:datab-kafka edenhill/kcat:1.7.1 -P -b localhost:9092 -t dtp.fabric.requests
+{"event_id":"aud014b-accept-evt-kcat","event_type":"fabric.proof_submit_requested","event_version":1,"occurred_at":"2026-04-22T05:02:03Z","producer_service":"platform-core.integration","aggregate_type":"chain.chain_anchor","aggregate_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","request_id":"req-aud014b-accept-kcat","trace_id":"trace-aud014b-accept-kcat","idempotency_key":"idemp-aud014b-accept-kcat","event_schema_version":"v1","authority_scope":"governance","source_of_truth":"postgresql","proof_commit_policy":"async_evidence","payload":{"chain_anchor_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","chain_id":"fabric-local","summary_type":"acceptance_summary","summary_digest":"aud014b-root-accept"},"chain_anchor_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","chain_id":"fabric-local","summary_type":"acceptance_summary","summary_digest":"aud014b-root-accept"}
 JSON
 ```
 
 4. 回查结果：
 
 ```sql
-SELECT request_id, provider_type, provider_key, provider_reference, receipt_status,
-       receipt_payload ->> 'mode' AS mode,
-       receipt_payload ->> 'chain_id' AS chain_id,
-       metadata ->> 'topic' AS topic
+SELECT request_id,
+       metadata ->> 'submission_kind' AS submission_kind,
+       metadata ->> 'contract_name' AS contract_name,
+       metadata ->> 'summary_digest' AS summary_digest,
+       metadata ->> 'topic' AS topic,
+       receipt_payload ->> 'transaction_name' AS transaction_name,
+       receipt_payload ->> 'summary_type' AS receipt_summary_type,
+       receipt_status
 FROM ops.external_fact_receipt
-WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
-ORDER BY request_id;
-
-SELECT action_name, result_code, request_id, tx_hash
-FROM audit.audit_event
-WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
-ORDER BY event_time;
-
-SELECT message_text, request_id
-FROM ops.system_log
-WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
-  AND message_text = 'fabric adapter accepted submit event'
-ORDER BY created_at;
-
-SELECT chain_anchor_id::text, status, tx_hash, reconcile_status
-FROM chain.chain_anchor
-WHERE chain_anchor_id IN (
-  '11111111-1111-4111-8111-111111111111'::uuid,
-  '33333333-3333-4333-8333-333333333333'::uuid
+WHERE request_id IN (
+  'req-aud014b-anchor-kcat',
+  'req-aud014b-order-kcat',
+  'req-aud014b-auth-kcat',
+  'req-aud014b-accept-kcat'
 )
-ORDER BY chain_anchor_id;
+ORDER BY request_id;
 
 SELECT request_id, count(*)
-FROM ops.external_fact_receipt
-WHERE request_id IN ('req-aud013-anchor-kcat', 'req-aud013-proof-kcat')
+FROM audit.audit_event
+WHERE request_id IN (
+  'req-aud014b-anchor-kcat',
+  'req-aud014b-order-kcat',
+  'req-aud014b-auth-kcat',
+  'req-aud014b-accept-kcat'
+)
+  AND action_name = 'fabric.adapter.submit'
 GROUP BY request_id
 ORDER BY request_id;
+
+SELECT request_id, count(*)
+FROM ops.system_log
+WHERE request_id IN (
+  'req-aud014b-anchor-kcat',
+  'req-aud014b-order-kcat',
+  'req-aud014b-auth-kcat',
+  'req-aud014b-accept-kcat'
+)
+  AND message_text = 'fabric adapter accepted submit event'
+GROUP BY request_id
+ORDER BY request_id;
+
+SELECT chain_anchor_id::text, anchor_type, status, tx_hash, reconcile_status
+FROM chain.chain_anchor
+WHERE chain_anchor_id IN (
+  '77777777-7777-4777-8777-777777777777'::uuid,
+  '88888888-8888-4888-8888-888888888888'::uuid,
+  '99999999-9999-4999-8999-999999999999'::uuid,
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid
+)
+ORDER BY chain_anchor_id;
 ```
 
 预期：
 
-- 每个 `request_id` 在 `ops.external_fact_receipt / audit.audit_event / ops.system_log` 中各出现一次
-- `receipt_payload.mode = mock`
-- topic 正确分别为 `dtp.audit.anchor / dtp.fabric.requests`
-- `chain.chain_anchor.status = submitted`
-- `chain.chain_anchor.reconcile_status = pending_check`
+- 四个 `request_id` 在 `ops.external_fact_receipt / audit.audit_event / ops.system_log` 中都只出现一次
+- `submission_kind / contract_name / transaction_name` 分别为：
+  - `evidence_batch_root / evidence_batch_root / SubmitEvidenceBatchRoot`
+  - `order_summary / order_digest / SubmitOrderDigest`
+  - `authorization_summary / authorization_digest / SubmitAuthorizationDigest`
+  - `acceptance_summary / acceptance_digest / SubmitAcceptanceDigest`
+- 四条 `chain.chain_anchor` 都被更新为 `status='submitted'`、`reconcile_status='pending_check'`
 
 5. 清理测试业务数据：
 
 ```sql
 DELETE FROM ops.external_fact_receipt
 WHERE request_id IN (
-  'req-aud013-anchor-kcat',
-  'req-aud013-proof-kcat'
+  'req-aud014b-anchor-kcat',
+  'req-aud014b-order-kcat',
+  'req-aud014b-auth-kcat',
+  'req-aud014b-accept-kcat'
 );
 
 DELETE FROM audit.anchor_batch
-WHERE anchor_batch_id = '22222222-2222-4222-8222-222222222222'::uuid;
+WHERE anchor_batch_id = '66666666-6666-4666-8666-666666666666'::uuid;
 
 DELETE FROM chain.chain_anchor
 WHERE chain_anchor_id IN (
-  '11111111-1111-4111-8111-111111111111'::uuid,
-  '33333333-3333-4333-8333-333333333333'::uuid
+  '77777777-7777-4777-8777-777777777777'::uuid,
+  '88888888-8888-4888-8888-888888888888'::uuid,
+  '99999999-9999-4999-8999-999999999999'::uuid,
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid
 );
 ```
 
 `audit.audit_event` 与 `ops.system_log` 按 append-only 保留，不清理。
 
 ## 排障
+
+- 若 `psql` seed 出错，必须带 `-v ON_ERROR_STOP=1` 重跑，不要在 SQL 失败后继续向 Kafka 发消息，否则同一 `request_id` 的 append-only 审计行会被污染。
 
 - 若 `cg-fabric-adapter` 未创建，先确认进程是否真正启动：
 

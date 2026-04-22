@@ -4,7 +4,7 @@
 
 - `notification-worker.md`：通知正式链路、审计联查、DLQ、人工补发 / replay。
 - `fabric-local.md`：Fabric 本地网络、Gateway、anchor / callback 联调。
-- `fabric-adapter.md`：`AUD-013` Go 版 `fabric-adapter` 的 bootstrap / test / run、Kafka canonical smoke、回执回写与排障。
+- `fabric-adapter.md`：`AUD-013 / AUD-014` Go 版 `fabric-adapter` 的 bootstrap / test / run、四类摘要 handler、Kafka canonical smoke、回执回写与排障。
 - `audit-replay.md`：`AUD-005` replay dry-run 控制面的权限、step-up、回查与故障处理。
 - `audit-legal-hold.md`：`AUD-006` legal hold 创建 / 释放控制面的权限、step-up、回查与故障处理。
 - `audit-anchor-batches.md`：`AUD-007` anchor batch 查看 / retry 控制面的权限、step-up、DB / outbox / 审计回查与运行态边界。

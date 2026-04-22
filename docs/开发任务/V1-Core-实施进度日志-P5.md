@@ -854,3 +854,73 @@
 - 备注：
   - 手工排障时观察到 `kafka-console-producer.sh` 注入同一 JSON 可能造成重复消息噪音；正式 smoke 已改用 `kcat` 容器，并据此完成单条请求 ID 的唯一性回查。
   - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。
+### BATCH-227（计划中）
+- 任务：`AUD-014` 在 `fabric-adapter` 中实现四类摘要消息处理占位
+- 状态：计划中
+- 说明：在 `AUD-013` 已完成 Go `fabric-adapter` 基础框架、Kafka consumer、canonical envelope 解析、mock provider 与 PostgreSQL 回执回写的基础上，当前批次按 `CSV > Markdown > technical_reference > 其他文档` 继续细化正式消息处理面。冻结边界收束为：保持 `dtp.audit.anchor / dtp.fabric.requests` 双 topic 单入口不变，在 Go 适配器内部显式区分 `evidence_batch_root / order_summary / authorization_summary / acceptance_summary` 四类摘要消息，补齐分类校验、handler dispatch、provider request metadata、回执/审计/日志留痕字段和真实 smoke 样例，为 `AUD-015~017` 的 callback listener、CA admin 与真实 `fabric-test-network / Gateway / chaincode` provider 铺底，不新增旁路 topic、不把 Fabric 反向做成业务主状态机。
+- 追溯：按 `CSV > Markdown > 其他辅助文档` 执行；本批严格对应 `AUD-014`，完成后再进入 `AUD-015`。
+### BATCH-227（待审批）
+- 任务：`AUD-014` 在 `fabric-adapter` 中实现四类摘要消息处理占位
+- 状态：待审批
+- 前置依赖核对结果：`AUD-013` 已交付 Go 版 `fabric-adapter` 基础框架、`dtp.audit.anchor / dtp.fabric.requests` 正式消费入口、mock provider 与 PostgreSQL 回执回写；本地 `PostgreSQL / Kafka / Redis / Keycloak / MinIO / Prometheus / Alertmanager / Loki / Tempo / Grafana` 运行基线可用，`cg-fabric-adapter` consumer group 运行态存在，满足本批继续细化 Go/Fabric handler 的依赖。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `AUD-014` 的顺序、DoD 与“仅保留 `dtp.audit.anchor / dtp.fabric.requests` 单入口”的冻结要求。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/技术选型正式版.md`：确认 Go 负责 Fabric 外围适配，`Fabric` 是摘要证明层而不是主状态机。
+  - `docs/原始PRD/链上链下技术架构与能力边界稿.md`、`docs/领域模型/全量领域模型与对象关系说明.md`：确认四类摘要对象是 `订单摘要 / 授权摘要 / 验收摘要 / 证据批次根`。
+  - `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/kafka-topics.md`、`docs/00-context/async-chain-write.md`、`infra/kafka/topics.v1.json`、`docs/数据库设计/V1/upgrade/074_event_topology_route_extensions.sql`：复核 `audit.anchor_requested -> dtp.audit.anchor -> fabric-adapter`、`fabric.proof_submit_requested -> dtp.fabric.requests -> fabric-adapter` 的正式拓扑和 consumer group。
+  - `services/fabric-adapter/**`、`infra/fabric/deploy-chaincode-placeholder.sh`、`docs/开发任务/问题修复任务/A04-AUD-Ops-接口与契约落地缺口.md`：确认当前应在 Go 侧补齐 `evidence_batch_root / order_digest / authorization_digest / acceptance_digest` 的 handler 占位，而不是新增旁路 topic 或新的持久化对象名。
+- 实现摘要：
+  - `services/fabric-adapter/internal/service/dispatch.go`、`dispatch_test.go`：新增 Go 侧 `Dispatcher + SubmissionHandler` 分派层，把 `audit.anchor_requested` 固定解析为 `evidence_batch_root`，把 `fabric.proof_submit_requested` 按 `summary_type` 解析为 `order_summary / authorization_summary / acceptance_summary`，并在 `summary_type` 缺失或非法时直接拒绝消费。
+  - `services/fabric-adapter/internal/provider/provider.go`：扩展 `SubmissionRequest`，把 `submission_kind / contract_name / transaction_name / summary_digest / anchor_batch_id / chain_anchor_id` 贯穿到 Go mock provider；`receipt_payload` 现已带正式 handler 分类元数据，供后续 `AUD-015~017` 的 Gateway / chaincode / callback 直接复用。
+  - `services/fabric-adapter/internal/service/processor.go`、`processor_test.go`：`ProcessMessage` 现先做 handler dispatch，再调用 provider / persister，并把 `submission_kind / contract_name / transaction_name` 打到进程日志里。
+  - `services/fabric-adapter/internal/store/postgres.go`：`ops.external_fact_receipt.metadata`、`receipt_payload`、`audit.audit_event.metadata`、`ops.system_log.structured_payload` 现都带 `submission_kind / contract_name / transaction_name / summary_type / summary_digest`；同时补强 `resolveOrderID`，允许后续通过 `chain.chain_anchor` 反查 order 关联。
+  - 文档同步：
+    - 重写 `docs/04-runbooks/fabric-adapter.md`，固化四类摘要 handler 映射、`psql -v ON_ERROR_STOP=1` smoke 规范、正式回查字段与排障说明。
+    - 更新 `docs/04-runbooks/fabric-local.md`、`docs/04-runbooks/fabric-debug.md`、`docs/04-runbooks/README.md`。
+    - 更新 `docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`，把 `AUD-CASE-020` 收口到四类摘要 handler 验收矩阵。
+    - 更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 收敛到包含 `AUD-014` 的最新状态。
+- 验证步骤：
+  1. `find services/fabric-adapter -name '*.go' -print0 | xargs -0 gofmt -w`
+  2. `bash ./scripts/fabric-adapter-test.sh`
+  3. `bash -lc 'source /home/luna/Documents/DataB/scripts/go-env.sh && cd /home/luna/Documents/DataB/services/fabric-adapter && go build ./...'`
+  4. 真实运行态 smoke：保持 `./scripts/fabric-adapter-run.sh` 运行，使用 `psql -v ON_ERROR_STOP=1` 准备 `chain_anchor + anchor_batch` 最小对象，分别向 `dtp.audit.anchor` 注入 `audit.anchor_requested`、向 `dtp.fabric.requests` 注入 `order_summary / authorization_summary / acceptance_summary` 三类 `fabric.proof_submit_requested`，再用 `psql` 回查 `ops.external_fact_receipt / audit.audit_event / ops.system_log / chain.chain_anchor` 与 `docker exec datab-kafka ... kafka-consumer-groups.sh --group cg-fabric-adapter --describe`。
+  5. `cargo fmt --all`
+  6. `cargo check -p platform-core`
+  7. `cargo test -p platform-core`
+  8. `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  9. `./scripts/check-query-compile.sh`
+  10. `./scripts/check-topic-topology.sh`
+- 验证结果：
+  - Go 侧 `gofmt`、`go test ./...`、`go build ./...` 全部通过。
+  - 真实运行态 smoke 通过：
+    - 使用新的 `req-aud014b-*` 请求 ID 注入四类摘要消息后，`ops.external_fact_receipt / audit.audit_event / ops.system_log` 对每个 request id 均只有 `1` 条记录。
+    - `ops.external_fact_receipt.metadata` 与 `receipt_payload` 中的 `submission_kind / contract_name / transaction_name` 分别命中：
+      - `evidence_batch_root / evidence_batch_root / SubmitEvidenceBatchRoot`
+      - `order_summary / order_digest / SubmitOrderDigest`
+      - `authorization_summary / authorization_digest / SubmitAuthorizationDigest`
+      - `acceptance_summary / acceptance_digest / SubmitAcceptanceDigest`
+    - 四条测试 `chain.chain_anchor` 都被更新为 `status='submitted'`、`reconcile_status='pending_check'`，`tx_hash` 来自 Go mock provider。
+    - `cg-fabric-adapter` consumer group 运行态存在且 lag 为 `0`。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅有仓库既存 `unused_*` warning，无新增编译失败。
+  - `cargo test -p platform-core` 通过：`290` 个测试通过，既存 `iam_party_access_flow_live` 继续保持 ignored。
+  - `cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-topic-topology.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-014`
+  - `技术选型正式版.md`：Go 负责 Fabric 外围适配与链码交互边界
+  - `链上链下技术架构与能力边界稿.md`：Fabric adapter / listener / CA admin 分层
+  - `全量领域模型与对象关系说明.md`：`订单摘要 / 授权摘要 / 验收摘要 / 证据批次根`
+  - `async-chain-write.md`、`kafka-topics.md`、`074_event_topology_route_extensions.sql`：`dtp.audit.anchor / dtp.fabric.requests` 单入口冻结
+- 覆盖的任务清单条目：`AUD-014`
+- 未覆盖项：
+  - `fabric-event-listener`、`dtp.fabric.callbacks` 与回执消费链路，留待 `AUD-015`
+  - `fabric-ca-admin` 与 CA 管理边界，留待 `AUD-016`
+  - `mock / fabric-test-network` provider 切换、真实 Gateway / chaincode / test-network 联调，留待 `AUD-017`
+  - `ops.consumer_idempotency_record + Redis` 的 Fabric consumer 幂等闭环，留待 `AUD-026`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md` 的 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001`。
+- 备注：
+  - 首轮手工 smoke 因 `psql` 默认未启用 `ON_ERROR_STOP`，在 SQL 种子失败后仍继续向 Kafka 注入消息，导致 append-only `audit.audit_event / ops.system_log` 出现重复 request id 留痕；该问题已定位为脚本执行方式，而非 Go handler 重复写入，随后用新的 `req-aud014b-*` 和 `psql -v ON_ERROR_STOP=1` 重新验证并取得干净结果。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / route-policy / topics / runbook / 代码` 冲突，不触发暂停条件。

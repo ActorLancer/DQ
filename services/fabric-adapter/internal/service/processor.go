@@ -10,13 +10,14 @@ import (
 )
 
 type SubmissionPersister interface {
-	PersistSubmission(context.Context, model.CanonicalEnvelope, provider.SubmissionReceipt) error
+	PersistSubmission(context.Context, provider.SubmissionRequest, provider.SubmissionReceipt) error
 }
 
 type Processor struct {
 	serviceName string
 	persister   SubmissionPersister
 	provider    provider.SubmissionProvider
+	dispatcher  *Dispatcher
 	logger      *slog.Logger
 }
 
@@ -30,6 +31,7 @@ func NewProcessor(
 		serviceName: serviceName,
 		persister:   persister,
 		provider:    submitter,
+		dispatcher:  NewDispatcher(),
 		logger:      logger,
 	}
 }
@@ -40,16 +42,19 @@ func (processor *Processor) ProcessMessage(ctx context.Context, topic string, va
 		return err
 	}
 
+	request, err := processor.dispatcher.BuildRequest(envelope)
+	if err != nil {
+		return fmt.Errorf("build submission request: %w", err)
+	}
+
 	// TODO(V1-gap, AUD-013): fold duplicate Kafka deliveries into ops.consumer_idempotency_record
 	// plus Redis short-lock semantics once AUD-026 closes Fabric consumer idempotency/DLQ/reprocess.
-	receipt, err := processor.provider.Submit(ctx, provider.SubmissionRequest{
-		Envelope: envelope,
-	})
+	receipt, err := processor.provider.Submit(ctx, request)
 	if err != nil {
 		return fmt.Errorf("submit to fabric provider: %w", err)
 	}
 
-	if err := processor.persister.PersistSubmission(ctx, envelope, receipt); err != nil {
+	if err := processor.persister.PersistSubmission(ctx, request, receipt); err != nil {
 		return fmt.Errorf("persist submission receipt: %w", err)
 	}
 
@@ -59,6 +64,9 @@ func (processor *Processor) ProcessMessage(ctx context.Context, topic string, va
 		"topic", topic,
 		"event_id", envelope.EventID,
 		"event_type", envelope.EventType,
+		"submission_kind", request.SubmissionKind,
+		"contract_name", request.ContractName,
+		"transaction_name", request.TransactionName,
 		"aggregate_type", envelope.AggregateType,
 		"aggregate_id", envelope.AggregateID,
 		"provider_reference", receipt.ProviderReference,

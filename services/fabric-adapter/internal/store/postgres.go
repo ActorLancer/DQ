@@ -37,16 +37,17 @@ func (store *Store) Close() {
 
 func (store *Store) PersistSubmission(
 	ctx context.Context,
-	envelope model.CanonicalEnvelope,
+	request provider.SubmissionRequest,
 	receipt provider.SubmissionReceipt,
 ) error {
+	envelope := request.Envelope
 	tx, err := store.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	orderID, err := resolveOrderID(ctx, tx, envelope.AggregateType, envelope.AggregateID)
+	orderID, err := resolveOrderID(ctx, tx, request)
 	if err != nil {
 		return err
 	}
@@ -68,6 +69,15 @@ func (store *Store) PersistSubmission(
 		"authority_scope":     envelope.AuthorityScope,
 		"source_of_truth":     envelope.SourceOfTruth,
 		"proof_commit_policy": envelope.ProofCommitPolicy,
+		"submission_kind":     string(request.SubmissionKind),
+		"contract_name":       request.ContractName,
+		"transaction_name":    request.TransactionName,
+		"summary_type":        request.SummaryType,
+		"summary_digest":      request.SummaryDigest,
+		"anchor_batch_id":     request.AnchorBatchID,
+		"chain_anchor_id":     request.ChainAnchorID,
+		"reference_type":      request.ReferenceType,
+		"reference_id":        request.ReferenceID,
 		"flattened_payload":   envelope.ExtraObject(),
 	}
 	metadataJSON, err := marshalJSON(metadata)
@@ -115,7 +125,7 @@ func (store *Store) PersistSubmission(
 		orderID,
 		refType,
 		envelope.AggregateID,
-		factTypeForEvent(envelope.EventType),
+		factTypeForRequest(request),
 		receipt.ProviderType,
 		receipt.ProviderKey,
 		receipt.ProviderReference,
@@ -131,7 +141,7 @@ func (store *Store) PersistSubmission(
 		return fmt.Errorf("insert ops.external_fact_receipt: %w", err)
 	}
 
-	if chainAnchorID, ok := envelope.FindString("chain_anchor_id"); ok {
+	if chainAnchorID := request.ChainAnchorID; strings.TrimSpace(chainAnchorID) != "" {
 		_, err = tx.Exec(
 			ctx,
 			`UPDATE chain.chain_anchor
@@ -159,6 +169,11 @@ func (store *Store) PersistSubmission(
 		"provider_key":       receipt.ProviderKey,
 		"provider_reference": receipt.ProviderReference,
 		"receipt_status":     receipt.ReceiptStatus,
+		"submission_kind":    string(request.SubmissionKind),
+		"contract_name":      request.ContractName,
+		"transaction_name":   request.TransactionName,
+		"summary_type":       request.SummaryType,
+		"summary_digest":     request.SummaryDigest,
 	})
 	if err != nil {
 		return err
@@ -209,7 +224,13 @@ func (store *Store) PersistSubmission(
 		"aggregate_id":        envelope.AggregateID,
 		"provider_reference":  receipt.ProviderReference,
 		"receipt_status":      receipt.ReceiptStatus,
-		"chain_anchor_id":     valueOrEmpty(envelope, "chain_anchor_id"),
+		"submission_kind":     string(request.SubmissionKind),
+		"contract_name":       request.ContractName,
+		"transaction_name":    request.TransactionName,
+		"summary_type":        request.SummaryType,
+		"summary_digest":      request.SummaryDigest,
+		"anchor_batch_id":     request.AnchorBatchID,
+		"chain_anchor_id":     request.ChainAnchorID,
 		"proof_commit_policy": envelope.ProofCommitPolicy,
 	})
 	if err != nil {
@@ -248,31 +269,79 @@ func (store *Store) PersistSubmission(
 	return nil
 }
 
-func resolveOrderID(ctx context.Context, tx pgx.Tx, aggregateType string, aggregateID string) (*string, error) {
-	if aggregateType != "order" {
-		return nil, nil
-	}
-
-	var orderID string
-	err := tx.QueryRow(
-		ctx,
-		`SELECT order_id::text
-		 FROM trade.order_main
-		 WHERE order_id = $1::text::uuid`,
-		aggregateID,
-	).Scan(&orderID)
-	if err == nil {
+func resolveOrderID(
+	ctx context.Context,
+	tx pgx.Tx,
+	request provider.SubmissionRequest,
+) (*string, error) {
+	envelope := request.Envelope
+	if orderID, ok := envelope.FindString("order_id"); ok {
 		return &orderID, nil
 	}
-	if err == pgx.ErrNoRows {
+	if refType, ok := envelope.FindString("ref_type"); ok && refType == "order" {
+		if refID, ok := envelope.FindString("ref_id"); ok {
+			return &refID, nil
+		}
+	}
+
+	switch envelope.AggregateType {
+	case "order":
+		var orderID string
+		err := tx.QueryRow(
+			ctx,
+			`SELECT order_id::text
+			 FROM trade.order_main
+			 WHERE order_id = $1::text::uuid`,
+			envelope.AggregateID,
+		).Scan(&orderID)
+		if err == nil {
+			return &orderID, nil
+		}
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf(
+			"lookup trade.order_main for aggregate_id=%s: %w",
+			envelope.AggregateID,
+			err,
+		)
+	case "chain.chain_anchor", "chain_anchor":
+		chainAnchorID := request.ChainAnchorID
+		if strings.TrimSpace(chainAnchorID) == "" {
+			chainAnchorID = envelope.AggregateID
+		}
+
+		var refType string
+		var refID *string
+		err := tx.QueryRow(
+			ctx,
+			`SELECT ref_type, ref_id::text
+			 FROM chain.chain_anchor
+			 WHERE chain_anchor_id = $1::text::uuid`,
+			chainAnchorID,
+		).Scan(&refType, &refID)
+		if err == nil {
+			if refType == "order" && refID != nil && strings.TrimSpace(*refID) != "" {
+				return refID, nil
+			}
+			return nil, nil
+		}
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf(
+			"lookup chain.chain_anchor for chain_anchor_id=%s: %w",
+			chainAnchorID,
+			err,
+		)
+	default:
 		return nil, nil
 	}
-	return nil, fmt.Errorf("lookup trade.order_main for aggregate_id=%s: %w", aggregateID, err)
 }
 
-func factTypeForEvent(eventType string) string {
-	switch eventType {
-	case "audit.anchor_requested":
+func factTypeForRequest(request provider.SubmissionRequest) string {
+	switch request.SubmissionKind {
+	case provider.SubmissionKindEvidenceBatchRoot:
 		return "fabric_anchor_submit_receipt"
 	default:
 		return "fabric_submit_receipt"

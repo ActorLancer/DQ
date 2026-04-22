@@ -5,29 +5,30 @@ import (
 	"testing"
 	"time"
 
-	"datab.local/fabric-adapter/internal/model"
 	"datab.local/fabric-adapter/internal/provider"
 )
 
 type fakePersister struct {
-	envelope model.CanonicalEnvelope
-	receipt  provider.SubmissionReceipt
-	called   bool
+	request provider.SubmissionRequest
+	receipt provider.SubmissionReceipt
+	called  bool
 }
 
-func (fake *fakePersister) PersistSubmission(_ context.Context, envelope model.CanonicalEnvelope, receipt provider.SubmissionReceipt) error {
-	fake.envelope = envelope
+func (fake *fakePersister) PersistSubmission(_ context.Context, request provider.SubmissionRequest, receipt provider.SubmissionReceipt) error {
+	fake.request = request
 	fake.receipt = receipt
 	fake.called = true
 	return nil
 }
 
 type fakeProvider struct {
+	request provider.SubmissionRequest
 	receipt provider.SubmissionReceipt
 	called  bool
 }
 
-func (fake *fakeProvider) Submit(_ context.Context, _ provider.SubmissionRequest) (provider.SubmissionReceipt, error) {
+func (fake *fakeProvider) Submit(_ context.Context, request provider.SubmissionRequest) (provider.SubmissionReceipt, error) {
+	fake.request = request
 	fake.called = true
 	return fake.receipt, nil
 }
@@ -73,10 +74,16 @@ func TestProcessorProcessesCanonicalAnchorEvent(t *testing.T) {
 	if !persister.called {
 		t.Fatalf("expected persister to be called")
 	}
-	if got, want := persister.envelope.EventType, "audit.anchor_requested"; got != want {
+	if got, want := persister.request.Envelope.EventType, "audit.anchor_requested"; got != want {
 		t.Fatalf("persisted EventType = %q, want %q", got, want)
 	}
 	if got, want := persister.receipt.ProviderReference, "mock-tx-001"; got != want {
 		t.Fatalf("persisted ProviderReference = %q, want %q", got, want)
+	}
+	if got, want := submitter.request.SubmissionKind, provider.SubmissionKindEvidenceBatchRoot; got != want {
+		t.Fatalf("SubmissionKind = %q, want %q", got, want)
+	}
+	if got, want := submitter.request.ContractName, "evidence_batch_root"; got != want {
+		t.Fatalf("ContractName = %q, want %q", got, want)
 	}
 }
