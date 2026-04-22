@@ -391,90 +391,244 @@ async fn seed_verified_step_up_challenge(
         .map(|row| row.get(0))
 }
 
-async fn cleanup_graph(client: &Client, ids: &SeedIds) {
-    let _ = client
+async fn cleanup_graph(client: &Client, ids: &SeedIds) -> Result<(), String> {
+    let entity_ids = vec![
+        ids.org_id.clone(),
+        ids.product_ids[0].clone(),
+        ids.product_ids[1].clone(),
+    ];
+    let cleanup_marker = json!({
+        "cleanup_state": "tombstoned",
+        "cleanup_source": "recommendation_api_db_smoke",
+        "cleanup_strategy": "principal_inactive_tombstone",
+    });
+
+    client
         .execute(
             "DELETE FROM ops.outbox_event
              WHERE event_type = 'recommend.behavior_recorded'
                AND payload -> 'payload' ->> 'recommendation_request_id' IN (
-                 SELECT recommendation_request_id::text FROM recommend.recommendation_request
+                 SELECT recommendation_request_id::text
+                 FROM recommend.recommendation_request
+                 WHERE subject_org_id = $1::text::uuid
                )",
-            &[],
+            &[&ids.org_id],
         )
-        .await;
-    let _ = client
+        .await
+        .map_err(|err| format!("cleanup recommendation outbox events failed: {err}"))?;
+    client
         .execute(
             "DELETE FROM recommend.behavior_event WHERE subject_org_id = $1::text::uuid",
             &[&ids.org_id],
         )
-        .await;
-    let _ = client
+        .await
+        .map_err(|err| format!("cleanup recommendation behavior events failed: {err}"))?;
+    client
         .execute(
             "DELETE FROM recommend.recommendation_request WHERE subject_org_id = $1::text::uuid",
             &[&ids.org_id],
         )
-        .await;
-    let _ = client
+        .await
+        .map_err(|err| format!("cleanup recommendation requests failed: {err}"))?;
+    client
+        .execute(
+            "DELETE FROM recommend.subject_profile_snapshot
+             WHERE org_id = $1::text::uuid
+                OR user_id = $2::text::uuid",
+            &[&ids.org_id, &ids.operator_user_id],
+        )
+        .await
+        .map_err(|err| format!("cleanup recommendation subject profiles failed: {err}"))?;
+    client
         .execute(
             "DELETE FROM recommend.cohort_popularity WHERE cohort_key = $1",
             &[&format!("org:{}", ids.org_id)],
         )
-        .await;
-    let _ = client
+        .await
+        .map_err(|err| format!("cleanup recommendation cohort popularity failed: {err}"))?;
+    client
+        .execute(
+            "DELETE FROM recommend.cohort_definition WHERE cohort_key = $1",
+            &[&format!("org:{}", ids.org_id)],
+        )
+        .await
+        .map_err(|err| format!("cleanup recommendation cohort definition failed: {err}"))?;
+    client
+        .execute(
+            "DELETE FROM recommend.entity_similarity
+             WHERE source_entity_id = ANY($1::text[]::uuid[])
+                OR target_entity_id = ANY($1::text[]::uuid[])",
+            &[&ids.product_ids],
+        )
+        .await
+        .map_err(|err| format!("cleanup recommendation entity similarity failed: {err}"))?;
+    client
         .execute(
             "DELETE FROM recommend.bundle_relation
              WHERE source_entity_id = $1::text::uuid OR target_entity_id = $1::text::uuid
                 OR source_entity_id = $2::text::uuid OR target_entity_id = $2::text::uuid",
             &[&ids.product_ids[0], &ids.product_ids[1]],
         )
-        .await;
-    let _ = client
+        .await
+        .map_err(|err| format!("cleanup recommendation bundle relations failed: {err}"))?;
+    client
+        .execute(
+            "DELETE FROM search.search_signal_aggregate
+             WHERE entity_id = ANY($1::text[]::uuid[])",
+            &[&entity_ids],
+        )
+        .await
+        .map_err(|err| format!("cleanup search signal aggregate failed: {err}"))?;
+    client
         .execute(
             "DELETE FROM search.index_sync_task
              WHERE entity_id = ANY($1::text[]::uuid[])",
-            &[&vec![
-                ids.org_id.clone(),
-                ids.product_ids[0].clone(),
-                ids.product_ids[1].clone(),
-            ]],
+            &[&entity_ids],
         )
-        .await;
+        .await
+        .map_err(|err| format!("cleanup search index sync tasks failed: {err}"))?;
     for product_id in &ids.product_ids {
-        let _ = client
+        client
             .execute(
                 "DELETE FROM catalog.product WHERE product_id = $1::text::uuid",
                 &[product_id],
             )
-            .await;
+            .await
+            .map_err(|err| format!("cleanup catalog product {product_id} failed: {err}"))?;
     }
     for asset_version_id in &ids.asset_version_ids {
-        let _ = client
+        client
             .execute(
                 "DELETE FROM catalog.asset_version WHERE asset_version_id = $1::text::uuid",
                 &[asset_version_id],
             )
-            .await;
+            .await
+            .map_err(|err| {
+                format!("cleanup catalog asset version {asset_version_id} failed: {err}")
+            })?;
     }
     for asset_id in &ids.asset_ids {
-        let _ = client
+        client
             .execute(
                 "DELETE FROM catalog.data_asset WHERE asset_id = $1::text::uuid",
                 &[asset_id],
             )
-            .await;
+            .await
+            .map_err(|err| format!("cleanup catalog data asset {asset_id} failed: {err}"))?;
     }
-    let _ = client
+    client
         .execute(
-            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
-            &[&ids.operator_user_id],
+            "UPDATE core.user_account
+             SET status = 'inactive',
+                 attrs = attrs || $2::jsonb,
+                 updated_at = now()
+             WHERE user_id = $1::text::uuid",
+            &[&ids.operator_user_id, &cleanup_marker],
         )
-        .await;
-    let _ = client
+        .await
+        .map_err(|err| format!("tombstone recommendation operator user failed: {err}"))?;
+    client
         .execute(
-            "DELETE FROM core.organization WHERE org_id = $1::text::uuid",
+            "UPDATE core.organization
+             SET status = 'inactive',
+                 metadata = metadata || $2::jsonb,
+                 updated_at = now()
+             WHERE org_id = $1::text::uuid",
+            &[&ids.org_id, &cleanup_marker],
+        )
+        .await
+        .map_err(|err| format!("tombstone recommendation organization failed: {err}"))?;
+
+    let request_count = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM recommend.recommendation_request
+             WHERE subject_org_id = $1::text::uuid",
             &[&ids.org_id],
         )
-        .await;
+        .await
+        .map_err(|err| format!("verify recommendation request cleanup failed: {err}"))?
+        .get::<_, i64>(0);
+    if request_count != 0 {
+        return Err(format!(
+            "recommendation cleanup left {request_count} recommendation_request rows for org {}",
+            ids.org_id
+        ));
+    }
+
+    let product_count = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM catalog.product
+             WHERE product_id = ANY($1::text[]::uuid[])",
+            &[&ids.product_ids],
+        )
+        .await
+        .map_err(|err| format!("verify catalog product cleanup failed: {err}"))?
+        .get::<_, i64>(0);
+    if product_count != 0 {
+        return Err(format!(
+            "recommendation cleanup left {product_count} catalog.product rows for seeded ids"
+        ));
+    }
+
+    let user_row = client
+        .query_opt(
+            "SELECT status, attrs ->> 'cleanup_state'
+             FROM core.user_account
+             WHERE user_id = $1::text::uuid",
+            &[&ids.operator_user_id],
+        )
+        .await
+        .map_err(|err| format!("verify recommendation user tombstone failed: {err}"))?;
+    match user_row {
+        Some(row)
+            if row.get::<_, String>(0) == "inactive"
+                && row.get::<_, Option<String>>(1).as_deref() == Some("tombstoned") => {}
+        Some(row) => {
+            return Err(format!(
+                "recommendation operator user not tombstoned: status={} cleanup_state={:?}",
+                row.get::<_, String>(0),
+                row.get::<_, Option<String>>(1)
+            ));
+        }
+        None => {
+            return Err(format!(
+                "recommendation operator user {} missing after cleanup",
+                ids.operator_user_id
+            ));
+        }
+    }
+
+    let org_row = client
+        .query_opt(
+            "SELECT status, metadata ->> 'cleanup_state'
+             FROM core.organization
+             WHERE org_id = $1::text::uuid",
+            &[&ids.org_id],
+        )
+        .await
+        .map_err(|err| format!("verify recommendation organization tombstone failed: {err}"))?;
+    match org_row {
+        Some(row)
+            if row.get::<_, String>(0) == "inactive"
+                && row.get::<_, Option<String>>(1).as_deref() == Some("tombstoned") => {}
+        Some(row) => {
+            return Err(format!(
+                "recommendation organization not tombstoned: status={} cleanup_state={:?}",
+                row.get::<_, String>(0),
+                row.get::<_, Option<String>>(1)
+            ));
+        }
+        None => {
+            return Err(format!(
+                "recommendation organization {} missing after cleanup",
+                ids.org_id
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 async fn update_product_status_and_refresh_projection(
@@ -1005,7 +1159,7 @@ async fn recommendation_model_baseline_db_smoke() {
         .get::<_, i64>(0);
     assert_eq!(behavior_count, 2);
 
-    cleanup_graph(&client, &ids).await;
+    cleanup_graph(&client, &ids).await.expect("cleanup graph");
 }
 
 #[tokio::test]
@@ -2036,7 +2190,7 @@ async fn recommendation_api_full_runtime_db_smoke() {
         .await
         .expect("restore placement snapshot");
     cleanup_opensearch_documents(&ids).await;
-    cleanup_graph(&client, &ids).await;
+    cleanup_graph(&client, &ids).await.expect("cleanup graph");
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -2239,7 +2393,7 @@ async fn recommendation_get_api_db_smoke() {
     .await;
 
     cleanup_opensearch_documents(&ids).await;
-    cleanup_graph(&client, &ids).await;
+    cleanup_graph(&client, &ids).await.expect("cleanup graph");
 
     if let Err(message) = outcome {
         panic!("{message}");
@@ -2386,7 +2540,7 @@ async fn recommendation_filters_frozen_product_db_smoke() {
     .await;
 
     cleanup_opensearch_documents(&ids).await;
-    cleanup_graph(&client, &ids).await;
+    cleanup_graph(&client, &ids).await.expect("cleanup graph");
 
     if let Err(message) = outcome {
         panic!("{message}");
@@ -2633,7 +2787,7 @@ async fn recommendation_local_minimal_candidate_db_smoke() {
     }
     .await;
 
-    cleanup_graph(&client, &ids).await;
+    cleanup_graph(&client, &ids).await.expect("cleanup graph");
 
     if let Err(message) = outcome {
         panic!("{message}");

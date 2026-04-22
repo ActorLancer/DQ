@@ -997,3 +997,40 @@
   - 无。`SEARCHREC-021` 要求的 alias authority 统一、初始化脚本真实联调、运行默认值收口、runbook 边界澄清与最小运维能力确认，已通过代码、runbook、OpenSearch / PostgreSQL 回查与搜索 smoke 全部固定。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批只收口既有 alias authority 和阶段边界，没有新增冻结缺口。
+### BATCH-268（计划中）
+- 任务：`SEARCHREC` 阶段残留 TODO 收口复核（以 `SEARCHREC-013` 清理策略补齐为主，同步关闭 `SEARCHREC-016/017/018/019/021` 已完成但未收口的台账项）
+- 状态：计划中
+- 说明：重新复核 `SEARCHREC` 全阶段后，运行时与文档主体已经完成，当前真正残留的是两类收尾问题：一是 `TODO-SEARCHREC-AUTH-001 / CONTRACT-TEST-001 / ALIAS-001` 仍停留在 `accepted`，与 `SEARCHREC-016~021` 的实际完成状态不一致；二是 `SEARCHREC-013` 的推荐 smoke principal 清理仍是“删除失败后忽略”的 best-effort。当前批次只收口这两类残留，不再改写已经满足冻结口径的搜索/推荐主链。
+- 追溯：在 `SEARCHREC-001~021` 已完成的基线上做残留收尾，关闭阶段内仍可执行的 SEARCHREC TODO；不提前进入后续阶段。
+### BATCH-268（待审批）
+- 任务：`SEARCHREC` 阶段残留 TODO 收口复核（以 `SEARCHREC-013` 清理策略补齐为主，同步关闭 `SEARCHREC-016/017/018/019/021` 已完成但未收口的台账项）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-013`（补齐 `TODO-SEARCHREC-CLEANUP-001`），并同步收口 `SEARCHREC-016/017/018/019/021` 的残留 TODO 台账。
+- 前置依赖核对结果：`SEARCHREC-013`、`SEARCHREC-016`、`SEARCHREC-017`、`SEARCHREC-018`、`SEARCHREC-019`、`SEARCHREC-021` 已分别在 `BATCH-259`、`BATCH-266`、`BATCH-267` 和对应实现提交中完成；当前仓库运行时、OpenAPI、runbook 与测试矩阵均已具备 SEARCHREC 正式基线，本批只收口残留技术债与台账状态。
+- 实际变更：
+  - `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：把推荐 smoke 的 `cleanup_graph(...)` 从“忽略删除失败”改为正式清理流程。业务对象与派生对象会真实删除：`ops.outbox_event(recommend.behavior_recorded)`、`recommend.behavior_event`、`recommend.recommendation_request`、`recommend.subject_profile_snapshot`、`recommend.cohort_{definition,popularity}`、`recommend.entity_similarity`、`recommend.bundle_relation`、`search.search_signal_aggregate`、`search.index_sync_task`、`catalog.product / asset_version / data_asset`；产生审计引用的 `core.user_account / core.organization` 则改为 `status='inactive'` 且写入 `cleanup_state='tombstoned'`，避免再次触发 `audit.access_audit` append-only 外键回写冲突，并在 cleanup 末尾显式断言业务对象已删除、principal 已 tombstone。
+  - `docs/05-test-cases/search-rec-cases.md`：把推荐 smoke 的 principal cleanup 策略写入正式测试说明，明确 `SEARCHREC-013` 之后不得再对联调 principal 做物理删除，而应采用“删除业务对象 + tombstone principal”的冻结做法。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：关闭 `TODO-SEARCHREC-AUTH-001`、`TODO-SEARCHREC-CONTRACT-TEST-001`、`TODO-SEARCHREC-ALIAS-001` 与 `TODO-SEARCHREC-CLEANUP-001`；前三条按 `SEARCHREC-018/019/015/016/017/021` 的现有完成事实收口，最后一条按本批新增的 tombstone cleanup 策略收口，并补记 `BATCH-268` 更新记录。
+- 验证命令：
+  - `cargo fmt --all`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - `rg -n "TODO-SEARCHREC-(AUTH|CONTRACT-TEST|ALIAS|CLEANUP)-001.*accepted" docs/开发任务/V1-Core-TODO与预留清单.md`
+- 验证结果：
+  - `recommendation_api_full_runtime_db_smoke` 与 `recommendation_local_minimal_candidate_db_smoke` 均通过；新的 cleanup 断言证明推荐主链在写入 `audit.access_audit` 后，业务对象仍能被真实清理，联调 principal 则稳定 tombstone 为 `inactive + cleanup_state=tombstoned`，不再依赖删除失败后静默忽略。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；全量回归结果保持 `355 passed; 0 failed; 1 ignored`，本批未引入新的 `.sqlx` 漂移。
+  - `rg -n "TODO-SEARCHREC-(AUTH|CONTRACT-TEST|ALIAS|CLEANUP)-001.*accepted" ...` 返回空结果，证明 SEARCHREC 阶段残留 TODO 已全部从 `accepted` 收口。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-013`、`SEARCHREC-016`、`SEARCHREC-017`、`SEARCHREC-018`、`SEARCHREC-019`、`SEARCHREC-021`
+  - `A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`：统一鉴权 / Step-Up / 审计与契约已在后续实现批次完成，当前只补台账收口
+  - `A08-搜索Alias权威源与阶段边界冲突.md`：alias authority 已在 `SEARCHREC-021` 完成，当前补台账收口
+  - `docs/05-test-cases/search-rec-cases.md`：推荐 smoke cleanup 策略
+- 覆盖的任务清单条目：`SEARCHREC-013`，并补齐 `SEARCHREC-016/017/018/019/021` 的残留 TODO 留痕。
+- 未覆盖项：
+  - 无。当前可执行的 SEARCHREC 阶段残留 TODO 已全部关闭，未新增新的 `V1-gap / V2-reserved / V3-reserved`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

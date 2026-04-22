@@ -85,6 +85,7 @@
 - 推荐缓存必须写入 `datab:v1:recommend:*`，曝光后应能看到 `datab:v1:recommend:seen:*` 已看集合。
 - `APP_MODE=local` 下，同一推荐请求两次命中必须观察到 `cache_hit=false -> true`，并且 `recommendation_request.request_attrs ->> 'candidate_backend'`、`recommendation_result.metadata ->> 'candidate_backend'` 必须为 `postgresql_local_minimal`。
 - `placement_code=search_zero_result_fallback` 在 `APP_MODE=local` 下必须返回非空结果，并能在响应 `explanation_codes` 或 `recommendation_result_item.feature_snapshot` 中回查 `fallback:zero_result`。
+- `SEARCHREC-013` 之后，推荐 smoke 产生的临时 principal 清理策略固定为“删除业务对象 + 将 `core.user_account / core.organization` tombstone 为 `status='inactive'` 且写入 `cleanup_state='tombstoned'`”，不得再尝试物理删除并触发 `audit.access_audit` append-only 外键回写。
 - `POST /api/v1/recommendations/track/exposure` 必须要求 `Authorization: Bearer <access_token>`、非空 `X-Idempotency-Key`，写 `recommendation_panel_viewed` 与 `recommendation_item_exposed`，并在 `audit.audit_event + audit.access_audit(target_type='recommendation_behavior') + ops.system_log` 中留下痕迹。
 - `POST /api/v1/recommendations/track/click` 必须要求 `Authorization: Bearer <access_token>`、非空 `X-Idempotency-Key`，写点击事件，并把 canonical outbox topic 固定到 `dtp.recommend.behavior`；重复请求必须表现为幂等去重而不是再次写事件。
 - `recommendation-aggregator` 消费 `dtp.recommend.behavior` 后，必须更新 `search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation`。
