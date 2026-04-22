@@ -6,6 +6,7 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
 use redis::AsyncCommands;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::time::Duration;
 use tokio::time;
 use tracing::{error, info, warn};
@@ -656,7 +657,7 @@ async fn process_entity(
     match index_result {
         Ok(()) => {
             mark_projection_success(&client, entity_scope, entity_id).await?;
-            invalidate_search_cache(cfg).await?;
+            invalidate_search_cache(cfg, entity_scope, &document.body).await?;
             mark_task_completed(&client, &task_id).await?;
             info!(
                 entity_scope = %entity_scope,
@@ -987,25 +988,94 @@ async fn put_document(
     }
 }
 
-async fn invalidate_search_cache(cfg: &WorkerConfig) -> Result<(), String> {
+async fn invalidate_search_cache(
+    cfg: &WorkerConfig,
+    entity_scope: &str,
+    document: &Value,
+) -> Result<(), String> {
     let client = redis::Client::open(cfg.redis_url.as_str())
         .map_err(|err| format!("redis client init failed: {err}"))?;
     let mut connection = client
         .get_multiplexed_async_connection()
         .await
         .map_err(|err| format!("redis connect failed: {err}"))?;
-    let keys: Vec<String> = redis::cmd("KEYS")
-        .arg(format!("{}:search:catalog:*", cfg.redis_namespace))
-        .query_async(&mut connection)
-        .await
-        .map_err(|err| format!("redis search cache key scan failed: {err}"))?;
+    let scopes = related_cache_scopes_for_entity(entity_scope, document);
+    bump_search_cache_versions(&mut connection, cfg, &scopes).await?;
+    let mut keys = BTreeSet::new();
+    for scope in &scopes {
+        keys.extend(
+            scan_search_cache_keys(
+                &mut connection,
+                &format!("{}:search:catalog:{}:*", cfg.redis_namespace, scope),
+            )
+            .await?,
+        );
+    }
     if !keys.is_empty() {
         let _: usize = connection
-            .del(keys)
+            .del(keys.into_iter().collect::<Vec<_>>())
             .await
             .map_err(|err| format!("redis search cache delete failed: {err}"))?;
     }
     Ok(())
+}
+
+fn related_cache_scopes_for_entity(entity_scope: &str, document: &Value) -> Vec<String> {
+    match entity_scope {
+        "seller" => vec!["seller".to_string(), "all".to_string()],
+        _ => {
+            let mut scopes = vec!["product".to_string(), "all".to_string()];
+            if document["product_type"].as_str() == Some("service") {
+                scopes.insert(1, "service".to_string());
+            }
+            scopes
+        }
+    }
+}
+
+fn search_cache_version_key(cfg: &WorkerConfig, scope: &str) -> String {
+    format!("{}:search:catalog:version:{}", cfg.redis_namespace, scope)
+}
+
+async fn bump_search_cache_versions(
+    connection: &mut redis::aio::MultiplexedConnection,
+    cfg: &WorkerConfig,
+    scopes: &[String],
+) -> Result<(), String> {
+    let mut unique_scopes = BTreeSet::new();
+    unique_scopes.extend(scopes.iter().cloned());
+    for scope in unique_scopes {
+        connection
+            .incr::<_, _, i64>(search_cache_version_key(cfg, &scope), 1)
+            .await
+            .map_err(|err| format!("redis search cache version bump failed: {err}"))?;
+    }
+    Ok(())
+}
+
+async fn scan_search_cache_keys(
+    connection: &mut redis::aio::MultiplexedConnection,
+    pattern: &str,
+) -> Result<Vec<String>, String> {
+    let mut cursor = 0u64;
+    let mut keys = Vec::new();
+    loop {
+        let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("MATCH")
+            .arg(pattern)
+            .arg("COUNT")
+            .arg(200)
+            .query_async(connection)
+            .await
+            .map_err(|err| format!("redis search cache key scan failed: {err}"))?;
+        keys.extend(batch);
+        if next_cursor == 0 {
+            break;
+        }
+        cursor = next_cursor;
+    }
+    Ok(keys)
 }
 
 fn resolve_redis_url() -> String {
@@ -1410,6 +1480,19 @@ mod tests {
         value.is_some()
     }
 
+    async fn cache_version(cfg: &WorkerConfig, scope: &str) -> i64 {
+        let client = redis::Client::open(cfg.redis_url.as_str()).expect("redis client");
+        let mut connection = client
+            .get_multiplexed_async_connection()
+            .await
+            .expect("redis connect");
+        connection
+            .get::<_, Option<i64>>(search_cache_version_key(cfg, scope))
+            .await
+            .expect("get search cache version")
+            .unwrap_or(0)
+    }
+
     fn build_consumer(group_id: &str, topic: &str) -> StreamConsumer {
         let consumer: StreamConsumer = ClientConfig::new()
             .set("bootstrap.servers", &kafka_brokers())
@@ -1557,6 +1640,9 @@ mod tests {
         let seed = seed_graph(&client, &suffix).await.expect("seed graph");
         seed_cache(&cfg, &seed.cache_key).await;
         assert!(cache_exists(&cfg, &seed.cache_key).await);
+        let product_version_before = cache_version(&cfg, "product").await;
+        let service_version_before = cache_version(&cfg, "service").await;
+        let all_version_before = cache_version(&cfg, "all").await;
 
         let success_event_id: String = client
             .query_one("SELECT gen_random_uuid()::text", &[])
@@ -1634,6 +1720,9 @@ mod tests {
             Some(9)
         );
         assert!(!cache_exists(&cfg, &seed.cache_key).await);
+        assert!(cache_version(&cfg, "product").await > product_version_before);
+        assert_eq!(cache_version(&cfg, "service").await, service_version_before);
+        assert!(cache_version(&cfg, "all").await > all_version_before);
 
         let success_idempotency = client
             .query_one(

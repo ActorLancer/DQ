@@ -8,6 +8,7 @@ use http::ApiResponse;
 use kernel::{ErrorCode, ErrorResponse, new_external_readable_id};
 use serde_json::{Value, json};
 use sqlx::types::Uuid;
+use tracing::warn;
 
 use crate::AppState;
 use crate::modules::audit::repo as audit_repo;
@@ -240,6 +241,23 @@ pub(in crate::modules::search) async fn post_search_alias_switch(
     let response = repo::switch_alias_binding(&client, &payload)
         .await
         .map_err(|message| map_search_error(&request_id, &message))?;
+    let cache_invalidation = match repo::invalidate_scope_cache(&response.entity_scope).await {
+        Ok(result) => json!({
+            "entity_scope": result.entity_scope,
+            "deleted_keys": result.deleted_keys,
+            "invalidated_scopes": result.invalidated_scopes,
+        }),
+        Err(err) => {
+            warn!(
+                error = %err,
+                entity_scope = %response.entity_scope,
+                "search alias switch cache invalidation failed"
+            );
+            json!({
+                "error": err,
+            })
+        }
+    };
 
     record_search_write_side_effects(
         &client,
@@ -258,6 +276,7 @@ pub(in crate::modules::search) async fn post_search_alias_switch(
             "write_alias": response.write_alias,
             "previous_index_name": response.previous_index_name,
             "active_index_name": response.active_index_name,
+            "cache_invalidation": cache_invalidation,
         }),
         actor_user_id.as_str(),
     )
@@ -284,6 +303,7 @@ pub(in crate::modules::search) async fn post_search_cache_invalidate(
     let client = state_client(&state, &request_id)?;
     let actor_user_id = require_actor_user_id(&subject, &request_id)?;
     require_idempotency_key(&headers, "search cache invalidate", &request_id)?;
+    validate_cache_invalidate_request(&payload, &request_id)?;
 
     let response = repo::invalidate_search_cache(&payload)
         .await
@@ -308,6 +328,7 @@ pub(in crate::modules::search) async fn post_search_cache_invalidate(
             "query_hash": payload.query_hash,
             "purge_all": payload.purge_all.unwrap_or(false),
             "deleted_keys": response.deleted_keys,
+            "invalidated_scopes": response.invalidated_scopes,
         }),
         actor_user_id.as_str(),
     )
@@ -383,6 +404,24 @@ pub(in crate::modules::search) async fn patch_ranking_profile(
     let profile = repo::patch_ranking_profile(&client, &id, &payload)
         .await
         .map_err(|message| map_search_error(&request_id, &message))?;
+    let cache_invalidation = match repo::invalidate_scope_cache(&profile.entity_scope).await {
+        Ok(result) => json!({
+            "entity_scope": result.entity_scope,
+            "deleted_keys": result.deleted_keys,
+            "invalidated_scopes": result.invalidated_scopes,
+        }),
+        Err(err) => {
+            warn!(
+                error = %err,
+                ranking_profile_id = %id,
+                entity_scope = %profile.entity_scope,
+                "search ranking patch cache invalidation failed"
+            );
+            json!({
+                "error": err,
+            })
+        }
+    };
 
     record_search_write_side_effects(
         &client,
@@ -403,6 +442,7 @@ pub(in crate::modules::search) async fn patch_ranking_profile(
             "weights_json": payload.weights_json,
             "filter_policy_json": payload.filter_policy_json,
             "status": payload.status,
+            "cache_invalidation": cache_invalidation,
         }),
         actor_user_id.as_str(),
     )
@@ -851,6 +891,38 @@ async fn record_search_write_side_effects(
     .await
     .map_err(|err| map_db_error(err, &request_id))?;
 
+    Ok(())
+}
+
+fn validate_cache_invalidate_request(
+    payload: &CacheInvalidateRequest,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if let Some(scope) = payload.entity_scope.as_deref() {
+        match scope.trim().to_ascii_lowercase().as_str() {
+            "all" | "product" | "service" | "seller" => {}
+            other => {
+                return Err(search_bad_request(
+                    request_id,
+                    format!(
+                        "entity_scope must be one of: all, product, service, seller; got `{other}`"
+                    ),
+                ));
+            }
+        }
+    }
+    if payload.query_hash.is_some() && payload.entity_scope.is_none() {
+        return Err(search_bad_request(
+            request_id,
+            "entity_scope is required when query_hash is provided".to_string(),
+        ));
+    }
+    if payload.query_hash.is_some() && payload.purge_all.unwrap_or(false) {
+        return Err(search_bad_request(
+            request_id,
+            "query_hash cannot be combined with purge_all".to_string(),
+        ));
+    }
     Ok(())
 }
 

@@ -19,18 +19,19 @@
 
 - 商品变更写入 `search.product.changed`，其 canonical topic 固定为 `dtp.search.sync`。
 - `search-indexer` 消费 `dtp.search.sync` 后，从 PostgreSQL 搜索投影读取最新文档并写入 OpenSearch `write alias`。
-- `search-indexer` 成功同步后会失效 `datab:v1:search:catalog:*` 缓存并回写 `search.index_sync_task`。
+- `search-indexer` 成功同步后会推进 `datab:v1:search:catalog:version:{scope}` 并删除相关 `datab:v1:search:catalog:*` 候选缓存，再回写 `search.index_sync_task`。
 - `GET /api/v1/catalog/search` 在 `staging` 必须经 `OpenSearch candidate -> PostgreSQL final check` 返回结果，并显式返回 `backend=opensearch`。
 - `GET /api/v1/catalog/search` 在 `local / demo` 允许经 `PostgreSQL search projection candidate -> PostgreSQL final check` 返回结果，并显式返回 `backend=postgresql`。
 - `GET /api/v1/catalog/search` 当前正式要求 `Authorization: Bearer <access_token>`，且两次相同查询应能观察到 `cache_hit=false -> true`。
 - `POST /api/v1/ops/search/reindex` 必须写入 `search.index_sync_task(sync_status='queued')`。
 - `POST /api/v1/ops/search/reindex` 必须要求 `ops.search_reindex.execute + X-Idempotency-Key + X-Step-Up-Token`，并写入 `audit.audit_event(action_name='search.reindex.queue')`、`audit.access_audit(target_type='search_reindex')`、`ops.system_log`。
-- `POST /api/v1/ops/search/cache/invalidate` 必须删除 Redis 搜索缓存。
+- `POST /api/v1/ops/search/cache/invalidate` 必须推进相关 `datab:v1:search:catalog:version:{scope}` 并删除 Redis 搜索缓存。
 - `POST /api/v1/ops/search/cache/invalidate` 必须要求 `ops.search_cache.invalidate + X-Idempotency-Key`，且不得伪造 step-up。
 - `POST /api/v1/ops/search/aliases/switch` 必须同步更新 OpenSearch alias 与 `search.index_alias_binding.active_index_name`。
 - `POST /api/v1/ops/search/aliases/switch` 必须要求 `ops.search_alias.manage + X-Idempotency-Key + X-Step-Up-Token`，并且回查 OpenSearch `/_alias/*` 与 PostgreSQL 权威源一致。
 - `GET /api/v1/ops/search/ranking-profiles` 与 `PATCH /api/v1/ops/search/ranking-profiles/{id}` 必须与 `search.ranking_profile` 一致。
 - `PATCH /api/v1/ops/search/ranking-profiles/{id}` 必须要求 `ops.search_ranking.manage + X-Idempotency-Key + X-Step-Up-Token`，并真实写入 `search.ranking_profile`。
+- `PATCH /api/v1/ops/search/ranking-profiles/{id}` 与 `POST /api/v1/ops/search/aliases/switch` 成功后，必须自动推进相关 `datab:v1:search:catalog:version:{scope}` 并失效受影响搜索缓存。
 - 搜索运维控制面必须统一使用 `Authorization`，不再接受 `x-role`。
 - 搜索运维控制面必须使用搜索域错误码：`SEARCH_QUERY_INVALID`、`SEARCH_BACKEND_UNAVAILABLE`、`SEARCH_RESULT_STALE`，以及权限专属 `SEARCH_REINDEX_FORBIDDEN / SEARCH_ALIAS_SWITCH_FORBIDDEN / SEARCH_CACHE_INVALIDATE_FORBIDDEN`。
 - `search-indexer` 必须以统一事件 envelope 的 `event_id` 做 consumer 幂等，并把幂等记录写入 `ops.consumer_idempotency_record`。

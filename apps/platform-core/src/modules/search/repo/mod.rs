@@ -4,6 +4,7 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 
 use crate::modules::search::domain::{
     AliasSwitchRequest, AliasSwitchResponse, CacheInvalidateRequest, CacheInvalidateResponse,
@@ -12,6 +13,7 @@ use crate::modules::search::domain::{
 };
 
 type RepoResult<T> = Result<T, String>;
+const SEARCH_CACHE_TTL_SECS: u64 = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchCandidate {
@@ -62,6 +64,21 @@ struct RankingWeights {
     freshness: f64,
     trade: f64,
     completeness: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedCandidatePage {
+    cache_version: i64,
+    page: SearchCandidatePage,
+}
+
+#[derive(Debug, Clone)]
+struct SearchCacheInvalidationPlan {
+    entity_scope: Option<String>,
+    invalidated_scopes: Vec<String>,
+    exact_key: Option<String>,
+    delete_patterns: Vec<String>,
+    bump_scope_versions: bool,
 }
 
 impl RankingWeights {
@@ -467,6 +484,26 @@ pub async fn switch_alias_binding(
 pub async fn invalidate_search_cache(
     request: &CacheInvalidateRequest,
 ) -> RepoResult<CacheInvalidateResponse> {
+    execute_search_cache_invalidation(build_cache_invalidation_plan(request)).await
+}
+
+pub async fn invalidate_scope_cache(entity_scope: &str) -> RepoResult<CacheInvalidateResponse> {
+    execute_search_cache_invalidation(SearchCacheInvalidationPlan {
+        entity_scope: Some(normalized_scope(entity_scope)),
+        invalidated_scopes: related_cache_scopes_for_ops(entity_scope),
+        exact_key: None,
+        delete_patterns: related_cache_scopes_for_ops(entity_scope)
+            .into_iter()
+            .map(|scope| search_cache_pattern(&scope))
+            .collect(),
+        bump_scope_versions: true,
+    })
+    .await
+}
+
+async fn execute_search_cache_invalidation(
+    plan: SearchCacheInvalidationPlan,
+) -> RepoResult<CacheInvalidateResponse> {
     let redis_url = redis_url();
     let client = redis::Client::open(redis_url.as_str())
         .map_err(|err| format!("redis client init failed: {err}"))?;
@@ -474,53 +511,69 @@ pub async fn invalidate_search_cache(
         .get_multiplexed_async_connection()
         .await
         .map_err(|err| format!("redis connect failed: {err}"))?;
-
-    let deleted = if let Some(query_hash) = request.query_hash.as_deref() {
-        let scope = request
-            .entity_scope
-            .clone()
-            .unwrap_or_else(|| "all".to_string());
-        let key = format!(
-            "{}:search:catalog:{}:{}",
-            redis_namespace(),
-            scope,
-            query_hash
-        );
+    if plan.bump_scope_versions {
+        bump_search_cache_versions(&mut connection, &plan.invalidated_scopes).await?;
+    }
+    let deleted = if let Some(key) = plan.exact_key.as_deref() {
         connection
             .del::<_, usize>(key)
             .await
             .map_err(|err| format!("redis cache delete failed: {err}"))?
     } else {
-        let pattern = if request.purge_all.unwrap_or(false) {
-            format!("{}:search:catalog:*", redis_namespace())
-        } else if let Some(scope) = request.entity_scope.as_deref() {
-            format!(
-                "{}:search:catalog:{}:*",
-                redis_namespace(),
-                normalized_scope(scope)
-            )
-        } else {
-            format!("{}:search:catalog:*", redis_namespace())
-        };
-        let keys: Vec<String> = redis::cmd("KEYS")
-            .arg(pattern)
-            .query_async(&mut connection)
-            .await
-            .map_err(|err| format!("redis keys lookup failed: {err}"))?;
-        if keys.is_empty() {
-            0
-        } else {
-            connection
-                .del::<_, usize>(keys)
-                .await
-                .map_err(|err| format!("redis cache batch delete failed: {err}"))?
-        }
+        delete_search_cache_patterns(&mut connection, &plan.delete_patterns).await?
     };
 
     Ok(CacheInvalidateResponse {
-        entity_scope: request.entity_scope.clone(),
+        entity_scope: plan.entity_scope,
         deleted_keys: deleted,
+        invalidated_scopes: plan.invalidated_scopes,
     })
+}
+
+fn build_cache_invalidation_plan(request: &CacheInvalidateRequest) -> SearchCacheInvalidationPlan {
+    if let Some(query_hash) = request.query_hash.as_deref() {
+        let scope = normalized_scope(request.entity_scope.as_deref().unwrap_or("all"));
+        return SearchCacheInvalidationPlan {
+            entity_scope: Some(scope.clone()),
+            invalidated_scopes: vec![scope.clone()],
+            exact_key: Some(format!(
+                "{}:search:catalog:{}:{}",
+                redis_namespace(),
+                scope,
+                query_hash
+            )),
+            delete_patterns: Vec::new(),
+            bump_scope_versions: false,
+        };
+    }
+
+    let requested_scope = request.entity_scope.as_deref().map(normalized_scope);
+    if request.purge_all.unwrap_or(false) || requested_scope.as_deref().unwrap_or("all") == "all" {
+        let scopes = all_search_cache_scopes();
+        return SearchCacheInvalidationPlan {
+            entity_scope: request.entity_scope.clone(),
+            invalidated_scopes: scopes.clone(),
+            exact_key: None,
+            delete_patterns: scopes
+                .into_iter()
+                .map(|scope| search_cache_pattern(&scope))
+                .collect(),
+            bump_scope_versions: true,
+        };
+    }
+
+    let scope = normalized_scope(request.entity_scope.as_deref().unwrap_or("all"));
+    let invalidated_scopes = related_cache_scopes_for_ops(&scope);
+    SearchCacheInvalidationPlan {
+        entity_scope: Some(scope),
+        delete_patterns: invalidated_scopes
+            .iter()
+            .map(|scope| search_cache_pattern(scope))
+            .collect(),
+        invalidated_scopes,
+        exact_key: None,
+        bump_scope_versions: true,
+    }
 }
 
 pub async fn list_ranking_profiles(
@@ -1502,14 +1555,30 @@ async fn load_candidate_cache(
         Err(err) => return Err(format!("redis connect failed: {err}")),
     };
     let key = search_cache_key(query, backend)?;
+    let query_scope = normalized_scope(&query.entity_scope);
+    let expected_version = load_search_cache_version(&mut connection, &query_scope).await?;
     let value: Option<String> = connection
-        .get(key)
+        .get(&key)
         .await
         .map_err(|err| format!("redis cache get failed: {err}"))?;
     match value {
-        Some(serialized) => serde_json::from_str(&serialized)
-            .map(Some)
-            .map_err(|err| format!("decode cached search candidates failed: {err}")),
+        Some(serialized) => {
+            if let Ok(cached) = serde_json::from_str::<CachedCandidatePage>(&serialized) {
+                if cached.cache_version == expected_version {
+                    return Ok(Some(cached.page));
+                }
+            } else if let Ok(page) = serde_json::from_str::<SearchCandidatePage>(&serialized) {
+                if expected_version == 0 {
+                    return Ok(Some(page));
+                }
+            } else {
+                return Err(
+                    "decode cached search candidates failed: payload format mismatch".to_string(),
+                );
+            }
+            let _ = connection.del::<_, usize>(&key).await;
+            Ok(None)
+        }
         None => Ok(None),
     }
 }
@@ -1527,10 +1596,15 @@ async fn store_candidate_cache(
         .await
         .map_err(|err| format!("redis connect failed: {err}"))?;
     let key = search_cache_key(query, backend)?;
-    let serialized = serde_json::to_string(page)
-        .map_err(|err| format!("encode cached search candidates failed: {err}"))?;
+    let query_scope = normalized_scope(&query.entity_scope);
+    let cache_version = load_search_cache_version(&mut connection, &query_scope).await?;
+    let serialized = serde_json::to_string(&CachedCandidatePage {
+        cache_version,
+        page: page.clone(),
+    })
+    .map_err(|err| format!("encode cached search candidates failed: {err}"))?;
     connection
-        .set_ex::<_, _, ()>(key, serialized, 300)
+        .set_ex::<_, _, ()>(key, serialized, SEARCH_CACHE_TTL_SECS)
         .await
         .map_err(|err| format!("redis cache set failed: {err}"))?;
     Ok(())
@@ -1666,6 +1740,111 @@ fn redis_url() -> String {
     let password =
         std::env::var("REDIS_PASSWORD").unwrap_or_else(|_| "datab_redis_pass".to_string());
     format!("redis://default:{}@{}:{}/0", password, host, port)
+}
+
+fn all_search_cache_scopes() -> Vec<String> {
+    vec![
+        "all".to_string(),
+        "product".to_string(),
+        "service".to_string(),
+        "seller".to_string(),
+    ]
+}
+
+fn related_cache_scopes_for_ops(scope: &str) -> Vec<String> {
+    match normalized_scope(scope).as_str() {
+        "seller" => vec!["seller".to_string(), "all".to_string()],
+        "product" | "service" => vec![
+            "product".to_string(),
+            "service".to_string(),
+            "all".to_string(),
+        ],
+        _ => all_search_cache_scopes(),
+    }
+}
+
+fn search_cache_pattern(scope: &str) -> String {
+    format!(
+        "{}:search:catalog:{}:*",
+        redis_namespace(),
+        normalized_scope(scope)
+    )
+}
+
+fn search_cache_version_key(scope: &str) -> String {
+    format!(
+        "{}:search:catalog:version:{}",
+        redis_namespace(),
+        normalized_scope(scope)
+    )
+}
+
+async fn load_search_cache_version(
+    connection: &mut redis::aio::MultiplexedConnection,
+    scope: &str,
+) -> RepoResult<i64> {
+    let version = connection
+        .get::<_, Option<i64>>(search_cache_version_key(scope))
+        .await
+        .map_err(|err| format!("redis cache version lookup failed: {err}"))?;
+    Ok(version.unwrap_or(0))
+}
+
+async fn bump_search_cache_versions(
+    connection: &mut redis::aio::MultiplexedConnection,
+    scopes: &[String],
+) -> RepoResult<()> {
+    let mut unique_scopes = BTreeSet::new();
+    unique_scopes.extend(scopes.iter().cloned());
+    for scope in unique_scopes {
+        connection
+            .incr::<_, _, i64>(search_cache_version_key(&scope), 1)
+            .await
+            .map_err(|err| format!("redis cache version bump failed: {err}"))?;
+    }
+    Ok(())
+}
+
+async fn delete_search_cache_patterns(
+    connection: &mut redis::aio::MultiplexedConnection,
+    patterns: &[String],
+) -> RepoResult<usize> {
+    let mut keys = BTreeSet::new();
+    for pattern in patterns {
+        keys.extend(scan_search_cache_keys(connection, pattern).await?);
+    }
+    if keys.is_empty() {
+        return Ok(0);
+    }
+    connection
+        .del::<_, usize>(keys.into_iter().collect::<Vec<_>>())
+        .await
+        .map_err(|err| format!("redis cache batch delete failed: {err}"))
+}
+
+async fn scan_search_cache_keys(
+    connection: &mut redis::aio::MultiplexedConnection,
+    pattern: &str,
+) -> RepoResult<Vec<String>> {
+    let mut cursor = 0u64;
+    let mut keys = Vec::new();
+    loop {
+        let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("MATCH")
+            .arg(pattern)
+            .arg("COUNT")
+            .arg(200)
+            .query_async(connection)
+            .await
+            .map_err(|err| format!("redis search cache scan failed: {err}"))?;
+        keys.extend(batch);
+        if next_cursor == 0 {
+            break;
+        }
+        cursor = next_cursor;
+    }
+    Ok(keys)
 }
 
 fn search_cache_key(query: &SearchQuery, backend: CandidateBackend) -> RepoResult<String> {

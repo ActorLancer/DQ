@@ -737,7 +737,14 @@ fn cache_key_for_query(query: &SearchQuery, backend: &str) -> String {
     }))
     .expect("encode search query");
     let digest = format!("{:x}", Sha256::digest(canonical.as_bytes()));
-    format!("datab:v1:search:catalog:product:{digest}")
+    format!(
+        "datab:v1:search:catalog:{}:{digest}",
+        query.entity_scope.to_ascii_lowercase()
+    )
+}
+
+fn cache_version_key(scope: &str) -> String {
+    format!("datab:v1:search:catalog:version:{scope}")
 }
 
 async fn clear_cache_key(key: &str) -> Result<(), String> {
@@ -752,6 +759,46 @@ async fn clear_cache_key(key: &str) -> Result<(), String> {
         .await
         .map_err(|err| format!("delete redis cache key failed: {err}"))?;
     Ok(())
+}
+
+async fn seed_cache_value(key: &str, payload: &str, ttl_secs: u64) -> Result<(), String> {
+    let redis_client = redis::Client::open(redis_url())
+        .map_err(|err| format!("init redis client failed: {err}"))?;
+    let mut redis_conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|err| format!("connect redis failed: {err}"))?;
+    redis_conn
+        .set_ex::<_, _, ()>(key, payload, ttl_secs)
+        .await
+        .map_err(|err| format!("seed redis cache key failed: {err}"))?;
+    Ok(())
+}
+
+async fn redis_ttl(key: &str) -> Result<i64, String> {
+    let redis_client = redis::Client::open(redis_url())
+        .map_err(|err| format!("init redis client failed: {err}"))?;
+    let mut redis_conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|err| format!("connect redis failed: {err}"))?;
+    redis_conn
+        .ttl(key)
+        .await
+        .map_err(|err| format!("read redis ttl failed: {err}"))
+}
+
+async fn redis_i64(key: &str) -> Result<Option<i64>, String> {
+    let redis_client = redis::Client::open(redis_url())
+        .map_err(|err| format!("init redis client failed: {err}"))?;
+    let mut redis_conn = redis_client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|err| format!("connect redis failed: {err}"))?;
+    redis_conn
+        .get(key)
+        .await
+        .map_err(|err| format!("read redis integer key failed: {err}"))
 }
 
 async fn response_json(response: axum::response::Response) -> Result<Value, String> {
@@ -884,7 +931,15 @@ async fn search_api_and_ops_db_smoke() {
         page: Some(1),
         page_size: Some(10),
     };
+    let all_query = SearchQuery {
+        entity_scope: "all".to_string(),
+        ..query.clone()
+    };
     let cache_key = cache_key_for_query(&query, "opensearch");
+    let all_cache_key = cache_key_for_query(&all_query, "opensearch");
+    let product_version_key = cache_version_key("product");
+    let service_version_key = cache_version_key("service");
+    let all_version_key = cache_version_key("all");
     let updated_weights = json!({
         "quality_score": 0.78,
         "hotness_score": 0.12,
@@ -998,6 +1053,10 @@ async fn search_api_and_ops_db_smoke() {
         if cached_value.is_none() {
             return Err(format!("search cache key missing after first search: {cache_key}"));
         }
+        let cache_ttl = redis_ttl(&cache_key).await?;
+        if !(1..=300).contains(&cache_ttl) {
+            return Err(format!("search cache ttl out of range: key={cache_key} ttl={cache_ttl}"));
+        }
 
         let search_resp_2 = app
             .clone()
@@ -1044,6 +1103,11 @@ async fn search_api_and_ops_db_smoke() {
             return Err("second catalog search system log missing".to_string());
         }
 
+        seed_cache_value(&all_cache_key, "{\"seed\":true}", 300).await?;
+        let product_version_before = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let service_version_before = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let all_version_before = redis_i64(&all_version_key).await?.unwrap_or(0);
+
         let cache_resp = app
             .clone()
             .oneshot(
@@ -1069,9 +1133,25 @@ async fn search_api_and_ops_db_smoke() {
         if cache_json["data"]["deleted_keys"]
             .as_u64()
             .unwrap_or_default()
-            < 1
+            < 2
         {
             return Err(format!("cache invalidate deleted_keys mismatch: {cache_json}"));
+        }
+        let invalidated_scopes = cache_json["data"]["invalidated_scopes"]
+            .as_array()
+            .ok_or_else(|| format!("cache invalidate scopes missing: {cache_json}"))?;
+        if invalidated_scopes.len() != 3
+            || !invalidated_scopes
+                .iter()
+                .any(|value| value.as_str() == Some("product"))
+            || !invalidated_scopes
+                .iter()
+                .any(|value| value.as_str() == Some("service"))
+            || !invalidated_scopes.iter().any(|value| value.as_str() == Some("all"))
+        {
+            return Err(format!(
+                "cache invalidate scope cascade mismatch: {cache_json}"
+            ));
         }
         let deleted_cache: Option<String> = redis_conn
             .get(&cache_key)
@@ -1079,6 +1159,26 @@ async fn search_api_and_ops_db_smoke() {
             .map_err(|err| format!("load cache key after delete failed: {err}"))?;
         if deleted_cache.is_some() {
             return Err(format!("search cache key still exists after invalidation: {cache_key}"));
+        }
+        let deleted_all_cache: Option<String> = redis_conn
+            .get(&all_cache_key)
+            .await
+            .map_err(|err| format!("load all-scope cache key after delete failed: {err}"))?;
+        if deleted_all_cache.is_some() {
+            return Err(format!(
+                "all-scope search cache key still exists after invalidation: {all_cache_key}"
+            ));
+        }
+        let product_version_after = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let service_version_after = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let all_version_after = redis_i64(&all_version_key).await?.unwrap_or(0);
+        if product_version_after <= product_version_before
+            || service_version_after <= service_version_before
+            || all_version_after <= all_version_before
+        {
+            return Err(format!(
+                "cache invalidate version keys not advanced: before=({product_version_before},{service_version_before},{all_version_before}) after=({product_version_after},{service_version_after},{all_version_after})"
+            ));
         }
 
         let reindex_step_up = seed_verified_step_up_challenge(
@@ -1259,6 +1359,12 @@ async fn search_api_and_ops_db_smoke() {
             return Err("ranking list system log missing".to_string());
         }
 
+        seed_cache_value(&cache_key, "{\"seed\":true}", 300).await?;
+        seed_cache_value(&all_cache_key, "{\"seed\":true}", 300).await?;
+        let ranking_product_version_before = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let ranking_service_version_before = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let ranking_all_version_before = redis_i64(&all_version_key).await?.unwrap_or(0);
+
         let ranking_step_up = seed_verified_step_up_challenge(
             &client,
             &ids.operator_user_id,
@@ -1354,6 +1460,34 @@ async fn search_api_and_ops_db_smoke() {
         {
             return Err("ranking patch system log missing".to_string());
         }
+        let ranking_product_cache: Option<String> = redis_conn
+            .get(&cache_key)
+            .await
+            .map_err(|err| format!("load product cache after ranking patch failed: {err}"))?;
+        let ranking_all_cache: Option<String> = redis_conn
+            .get(&all_cache_key)
+            .await
+            .map_err(|err| format!("load all cache after ranking patch failed: {err}"))?;
+        if ranking_product_cache.is_some() || ranking_all_cache.is_some() {
+            return Err("ranking patch should invalidate product/all search cache".to_string());
+        }
+        let ranking_product_version_after = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let ranking_service_version_after = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let ranking_all_version_after = redis_i64(&all_version_key).await?.unwrap_or(0);
+        if ranking_product_version_after <= ranking_product_version_before
+            || ranking_service_version_after <= ranking_service_version_before
+            || ranking_all_version_after <= ranking_all_version_before
+        {
+            return Err(format!(
+                "ranking patch cache versions not advanced: before=({ranking_product_version_before},{ranking_service_version_before},{ranking_all_version_before}) after=({ranking_product_version_after},{ranking_service_version_after},{ranking_all_version_after})"
+            ));
+        }
+
+        seed_cache_value(&cache_key, "{\"seed\":true}", 300).await?;
+        seed_cache_value(&all_cache_key, "{\"seed\":true}", 300).await?;
+        let alias_product_version_before = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let alias_service_version_before = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let alias_all_version_before = redis_i64(&all_version_key).await?.unwrap_or(0);
 
         let alias_step_up = seed_verified_step_up_challenge(
             &client,
@@ -1454,6 +1588,28 @@ async fn search_api_and_ops_db_smoke() {
             != 1
         {
             return Err("alias switch system log missing".to_string());
+        }
+        let alias_product_cache: Option<String> = redis_conn
+            .get(&cache_key)
+            .await
+            .map_err(|err| format!("load product cache after alias switch failed: {err}"))?;
+        let alias_all_cache: Option<String> = redis_conn
+            .get(&all_cache_key)
+            .await
+            .map_err(|err| format!("load all cache after alias switch failed: {err}"))?;
+        if alias_product_cache.is_some() || alias_all_cache.is_some() {
+            return Err("alias switch should invalidate product/all search cache".to_string());
+        }
+        let alias_product_version_after = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let alias_service_version_after = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let alias_all_version_after = redis_i64(&all_version_key).await?.unwrap_or(0);
+        if alias_product_version_after <= alias_product_version_before
+            || alias_service_version_after <= alias_service_version_before
+            || alias_all_version_after <= alias_all_version_before
+        {
+            return Err(format!(
+                "alias switch cache versions not advanced: before=({alias_product_version_before},{alias_service_version_before},{alias_all_version_before}) after=({alias_product_version_after},{alias_service_version_after},{alias_all_version_after})"
+            ));
         }
 
         if count_audit_events(&client, &req_cache, "search.cache.invalidate")
@@ -1795,6 +1951,9 @@ async fn search_catalog_composite_ranking_db_smoke() {
     };
     let opensearch_cache_key = cache_key_for_query(&query, "opensearch");
     let postgresql_cache_key = cache_key_for_query(&query, "postgresql");
+    let product_version_key = cache_version_key("product");
+    let service_version_key = cache_version_key("service");
+    let all_version_key = cache_version_key("all");
     let req_search_default = format!("req-search-composite-default-{query_token}");
     let req_rank_patch = format!("req-search-composite-ranking-patch-{query_token}");
     let req_search_weighted = format!("req-search-composite-weighted-{query_token}");
@@ -1868,8 +2027,15 @@ async fn search_catalog_composite_ranking_db_smoke() {
         {
             return Err("default composite search system log missing".to_string());
         }
-
-        clear_cache_key(&opensearch_cache_key).await?;
+        let default_cached = redis_ttl(&opensearch_cache_key).await?;
+        if !(1..=300).contains(&default_cached) {
+            return Err(format!(
+                "default composite search cache ttl out of range: {default_cached}"
+            ));
+        }
+        let ranking_product_version_before = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let ranking_service_version_before = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let ranking_all_version_before = redis_i64(&all_version_key).await?.unwrap_or(0);
 
         let ranking_step_up = seed_verified_step_up_challenge(
             &client,
@@ -1928,6 +2094,32 @@ async fn search_catalog_composite_ranking_db_smoke() {
         {
             return Err("composite ranking patch access audit missing".to_string());
         }
+        let ranking_cached: Option<String> = {
+            let redis_client = redis::Client::open(redis_url())
+                .map_err(|err| format!("init redis client failed: {err}"))?;
+            let mut redis_conn = redis_client
+                .get_multiplexed_async_connection()
+                .await
+                .map_err(|err| format!("connect redis failed: {err}"))?;
+            redis_conn
+                .get(&opensearch_cache_key)
+                .await
+                .map_err(|err| format!("load composite search cache after ranking patch failed: {err}"))?
+        };
+        if ranking_cached.is_some() {
+            return Err("ranking patch should invalidate composite opensearch cache".to_string());
+        }
+        let ranking_product_version_after = redis_i64(&product_version_key).await?.unwrap_or(0);
+        let ranking_service_version_after = redis_i64(&service_version_key).await?.unwrap_or(0);
+        let ranking_all_version_after = redis_i64(&all_version_key).await?.unwrap_or(0);
+        if ranking_product_version_after <= ranking_product_version_before
+            || ranking_service_version_after <= ranking_service_version_before
+            || ranking_all_version_after <= ranking_all_version_before
+        {
+            return Err(format!(
+                "composite ranking patch cache versions not advanced: before=({ranking_product_version_before},{ranking_service_version_before},{ranking_all_version_before}) after=({ranking_product_version_after},{ranking_service_version_after},{ranking_all_version_after})"
+            ));
+        }
 
         let search_weighted_resp = app
             .clone()
@@ -1979,8 +2171,6 @@ async fn search_catalog_composite_ranking_db_smoke() {
         {
             return Err("weighted composite search system log missing".to_string());
         }
-
-        clear_cache_key(&opensearch_cache_key).await?;
 
         let _app_mode = ScopedEnvVar::set("APP_MODE", "local");
         let _opensearch_endpoint = ScopedEnvVar::set("OPENSEARCH_ENDPOINT", "http://127.0.0.1:1");

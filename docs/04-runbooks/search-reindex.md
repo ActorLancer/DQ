@@ -194,7 +194,11 @@ LIMIT 5;
 缓存失效：
 
 ```bash
-redis-cli -u "redis://:${REDIS_PASSWORD}@127.0.0.1:${REDIS_PORT}/0" KEYS 'datab:v1:search:catalog:product:*'
+redis-cli -u "redis://:${REDIS_PASSWORD}@127.0.0.1:${REDIS_PORT}/0" SCAN 0 MATCH 'datab:v1:search:catalog:product:*'
+redis-cli -u "redis://:${REDIS_PASSWORD}@127.0.0.1:${REDIS_PORT}/0" MGET \
+  'datab:v1:search:catalog:version:product' \
+  'datab:v1:search:catalog:version:service' \
+  'datab:v1:search:catalog:version:all'
 ```
 
 alias 权威源与 OpenSearch 实际目标：
@@ -273,6 +277,7 @@ ORDER BY created_at;
 - 正式 worker：`workers/search-indexer`
 - 正式权限点：`portal.search.read`、`ops.search_sync.read`、`ops.search_reindex.execute`、`ops.search_alias.manage`、`ops.search_cache.invalidate`、`ops.search_ranking.read`、`ops.search_ranking.manage`
 - 正式缓存 key 前缀：`datab:v1:search:catalog:*`
+- 正式搜索缓存版本键：`datab:v1:search:catalog:version:{scope}`
 - 正式 alias：`product_search_read/write`、`seller_search_read/write`
 - 搜索域错误码：`SEARCH_QUERY_INVALID`、`SEARCH_BACKEND_UNAVAILABLE`、`SEARCH_RESULT_STALE`，以及写权限专属 `SEARCH_REINDEX_FORBIDDEN / SEARCH_ALIAS_SWITCH_FORBIDDEN / SEARCH_CACHE_INVALIDATE_FORBIDDEN`
 - 宿主机直连 Kafka 时使用 `127.0.0.1:9094`；容器内监听地址 `kafka:9092` 只供 compose 网络内部使用
@@ -292,7 +297,7 @@ cargo test -p search-indexer search_indexer_db_smoke -- --nocapture
 
 该 smoke 当前必须同时证明：
 
-- 成功路径会写入 OpenSearch `write alias`，并删除 `datab:v1:search:catalog:*` Redis 缓存
+- 成功路径会写入 OpenSearch `write alias`，推进相关 `datab:v1:search:catalog:version:{scope}` 版本键，并删除对应 scope 的 `datab:v1:search:catalog:*` Redis 候选缓存
 - `ops.consumer_idempotency_record(consumer_name='search-indexer', result_code='processed')` 真实存在
 - 重复投递同一 `event_id` 返回 `duplicate`，不会重复写副作用
 - 失败路径会先写 `ops.dead_letter_event(failure_stage='consumer_handler', target_topic='dtp.search.sync')`

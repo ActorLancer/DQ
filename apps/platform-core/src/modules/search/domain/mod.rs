@@ -126,6 +126,7 @@ pub struct CacheInvalidateRequest {
 pub struct CacheInvalidateResponse {
     pub entity_scope: Option<String>,
     pub deleted_keys: usize,
+    pub invalidated_scopes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

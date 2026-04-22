@@ -300,13 +300,17 @@ components:
           nullable: true
     CacheInvalidateResponse:
       type: object
-      required: [deleted_keys]
+      required: [deleted_keys, invalidated_scopes]
       properties:
         entity_scope:
           type: string
           nullable: true
         deleted_keys:
           type: integer
+        invalidated_scopes:
+          type: array
+          items:
+            type: string
     RankingProfileView:
       type: object
       required:
@@ -672,6 +676,7 @@ paths:
       description: >
         Requires `ops.search_cache.invalidate` and `X-Idempotency-Key`. Successful
         execution records `audit.audit_event`, `audit.access_audit` and `ops.system_log`.
+        V1 会同时推进相关 `datab:v1:search:catalog:version:{scope}` 版本键。
       security:
         - BearerAuth: []
       parameters:
