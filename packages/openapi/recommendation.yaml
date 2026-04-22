@@ -7,9 +7,11 @@ info:
     行为写接口、推荐位运营接口和推荐重建接口收口到正式契约。
     `GET /api/v1/recommendations`、`POST /api/v1/recommendations/track/exposure`、
     `POST /api/v1/recommendations/track/click`、`GET /api/v1/ops/recommendation/placements`、
-    `PATCH /api/v1/ops/recommendation/placements/{placement_code}`、`POST /api/v1/ops/recommendation/rebuild`
-    都必须要求
-    `Authorization: Bearer <access_token>`；行为写接口还必须携带非空
+    `PATCH /api/v1/ops/recommendation/placements/{placement_code}`、
+    `GET /api/v1/ops/recommendation/ranking-profiles`、
+    `PATCH /api/v1/ops/recommendation/ranking-profiles/{id}`、
+    `POST /api/v1/ops/recommendation/rebuild`
+    都必须要求 `Authorization: Bearer <access_token>`；行为写接口还必须携带非空
     `X-Idempotency-Key`，高风险推荐运维写接口还必须携带 `X-Step-Up-Token`，并写
     `audit.audit_event`、`audit.access_audit` 与 `ops.system_log`。
 servers:
@@ -376,6 +378,11 @@ paths:
   /api/v1/recommendations:
     get:
       summary: multi-source recommendation with staging OpenSearch recall or local PostgreSQL minimal recall, plus PostgreSQL final validation
+      description: >
+        Requires `Authorization: Bearer <access_token>` and
+        `portal.recommendation.read`. Runtime executes OpenSearch or local fallback
+        candidate recall, then performs PostgreSQL final visibility checks before
+        returning data and recording `audit.access_audit` plus `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
@@ -467,6 +474,12 @@ paths:
   /api/v1/recommendations/track/exposure:
     post:
       summary: record recommendation panel and item exposure with idempotency
+      description: >
+        Requires `Authorization: Bearer <access_token>`,
+        `portal.recommendation.read`, and a non-empty `X-Idempotency-Key`.
+        Successful execution writes `recommend.behavior_event`, canonical outbox
+        events for `dtp.recommend.behavior`, and records `audit.audit_event`,
+        `audit.access_audit`, `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
@@ -529,6 +542,12 @@ paths:
   /api/v1/recommendations/track/click:
     post:
       summary: record recommendation click with idempotency
+      description: >
+        Requires `Authorization: Bearer <access_token>`,
+        `portal.recommendation.read`, and a non-empty `X-Idempotency-Key`.
+        Successful execution writes click behavior, canonical outbox events for
+        `dtp.recommend.behavior`, and records `audit.audit_event`,
+        `audit.access_audit`, `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
@@ -591,6 +610,10 @@ paths:
   /api/v1/ops/recommendation/placements:
     get:
       summary: list recommendation placements
+      description: >
+        Requires `Authorization: Bearer <access_token>` and
+        `ops.recommendation.read`. Successful reads record
+        `audit.access_audit` and `ops.system_log`.
       security:
         - BearerAuth: []
       responses:
@@ -623,6 +646,13 @@ paths:
   /api/v1/ops/recommendation/placements/{placement_code}:
     patch:
       summary: update recommendation placement definition
+      description: >
+        Requires `Authorization: Bearer <access_token>`,
+        `ops.recommendation.manage`, `X-Idempotency-Key`, and a verified
+        `X-Step-Up-Token` bound to `recommendation.placement.patch`.
+        Successful execution updates `recommend.placement_definition`, invalidates
+        affected `datab:v1:recommend:*` caches, and records `audit.audit_event`,
+        `audit.access_audit`, `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
@@ -697,6 +727,10 @@ paths:
   /api/v1/ops/recommendation/ranking-profiles:
     get:
       summary: list recommendation ranking profiles
+      description: >
+        Requires `Authorization: Bearer <access_token>` and
+        `ops.recommendation.read`. Successful reads record
+        `audit.access_audit` and `ops.system_log`.
       security:
         - BearerAuth: []
       responses:
@@ -729,6 +763,12 @@ paths:
   /api/v1/ops/recommendation/ranking-profiles/{id}:
     patch:
       summary: update recommendation ranking profile
+      description: >
+        Requires `Authorization: Bearer <access_token>`,
+        `ops.recommendation.manage`, `X-Idempotency-Key`, and a verified
+        `X-Step-Up-Token` bound to `recommendation.ranking_profile.patch`.
+        Successful execution updates `recommend.ranking_profile` and records
+        `audit.audit_event`, `audit.access_audit`, `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
@@ -807,6 +847,13 @@ paths:
   /api/v1/ops/recommendation/rebuild:
     post:
       summary: rebuild recommendation cache and derived features
+      description: >
+        Requires `Authorization: Bearer <access_token>`,
+        `ops.recommend_rebuild.execute`, `X-Idempotency-Key`, and a verified
+        `X-Step-Up-Token` bound to `recommendation.rebuild.execute`.
+        Successful execution rebuilds caches and/or derived recommendation
+        features, then records `audit.audit_event`, `audit.access_audit`,
+        `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:

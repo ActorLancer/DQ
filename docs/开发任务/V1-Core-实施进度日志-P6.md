@@ -870,3 +870,41 @@
   - 无。`SEARCHREC-015` 要求的搜索/推荐一致性场景、alias 生效证明、统一鉴权/Step-Up/审计/错误码回归，以及 worker 幂等、双层 DLQ 与 reprocess 验收已通过代码、测试文档、实施日志和真实服务验证全部固定。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批仅补齐既定测试闭环，没有引入新的冻结缺口。
+### BATCH-265（计划中）
+- 任务：`SEARCHREC-016` 生成 `docs/02-openapi/search.yaml` / `recommendation.yaml` 第一版并与实现校验
+- 状态：计划中
+- 说明：按 `SEARCHREC-016` 冻结口径复核后，`packages/openapi/search.yaml`、`packages/openapi/recommendation.yaml` 与 `docs/02-openapi/*.yaml` 已有实体文件，但推荐侧 README / 归档状态仍停留在“当前实现期设计参考”，`./scripts/check-openapi-schema.sh` 也尚未把 search/recommendation 的归档副本同步、关键请求头/权限语义与 `x-role` 清理纳入强校验。本批将把 Search / Recommendation OpenAPI 正式提升为“源码版 + 归档版逐字同步，并由校验脚本强制守住 Bearer / Idempotency / Step-Up / 权限点 / 审计 / 错误码口径”的第一版归档。
+- 追溯：继续沿修正后的 `SEARCHREC` 顺序推进；当前只处理 search/recommendation OpenAPI 归档与校验，不提前合并 `SEARCHREC-017` 的测试矩阵总文档冻结。
+### BATCH-265（待审批）
+- 任务：`SEARCHREC-016` 生成 `docs/02-openapi/search.yaml` / `recommendation.yaml` 第一版并与实现校验
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-016`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-015` 已补齐搜索/推荐一致性 smoke 与 worker 可靠性验收，可作为当前 OpenAPI 归档的实现基线；`search` / `recommendation` 运行时、统一鉴权、Step-Up、审计与错误码已在 `SEARCHREC-018/019` 收口，依赖全部满足。
+- 实际变更：
+  - `packages/openapi/search.yaml`、`docs/02-openapi/search.yaml`：补齐 `GET /api/v1/catalog/search`、`GET /api/v1/ops/search/sync`、`GET /api/v1/ops/search/ranking-profiles` 的正式 `Authorization / 权限点 / audit.access_audit / ops.system_log` 描述，并把 `SEARCH_RESULT_STALE`、`SEARCH_REINDEX_FORBIDDEN`、`SEARCH_ALIAS_SWITCH_FORBIDDEN`、`SEARCH_CACHE_INVALIDATE_FORBIDDEN` 明确写入 schema 示例与响应描述，避免只剩 HTTP status 而没有冻结错误码文本。
+  - `packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`：补齐 `GET /api/v1/recommendations`、行为写接口、推荐位/排序配置读取与修改、重建接口的正式 Bearer、权限点、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计/访问日志副作用说明，使契约正文不再只在顶层描述里提一句，而是逐路径可读、可核对。
+  - `scripts/check-openapi-schema.sh`：新增 Search / Recommendation 归档强校验，强制要求 `packages/openapi/{search,recommendation}.yaml` 与 `docs/02-openapi/{search,recommendation}.yaml` 逐字同步，且必须包含 Bearer、正式权限点、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计/访问日志副作用、搜索域错误码文本，并显式拒绝 `x-role`。
+  - `packages/openapi/README.md`、`docs/02-openapi/README.md`：把 Search / Recommendation 提升为正式归档状态，明确 `SEARCHREC-016` 之后的最小要求是源码版和归档版逐字同步，并由 `./scripts/check-openapi-schema.sh` 守住实现对齐校验。
+- 验证命令：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `./scripts/check-openapi-schema.sh`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `./scripts/check-openapi-schema.sh` 第一轮真实暴露 `packages/openapi/search.yaml` 仍未显式写出 `SEARCH_RESULT_STALE` 等正式错误码文本；本批已补齐后再次执行通过，证明 OpenAPI 归档不是“看起来同步”，而是已经具备对冻结口径的自动守卫。
+  - `search_api_and_ops_db_smoke` 与 `recommendation_api_full_runtime_db_smoke` 全部通过，真实证明 OpenAPI 归档中声明的 Bearer、正式权限点、必要 `X-Step-Up-Token`、审计/访问日志副作用与当前实现一致，不再依赖 `x-role` 占位。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；全量测试结果为 `355 passed; 0 failed; 1 ignored`，未引入新的 `.sqlx` 漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-016`
+  - `商品搜索、排序与索引同步设计.md`、`商品搜索、排序与索引同步接口协议正式版.md`：搜索主链、运维接口、正式权限点与 `SEARCH_*` 错误码
+  - `商品推荐与个性化发现接口协议正式版.md`、`A09-推荐主链路与行为流契约缺口.md`：推荐读取、行为写接口、推荐 ops 配置/重建的正式权限、审计和 PG 最终校验语义
+  - `A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`：统一鉴权、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计与 `x-role` 清理要求
+- 覆盖的任务清单条目：`SEARCHREC-016`
+- 未覆盖项：
+  - 无。`SEARCHREC-016` 要求的 Search / Recommendation OpenAPI 第一版归档、实现对齐校验、统一鉴权/权限/幂等/Step-Up/审计/错误码口径冻结已通过 YAML 本体、README 索引、校验脚本与真实 API smoke 全部固定。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；本批没有引入新的冻结缺口。

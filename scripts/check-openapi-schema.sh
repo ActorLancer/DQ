@@ -36,6 +36,39 @@ for file in "${yaml_files[@]}"; do
   }
 done
 
+assert_synced_copy() {
+  local source_file="$1"
+  local archive_file="$2"
+  [[ -f "$archive_file" ]] || {
+    echo "[error] missing archive copy: $archive_file" >&2
+    exit 1
+  }
+  cmp -s "$source_file" "$archive_file" || {
+    echo "[error] $archive_file is not synced with $source_file" >&2
+    exit 1
+  }
+}
+
+assert_file_contains() {
+  local file="$1"
+  local token="$2"
+  local label="$3"
+  grep -Fq "$token" "$file" || {
+    echo "[error] $file missing $label: $token" >&2
+    exit 1
+  }
+}
+
+assert_file_not_contains() {
+  local file="$1"
+  local token="$2"
+  local label="$3"
+  if grep -Fq "$token" "$file"; then
+    echo "[error] $file should not contain $label: $token" >&2
+    exit 1
+  fi
+}
+
 # V1 skeleton drift guard for currently implemented internal/ops endpoints.
 ops_file="$OPENAPI_DIR/ops.yaml"
 for path in \
@@ -107,14 +140,7 @@ for token in \
 done
 
 docs_ops_file="docs/02-openapi/ops.yaml"
-if [[ ! -f "$docs_ops_file" ]]; then
-  echo "[error] missing archive copy: $docs_ops_file" >&2
-  exit 1
-fi
-cmp -s "$ops_file" "$docs_ops_file" || {
-  echo "[error] $docs_ops_file is not synced with $ops_file" >&2
-  exit 1
-}
+assert_synced_copy "$ops_file" "$docs_ops_file"
 
 audit_file="$OPENAPI_DIR/audit.yaml"
 for path in \
@@ -153,14 +179,7 @@ for token in \
 done
 
 docs_audit_file="docs/02-openapi/audit.yaml"
-if [[ ! -f "$docs_audit_file" ]]; then
-  echo "[error] missing archive copy: $docs_audit_file" >&2
-  exit 1
-fi
-cmp -s "$audit_file" "$docs_audit_file" || {
-  echo "[error] $docs_audit_file is not synced with $audit_file" >&2
-  exit 1
-}
+assert_synced_copy "$audit_file" "$docs_audit_file"
 
 search_file="$OPENAPI_DIR/search.yaml"
 for path in \
@@ -177,6 +196,33 @@ for path in \
   }
 done
 
+for token in \
+  "Authorization: Bearer <access_token>" \
+  "X-Idempotency-Key" \
+  "X-Step-Up-Token" \
+  "portal.search.read" \
+  "ops.search_sync.read" \
+  "ops.search_reindex.execute" \
+  "ops.search_alias.manage" \
+  "ops.search_cache.invalidate" \
+  "ops.search_ranking.read" \
+  "ops.search_ranking.manage" \
+  "audit.audit_event" \
+  "audit.access_audit" \
+  "ops.system_log" \
+  "SEARCH_QUERY_INVALID" \
+  "SEARCH_BACKEND_UNAVAILABLE" \
+  "SEARCH_RESULT_STALE" \
+  "SEARCH_REINDEX_FORBIDDEN" \
+  "SEARCH_ALIAS_SWITCH_FORBIDDEN" \
+  "SEARCH_CACHE_INVALIDATE_FORBIDDEN"; do
+  assert_file_contains "$search_file" "$token" "search contract token"
+done
+assert_file_not_contains "$search_file" "x-role" "legacy placeholder auth header"
+
+docs_search_file="docs/02-openapi/search.yaml"
+assert_synced_copy "$search_file" "$docs_search_file"
+
 recommendation_file="$OPENAPI_DIR/recommendation.yaml"
 for path in \
   "/api/v1/recommendations" \
@@ -192,5 +238,26 @@ for path in \
     exit 1
   }
 done
+
+for token in \
+  "Authorization: Bearer <access_token>" \
+  "X-Idempotency-Key" \
+  "X-Step-Up-Token" \
+  "portal.recommendation.read" \
+  "ops.recommendation.read" \
+  "ops.recommendation.manage" \
+  "ops.recommend_rebuild.execute" \
+  "recommendation.placement.patch" \
+  "recommendation.ranking_profile.patch" \
+  "recommendation.rebuild.execute" \
+  "audit.audit_event" \
+  "audit.access_audit" \
+  "ops.system_log"; do
+  assert_file_contains "$recommendation_file" "$token" "recommendation contract token"
+done
+assert_file_not_contains "$recommendation_file" "x-role" "legacy placeholder auth header"
+
+docs_recommendation_file="docs/02-openapi/recommendation.yaml"
+assert_synced_copy "$recommendation_file" "$docs_recommendation_file"
 
 echo "[ok] openapi schema skeleton check passed"

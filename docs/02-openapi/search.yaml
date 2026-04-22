@@ -68,6 +68,26 @@ components:
             code: SEARCH_BACKEND_UNAVAILABLE
             message: opensearch alias switch failed
             request_id: req-search-backend
+        resultStale:
+          value:
+            code: SEARCH_RESULT_STALE
+            message: search result became stale before final PostgreSQL check completed
+            request_id: req-search-stale
+        reindexForbidden:
+          value:
+            code: SEARCH_REINDEX_FORBIDDEN
+            message: current subject lacks ops.search_reindex.execute
+            request_id: req-search-reindex-forbidden
+        aliasForbidden:
+          value:
+            code: SEARCH_ALIAS_SWITCH_FORBIDDEN
+            message: current subject lacks ops.search_alias.manage
+            request_id: req-search-alias-forbidden
+        cacheForbidden:
+          value:
+            code: SEARCH_CACHE_INVALIDATE_FORBIDDEN
+            message: current subject lacks ops.search_cache.invalidate
+            request_id: req-search-cache-forbidden
     SearchResultItem:
       type: object
       required:
@@ -483,6 +503,12 @@ paths:
     get:
       tags: [Search]
       summary: catalog search with OpenSearch candidate retrieval and PostgreSQL final check
+      description: >
+        Requires `Authorization: Bearer <access_token>` and
+        `portal.search.read`. In `staging / production`, runtime executes
+        `OpenSearch candidate -> PostgreSQL final check`; in `local / demo`,
+        runtime may degrade to `PostgreSQL projection candidate -> PostgreSQL final check`.
+        Successful reads still write `audit.access_audit` and `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
@@ -561,7 +587,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: search result became stale before final PostgreSQL check completed
+          description: `SEARCH_RESULT_STALE` when search result became stale before final PostgreSQL check completed
           content:
             application/json:
               schema:
@@ -576,6 +602,10 @@ paths:
     get:
       tags: [SearchOps]
       summary: list search sync task status
+      description: >
+        Requires `Authorization: Bearer <access_token>` and `ops.search_sync.read`.
+        Successful reads expose PostgreSQL-backed sync/reconcile status and record
+        `audit.access_audit` plus `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
@@ -652,7 +682,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: current subject lacks `ops.search_reindex.execute`
+          description: current subject lacks `ops.search_reindex.execute` (`SEARCH_REINDEX_FORBIDDEN`)
           content:
             application/json:
               schema:
@@ -703,7 +733,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: current subject lacks `ops.search_alias.manage`
+          description: current subject lacks `ops.search_alias.manage` (`SEARCH_ALIAS_SWITCH_FORBIDDEN`)
           content:
             application/json:
               schema:
@@ -759,7 +789,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
-          description: current subject lacks `ops.search_cache.invalidate`
+          description: current subject lacks `ops.search_cache.invalidate` (`SEARCH_CACHE_INVALIDATE_FORBIDDEN`)
           content:
             application/json:
               schema:
@@ -774,6 +804,9 @@ paths:
     get:
       tags: [SearchOps]
       summary: list ranking profiles
+      description: >
+        Requires `Authorization: Bearer <access_token>` and `ops.search_ranking.read`.
+        Successful reads record `audit.access_audit` and `ops.system_log`.
       security:
         - BearerAuth: []
       parameters:
