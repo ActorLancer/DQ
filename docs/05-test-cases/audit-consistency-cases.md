@@ -1,6 +1,6 @@
 # Audit / Consistency 验收清单
 
-当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019`、`AUD-020` 已落地的首版审计控制面验收矩阵，覆盖：
+当前文件承接 `AUD-003`、`AUD-004`、`AUD-005`、`AUD-006`、`AUD-007`、`AUD-008`、`AUD-009`、`AUD-010`、`AUD-011`、`AUD-012`、`AUD-013`、`AUD-014`、`AUD-015`、`AUD-016`、`AUD-017`、`AUD-018`、`AUD-019`、`AUD-020`、`AUD-021` 已落地的首版审计控制面验收矩阵，覆盖：
 
 - 订单审计联查：`GET /api/v1/audit/orders/{id}`
 - 全局审计 trace 查询：`GET /api/v1/audit/traces`
@@ -21,8 +21,9 @@
 - fabric CA admin：`platform-core IAM API -> services/fabric-ca-admin -> iam.fabric_identity_binding / iam.certificate_record / iam.certificate_revocation_record / ops.external_fact_receipt / audit.audit_event / ops.system_log`
 - 交易链监控总览 / checkpoints：`GET /api/v1/ops/trade-monitor/orders/{orderId}`、`GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints`
 - 公平性事件查询 / 处理：`GET /api/v1/ops/fairness-incidents`、`POST /api/v1/ops/fairness-incidents/{id}/handle`
+- 投影缺口查询 / 关闭：`GET /api/v1/ops/projection-gaps`、`POST /api/v1/ops/projection-gaps/{id}/resolve`
 
-后续 `projection-gaps / search sync ops / export package aggregate` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
+后续 `search sync ops / export package aggregate` 等高风险控制面进入对应 `AUD` task 后，再继续追加到本文件，不得另起旁路清单。
 
 ## 前置条件
 
@@ -49,6 +50,9 @@ IAM_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 
 AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
   cargo test -p platform-core audit_fairness_incident_handle_db_smoke -- --nocapture
+
+AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+  cargo test -p platform-core audit_projection_gap_resolve_db_smoke -- --nocapture
 ```
 
 ## 验收矩阵
@@ -83,13 +87,15 @@ AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/dat
 | `AUD-CASE-026` | 外部事实确认 | `POST /api/v1/ops/external-facts/{id}/confirm` + verified `x-step-up-challenge-id` + `{"confirm_result":"confirmed","reason":"...","operator_note":"..."}` | 仅允许 `receipt_status='pending'`；成功后只更新 `ops.external_fact_receipt.receipt_status / confirmed_at / metadata.manual_confirmation / metadata.rule_evaluation`，写入 `audit.audit_event(action_name='ops.external_fact.confirm')`、`audit.access_audit(access_mode='confirm', target_type='external_fact_receipt')`、`ops.system_log`，且不得直接改写 `trade.order_main.external_fact_status` | API 响应、`ops.external_fact_receipt`、`trade.order_main`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-027` | 公平性事件分页查询 | `GET /api/v1/ops/fairness-incidents?order_id=...&incident_type=seller_delivery_delay&severity=high&fairness_incident_status=open&assigned_role_key=platform_risk_settlement&assigned_user_id=...` | 返回 `risk.fairness_incident` 分页结果；查询动作写入 `audit.access_audit(target_type='fairness_incident_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`risk.fairness_incident`、`audit.access_audit`、`ops.system_log` |
 | `AUD-CASE-028` | 公平性事件处理 | `POST /api/v1/ops/fairness-incidents/{id}/handle` + verified `x-step-up-challenge-id` + `{"action":"close","resolution_summary":"...","auto_action_override":"notify_ops","freeze_settlement":true,"create_dispute_suggestion":true}` | 仅允许 `fairness_incident_status='open'`；成功后只更新 `risk.fairness_incident.status / auto_action_code / resolution_summary / metadata / closed_at`，写入 `audit.audit_event(action_name='risk.fairness_incident.handle')`、`audit.access_audit(access_mode='handle', target_type='fairness_incident')`、`ops.system_log`，且 `freeze_settlement / freeze_delivery / create_dispute_suggestion` 只作为 `linked_action_plan` 建议留痕，不得直接改写 `trade.order_main` | API 响应、`risk.fairness_incident`、`trade.order_main`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-029` | 投影缺口分页查询 | `GET /api/v1/ops/projection-gaps?aggregate_type=order&aggregate_id=...&order_id=...&chain_id=fabric-local&gap_type=missing_callback&gap_status=open` | 返回 `ops.chain_projection_gap` 分页结果；查询动作写入 `audit.access_audit(target_type='projection_gap_query', access_mode='masked')` 与 `ops.system_log` | API 响应、`ops.chain_projection_gap`、`audit.access_audit`、`ops.system_log` |
+| `AUD-CASE-030` | 投影缺口关闭 | `POST /api/v1/ops/projection-gaps/{id}/resolve` + verified `x-step-up-challenge-id` + `{"dry_run":false,"resolution_mode":"callback_confirmed","reason":"...","expected_state_digest":"..."}` | 默认支持 `dry_run=true` 预演；真实关闭仅允许 `gap_status!='resolved'`，并在 `expected_state_digest` 命中时更新 `ops.chain_projection_gap.gap_status / resolved_at / resolution_summary / metadata / request_id / trace_id`，写入 `audit.audit_event(action_name='ops.projection_gap.resolve')`、`audit.access_audit(access_mode='resolve', target_type='projection_gap')`、`ops.system_log`，且不得写出 `dtp.consistency.reconcile` 新 outbox 事件 | API 响应、`ops.chain_projection_gap`、`audit.audit_event`、`audit.access_audit`、`ops.system_log`、`ops.outbox_event` |
 
 补充说明：
 
 - `AUD-008` 同步补齐 `ops.external_fact_receipt` 与 `ops.chain_projection_gap` 的仓储查询能力，但其公共 HTTP 控制面接口分别由后续交易链监控 / 一致性任务承接。
 - `reconcile` 在 `V1` 中不是独立正式表；不要把 `ops.chain_projection_gap` 宣传成 `reconcile_job` 的同义词。
 - `AUD-013` 完成 `fabric-adapter` 基础框架与 mock provider 回执回写；`AUD-014` 已补齐四类摘要 handler 占位；`AUD-015` 已补齐 `fabric-event-listener` 的 callback 轮询源、Kafka callback 发布与 DB 回写；`AUD-016` 已补齐 `fabric-ca-admin` 的证书治理执行面；`fabric-test-network / Gateway / chaincode / real Fabric CA` 留待 `AUD-017`。
-- `AUD-019` 已把 `ops.external_fact_receipt` 的公共 HTTP 控制面补齐到查询 / confirm；`AUD-020` 已把 `risk.fairness_incident` 的公共 HTTP 控制面补齐到查询 / handle；`projection-gaps` 继续由 `AUD-021` 承接。
+- `AUD-019` 已把 `ops.external_fact_receipt` 的公共 HTTP 控制面补齐到查询 / confirm；`AUD-020` 已把 `risk.fairness_incident` 的公共 HTTP 控制面补齐到查询 / handle；`AUD-021` 已把 `projection-gaps` 的公共 HTTP 控制面补齐到查询 / resolve。
 
 ## `AUD-011` 手工一致性联查验证
 
@@ -1213,6 +1219,126 @@ WHERE request_id IN ('req-aud020-manual-list', 'req-aud020-manual-handle')
 - `audit.access_audit = 2`
 - `ops.system_log = 2`
 
+## `AUD-021` 手工投影缺口查询 / 关闭验证
+
+1. 先写入或复用一条 `ops.chain_projection_gap(gap_status='open')`，并准备 verified step-up challenge：
+
+```sql
+INSERT INTO iam.step_up_challenge (
+  user_id,
+  challenge_type,
+  target_action,
+  target_ref_type,
+  target_ref_id,
+  challenge_status,
+  expires_at,
+  completed_at,
+  metadata
+) VALUES (
+  '<operator_user_id>'::uuid,
+  'mock_otp',
+  'ops.projection_gap.manage',
+  'projection_gap',
+  '<chain_projection_gap_id>'::uuid,
+  'verified',
+  now() + interval '10 minutes',
+  now(),
+  jsonb_build_object('seed', 'aud021-manual')
+)
+RETURNING step_up_challenge_id::text;
+```
+
+2. 查询投影缺口：
+
+```bash
+curl -sS "http://127.0.0.1:18080/api/v1/ops/projection-gaps?aggregate_type=order&aggregate_id=<order_id>&order_id=<order_id>&chain_id=fabric-local&gap_type=missing_callback&gap_status=open&page=1&page_size=20" \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud021-manual-list' \
+  -H 'x-trace-id: trace-aud021-manual'
+```
+
+3. 先做 dry-run：
+
+```bash
+curl -sS -X POST "http://127.0.0.1:18080/api/v1/ops/projection-gaps/<chain_projection_gap_id>/resolve" \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud021-manual-dry-run' \
+  -H 'x-trace-id: trace-aud021-manual' \
+  -H 'x-step-up-challenge-id: <resolve_step_up_id>' \
+  -d '{
+    "dry_run": true,
+    "resolution_mode": "callback_confirmed",
+    "reason": "preview close projection gap after callback verification"
+  }'
+```
+
+记录返回里的 `state_digest`。
+
+4. 再执行真实关闭：
+
+```bash
+curl -sS -X POST "http://127.0.0.1:18080/api/v1/ops/projection-gaps/<chain_projection_gap_id>/resolve" \
+  -H 'content-type: application/json' \
+  -H 'x-role: platform_audit_security' \
+  -H 'x-user-id: <operator_user_id>' \
+  -H 'x-request-id: req-aud021-manual-execute' \
+  -H 'x-trace-id: trace-aud021-manual' \
+  -H 'x-step-up-challenge-id: <resolve_step_up_id>' \
+  -d '{
+    "dry_run": false,
+    "resolution_mode": "callback_confirmed",
+    "reason": "confirmed callback backfilled into projection gap",
+    "expected_state_digest": "<state_digest_from_dry_run>"
+  }'
+```
+
+5. 回查缺口关闭与“无 reconcile outbox 副作用”：
+
+```sql
+SELECT gap_status,
+       resolved_at IS NOT NULL AS resolved,
+       resolution_summary -> 'manual_resolution' ->> 'reason' AS resolve_reason,
+       resolution_summary -> 'manual_resolution' ->> 'resolution_mode' AS resolution_mode
+FROM ops.chain_projection_gap
+WHERE chain_projection_gap_id = '<chain_projection_gap_id>'::uuid;
+
+SELECT COUNT(*)::bigint
+FROM audit.audit_event
+WHERE request_id IN ('req-aud021-manual-dry-run', 'req-aud021-manual-execute')
+  AND action_name = 'ops.projection_gap.resolve';
+
+SELECT COUNT(*)::bigint
+FROM audit.access_audit
+WHERE request_id IN ('req-aud021-manual-list', 'req-aud021-manual-dry-run', 'req-aud021-manual-execute')
+  AND target_type IN ('projection_gap_query', 'projection_gap');
+
+SELECT COUNT(*)::bigint
+FROM ops.system_log
+WHERE request_id IN ('req-aud021-manual-list', 'req-aud021-manual-dry-run', 'req-aud021-manual-execute')
+  AND message_text IN (
+    'ops lookup executed: GET /api/v1/ops/projection-gaps',
+    'ops projection gap resolve prepared: POST /api/v1/ops/projection-gaps/{id}/resolve',
+    'ops projection gap resolve executed: POST /api/v1/ops/projection-gaps/{id}/resolve'
+  );
+
+SELECT COUNT(*)::bigint
+FROM ops.outbox_event
+WHERE request_id IN ('req-aud021-manual-dry-run', 'req-aud021-manual-execute')
+  AND target_topic = 'dtp.consistency.reconcile';
+```
+
+预期：
+
+- `ops.chain_projection_gap.gap_status='resolved'`
+- `resolved_at` 非空
+- `audit.audit_event = 2`
+- `audit.access_audit = 3`
+- `ops.system_log = 3`
+- `ops.outbox_event(target_topic='dtp.consistency.reconcile') = 0`
+
 ## 清理约束
 
 - 业务测试数据可清理：`trade.order_main` 及本手工步骤创建的临时 `core.organization / catalog.*` scope 图数据
@@ -1222,7 +1348,6 @@ WHERE request_id IN ('req-aud020-manual-list', 'req-aud020-manual-handle')
 
 ## 当前未覆盖项
 
-- `AUD-021` projection-gaps 查询 / resolve
 - `AUD-022+` OpenSearch sync/reindex/alias/cache 与后续剩余 AUD 高风险控制面
 
 进入对应批次后，必须在本文件继续追加，不得把本文件视为 `AUD` 全阶段完成证明。

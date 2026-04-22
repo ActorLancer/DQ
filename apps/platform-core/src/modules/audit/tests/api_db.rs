@@ -502,6 +502,38 @@ mod route_tests {
         let response = app.oneshot(request).await.expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[tokio::test]
+    async fn rejects_projection_gap_query_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/ops/projection-gaps")
+            .header("x-role", "buyer_operator")
+            .header("x-request-id", "req-aud021-projection-gap-forbidden")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn projection_gap_resolve_requires_step_up() {
+        let app = crate::with_stub_test_state(router());
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/v1/ops/projection-gaps/10000000-0000-0000-0000-000000000021/resolve")
+            .header("x-role", "platform_audit_security")
+            .header("x-user-id", "10000000-0000-0000-0000-000000000304")
+            .header("x-request-id", "req-aud021-projection-gap-missing-stepup")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"reason":"missing step-up","resolution_mode":"manual_close"}"#,
+            ))
+            .expect("request");
+        let response = app.oneshot(request).await.expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }
 
 #[tokio::test]
@@ -5000,6 +5032,407 @@ async fn audit_fairness_incident_handle_db_smoke() {
         .execute(
             "DELETE FROM ops.trade_lifecycle_checkpoint WHERE trade_lifecycle_checkpoint_id = $1::text::uuid",
             &[&checkpoint_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM core.user_account WHERE user_id = $1::text::uuid",
+            &[&operator_user_id],
+        )
+        .await;
+    cleanup_business_rows(&client, &seed).await;
+}
+
+#[tokio::test]
+async fn audit_projection_gap_resolve_db_smoke() {
+    if !live_db_enabled() {
+        return;
+    }
+    let dsn = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://datab:datab_local_pass@127.0.0.1:5432/datab".to_string());
+    let (client, connection) = connect(&dsn, NoTls).await.expect("connect db");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    let suffix = format!(
+        "{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis()
+    );
+    let seed = seed_order_graph(&client, &format!("aud021-{suffix}"))
+        .await
+        .expect("seed order graph");
+    let operator_user_id = seed_user(&client, &seed.buyer_org_id, &format!("aud021-{suffix}"))
+        .await
+        .expect("seed aud021 operator");
+    let app = crate::with_live_test_state(router()).await;
+    let list_request_id = format!("req-aud021-list-{suffix}");
+    let dry_run_request_id = format!("req-aud021-dry-run-{suffix}");
+    let execute_request_id = format!("req-aud021-execute-{suffix}");
+    let trace_id = format!("trace-aud021-{suffix}");
+    let chain_projection_gap_id: String = client
+        .query_one("SELECT gen_random_uuid()::text", &[])
+        .await
+        .expect("generate aud021 projection gap id")
+        .get(0);
+
+    client
+        .execute(
+            "UPDATE trade.order_main
+             SET authority_model = 'dual_layer',
+                 business_state_version = 21,
+                 proof_commit_state = 'pending_anchor',
+                 proof_commit_policy = 'async_evidence',
+                 external_fact_status = 'pending_receipt',
+                 reconcile_status = 'pending_check',
+                 last_reconciled_at = now() - interval '15 minutes'
+             WHERE order_id = $1::text::uuid",
+            &[&seed.order_id],
+        )
+        .await
+        .expect("update aud021 order consistency fields");
+
+    client
+        .execute(
+            "INSERT INTO ops.chain_projection_gap (
+               chain_projection_gap_id,
+               aggregate_type,
+               aggregate_id,
+               order_id,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               first_detected_at,
+               last_detected_at,
+               request_id,
+               trace_id,
+               resolution_summary,
+               metadata
+             ) VALUES (
+               $1::text::uuid,
+               'order',
+               $2::text::uuid,
+               $2::text::uuid,
+               'fabric-local',
+               'fabric.anchor.confirmed',
+               $3,
+               $4,
+               'missing_callback',
+               'open',
+               now() - interval '18 minutes',
+               now() - interval '2 minutes',
+               $5,
+               $6,
+               jsonb_build_object('seed', $7),
+               jsonb_build_object('seed', $7, 'source', 'aud021-smoke')
+             )",
+            &[
+                &chain_projection_gap_id,
+                &seed.order_id,
+                &format!("aud021-expected-tx-{suffix}"),
+                &format!("aud021-projected-hash-{suffix}"),
+                &list_request_id,
+                &trace_id,
+                &suffix,
+            ],
+        )
+        .await
+        .expect("insert aud021 projection gap");
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/api/v1/ops/projection-gaps?aggregate_type=order&aggregate_id={}&order_id={}&chain_id=fabric-local&gap_type=missing_callback&gap_status=open&page=1&page_size=10",
+                    seed.order_id, seed.order_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &list_request_id)
+                .header("x-trace-id", &trace_id)
+                .body(Body::empty())
+                .expect("aud021 list request"),
+        )
+        .await
+        .expect("call aud021 list");
+    let list_status = list_response.status();
+    let list_body = to_bytes(list_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud021 list body");
+    assert_eq!(
+        list_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&list_body)
+    );
+    let list_json: Value = serde_json::from_slice(&list_body).expect("decode aud021 list body");
+    assert_eq!(list_json["data"]["total"].as_i64(), Some(1));
+    assert_eq!(
+        list_json["data"]["items"][0]["chain_projection_gap_id"].as_str(),
+        Some(chain_projection_gap_id.as_str())
+    );
+    assert_eq!(
+        list_json["data"]["items"][0]["gap_status"].as_str(),
+        Some("open")
+    );
+
+    let resolve_step_up_id = seed_verified_step_up_challenge(
+        &client,
+        &operator_user_id,
+        "ops.projection_gap.manage",
+        "projection_gap",
+        Some(&chain_projection_gap_id),
+        &format!("aud021-{suffix}"),
+    )
+    .await
+    .expect("seed aud021 projection gap resolve step-up");
+
+    let dry_run_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/ops/projection-gaps/{}/resolve",
+                    chain_projection_gap_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &dry_run_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &resolve_step_up_id)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"dry_run":true,"resolution_mode":"callback_confirmed","reason":"preview close projection gap after callback verification"}"#,
+                ))
+                .expect("aud021 dry-run request"),
+        )
+        .await
+        .expect("call aud021 dry-run");
+    let dry_run_status = dry_run_response.status();
+    let dry_run_body = to_bytes(dry_run_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud021 dry-run body");
+    assert_eq!(
+        dry_run_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&dry_run_body)
+    );
+    let dry_run_json: Value =
+        serde_json::from_slice(&dry_run_body).expect("decode aud021 dry-run body");
+    assert_eq!(dry_run_json["data"]["dry_run"].as_bool(), Some(true));
+    assert_eq!(
+        dry_run_json["data"]["status"].as_str(),
+        Some("dry_run_ready")
+    );
+    assert_eq!(
+        dry_run_json["data"]["projection_gap"]["gap_status"].as_str(),
+        Some("open")
+    );
+    let expected_state_digest = dry_run_json["data"]["state_digest"]
+        .as_str()
+        .expect("aud021 dry-run state digest")
+        .to_string();
+
+    let dry_run_gap_row = client
+        .query_one(
+            "SELECT gap_status, resolved_at IS NOT NULL
+             FROM ops.chain_projection_gap
+             WHERE chain_projection_gap_id = $1::text::uuid",
+            &[&chain_projection_gap_id],
+        )
+        .await
+        .expect("load aud021 dry-run gap row");
+    assert_eq!(dry_run_gap_row.get::<_, String>(0), "open");
+    assert!(!dry_run_gap_row.get::<_, bool>(1));
+
+    let execute_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/v1/ops/projection-gaps/{}/resolve",
+                    chain_projection_gap_id
+                ))
+                .header("x-role", "platform_audit_security")
+                .header("x-user-id", &operator_user_id)
+                .header("x-request-id", &execute_request_id)
+                .header("x-trace-id", &trace_id)
+                .header("x-step-up-challenge-id", &resolve_step_up_id)
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    "{{\"dry_run\":false,\"resolution_mode\":\"callback_confirmed\",\"reason\":\"confirmed callback backfilled into projection gap\",\"expected_state_digest\":\"{}\"}}",
+                    expected_state_digest
+                )))
+                .expect("aud021 execute request"),
+        )
+        .await
+        .expect("call aud021 execute");
+    let execute_status = execute_response.status();
+    let execute_body = to_bytes(execute_response.into_body(), usize::MAX)
+        .await
+        .expect("read aud021 execute body");
+    assert_eq!(
+        execute_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&execute_body)
+    );
+    let execute_json: Value =
+        serde_json::from_slice(&execute_body).expect("decode aud021 execute body");
+    assert_eq!(execute_json["data"]["dry_run"].as_bool(), Some(false));
+    assert_eq!(
+        execute_json["data"]["status"].as_str(),
+        Some("resolution_recorded")
+    );
+    assert_eq!(
+        execute_json["data"]["projection_gap"]["gap_status"].as_str(),
+        Some("resolved")
+    );
+    assert!(
+        execute_json["data"]["projection_gap"]["resolved_at"]
+            .as_str()
+            .is_some()
+    );
+
+    let gap_row = client
+        .query_one(
+            "SELECT
+               gap_status,
+               resolved_at IS NOT NULL,
+               request_id,
+               trace_id,
+               resolution_summary -> 'manual_resolution' ->> 'reason',
+               resolution_summary -> 'manual_resolution' ->> 'resolution_mode',
+               metadata -> 'manual_resolution' ->> 'current_state_digest'
+             FROM ops.chain_projection_gap
+             WHERE chain_projection_gap_id = $1::text::uuid",
+            &[&chain_projection_gap_id],
+        )
+        .await
+        .expect("load aud021 gap row");
+    assert_eq!(gap_row.get::<_, String>(0), "resolved");
+    assert!(gap_row.get::<_, bool>(1));
+    assert_eq!(
+        gap_row.get::<_, Option<String>>(2).as_deref(),
+        Some(execute_request_id.as_str())
+    );
+    assert_eq!(
+        gap_row.get::<_, Option<String>>(3).as_deref(),
+        Some(trace_id.as_str())
+    );
+    assert_eq!(
+        gap_row.get::<_, Option<String>>(4).as_deref(),
+        Some("confirmed callback backfilled into projection gap")
+    );
+    assert_eq!(
+        gap_row.get::<_, Option<String>>(5).as_deref(),
+        Some("callback_confirmed")
+    );
+    assert_eq!(
+        gap_row.get::<_, Option<String>>(6).as_deref(),
+        Some(expected_state_digest.as_str())
+    );
+
+    let audit_event_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.audit_event
+             WHERE request_id = ANY($1::text[])
+               AND action_name = 'ops.projection_gap.resolve'",
+            &[&vec![
+                dry_run_request_id.clone(),
+                execute_request_id.clone(),
+            ]],
+        )
+        .await
+        .expect("count aud021 audit event")
+        .get(0);
+    assert_eq!(audit_event_count, 2);
+
+    let access_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM audit.access_audit
+             WHERE request_id = ANY($1::text[])
+               AND target_type = ANY($2::text[])",
+            &[
+                &vec![
+                    list_request_id.clone(),
+                    dry_run_request_id.clone(),
+                    execute_request_id.clone(),
+                ],
+                &vec![
+                    "projection_gap_query".to_string(),
+                    "projection_gap".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud021 access audit")
+        .get(0);
+    assert_eq!(access_count, 3);
+
+    let log_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.system_log
+             WHERE request_id = ANY($1::text[])
+               AND message_text = ANY($2::text[])",
+            &[
+                &vec![
+                    list_request_id.clone(),
+                    dry_run_request_id.clone(),
+                    execute_request_id.clone(),
+                ],
+                &vec![
+                    "ops lookup executed: GET /api/v1/ops/projection-gaps".to_string(),
+                    "ops projection gap resolve prepared: POST /api/v1/ops/projection-gaps/{id}/resolve".to_string(),
+                    "ops projection gap resolve executed: POST /api/v1/ops/projection-gaps/{id}/resolve".to_string(),
+                ],
+            ],
+        )
+        .await
+        .expect("count aud021 system log")
+        .get(0);
+    assert_eq!(log_count, 3);
+
+    let reconcile_outbox_count: i64 = client
+        .query_one(
+            "SELECT COUNT(*)::bigint
+             FROM ops.outbox_event
+             WHERE request_id = ANY($1::text[])
+               AND target_topic = 'dtp.consistency.reconcile'",
+            &[&vec![
+                dry_run_request_id.clone(),
+                execute_request_id.clone(),
+            ]],
+        )
+        .await
+        .expect("count aud021 reconcile outbox")
+        .get(0);
+    assert_eq!(reconcile_outbox_count, 0);
+
+    let _ = client
+        .execute(
+            "DELETE FROM iam.step_up_challenge WHERE step_up_challenge_id = $1::text::uuid",
+            &[&resolve_step_up_id],
+        )
+        .await;
+    let _ = client
+        .execute(
+            "DELETE FROM ops.chain_projection_gap WHERE chain_projection_gap_id = $1::text::uuid",
+            &[&chain_projection_gap_id],
         )
         .await;
     let _ = client

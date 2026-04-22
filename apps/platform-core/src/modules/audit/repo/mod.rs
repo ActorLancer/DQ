@@ -2092,6 +2092,62 @@ pub async fn load_chain_projection_gap(
     Ok(row.map(|row| parse_chain_projection_gap_row(&row)))
 }
 
+pub async fn resolve_chain_projection_gap(
+    client: &(impl GenericClient + Sync),
+    chain_projection_gap_id: &str,
+    resolved_at: &str,
+    request_id: &str,
+    trace_id: &str,
+    resolution_summary_patch: &Value,
+    metadata_patch: &Value,
+) -> Result<Option<ChainProjectionGapRecord>, Error> {
+    let row = client
+        .query_opt(
+            "UPDATE ops.chain_projection_gap
+             SET gap_status = 'resolved',
+                 resolved_at = $2::timestamptz,
+                 request_id = $3,
+                 trace_id = $4,
+                 resolution_summary = COALESCE(resolution_summary, '{}'::jsonb) || $5::jsonb,
+                 metadata = COALESCE(metadata, '{}'::jsonb) || $6::jsonb,
+                 updated_at = now()
+             WHERE chain_projection_gap_id = $1::text::uuid
+               AND gap_status <> 'resolved'
+             RETURNING
+               chain_projection_gap_id::text,
+               aggregate_type,
+               aggregate_id::text,
+               order_id::text,
+               chain_id,
+               source_event_type,
+               expected_tx_id,
+               projected_tx_hash,
+               gap_type,
+               gap_status,
+               to_char(first_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(last_detected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(resolved_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               request_id,
+               trace_id,
+               outbox_event_id::text,
+               anchor_id::text,
+               resolution_summary,
+               metadata,
+               to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+               to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')",
+            &[
+                &chain_projection_gap_id,
+                &resolved_at,
+                &request_id,
+                &trace_id,
+                resolution_summary_patch,
+                metadata_patch,
+            ],
+        )
+        .await?;
+    Ok(row.map(|row| parse_chain_projection_gap_row(&row)))
+}
+
 pub async fn search_trade_lifecycle_checkpoints_by_order(
     client: &(impl GenericClient + Sync),
     order_id: &str,

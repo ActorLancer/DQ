@@ -1395,3 +1395,58 @@
   - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-020` 按冻结口径属于 `platform-core` 的公平性事件控制面。Fabric 的真实写链、Gateway、chaincode、event listener 与 CA admin 仍保持 `AUD-013 ~ AUD-017` 已落地的 `Go` 分层，不回退到 Rust 直接交互。
   - 手工清理时，尝试删除本次联调用到的 `iam.step_up_challenge` 会触发 `audit.audit_event.step_up_challenge_id -> SET NULL -> UPDATE append-only`，尝试删除 `core.user_account / buyer organization` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`；这两类对象因此按审计依赖保留，不视为业务测试脏数据外泄。其余订单 / 商品 / checkpoint / fairness incident / external fact 业务测试数据已清理。
   - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。
+### BATCH-234（计划中）
+- 任务：`AUD-021` 投影缺口查询 / 关闭接口
+- 状态：计划中
+- 说明：按 `AUD-021` 冻结口径，实现 `GET /api/v1/ops/projection-gaps` 与 `POST /api/v1/ops/projection-gaps/{id}/resolve`。本批以 `ops.chain_projection_gap` 为唯一正式持久化对象，查询接口补齐 `aggregate_type / aggregate_id / order_id / chain_id / gap_type / gap_status / request_id / trace_id` 过滤、platform-only 鉴权与 `audit.access_audit + ops.system_log` 留痕；关闭接口补齐 `ops.projection_gap.manage`、`step-up`、缺口状态约束、`dry_run` 预演、`expected_state_digest` 乐观校验、正式审计事件和系统日志，并明确“`reconcile` 仍由 `AUD-012` 的控制面承接，`resolve` 只关闭正式 `ops.chain_projection_gap` 对象，不引入 `reconcile_job` 表”。同时同步 `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、runbook、测试矩阵和 `AUD_DB_SMOKE + 宿主机 curl + psql` 验证。
+- 追溯：已按 `CSV > Markdown > technical_reference > 其他辅助文档` 重新核对 `AUD-021`、`交易链监控与公平性接口协议正式版`、`一致性与事件接口协议正式版`、`交易链监控、公平性与信任安全设计`、`067/068/072/074`、`A04`、`audit-consistency-reconcile` / `audit-trade-monitor` / `kafka-topics` / `async-chain-write` runbook 与当前 `audit` 模块实现；当前未发现需要暂停的人为冲突。
+### BATCH-234（待审批）
+- 任务：`AUD-021` 投影缺口查询 / 关闭接口
+- 状态：待审批
+- 实现摘要：
+  - `apps/platform-core/src/modules/audit/api/router.rs`、`handlers.rs`、`domain/mod.rs`、`repo/mod.rs`：新增 `GET /api/v1/ops/projection-gaps` 与 `POST /api/v1/ops/projection-gaps/{id}/resolve`，补齐 `aggregate_type / aggregate_id / order_id / chain_id / gap_type / gap_status / request_id / trace_id` 过滤、`ops.projection_gap.read / manage` 正式权限点、`step-up` 绑定、`dry_run=true` 默认预演、`expected_state_digest` 乐观校验，以及 `ops.chain_projection_gap` 的正式查询 / 单对象装载 / manual resolve 回写。
+  - `apps/platform-core/src/modules/audit/api/handlers.rs`：关闭动作只更新 `ops.chain_projection_gap.gap_status / resolved_at / request_id / trace_id / resolution_summary / metadata`，显式把 `formal_persistent_object='ops.chain_projection_gap'` 与 `control_plane_action='projection_gap.resolve'` 写入审计 metadata；同时写入 `audit.audit_event(action_name='ops.projection_gap.resolve')`、`audit.access_audit(target_type='projection_gap')` 与 `ops.system_log`，并明确不引入 `reconcile_job` 表、不直接发布 `dtp.consistency.reconcile`。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`：新增路由级 `permission / step-up` 测试与 `audit_projection_gap_resolve_db_smoke`；真实插入最小订单图、`ops.chain_projection_gap(status='open')` 与 verified `iam.step_up_challenge`，调用 list + dry-run + execute 三条正式路径，并回查 `ops.chain_projection_gap / audit.audit_event / audit.access_audit / ops.system_log / ops.outbox_event`。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`packages/openapi/README.md`、`docs/02-openapi/README.md`：归档 `projection-gaps` 两条正式接口、请求/响应 schema 与示例，并把剩余公共控制面缺口推进到 `AUD-022+` 的搜索运维接口。
+  - `docs/04-runbooks/audit-projection-gaps.md`、`docs/04-runbooks/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/README.md`：补齐 `AUD-021` 的宿主机 `curl + psql` 操作手册、验收矩阵、排障说明与“只关闭正式 projection gap 对象、不派生 reconcile job”边界。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：无新增 `V1-gap / V2-reserved / V3-reserved`；`TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 已推进到 `AUD-022+` 搜索运维控制面。
+- 验证：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅剩仓库既存 `unused_*` warning，无新增编译失败。
+  - `cargo test -p platform-core projection_gap -- --nocapture` 通过：新增 `projection-gaps` 路由级权限 / step-up 测试与 `audit_projection_gap_resolve_db_smoke` 全部通过。
+  - `cargo test -p platform-core` 通过：`305 passed; 0 failed`，确认本批改动未回归既有业务主链。
+  - `cargo build -p platform-core-bin` 通过；宿主机联调前显式刷新 `platform-core-bin` 可执行文件，避免把 `cargo check` 的静态编译结果误当成最新 host binary。
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace` 通过，并刷新 `.sqlx` 离线查询缓存。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `./scripts/check-openapi-schema.sh` 通过，确认 `packages/openapi/ops.yaml` 与 `docs/02-openapi/ops.yaml` 同步且 schema 骨架完整。
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core audit_projection_gap_resolve_db_smoke -- --nocapture` 通过：真实完成 `projection-gaps` 查询 / dry-run / resolve、`audit.audit_event + audit.access_audit + ops.system_log` 回查，以及 `ops.outbox_event(target_topic='dtp.consistency.reconcile') = 0` 断言。
+  - 真实宿主机联调通过：启动 `APP_PORT=18080 target/debug/platform-core-bin`，用 `psql` 手工写入一笔最小订单图、`ops.chain_projection_gap(status='open')` 与 verified `iam.step_up_challenge`，然后执行：
+    - `GET /api/v1/ops/projection-gaps?aggregate_type=order&aggregate_id=...&order_id=...&chain_id=fabric-local&gap_type=missing_callback&gap_status=open&page=1&page_size=10`
+    - `POST /api/v1/ops/projection-gaps/<chain_projection_gap_id>/resolve` 的 `dry_run=true`
+    - `POST /api/v1/ops/projection-gaps/<chain_projection_gap_id>/resolve` 的真实执行
+    并回查到：
+    - `ops.chain_projection_gap.gap_status='resolved'`
+    - `ops.chain_projection_gap.resolution_summary.manual_resolution.reason='confirmed callback backfilled into projection gap'`
+    - `ops.chain_projection_gap.metadata.manual_resolution.current_state_digest` 与 dry-run 返回值一致
+    - `audit.audit_event(action_name='ops.projection_gap.resolve') = 2`
+    - `audit.access_audit` 共 `3` 条，`target_type in ('projection_gap_query','projection_gap')`
+    - `ops.system_log` 共 `3` 条，对应 list / dry-run / execute 三条正式路径
+    - `ops.outbox_event(target_topic='dtp.consistency.reconcile') = 0`，确认 `resolve` 不直接派发 reconcile 执行事件
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`AUD-021`
+  - `交易链监控与公平性接口协议正式版.md`：`GET /api/v1/ops/projection-gaps`、`POST /api/v1/ops/projection-gaps/{id}/resolve`
+  - `一致性与事件接口协议正式版.md`：`V1 reconcile` 是控制面动作，不单列正式 `reconcile_job` 表；`AUD-021` 只关闭 `ops.chain_projection_gap`
+  - `交易链监控、公平性与信任安全设计.md`：投影缺口属于双层权威模型下的一致性缺口对象，不直接反写业务主状态
+  - `067_trade_chain_monitoring.sql`、`068_trade_chain_monitoring_authz.sql`：`ops.chain_projection_gap` 正式对象与 `ops.projection_gap.read / manage` 权限绑定
+  - `A04-AUD-Ops-接口与契约落地缺口.md`：projection-gaps 公共控制面的契约 / runbook / 测试收口缺口
+  - `async-chain-write.md`、`kafka-topics.md`：确认本批仍是正式 gap 控制面，不旁路出新的 topic / outbox 链
+- 覆盖的任务清单条目：`AUD-021`
+- 未覆盖项：
+  - `GET /api/v1/ops/search/sync`、重建 / alias 切换 / 缓存失效 / 排序配置更新接口，留待 `AUD-022`
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已同步更新 `docs/开发任务/V1-Core-TODO与预留清单.md`，把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 推进到 `AUD-022+` 的最新状态。
+- 备注：
+  - 本批没有新增 Go / Fabric 执行面代码；这是因为 `AUD-021` 按冻结口径属于 `platform-core` 的 projection gap 控制面。Fabric 的真实写链、Gateway、chaincode、event listener 与 CA admin 仍保持 `AUD-013 ~ AUD-017` 已落地的 `Go` 分层，不回退到 Rust 直接交互。
+  - 宿主机联调最初打到旧版 `platform-core-bin` 导致 `404`，已通过显式 `cargo build -p platform-core-bin` 刷新 host binary 后复验通过；判定为本地验证流程问题，而非接口实现缺陷。
+  - 手工清理时，尝试删除本次联调用到的 `iam.step_up_challenge` 会触发 `audit.audit_event.step_up_challenge_id -> SET NULL -> UPDATE append-only`，尝试删除 `core.user_account / buyer organization` 会触发 `audit.access_audit.accessor_user_id -> SET NULL -> UPDATE append-only`；这两类对象因此按审计依赖保留，不视为业务测试脏数据外泄。其余订单 / 商品 / projection gap 业务测试数据已清理。
+  - 本批未发现新的 `CSV / Markdown / technical_reference / authz seed / OpenAPI / Go-Rust 分层` 冲突，不触发暂停条件。

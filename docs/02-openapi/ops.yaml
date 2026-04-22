@@ -1181,6 +1181,204 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/projection-gaps:
+    get:
+      summary: query chain projection gaps
+      tags: [AuditOps]
+      description: |
+        Returns the formal `ops.chain_projection_gap` read model used by trade monitor
+        and consistency operators. The endpoint is platform-only and mirrors every
+        lookup into `audit.access_audit + ops.system_log`.
+      parameters:
+        - in: query
+          name: aggregate_type
+          schema:
+            type: string
+        - in: query
+          name: aggregate_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: order_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: chain_id
+          schema:
+            type: string
+        - in: query
+          name: gap_type
+          schema:
+            type: string
+        - in: query
+          name: gap_status
+          schema:
+            type: string
+        - in: query
+          name: request_id
+          schema:
+            type: string
+        - in: query
+          name: trace_id
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: projection gap page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseChainProjectionGapPageResponse"
+              example:
+                success: true
+                data:
+                  total: 1
+                  page: 1
+                  page_size: 20
+                  items:
+                    - chain_projection_gap_id: 7bd129c4-12aa-4f75-89d0-9efd456b4ca8
+                      aggregate_type: order
+                      aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                      chain_id: fabric-local
+                      source_event_type: fabric.anchor.confirmed
+                      expected_tx_id: aud021-expected-tx
+                      projected_tx_hash: aud021-projected-hash
+                      gap_type: missing_callback
+                      gap_status: open
+                      first_detected_at: "2026-04-22T10:02:00.000Z"
+                      last_detected_at: "2026-04-22T10:18:00.000Z"
+                      request_id: req-aud021-list
+                      trace_id: trace-aud021
+                      resolution_summary:
+                        seed: aud021-smoke
+                      metadata:
+                        source: aud021-smoke
+        "400":
+          description: invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/projection-gaps/{id}/resolve:
+    post:
+      summary: resolve one open chain projection gap
+      tags: [AuditOps]
+      description: |
+        Performs the high-risk control-plane close action for one open
+        `ops.chain_projection_gap`. The endpoint requires `ops.projection_gap.manage`
+        plus step-up, defaults to `dry_run=true`, records formal audit / access /
+        system-log traces, and only updates the formal gap object. It does not create
+        a `reconcile_job` table and does not publish `dtp.consistency.reconcile`.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpsProjectionGapResolveRequest"
+            example:
+              dry_run: false
+              resolution_mode: callback_confirmed
+              reason: confirmed callback backfilled into projection gap
+              expected_state_digest: 1b16d38a5dbd3e37a8dcb2fa4d38b409f65a8c8a6f66d6b48f2242d7f11f6c43
+      responses:
+        "200":
+          description: projection gap resolve status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOpsProjectionGapResolveResponse"
+              example:
+                success: true
+                data:
+                  projection_gap:
+                    chain_projection_gap_id: 7bd129c4-12aa-4f75-89d0-9efd456b4ca8
+                    aggregate_type: order
+                    aggregate_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    order_id: 0b66431d-9437-4cb3-b5f7-e8ff522aa111
+                    chain_id: fabric-local
+                    source_event_type: fabric.anchor.confirmed
+                    expected_tx_id: aud021-expected-tx
+                    projected_tx_hash: aud021-projected-hash
+                    gap_type: missing_callback
+                    gap_status: resolved
+                    first_detected_at: "2026-04-22T10:02:00.000Z"
+                    last_detected_at: "2026-04-22T10:18:00.000Z"
+                    resolved_at: "2026-04-22T10:25:00.000Z"
+                    request_id: req-aud021-execute
+                    trace_id: trace-aud021
+                    resolution_summary:
+                      manual_resolution:
+                        reason: confirmed callback backfilled into projection gap
+                        resolution_mode: callback_confirmed
+                    metadata:
+                      manual_resolution:
+                        control_plane_action: projection_gap.resolve
+                  resolution_mode: callback_confirmed
+                  reason: confirmed callback backfilled into projection gap
+                  expected_state_digest: 1b16d38a5dbd3e37a8dcb2fa4d38b409f65a8c8a6f66d6b48f2242d7f11f6c43
+                  state_digest: 61341d6f5b8a1b31a6b42789eea06fca7fd2ba2fd1037ad55fd3b1d6e6751937
+                  step_up_bound: true
+                  dry_run: false
+                  status: resolution_recorded
+        "400":
+          description: invalid payload or step-up binding mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied or verified step-up missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: projection gap not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: projection gap already resolved or state digest mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/ops/consistency/{refType}/{refId}:
     get:
       summary: query dual-authority consistency state for a business reference
@@ -1801,6 +1999,24 @@ components:
           example: true
         data:
           $ref: "#/components/schemas/OpsFairnessIncidentHandleResponse"
+    ApiResponseChainProjectionGapPageResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/ChainProjectionGapPageResponse"
+    ApiResponseOpsProjectionGapResolveResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: "#/components/schemas/OpsProjectionGapResolveResponse"
     DependenciesReport:
       type: object
       required: [ready, checks]
@@ -2382,6 +2598,66 @@ components:
         action_plan_status:
           type: string
           enum: [suggestion_recorded, no_linked_action]
+    OpsProjectionGapResolveRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        dry_run:
+          type: boolean
+          default: true
+        resolution_mode:
+          type: string
+          nullable: true
+          description: Optional control-plane reason code; defaults to `manual_close`.
+        reason:
+          type: string
+        expected_state_digest:
+          type: string
+          nullable: true
+    ChainProjectionGapPageResponse:
+      type: object
+      required: [total, page, page_size, items]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChainProjectionGapRecord"
+    OpsProjectionGapResolveResponse:
+      type: object
+      required:
+        - projection_gap
+        - resolution_mode
+        - reason
+        - state_digest
+        - step_up_bound
+        - dry_run
+        - status
+      properties:
+        projection_gap:
+          $ref: "#/components/schemas/ChainProjectionGapRecord"
+        resolution_mode:
+          type: string
+        reason:
+          type: string
+        expected_state_digest:
+          type: string
+          nullable: true
+        state_digest:
+          type: string
+        step_up_bound:
+          type: boolean
+        dry_run:
+          type: boolean
+        status:
+          type: string
+          enum: [dry_run_ready, resolution_recorded]
     OpsOutboxPageResponse:
       type: object
       required: [total, page, page_size, items]

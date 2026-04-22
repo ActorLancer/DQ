@@ -54,6 +54,10 @@ pub fn router() -> Router<AppState> {
             get(handlers::get_ops_fairness_incidents),
         )
         .route(
+            "/api/v1/ops/projection-gaps",
+            get(handlers::get_ops_projection_gaps),
+        )
+        .route(
             "/api/v1/ops/consistency/{refType}/{refId}",
             get(handlers::get_ops_consistency),
         )
@@ -76,6 +80,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/v1/ops/fairness-incidents/{id}/handle",
             post(handlers::handle_ops_fairness_incident),
+        )
+        .route(
+            "/api/v1/ops/projection-gaps/{id}/resolve",
+            post(handlers::resolve_ops_projection_gap),
         )
         .route(
             "/api/v1/ops/dead-letters/{id}/reprocess",

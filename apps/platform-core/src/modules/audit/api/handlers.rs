@@ -14,16 +14,17 @@ use crate::modules::audit::domain::{
     AnchorBatchPageView, AnchorBatchQuery, AuditAnchorBatchRetryRequest, AuditAnchorBatchRetryView,
     AuditLegalHoldActionView, AuditLegalHoldCreateRequest, AuditLegalHoldReleaseRequest,
     AuditPackageExportRequest, AuditPackageExportView, AuditReplayJobCreateRequest,
-    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, ExternalFactReceiptPageView,
-    ExternalFactReceiptQuery, FairnessIncidentPageView, FairnessIncidentQuery,
-    OpsConsistencyBusinessStateView, OpsConsistencyExternalFactStateView,
-    OpsConsistencyProofStateView, OpsConsistencyReconcileRequest, OpsConsistencyReconcileView,
+    AuditReplayJobDetailView, AuditTracePageView, AuditTraceQuery, ChainProjectionGapPageView,
+    ChainProjectionGapQuery, ExternalFactReceiptPageView, ExternalFactReceiptQuery,
+    FairnessIncidentPageView, FairnessIncidentQuery, OpsConsistencyBusinessStateView,
+    OpsConsistencyExternalFactStateView, OpsConsistencyProofStateView,
+    OpsConsistencyReconcileRequest, OpsConsistencyReconcileView,
     OpsConsistencyRepairRecommendationView, OpsConsistencyView, OpsDeadLetterPageView,
     OpsDeadLetterQuery, OpsDeadLetterReprocessRequest, OpsDeadLetterReprocessView,
     OpsExternalFactConfirmRequest, OpsExternalFactConfirmView, OpsFairnessIncidentHandleRequest,
-    OpsFairnessIncidentHandleView, OpsOutboxPageView, OpsOutboxQuery, OrderAuditQuery,
-    OrderAuditView, TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery,
-    TradeMonitorOverviewView,
+    OpsFairnessIncidentHandleView, OpsOutboxPageView, OpsOutboxQuery,
+    OpsProjectionGapResolveRequest, OpsProjectionGapResolveView, OrderAuditQuery, OrderAuditView,
+    TradeMonitorCheckpointPageView, TradeMonitorCheckpointQuery, TradeMonitorOverviewView,
 };
 use crate::modules::audit::dto::{
     AnchorBatchView, ChainProjectionGapView, DeadLetterEventView, EvidenceManifestView,
@@ -45,6 +46,7 @@ const DEAD_LETTER_REPROCESS_STEP_UP_ACTION: &str = "ops.dead_letter.reprocess";
 const CONSISTENCY_RECONCILE_STEP_UP_ACTION: &str = "ops.consistency.reconcile";
 const EXTERNAL_FACT_CONFIRM_STEP_UP_ACTION: &str = "ops.external_fact.manage";
 const FAIRNESS_INCIDENT_HANDLE_STEP_UP_ACTION: &str = "risk.fairness_incident.handle";
+const PROJECTION_GAP_RESOLVE_STEP_UP_ACTION: &str = "ops.projection_gap.manage";
 const CONSISTENCY_RECONCILE_TARGET_TOPIC: &str = "dtp.consistency.reconcile";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
 const DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_DRY_RUN_ONLY";
@@ -53,6 +55,8 @@ const DEAD_LETTER_REPROCESS_STATE_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_STA
 const CONSISTENCY_RECONCILE_DRY_RUN_ONLY_ERROR: &str = "AUDIT_CONSISTENCY_RECONCILE_DRY_RUN_ONLY";
 const EXTERNAL_FACT_CONFIRM_STATE_ERROR: &str = "AUDIT_EXTERNAL_FACT_CONFIRM_STATE_CONFLICT";
 const FAIRNESS_INCIDENT_HANDLE_STATE_ERROR: &str = "AUDIT_FAIRNESS_INCIDENT_HANDLE_STATE_CONFLICT";
+const PROJECTION_GAP_RESOLVE_STATE_ERROR: &str = "AUDIT_PROJECTION_GAP_RESOLVE_STATE_CONFLICT";
+const PROJECTION_GAP_STATE_DIGEST_ERROR: &str = "AUDIT_PROJECTION_GAP_STATE_DIGEST_CONFLICT";
 const LEGAL_HOLD_ACTIVE_ERROR: &str = "AUDIT_LEGAL_HOLD_ACTIVE";
 const ANCHOR_BATCH_NOT_RETRYABLE_ERROR: &str = "AUDIT_ANCHOR_BATCH_NOT_RETRYABLE";
 
@@ -939,6 +943,413 @@ pub(in crate::modules::audit) async fn handle_ops_fairness_incident(
         step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
         status: "manual_handling_recorded".to_string(),
         action_plan_status: action_plan_status.to_string(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn get_ops_projection_gaps(
+    State(state): State<AppState>,
+    Query(query): Query<ChainProjectionGapQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiResponse<ChainProjectionGapPageView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_optional_uuid(query.aggregate_id.as_deref(), "aggregate_id", &request_id)?;
+    validate_optional_uuid(query.order_id.as_deref(), "order_id", &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsProjectionGapRead,
+        "ops projection gap read",
+    )?;
+
+    let normalized_query = ChainProjectionGapQuery {
+        aggregate_type: normalize_optional_filter(
+            query.aggregate_type.as_deref(),
+            "aggregate_type",
+            &request_id,
+        )?,
+        aggregate_id: normalize_optional_filter(
+            query.aggregate_id.as_deref(),
+            "aggregate_id",
+            &request_id,
+        )?,
+        order_id: normalize_optional_filter(query.order_id.as_deref(), "order_id", &request_id)?,
+        chain_id: normalize_optional_filter(query.chain_id.as_deref(), "chain_id", &request_id)?,
+        gap_type: normalize_optional_filter(query.gap_type.as_deref(), "gap_type", &request_id)?,
+        gap_status: normalize_optional_filter(
+            query.gap_status.as_deref(),
+            "gap_status",
+            &request_id,
+        )?,
+        request_id: normalize_optional_filter(
+            query.request_id.as_deref(),
+            "request_id",
+            &request_id,
+        )?,
+        trace_id: normalize_optional_filter(query.trace_id.as_deref(), "trace_id", &request_id)?,
+        page: query.page,
+        page_size: query.page_size,
+    };
+
+    let client = state_client(&state)?;
+    let pagination = normalized_query.pagination();
+    let projection_gap_page = repo::search_chain_projection_gaps(
+        &client,
+        &normalized_query,
+        pagination.page_size as i64,
+        pagination.offset() as i64,
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "projection_gap_query",
+        normalized_query
+            .order_id
+            .clone()
+            .or_else(|| normalized_query.aggregate_id.clone()),
+        "GET /api/v1/ops/projection-gaps",
+        json!({
+            "aggregate_type": normalized_query.aggregate_type,
+            "aggregate_id": normalized_query.aggregate_id,
+            "order_id": normalized_query.order_id,
+            "chain_id": normalized_query.chain_id,
+            "gap_type": normalized_query.gap_type,
+            "gap_status": normalized_query.gap_status,
+            "request_id": normalized_query.request_id,
+            "trace_id": normalized_query.trace_id,
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "result_total": projection_gap_page.total,
+        }),
+    )
+    .await?;
+
+    Ok(ApiResponse::ok(ChainProjectionGapPageView {
+        total: projection_gap_page.total,
+        page: pagination.page,
+        page_size: pagination.page_size,
+        items: projection_gap_page
+            .items
+            .iter()
+            .map(ChainProjectionGapView::from)
+            .collect(),
+    }))
+}
+
+pub(in crate::modules::audit) async fn resolve_ops_projection_gap(
+    State(state): State<AppState>,
+    Path(chain_projection_gap_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<OpsProjectionGapResolveRequest>,
+) -> Result<Json<ApiResponse<OpsProjectionGapResolveView>>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(&chain_projection_gap_id, "id", &request_id)?;
+    let reason = normalize_reason(&payload.reason, &request_id)?;
+    let resolution_mode =
+        normalize_projection_gap_resolution_mode(payload.resolution_mode.as_deref(), &request_id)?;
+    let expected_state_digest = normalize_projection_gap_expected_state_digest(
+        payload.expected_state_digest.as_deref(),
+        &request_id,
+    )?;
+    let dry_run = payload.dry_run.unwrap_or(true);
+    require_permission(
+        &headers,
+        AuditPermission::OpsProjectionGapManage,
+        "ops projection gap resolve",
+    )?;
+    ensure_step_up_header_present_for(&headers, &request_id, "ops projection gap resolve")?;
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_projection_gap_resolve(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        chain_projection_gap_id.as_str(),
+    )
+    .await?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let existing_gap = repo::load_chain_projection_gap(&client, chain_projection_gap_id.as_str())
+        .await
+        .map_err(map_db_error)?
+        .ok_or_else(|| {
+            not_found(
+                &request_id,
+                format!("projection gap not found: {chain_projection_gap_id}"),
+            )
+        })?;
+    if existing_gap.gap_status == "resolved" {
+        return Err(conflict_error(
+            &request_id,
+            PROJECTION_GAP_RESOLVE_STATE_ERROR,
+            format!(
+                "projection gap resolve is only allowed when gap_status is not `resolved`; got `{}`",
+                existing_gap.gap_status
+            ),
+        ));
+    }
+
+    let current_state_digest = projection_gap_state_digest(&existing_gap);
+    if let Some(expected_state_digest) = expected_state_digest.as_deref() {
+        if expected_state_digest != current_state_digest {
+            return Err(conflict_error(
+                &request_id,
+                PROJECTION_GAP_STATE_DIGEST_ERROR,
+                format!(
+                    "expected_state_digest mismatch for projection gap `{chain_projection_gap_id}`"
+                ),
+            ));
+        }
+    }
+
+    let resolved_at = current_utc_timestamp(&client).await?;
+
+    if dry_run {
+        let audit_event = build_projection_gap_resolve_audit_event(
+            &headers,
+            request_id.as_str(),
+            trace_id.clone(),
+            actor_user_id.as_str(),
+            reason.as_str(),
+            resolution_mode.as_str(),
+            true,
+            expected_state_digest.as_deref(),
+            step_up.challenge_id.clone(),
+            step_up.token_present,
+            &existing_gap,
+            &existing_gap,
+            current_state_digest.clone(),
+            current_state_digest.clone(),
+        );
+
+        let tx = client.transaction().await.map_err(map_db_error)?;
+        repo::insert_audit_event(&tx, &audit_event)
+            .await
+            .map_err(map_db_error)?;
+        let access_audit_id = repo::record_access_audit(
+            &tx,
+            &AccessAuditInsert {
+                accessor_user_id: Some(actor_user_id.clone()),
+                accessor_role_key: Some(current_role(&headers)),
+                access_mode: "resolve".to_string(),
+                target_type: "projection_gap".to_string(),
+                target_id: Some(chain_projection_gap_id.clone()),
+                masked_view: true,
+                breakglass_reason: None,
+                step_up_challenge_id: step_up.challenge_id.clone(),
+                request_id: Some(request_id.clone()),
+                trace_id: Some(trace_id.clone()),
+                metadata: json!({
+                    "endpoint": "POST /api/v1/ops/projection-gaps/{id}/resolve",
+                    "aggregate_type": existing_gap.aggregate_type.clone(),
+                    "aggregate_id": existing_gap.aggregate_id.clone(),
+                    "order_id": existing_gap.order_id.clone(),
+                    "chain_id": existing_gap.chain_id.clone(),
+                    "gap_type": existing_gap.gap_type.clone(),
+                    "gap_status": existing_gap.gap_status.clone(),
+                    "reason": reason.clone(),
+                    "resolution_mode": resolution_mode.clone(),
+                    "dry_run": true,
+                    "expected_state_digest": expected_state_digest.clone(),
+                    "state_digest": current_state_digest.clone(),
+                    "step_up_token_present": step_up.token_present,
+                }),
+            },
+        )
+        .await
+        .map_err(map_db_error)?;
+        repo::record_system_log(
+            &tx,
+            &SystemLogInsert {
+                service_name: "platform-core".to_string(),
+                log_level: "INFO".to_string(),
+                request_id: Some(request_id.clone()),
+                trace_id: Some(trace_id.clone()),
+                message_text:
+                    "ops projection gap resolve prepared: POST /api/v1/ops/projection-gaps/{id}/resolve"
+                        .to_string(),
+                structured_payload: json!({
+                    "module": "ops",
+                    "endpoint": "POST /api/v1/ops/projection-gaps/{id}/resolve",
+                    "access_audit_id": access_audit_id,
+                    "chain_projection_gap_id": chain_projection_gap_id.clone(),
+                    "aggregate_type": existing_gap.aggregate_type.clone(),
+                    "aggregate_id": existing_gap.aggregate_id.clone(),
+                    "order_id": existing_gap.order_id.clone(),
+                    "chain_id": existing_gap.chain_id.clone(),
+                    "gap_type": existing_gap.gap_type.clone(),
+                    "gap_status": existing_gap.gap_status.clone(),
+                    "reason": reason.clone(),
+                    "resolution_mode": resolution_mode.clone(),
+                    "dry_run": true,
+                    "expected_state_digest": expected_state_digest.clone(),
+                    "state_digest": current_state_digest.clone(),
+                }),
+            },
+        )
+        .await
+        .map_err(map_db_error)?;
+        tx.commit().await.map_err(map_db_error)?;
+
+        return Ok(ApiResponse::ok(OpsProjectionGapResolveView {
+            projection_gap: ChainProjectionGapView::from(&existing_gap),
+            resolution_mode,
+            reason,
+            expected_state_digest,
+            state_digest: current_state_digest,
+            step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+            dry_run: true,
+            status: "dry_run_ready".to_string(),
+        }));
+    }
+
+    let metadata_patch = build_projection_gap_resolve_metadata(
+        &headers,
+        request_id.as_str(),
+        trace_id.as_str(),
+        resolved_at.as_str(),
+        reason.as_str(),
+        resolution_mode.as_str(),
+        false,
+        actor_user_id.as_str(),
+        expected_state_digest.as_deref(),
+        current_state_digest.as_str(),
+        &existing_gap,
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+    );
+    let resolution_summary_patch = build_projection_gap_resolution_summary_patch(
+        request_id.as_str(),
+        trace_id.as_str(),
+        resolved_at.as_str(),
+        reason.as_str(),
+        resolution_mode.as_str(),
+        actor_user_id.as_str(),
+        expected_state_digest.as_deref(),
+        current_state_digest.as_str(),
+        &existing_gap,
+    );
+
+    let tx = client.transaction().await.map_err(map_db_error)?;
+    let resolved_gap = repo::resolve_chain_projection_gap(
+        &tx,
+        chain_projection_gap_id.as_str(),
+        resolved_at.as_str(),
+        request_id.as_str(),
+        trace_id.as_str(),
+        &resolution_summary_patch,
+        &metadata_patch,
+    )
+    .await
+    .map_err(map_db_error)?
+    .ok_or_else(|| {
+        conflict_error(
+            &request_id,
+            PROJECTION_GAP_RESOLVE_STATE_ERROR,
+            format!("projection gap is no longer open: {chain_projection_gap_id}"),
+        )
+    })?;
+    let resolved_state_digest = projection_gap_state_digest(&resolved_gap);
+
+    let audit_event = build_projection_gap_resolve_audit_event(
+        &headers,
+        request_id.as_str(),
+        trace_id.clone(),
+        actor_user_id.as_str(),
+        reason.as_str(),
+        resolution_mode.as_str(),
+        false,
+        expected_state_digest.as_deref(),
+        step_up.challenge_id.clone(),
+        step_up.token_present,
+        &existing_gap,
+        &resolved_gap,
+        current_state_digest.clone(),
+        resolved_state_digest.clone(),
+    );
+    repo::insert_audit_event(&tx, &audit_event)
+        .await
+        .map_err(map_db_error)?;
+    let access_audit_id = repo::record_access_audit(
+        &tx,
+        &AccessAuditInsert {
+            accessor_user_id: Some(actor_user_id.clone()),
+            accessor_role_key: Some(current_role(&headers)),
+            access_mode: "resolve".to_string(),
+            target_type: "projection_gap".to_string(),
+            target_id: Some(chain_projection_gap_id.clone()),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: step_up.challenge_id.clone(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            metadata: json!({
+                "endpoint": "POST /api/v1/ops/projection-gaps/{id}/resolve",
+                "aggregate_type": resolved_gap.aggregate_type.clone(),
+                "aggregate_id": resolved_gap.aggregate_id.clone(),
+                "order_id": resolved_gap.order_id.clone(),
+                "chain_id": resolved_gap.chain_id.clone(),
+                "gap_type": resolved_gap.gap_type.clone(),
+                "gap_status_before": existing_gap.gap_status.clone(),
+                "gap_status_after": resolved_gap.gap_status.clone(),
+                "reason": reason.clone(),
+                "resolution_mode": resolution_mode.clone(),
+                "dry_run": false,
+                "expected_state_digest": expected_state_digest.clone(),
+                "state_digest": resolved_state_digest.clone(),
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    repo::record_system_log(
+        &tx,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "INFO".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text:
+                "ops projection gap resolve executed: POST /api/v1/ops/projection-gaps/{id}/resolve"
+                    .to_string(),
+            structured_payload: json!({
+                "module": "ops",
+                "endpoint": "POST /api/v1/ops/projection-gaps/{id}/resolve",
+                "access_audit_id": access_audit_id,
+                "chain_projection_gap_id": chain_projection_gap_id.clone(),
+                "aggregate_type": resolved_gap.aggregate_type.clone(),
+                "aggregate_id": resolved_gap.aggregate_id.clone(),
+                "order_id": resolved_gap.order_id.clone(),
+                "chain_id": resolved_gap.chain_id.clone(),
+                "gap_type": resolved_gap.gap_type.clone(),
+                "gap_status_before": existing_gap.gap_status.clone(),
+                "gap_status_after": resolved_gap.gap_status.clone(),
+                "resolved_at": resolved_gap.resolved_at.clone(),
+                "reason": reason.clone(),
+                "resolution_mode": resolution_mode.clone(),
+                "dry_run": false,
+                "expected_state_digest": expected_state_digest.clone(),
+                "state_digest": resolved_state_digest.clone(),
+                "business_mutation_executed": false,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    tx.commit().await.map_err(map_db_error)?;
+
+    Ok(ApiResponse::ok(OpsProjectionGapResolveView {
+        projection_gap: ChainProjectionGapView::from(&resolved_gap),
+        resolution_mode,
+        reason,
+        expected_state_digest,
+        state_digest: resolved_state_digest,
+        step_up_bound: step_up.challenge_id.is_some() || step_up.token_present,
+        dry_run: false,
+        status: "resolution_recorded".to_string(),
     }))
 }
 
@@ -3229,6 +3640,8 @@ enum AuditPermission {
     OpsExternalFactManage,
     RiskFairnessIncidentRead,
     RiskFairnessIncidentHandle,
+    OpsProjectionGapRead,
+    OpsProjectionGapManage,
     OpsConsistencyRead,
     OpsConsistencyReconcile,
     OpsDeadLetterReprocess,
@@ -3299,6 +3712,9 @@ fn is_allowed(role: &str, permission: AuditPermission) -> bool {
         ),
         AuditPermission::RiskFairnessIncidentHandle => {
             matches!(role, "platform_admin" | "platform_risk_settlement")
+        }
+        AuditPermission::OpsProjectionGapRead | AuditPermission::OpsProjectionGapManage => {
+            matches!(role, "platform_admin" | "platform_audit_security")
         }
         AuditPermission::OpsConsistencyRead => matches!(
             role,
@@ -3656,6 +4072,27 @@ async fn require_step_up_for_fairness_incident_handle(
         Some("fairness_incident"),
         Some(fairness_incident_id),
         "risk fairness incident handle",
+    )
+    .await
+}
+
+async fn require_step_up_for_projection_gap_resolve(
+    client: &db::Client,
+    headers: &HeaderMap,
+    request_id: &str,
+    actor_user_id: &str,
+    chain_projection_gap_id: &str,
+) -> Result<StepUpBinding, (StatusCode, Json<ErrorResponse>)> {
+    require_step_up_for_action(
+        client,
+        headers,
+        request_id,
+        actor_user_id,
+        PROJECTION_GAP_RESOLVE_STEP_UP_ACTION,
+        None,
+        Some("projection_gap"),
+        Some(chain_projection_gap_id),
+        "ops projection gap resolve",
     )
     .await
 }
@@ -5629,6 +6066,142 @@ fn build_external_fact_confirm_audit_event(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn build_projection_gap_resolve_metadata(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: &str,
+    resolved_at: &str,
+    reason: &str,
+    resolution_mode: &str,
+    dry_run: bool,
+    actor_user_id: &str,
+    expected_state_digest: Option<&str>,
+    current_state_digest: &str,
+    existing_gap: &repo::ChainProjectionGapRecord,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+) -> Value {
+    json!({
+        "manual_resolution": {
+            "endpoint": "POST /api/v1/ops/projection-gaps/{id}/resolve",
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "resolved_at": resolved_at,
+            "reason": reason,
+            "resolution_mode": resolution_mode,
+            "dry_run": dry_run,
+            "operator_user_id": actor_user_id,
+            "operator_role": current_role(headers),
+            "tenant_id": header(headers, "x-tenant-id"),
+            "step_up_challenge_id": step_up_challenge_id,
+            "step_up_token_present": step_up_token_present,
+            "expected_state_digest": expected_state_digest,
+            "current_state_digest": current_state_digest,
+            "previous_gap_status": existing_gap.gap_status,
+            "formal_persistent_object": "ops.chain_projection_gap",
+            "control_plane_action": "projection_gap.resolve",
+        }
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_projection_gap_resolution_summary_patch(
+    request_id: &str,
+    trace_id: &str,
+    resolved_at: &str,
+    reason: &str,
+    resolution_mode: &str,
+    actor_user_id: &str,
+    expected_state_digest: Option<&str>,
+    current_state_digest: &str,
+    existing_gap: &repo::ChainProjectionGapRecord,
+) -> Value {
+    json!({
+        "manual_resolution": {
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "resolved_at": resolved_at,
+            "reason": reason,
+            "resolution_mode": resolution_mode,
+            "operator_user_id": actor_user_id,
+            "previous_gap_status": existing_gap.gap_status,
+            "expected_state_digest": expected_state_digest,
+            "current_state_digest": current_state_digest,
+        }
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_projection_gap_resolve_audit_event(
+    headers: &HeaderMap,
+    request_id: &str,
+    trace_id: String,
+    actor_user_id: &str,
+    reason: &str,
+    resolution_mode: &str,
+    dry_run: bool,
+    expected_state_digest: Option<&str>,
+    step_up_challenge_id: Option<String>,
+    step_up_token_present: bool,
+    previous_gap: &repo::ChainProjectionGapRecord,
+    current_gap: &repo::ChainProjectionGapRecord,
+    before_state_digest: String,
+    after_state_digest: String,
+) -> AuditEvent {
+    let mut event = AuditEvent::business(
+        "ops",
+        "projection_gap",
+        current_gap.chain_projection_gap_id.clone(),
+        "ops.projection_gap.resolve",
+        if dry_run {
+            "dry_run_ready"
+        } else {
+            "resolution_recorded"
+        },
+        AuditContext {
+            request_id: request_id.to_string(),
+            trace_id,
+            actor_type: "user".to_string(),
+            actor_id: Some(actor_user_id.to_string()),
+            actor_org_id: parse_uuid_header(headers, "x-tenant-id"),
+            tenant_id: header(headers, "x-tenant-id").unwrap_or_else(|| "platform".to_string()),
+            session_id: None,
+            trusted_device_id: None,
+            application_id: None,
+            parent_audit_id: None,
+            source_ip: None,
+            client_fingerprint: None,
+            auth_assurance_level: Some("step_up_required".to_string()),
+            step_up_challenge_id,
+            metadata: json!({
+                "chain_projection_gap_id": current_gap.chain_projection_gap_id.clone(),
+                "aggregate_type": current_gap.aggregate_type.clone(),
+                "aggregate_id": current_gap.aggregate_id.clone(),
+                "order_id": current_gap.order_id.clone(),
+                "chain_id": current_gap.chain_id.clone(),
+                "gap_type": current_gap.gap_type.clone(),
+                "gap_status_before": previous_gap.gap_status.clone(),
+                "gap_status_after": current_gap.gap_status.clone(),
+                "resolved_at": current_gap.resolved_at.clone(),
+                "reason": reason,
+                "resolution_mode": resolution_mode,
+                "dry_run": dry_run,
+                "expected_state_digest": expected_state_digest,
+                "before_state_digest": before_state_digest,
+                "after_state_digest": after_state_digest,
+                "step_up_token_present": step_up_token_present,
+                "formal_persistent_object": "ops.chain_projection_gap",
+                "control_plane_action": "projection_gap.resolve",
+            }),
+        },
+    );
+    event.before_state_digest = Some(before_state_digest);
+    event.after_state_digest = Some(after_state_digest);
+    event.sensitivity_level = "high".to_string();
+    event
+}
+
+#[allow(clippy::too_many_arguments)]
 fn build_fairness_incident_handle_metadata(
     headers: &HeaderMap,
     request_id: &str,
@@ -5990,6 +6563,39 @@ fn normalize_fairness_incident_resolution_summary(
     Ok(resolution_summary.to_string())
 }
 
+fn normalize_projection_gap_resolution_mode(
+    raw: Option<&str>,
+    request_id: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let resolution_mode = raw
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("manual_close");
+    if resolution_mode.len() > 64 {
+        return Err(bad_request(
+            request_id,
+            "resolution_mode must be shorter than 65 characters",
+        ));
+    }
+    Ok(resolution_mode.to_string())
+}
+
+fn normalize_projection_gap_expected_state_digest(
+    raw: Option<&str>,
+    request_id: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(digest) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if digest.len() > 128 {
+        return Err(bad_request(
+            request_id,
+            "expected_state_digest must be shorter than 129 characters",
+        ));
+    }
+    Ok(Some(digest.to_string()))
+}
+
 fn normalize_anchor_retry_reason(
     raw: &str,
     request_id: &str,
@@ -6155,6 +6761,36 @@ fn chain_projection_gap_observed_at(gap: &repo::ChainProjectionGapRecord) -> Opt
         .or_else(|| gap.last_detected_at.clone())
         .or_else(|| gap.created_at.clone())
         .or_else(|| gap.first_detected_at.clone())
+}
+
+fn projection_gap_state_snapshot(gap: &repo::ChainProjectionGapRecord) -> Value {
+    json!({
+        "chain_projection_gap_id": gap.chain_projection_gap_id,
+        "aggregate_type": gap.aggregate_type,
+        "aggregate_id": gap.aggregate_id,
+        "order_id": gap.order_id,
+        "chain_id": gap.chain_id,
+        "source_event_type": gap.source_event_type,
+        "expected_tx_id": gap.expected_tx_id,
+        "projected_tx_hash": gap.projected_tx_hash,
+        "gap_type": gap.gap_type,
+        "gap_status": gap.gap_status,
+        "first_detected_at": gap.first_detected_at,
+        "last_detected_at": gap.last_detected_at,
+        "resolved_at": gap.resolved_at,
+        "request_id": gap.request_id,
+        "trace_id": gap.trace_id,
+        "outbox_event_id": gap.outbox_event_id,
+        "anchor_id": gap.anchor_id,
+        "resolution_summary": gap.resolution_summary,
+        "metadata": gap.metadata,
+        "created_at": gap.created_at,
+        "updated_at": gap.updated_at,
+    })
+}
+
+fn projection_gap_state_digest(gap: &repo::ChainProjectionGapRecord) -> String {
+    sha256_hex(projection_gap_state_snapshot(gap).to_string().as_bytes())
 }
 
 fn confirmed_chain_anchor_time(anchor: &repo::ChainAnchorRecord) -> Option<String> {

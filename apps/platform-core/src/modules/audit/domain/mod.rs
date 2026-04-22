@@ -420,6 +420,26 @@ pub struct ChainProjectionGapPageView {
     pub items: Vec<ChainProjectionGapView>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct OpsProjectionGapResolveRequest {
+    pub dry_run: Option<bool>,
+    pub resolution_mode: Option<String>,
+    pub reason: String,
+    pub expected_state_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OpsProjectionGapResolveView {
+    pub projection_gap: ChainProjectionGapView,
+    pub resolution_mode: String,
+    pub reason: String,
+    pub expected_state_digest: Option<String>,
+    pub state_digest: String,
+    pub step_up_bound: bool,
+    pub dry_run: bool,
+    pub status: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OpsConsistencyBusinessStateView {
     pub ref_type: String,
