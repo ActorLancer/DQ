@@ -110,7 +110,7 @@ create_index "${INDEX_NAME_SEARCH_SYNC_JOBS}"
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 index_demo_doc "${INDEX_ALIAS_PRODUCT_SEARCH_WRITE}" "demo-product-001" "{\"id\":\"demo-product-001\",\"tenant_id\":\"t-demo\",\"seller_id\":\"s-demo\",\"name\":\"Demo Product\",\"description\":\"Demo product for local initialization\",\"sku_code\":\"FILE_STD\",\"status\":\"listed\",\"review_status\":\"approved\",\"visibility_status\":\"visible\",\"visible_to_search\":true,\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
-index_demo_doc "${INDEX_ALIAS_SELLER_SEARCH_WRITE}" "demo-seller-001" "{\"id\":\"demo-seller-001\",\"tenant_id\":\"t-demo\",\"name\":\"Demo Seller\",\"description\":\"Seller profile demo\",\"status\":\"active\",\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
+index_demo_doc "${INDEX_ALIAS_SELLER_SEARCH_WRITE}" "demo-seller-001" "{\"id\":\"demo-seller-001\",\"tenant_id\":\"t-demo\",\"name\":\"Demo Seller\",\"description\":\"Seller profile demo\",\"status\":\"active\",\"country_code\":\"CN\",\"region_code\":\"SH\",\"industry_tags\":[\"industrial_manufacturing\"],\"certification_tags\":[\"real_name_verified\",\"compliance:l2\",\"certification:enhanced\"],\"featured_products\":[{\"product_id\":\"demo-product-001\",\"title\":\"Demo Product\",\"category\":\"manufacturing\",\"price_amount\":88.0,\"currency_code\":\"CNY\"}],\"rating_summary\":{\"rating_count\":9,\"average_rating\":4.6,\"reputation_score\":0.91,\"credit_level\":4,\"risk_level\":1},\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
 index_demo_doc "${INDEX_NAME_SEARCH_SYNC_JOBS}" "demo-sync-job-001" "{\"id\":\"demo-sync-job-001\",\"tenant_id\":\"t-demo\",\"status\":\"done\",\"created_at\":\"${now}\",\"updated_at\":\"${now}\"}"
 echo "[ok] demo documents indexed"
 

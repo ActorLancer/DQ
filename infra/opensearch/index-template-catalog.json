@@ -26,6 +26,29 @@
         "seller_id": { "type": "keyword" },
         "name": { "type": "text", "analyzer": "datab_text_analyzer" },
         "description": { "type": "text", "analyzer": "datab_text_analyzer" },
+        "country_code": { "type": "keyword" },
+        "region_code": { "type": "keyword" },
+        "industry_tags": { "type": "keyword" },
+        "certification_tags": { "type": "keyword" },
+        "featured_products": {
+          "properties": {
+            "product_id": { "type": "keyword" },
+            "title": { "type": "text", "analyzer": "datab_text_analyzer" },
+            "subtitle": { "type": "text", "analyzer": "datab_text_analyzer" },
+            "category": { "type": "keyword" },
+            "price_amount": { "type": "double" },
+            "currency_code": { "type": "keyword" }
+          }
+        },
+        "rating_summary": {
+          "properties": {
+            "rating_count": { "type": "integer" },
+            "average_rating": { "type": "double" },
+            "reputation_score": { "type": "double" },
+            "credit_level": { "type": "integer" },
+            "risk_level": { "type": "integer" }
+          }
+        },
         "sku_code": { "type": "keyword" },
         "status": { "type": "keyword" },
         "review_status": { "type": "keyword" },

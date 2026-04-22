@@ -764,7 +764,22 @@ fn build_search_request_body(
     let must = if let Some(q) = query.q.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
         json!([{ "multi_match": {
             "query": q,
-            "fields": ["name^4", "title^4", "subtitle^2", "description", "seller_name^2", "industry", "tags", "category"],
+            "fields": [
+                "name^4",
+                "title^4",
+                "subtitle^2",
+                "description",
+                "seller_name^2",
+                "industry",
+                "industry_tags^2",
+                "certification_tags^2",
+                "featured_products.title^2",
+                "featured_products.subtitle",
+                "country_code",
+                "region_code",
+                "tags",
+                "category"
+            ],
             "type": "best_fields"
         }}])
     } else {

@@ -32,3 +32,4 @@ version,up_sql,down_sql
 079,docs/数据库设计/V1/upgrade/079_acceptance_event_route_policy.sql,docs/数据库设计/V1/downgrade/079_acceptance_event_route_policy.sql
 080,docs/数据库设计/V1/upgrade/080_notification_dispute_settlement_templates.sql,docs/数据库设计/V1/downgrade/080_notification_dispute_settlement_templates.sql
 081,docs/数据库设计/V1/upgrade/081_search_product_projection_visibility_alignment.sql,docs/数据库设计/V1/downgrade/081_search_product_projection_visibility_alignment.sql
+082,docs/数据库设计/V1/upgrade/082_seller_search_projection_enrichment.sql,docs/数据库设计/V1/downgrade/082_seller_search_projection_enrichment.sql

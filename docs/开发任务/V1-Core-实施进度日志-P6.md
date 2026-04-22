@@ -84,3 +84,41 @@
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 - 备注：
   - 仓库内 `db/scripts/migrate-up.sh` / `migration-runner.sh` 依赖 `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` 而非 `DATABASE_URL`。验证时发现本地 `datab` 库存在历史 `068` 校验和漂移，导致整库 `migrate-up` 在 `068` 处被预先阻断；为避免改写历史版本记录，本批仅把 `081` 定向执行到实际 smoke 库并补登 `schema_migration_history`，未调整任何既有历史 migration 内容。
+### BATCH-249（计划中）
+- 任务：`SEARCHREC-003` 卖方搜索投影字段集与刷新链路补齐
+- 状态：计划中
+- 说明：按 `SEARCHREC-003` 冻结口径复核 `search.seller_search_document` 后，确认当前已具备主体名称、行业、国家/地区、信誉分与上架商品数，但缺失“认证标签、主打商品、评分摘要”这三块正式投影，也未进入 seller OpenSearch 文档与 seller profile 读取路径。当前批次将补齐 seller 搜索投影正式字段、刷新函数与测试回查，确保组织资料、卖方信誉、主打商品摘要和搜索索引之间形成稳定闭环。
+- 追溯：继续沿 `SEARCHREC` 顺序推进，不提前合并搜索排序、缓存或推荐任务。
+### BATCH-249（待审批）
+- 任务：`SEARCHREC-003` 落地卖方搜索投影结构
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-003`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`057_search_sync_architecture.sql` 已提供 `search.seller_search_document`、卖方搜索刷新函数、`dtp.search.sync` 主链与 `search-indexer` 基线，本批在此基础上补齐冻结清单要求的“认证标签、主打商品、评分摘要”正式投影并接入卖方资料读链与 OpenSearch 文档。
+- 完成情况：
+  - `docs/数据库设计/V1/upgrade/082_seller_search_projection_enrichment.sql`、`downgrade/082_seller_search_projection_enrichment.sql`、`db/migrations/v1/manifest.csv`、`checksums.sha256`：新增 `082` 迁移，向 `search.seller_search_document` 正式引入 `certification_tags`、`featured_products`、`rating_summary` 字段与 GIN 索引，并提供降级脚本。
+  - `082` 迁移内新增 `search.resolve_seller_certification_tags(...)`，并替换 `search.refresh_seller_search_document_by_id(uuid)`：把 `core.organization` 的实名/合规/认证 metadata、最新 `risk.reputation_snapshot` 评分摘要，以及最多 3 条已上架主打商品摘要同步写入 PostgreSQL 卖方搜索投影，同时把认证标签、主打商品标题与评分统计并入 `searchable_tsv` / `ranking_features`。
+  - `apps/platform-core/src/modules/catalog/domain.rs`、`repository.rs`：`GET /api/v1/sellers/{orgId}/profile` 读取卖方搜索投影时新增返回 `certification_tags`、`featured_products`、`rating_summary`，确保卖方资料读取链直接消费 PostgreSQL 权威投影，而不是旁路拼装。
+  - `workers/search-indexer/src/main.rs`、`infra/opensearch/index-template-catalog.json`、`infra/opensearch/init-opensearch.sh`：卖方索引文档新增 `region_code`、`industry_tags`、`certification_tags`、`featured_products`、`rating_summary`，并在 worker smoke 中真实校验这些字段写入 OpenSearch，避免 seller 索引结构继续停留在旧版字段集。
+  - `apps/platform-core/src/modules/search/repo/mod.rs`：卖方 OpenSearch 检索字段扩展至认证标签、主打商品标题/副标题、地区与行业，保证 `SEARCHREC-003` 新增投影字段进入正式召回面。
+  - `apps/platform-core/src/modules/catalog/tests/cat025_seller_search_projection_db.rs`、`catalog/tests/mod.rs`、`search/tests/search_api_db.rs`、`recommendation/tests/recommendation_api_db.rs`：新增 seller 投影 DB smoke，并把搜索/推荐 smoke 中手工写入的 seller OpenSearch 文档同步升级到新字段结构，防止测试仍依赖旧版 seller 索引文档。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `CATALOG_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core cat025_seller_search_projection_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-003`
+  - `商品搜索、排序与索引同步设计.md`：`6. 搜索投影设计`、卖方搜索权威投影与 OpenSearch 读模型边界
+  - `商品搜索、排序与索引同步接口协议正式版.md`：卖方资料读取、目录搜索读链与 PostgreSQL 最终校验口径
+  - `057_search_sync_architecture.sql`：卖方搜索投影表、刷新函数与搜索同步主题基线
+  - `A07-搜索同步链路与搜索接口闭环缺口.md`
+- 覆盖的任务清单条目：`SEARCHREC-003`
+- 未覆盖项：
+  - 无。`SEARCHREC-003` 要求的主体名称、行业、地区、认证标签、主打商品、评分摘要均已进入 PostgreSQL 卖方搜索投影，并通过 seller profile 读链与 `search-indexer -> OpenSearch` 文档形成正式闭环。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+- 备注：
+  - 仓库内 `db/scripts/migrate-up.sh` / `migration-runner.sh` 仍依赖 `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` 而非 `DATABASE_URL`。由于本地 `datab` 库存在历史 `068` 校验和漂移，本批延续前序做法，仅把 `082` 定向执行到实际 smoke 库并补登 `schema_migration_history`，未改写任何既有历史 migration 内容。

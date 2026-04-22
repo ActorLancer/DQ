@@ -298,7 +298,23 @@ async fn seed_opensearch_documents(ids: &SeedIds, suffix: &str) -> Result<(), St
         "description": format!("recommend seller {suffix}"),
         "status": "active",
         "country_code": "CN",
+        "region_code": "SH",
         "industry_tags": ["industrial_manufacturing"],
+        "certification_tags": ["real_name_verified", "compliance:l2"],
+        "featured_products": [{
+            "product_id": ids.product_ids[0],
+            "title": format!("recommend-product-a-{suffix}"),
+            "category": "manufacturing",
+            "price_amount": 88.0,
+            "currency_code": "CNY"
+        }],
+        "rating_summary": {
+            "rating_count": 9,
+            "average_rating": 4.6,
+            "reputation_score": 0.88,
+            "credit_level": 4,
+            "risk_level": 1
+        },
         "reputation_score": 0.88,
         "listing_product_count": 2,
         "updated_at": "2026-04-21T00:00:00.000Z"

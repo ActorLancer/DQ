@@ -689,10 +689,15 @@ async fn load_index_document(
                      'entity_scope', 'seller',
                      'id', org_id::text,
                      'name', seller_name,
+                     'seller_type', seller_type,
                      'description', description,
                      'status', 'active',
                      'country_code', country_code,
+                     'region_code', region_code,
                      'industry_tags', industry_tags,
+                     'certification_tags', certification_tags,
+                     'featured_products', featured_products,
+                     'rating_summary', rating_summary,
                      'reputation_score', reputation_score,
                      'listing_product_count', listing_product_count,
                      'document_version', document_version,
@@ -1074,9 +1079,29 @@ mod tests {
         let org_row = client
             .query_one(
                 "INSERT INTO core.organization (
-                   org_name, org_type, status, country_code, metadata
+                   org_name,
+                   org_type,
+                   status,
+                   real_name_status,
+                   compliance_level,
+                   country_code,
+                   region_code,
+                   industry_tags,
+                   metadata
                  ) VALUES (
-                   $1, 'enterprise', 'active', 'CN', jsonb_build_object('source', 'search-indexer-smoke')
+                   $1,
+                   'enterprise',
+                   'active',
+                   'verified',
+                   'L2',
+                   'CN',
+                   'SH',
+                   ARRAY['industrial_manufacturing']::text[],
+                   jsonb_build_object(
+                     'source', 'search-indexer-smoke',
+                     'certification_level', 'enhanced',
+                     'certification_tags', jsonb_build_array('iso27001')
+                   )
                  )
                  RETURNING org_id::text",
                 &[&format!("search-indexer-org-{suffix}")],
@@ -1152,6 +1177,33 @@ mod tests {
             )
             .await?;
         let product_id: String = product_row.get(0);
+
+        client
+            .execute(
+                "INSERT INTO risk.reputation_snapshot (
+                   subject_type,
+                   subject_id,
+                   score,
+                   risk_level,
+                   credit_level,
+                   effective_at,
+                   metadata
+                 ) VALUES (
+                   'organization',
+                   $1::text::uuid,
+                   0.91,
+                   1,
+                   4,
+                   now(),
+                   jsonb_build_object(
+                     'rating_count', 9,
+                     'average_rating', 4.6,
+                     'last_rating_at', '2026-04-22T00:00:00.000Z'
+                   )
+                 )",
+                &[&org_id],
+            )
+            .await?;
 
         client
             .execute(
@@ -1284,6 +1336,14 @@ mod tests {
         let _ = client
             .execute(
                 "DELETE FROM search.seller_search_document WHERE org_id = $1::text::uuid",
+                &[&seed.org_id],
+            )
+            .await;
+        let _ = client
+            .execute(
+                "DELETE FROM risk.reputation_snapshot
+                 WHERE subject_type = 'organization'
+                   AND subject_id = $1::text::uuid",
                 &[&seed.org_id],
             )
             .await;
@@ -1551,6 +1611,27 @@ mod tests {
         assert_eq!(
             indexed_document["_source"]["visible_to_search"].as_bool(),
             Some(true)
+        );
+        let seller_document = fetch_indexed_document(&cfg, "seller", &seed.org_id).await;
+        assert_eq!(
+            seller_document["_source"]["id"].as_str(),
+            Some(seed.org_id.as_str())
+        );
+        assert_eq!(
+            seller_document["_source"]["certification_tags"][0].as_str(),
+            Some("certification:enhanced")
+        );
+        assert_eq!(
+            seller_document["_source"]["featured_products"][0]["title"].as_str(),
+            Some(format!("search-indexer-product-{suffix}").as_str())
+        );
+        assert_eq!(
+            seller_document["_source"]["rating_summary"]["average_rating"].as_f64(),
+            Some(4.6)
+        );
+        assert_eq!(
+            seller_document["_source"]["rating_summary"]["rating_count"].as_i64(),
+            Some(9)
         );
         assert!(!cache_exists(&cfg, &seed.cache_key).await);
 
