@@ -285,6 +285,75 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-283（计划中）
+- 任务：`SEARCHREC-018` 逐任务复核与正式重验（统一鉴权门面与正式权限点）
+- 状态：计划中
+- 说明：按 `SEARCHREC-018` 的冻结口径，重新核对搜索/推荐 handler 与 service 是否已经彻底切到统一 Bearer 鉴权门面和正式权限点，不再读取 `x-role` 占位；重点确认前台读取、搜索 ops、推荐 ops 都只能靠 `Authorization + 正式 permission code` 通过，单独塞 `x-role` 不再具备任何放行效果。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-018`，不提前进入 `SEARCHREC-019` 的高风险写接口 step-up 与错误码收口。
+
+### BATCH-283（待审批）
+- 任务：`SEARCHREC-018` 逐任务复核与正式重验（统一鉴权门面与正式权限点）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-018`
+- 前置依赖核对结果：`AUD-022`、`SEARCHREC-004`、`SEARCHREC-009`、`SEARCHREC-010`、`SEARCHREC-011`、`SEARCHREC-012` 已在前序阶段完成；本批只重验搜索/推荐统一 Bearer 鉴权门面、正式权限点与 `x-role` 彻底失效，不提前进入 `SEARCHREC-019` 的高风险写接口 step-up。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-018` 只收口“统一鉴权门面与正式权限点”，要求业务规则、状态机、审计、事件与测试齐备，并与上下游联调通过。
+  - `docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认搜索前台、搜索 ops、推荐前台、推荐 ops 的正式认证口径均是 `Authorization: Bearer <access_token>`，不是 `x-role` header。
+  - `docs/权限设计/接口权限校验清单.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`：确认正式权限点分别为 `portal.catalog.search.read`、`portal.recommendation.read`、`ops.search_*`、`ops.recommendation.*`、`ops.recommend_rebuild.execute`，且 ops 读取/写入动作都应进入正式审计链。
+  - `apps/platform-core/src/modules/search/service.rs`、`api/handlers.rs`、`apps/platform-core/src/modules/recommendation/service.rs`、`api/handlers.rs`：复核运行态 service 仍只认正式 permission code，handler 统一走 Bearer 权限门面；`rg -n "x-role" apps/platform-core/src/modules/search apps/platform-core/src/modules/recommendation` 无结果，证明模块树内已无 `x-role` 旁路。
+  - `apps/platform-core/src/modules/search/tests/mod.rs`、`apps/platform-core/src/modules/recommendation/tests/mod.rs`：复核路由测试仍覆盖“无 Bearer 拒绝”“无权限拒绝”“formal roles matrix”。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。搜索与推荐正式主链、ops 读链、ops 写链均已切到统一 Bearer 鉴权门面；正式权限点继续由 `service.rs` 常量定义驱动，不存在“handler 放行、service 再兜底”的双轨漂移。
+  - `x-role` 旁路已经被彻底切断。真实运行态下，仅发送 `x-role=buyer_operator` 或 `x-role=platform_admin` 而不带 Bearer 时，搜索前台、推荐前台和推荐 ops 读取都会返回 `401 IAM_UNAUTHORIZED` 与 `Authorization: Bearer <access_token> is required`。
+  - 带真实 Keycloak token 时，上述接口继续按正式 permission code 放行，并将成功请求写入 `audit.access_audit + ops.system_log`；失败的 `401` 不会伪造成功审计记录。
+- 验证：
+  - `cargo fmt --all --check`
+  - `cargo test -p platform-core rejects_catalog_search_without_bearer -- --nocapture`
+  - `cargo test -p platform-core rejects_recommendation_read_without_bearer -- --nocapture`
+  - `cargo test -p platform-core rejects_recommendation_placement_ops_without_bearer -- --nocapture`
+  - `cargo test -p platform-core search_ops_matrix_matches_formal_roles -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 真实运行态 Bearer 联调（staging `platform-core`：`http://127.0.0.1:18080`）：
+    - 仅带 `x-role=buyer_operator` 调用 `GET /api/v1/catalog/search?q=工业&entity_scope=product`
+    - 带真实 `local-buyer-operator` token 调用同一路径
+    - 仅带 `x-role=buyer_operator` 调用 `GET /api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id=10000000-0000-0000-0000-000000000102&limit=3`
+    - 带真实 `local-buyer-operator` token 调用同一路径
+    - 仅带 `x-role=platform_admin` 调用 `GET /api/v1/ops/recommendation/placements`
+    - 带真实 `local-platform-admin` token 调用同一路径
+    - 使用 `psql` 回查 `audit.access_audit`、`ops.system_log`
+- 验证结果：
+  - focused 路由测试全部通过：`rejects_catalog_search_without_bearer`、`rejects_recommendation_read_without_bearer`、`rejects_recommendation_placement_ops_without_bearer`、`search_ops_matrix_matches_formal_roles` 均通过，证明路由层没有恢复 `x-role` 旁路。
+  - 真实运行态 Bearer 联调成功：
+    - `req-searchrec018-live-search-xrole-1776907821`：仅带 `x-role=buyer_operator` 调用搜索前台，`HTTP 401`，`IAM_UNAUTHORIZED`
+    - `req-searchrec018-live-search-bearer-1776907821`：同路径带真实 buyer token，`HTTP 200`
+    - `req-searchrec018-live-rec-xrole-1776907821`：仅带 `x-role=buyer_operator` 调用推荐前台，`HTTP 401`，`IAM_UNAUTHORIZED`
+    - `req-searchrec018-live-rec-bearer-1776907821`：同路径带真实 buyer token，`HTTP 200`
+    - `req-searchrec018-live-ops-xrole-1776907821`：仅带 `x-role=platform_admin` 调用推荐 ops 列表，`HTTP 401`，`IAM_UNAUTHORIZED`
+    - `req-searchrec018-live-ops-bearer-1776907821`：同路径带真实 admin token，`HTTP 200`
+  - `psql` 回查结果：
+    - `audit.access_audit`：成功 Bearer 请求各 1 条正式读审计，分别为
+      - `req-searchrec018-live-search-bearer-1776907821 | buyer_operator | search_catalog | masked`
+      - `req-searchrec018-live-rec-bearer-1776907821 | buyer_operator | recommendation_result | masked`
+      - `req-searchrec018-live-ops-bearer-1776907821 | platform_admin | recommendation_placement | masked`
+    - `ops.system_log`：成功 Bearer 请求各 1 条系统日志，分别为
+      - `catalog search lookup executed: GET /api/v1/catalog/search`
+      - `recommendation lookup executed: GET /api/v1/recommendations`
+      - `recommendation ops lookup executed: GET /api/v1/ops/recommendation/placements`
+  - 通用校验通过：`cargo check -p platform-core`、`cargo test -p platform-core`（`355 passed; 0 failed; 1 ignored`）、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 均通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-018`
+  - `商品搜索、排序与索引同步接口协议正式版.md`、`商品推荐与个性化发现接口协议正式版.md`：正式 Bearer 鉴权边界
+  - `接口权限校验清单.md`：搜索/推荐正式权限点与 formal role matrix
+  - `search-reindex.md`、`recommendation-runtime.md`：搜索 ops、推荐 ops 与前台读取的正式认证/审计口径
+- 覆盖的任务清单条目：`SEARCHREC-018`
+- 未覆盖项：
+  - 无。`SEARCHREC-018` 要求的统一 Bearer 鉴权门面、正式 permission code、`x-role` 彻底失效和成功请求审计/系统日志都已重新验证；`SEARCHREC-019` 的高风险写接口 `step-up` 收口仍留在下一 task。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
