@@ -95,5 +95,14 @@ describe("portal route registry", () => {
         "POST /api/v1/compensations",
       ]),
     );
+    expect(portalRouteMap.dispute_create.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/auth/me",
+        "GET /api/v1/orders/{id}",
+        "POST /api/v1/cases",
+        "POST /api/v1/cases/{id}/evidence",
+        "POST /api/v1/cases/{id}/resolve",
+      ]),
+    );
   });
 });

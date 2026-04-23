@@ -287,6 +287,97 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-287（计划中）
+- 任务：`WEB-013` 实现争议页面：创建案件、上传证据、查看裁决
+- 状态：计划中
+- 说明：本批将 `/support/cases/new` 从路由脚手架升级为正式争议提交与跟踪页，围绕买方发起争议、补充证据、平台风控裁决查看/执行入口形成最小闭环。页面必须真实读取当前主体与订单争议关系，通过 `packages/sdk-ts` 调用 `platform-core` 的 `POST /api/v1/cases`、`POST /api/v1/cases/{id}/evidence`、`POST /api/v1/cases/{id}/resolve` 和 `GET /api/v1/orders/{id}`；所有写动作由前端生成并透传 `X-Idempotency-Key`，裁决动作展示并透传 step-up token，证据展示不得暴露对象真实路径。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-012` 已完成并提交，门户工程、受控 `/api/platform/**` 代理、主体条、订单详情、账单与退款/赔付 SDK 基线可复用。本批继续保持 `portal-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-013` 只实现争议页面，不合并审计联查、通知联查或后续 ops / developer 页面；DoD 要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认争议提交页目标为提交争议、补充证据并跟踪裁决进度；核心模块为争议原因选择、证据上传、案件时间线、裁决结果区；关键字段为 `case_id`、`reason_code`、`evidence_hash`。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认争议流程从买方拒收或任一方 `open_case` 进入 `DisputeService`，证据包括交付回执、下载日志、对象 Hash、密钥信封、合同快照、沟通说明，裁决输出 `decision_code / penalty_code` 并影响退款、赔付、保证金、信誉和风险标记。
+  - `docs/数据库设计/接口协议/审计、证据链与回放接口协议正式版.md`：确认审计与证据链接口边界，争议页只展示证据哈希、审计线索与链路状态，不暴露对象存储真实路径；完整审计包导出与回放由后续审计页面承接。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`：确认路由 `/support/cases/new`，查看权限 `dispute.case.read`，主按钮权限 `dispute.case.create / dispute.evidence.upload`，裁决权限 `dispute.case.resolve` 属于平台侧高风险动作并要求 step-up / 审计提示。
+  - 通用边界文档、OpenAPI 冻结表、统一错误码字典、测试矩阵、本地环境与配置项文档、技术选型、总体架构与全集成基线：确认前端只调用 `platform-core` 正式 API；写接口必须携带 `X-Idempotency-Key`；敏感页面必须展示主体、角色、租户/组织、作用域；不得发明 SKU、状态或错误码语义。
+  - `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml`：确认争议创建、证据上传、裁决三个接口和 `DisputeCase / DisputeEvidence / DisputeResolution` schema 已冻结且两份同步；证据上传为 `multipart/form-data`。
+  - `packages/openapi/trade.yaml` 与 `docs/02-openapi/trade.yaml`：确认 `GET /api/v1/orders/{id}` 的 `relations.disputes` 可作为查看已有案件与裁决摘要的正式读取来源；当前没有单独 `GET /api/v1/cases/{id}` 读取接口。
+  - `packages/openapi/audit.yaml`、`iam.yaml` 及对应归档副本：确认主体上下文、审计线索与证据包边界；本批不提前实现审计导出。
+  - `apps/platform-core/src/modules/billing/**`、`apps/platform-core/src/modules/order/**`、`packages/sdk-ts/**`、`apps/portal-web/**`：确认后端已有争议状态机、证据对象存储、审计、通知 outbox、结算冻结与 step-up 占位校验；当前门户争议路由仍为 `PortalRoutePage` 脚手架，SDK billing domain 尚未封装争议接口和 multipart 上传。
+- 当前完成标准理解：
+  - 争议页必须读取 `auth/me` 与订单详情，显示主体、角色、租户/组织、作用域、订单/SKU、已有案件时间线、裁决摘要、request_id / tx_hash / 链状态 / 投影状态承接；未返回字段必须显式标注“未返回”。
+  - 发起争议与上传证据仅对具备买方争议权限的角色展示可执行态；无权限、缺订单、缺案件、后端错误和空时间线必须分别有明确状态。
+  - 表单必须使用 React Hook Form + Zod 校验，提交时经 SDK 透传 `X-Idempotency-Key`，重复点击期间禁用主按钮，后端错误码与 `request_id` 要回显。
+  - 证据上传必须使用正式 multipart 接口，页面只展示 `object_hash / evidence_hash` 与审计元数据，不展示 `object_uri` 或对象路径。
+  - 裁决区域必须展示 `decision_code`、`penalty_code`、`step_up_bound`、`idempotent_replay` 与审计留痕提示；平台裁决提交需要 step-up token，不把高风险动作做成假入口。
+- 实施计划：
+  1. 扩展 `packages/sdk-ts` 的 billing domain，新增争议创建、证据上传 multipart、裁决提交方法与单测，并在 HTTP client 中补支持 FormData 的受控请求路径。
+  2. 新增争议页面视图模型、Zod/RHF schema、权限判断、响应解包、错误格式化、幂等键生成和单元测试。
+  3. 替换 `/support/cases/new` 为正式 `DisputeWorkflowShell`，接入真实 API、权限态、空态、错态、加载态、幂等键、step-up、审计提示、案件时间线与裁决结果区。
+  4. 更新路由元数据、E2E smoke 与 OpenAPI 防漂移检查，执行前端/后端/契约验证、真实 curl + 浏览器 smoke、数据库回查和测试数据清理。
+
+### BATCH-287（待审批）
+- 任务：`WEB-013` 实现争议页面：创建案件、上传证据、查看裁决
+- 状态：待审批
+- 当前任务编号：`WEB-013`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-012` 已完成并作为本批基线。实现保持 `portal-web -> /api/platform -> platform-core` 边界，未新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 完成情况：
+  - `packages/sdk-ts` 扩展 Billing domain：新增 `createDisputeCase`、`uploadDisputeEvidence`、`resolveDisputeCase`，写操作统一透传 `X-Idempotency-Key`，裁决透传 `X-Step-Up-Token / X-Step-Up-Challenge-Id`，并在 `PlatformClient` 新增 `postFormData`，避免 multipart 被 JSON 化。
+  - `apps/portal-web/src/app/api/platform/[...path]/route.ts` 将非 GET/HEAD 代理体改为 `arrayBuffer()`，保留 multipart 二进制证据上传能力，不向浏览器暴露对象存储真实路径。
+  - 新增 `apps/portal-web/src/lib/dispute-workflow.ts` 与单测，覆盖争议创建、证据 FormData、裁决 step-up 校验、正式 V1 角色口径、案件选择、错误码格式化和幂等键生成。
+  - 新增 `DisputeWorkflowShell` 并替换 `/support/cases/new`：页面读取 `auth/me` 与 `GET /api/v1/orders/{id}` 的 `relations.disputes`，展示主体、角色、租户/组织、作用域、订单/SKU、案件时间线、裁决摘要、审计与链路承接；创建/证据/裁决表单均用 React Hook Form + Zod 校验。
+  - 证据上传区调用正式 multipart 接口，只展示 `evidence_id / object_type / evidence_hash / idempotent_replay`，显式隐藏 `object_uri`；裁决区显示 `decision_code / penalty_code / step_up_bound / idempotent_replay`，无 step-up 时由后端统一错误码拦截。
+  - 更新 `portal-routes` 与 Playwright smoke，`dispute_create` 现在显式列出 `auth/me`、订单详情、创建案件、上传证据、裁决提交五个 API 绑定。
+  - `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml` 为三个争议写接口补齐 `x-idempotency-key` 头声明，`scripts/check-openapi-schema.sh` 增加争议接口和 multipart schema 防漂移检查。
+- 验证：
+  - 前端 / SDK / 契约：
+    - `pnpm install`
+    - `pnpm --filter @datab/sdk-ts openapi:generate`
+    - `pnpm --filter @datab/sdk-ts typecheck`
+    - `pnpm --filter @datab/sdk-ts test`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm --filter @datab/portal-web build`
+    - `./scripts/check-openapi-schema.sh`
+    - 根级 `pnpm lint`
+    - 根级 `pnpm typecheck`
+    - 根级 `pnpm test`
+    - 根级 `pnpm build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 真实联调与 smoke：
+    - `./scripts/verify-local-stack.sh core`
+    - `./scripts/seed-local-iam-test-identities.sh`
+    - 宿主机方式启动 `platform-core`：`APP_MODE=local APP_PORT=8094 PROVIDER_MODE=mock KAFKA_BROKERS=127.0.0.1:9094 cargo run -p platform-core-bin`
+    - 临时种入 `FILE_STD` 订单 `30000000-0000-0000-0000-000000013001`，直接 `curl` 验证 `auth/me`、订单详情、`POST /api/v1/cases`、`POST /api/v1/cases/{id}/evidence`、缺 step-up 的 `POST /resolve` 失败、带 step-up 的正式裁决成功。
+    - 真实返回：`auth=local_test_user:buyer_operator:10000000-0000-0000-0000-000000000102`；创建案件返回 `current_status=opened / reason_code=delivery_failed`；证据上传返回 `object_hash` 且 `idempotent_replay=false`；缺 step-up 裁决返回 `400 IAM_UNAUTHORIZED`；正式裁决返回 `current_status=resolved / decision_code=refund_full / step_up_bound=true`。
+    - 数据库回查：`support.dispute_case(status=resolved, decision_code=refund_full, penalty_code=seller_full_refund)`、`support.evidence_object(object_type=delivery_receipt, object_hash IS NOT NULL)`、审计桥接 `audit_evidence_item_id / audit_evidence_manifest_id`、`audit.audit_event` 中 `dispute.case.create / dispute.evidence.upload / dispute.case.resolve` 及冻结/重算审计、`ops.outbox_event` 中 `dispute.created / dispute.resolved / notification.requested`。
+    - 生产构建方式启动 `portal-web`：`PLATFORM_CORE_BASE_URL=http://127.0.0.1:8094 pnpm --filter @datab/portal-web exec next start --hostname 127.0.0.1 --port 3113`，使用 Playwright + HttpOnly 本地会话 Cookie 在桌面 `1440x920` 与移动 `390x900` 打开 `/support/cases/new?order_id=...&case_id=...`，确认主体、订单状态、案件时间线、`resolved/refund_full`、上传证据区和平台裁决区可见。
+    - 浏览器请求回查：捕获 `6` 次 `/api/platform/**` 请求，`directForbiddenCalls=0`，未发现浏览器直连 `platform-core` 或受限系统。
+    - 清理：删除临时 MinIO 证据对象、`support.dispute_case / support.evidence_object / support.decision_record / ops.outbox_event / billing.settlement_record / payment.payment_intent / trade.order_main / catalog.product_sku / catalog.product / catalog.asset_version / catalog.data_asset`，业务残留回查均为 `0`；审计记录按 append-only 保留。
+- 验证结果：
+  - 所有前端、SDK、OpenAPI、后端、SQLx 与查询编译校验均通过；`pnpm test` 中 portal / console 仍出现既有 `127.0.0.1:8094` 未启动时的代理噪声，但对应 Playwright 用例最终通过，本批另行完成了启动真实 `platform-core` 的浏览器 smoke。
+  - `POST /api/v1/cases/{id}/evidence` 经 `/api/platform` 代理保留 multipart 二进制体，证据对象真实写入 MinIO 后已删除；页面没有展示 `object_uri`。
+  - 权限与 step-up：买方角色可创建案件与上传证据；平台风控结算角色裁决需要 step-up；缺 step-up 的 curl 返回统一错误码 `IAM_UNAUTHORIZED`。
+  - 临时业务测试数据已清理，审计事件、证据审计桥和访问审计按 append-only 规则保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-013`
+  - `页面说明书-V1-完整版.md`：8.3 争议提交页
+  - `业务流程图-V1-完整版.md`：5.3 争议处理流程
+  - `审计、证据链与回放接口协议正式版.md`：V1 审计 / 证据链接口边界
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`、`菜单树与路由表正式版.md`：争议读取、创建、证据上传、裁决权限与 step-up 边界
+  - `packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`、`packages/openapi/trade.yaml`、`docs/02-openapi/trade.yaml`、`packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`
+- 覆盖的任务清单条目：`WEB-013`
+- 未覆盖项：
+  - 无。`WEB-013` 要求的创建案件、上传证据、查看裁决、权限态/空态/错态/加载态、SDK/OpenAPI 绑定、真实 API、E2E / 浏览器 smoke、数据库回查、证据路径隐藏与日志留痕均已完成；审计导出/回放与通知联查继续由后续 WEB 任务承接。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-287` 无新增项。
+
 ### BATCH-281（计划中）
 - 任务：`WEB-007` 实现卖方上架中心：商品草稿、SKU 编辑、元信息、质量报告、模板绑定、提交审核
 - 状态：计划中

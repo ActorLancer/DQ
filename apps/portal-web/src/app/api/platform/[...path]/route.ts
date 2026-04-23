@@ -39,7 +39,7 @@ async function proxyRequest(
     body:
       request.method === "GET" || request.method === "HEAD"
         ? undefined
-        : await request.text(),
+        : await request.arrayBuffer(),
     cache: "no-store",
   });
 

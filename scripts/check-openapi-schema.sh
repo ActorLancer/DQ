@@ -424,7 +424,10 @@ billing_file="$OPENAPI_DIR/billing.yaml"
 for path in \
   "/api/v1/billing/{order_id}" \
   "/api/v1/refunds" \
-  "/api/v1/compensations"; do
+  "/api/v1/compensations" \
+  "/api/v1/cases" \
+  "/api/v1/cases/{id}/evidence" \
+  "/api/v1/cases/{id}/resolve"; do
   grep -q "$path" "$billing_file" || {
     echo "[error] $billing_file missing path: $path" >&2
     exit 1
@@ -442,6 +445,13 @@ for token in \
   "RefundExecutionResponse" \
   "CreateCompensationRequest" \
   "CompensationExecutionResponse" \
+  "CreateDisputeCaseRequest" \
+  "DisputeCaseResponse" \
+  "UploadDisputeEvidenceMultipartRequest" \
+  "DisputeEvidenceResponse" \
+  "ResolveDisputeCaseRequest" \
+  "DisputeResolutionResponse" \
+  "multipart/form-data" \
   "x-idempotency-key" \
   "x-step-up-token" \
   "x-step-up-challenge-id"; do

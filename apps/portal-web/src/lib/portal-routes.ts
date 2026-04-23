@@ -451,7 +451,13 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "dispute.case.read",
     primaryPermissions: ["dispute.case.create", "dispute.evidence.upload"],
     description: "争议创建、证据上传与裁决入口。",
-    apiBindings: ["/api/v1/cases", "/api/v1/cases/{id}/evidence"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "POST /api/v1/cases",
+      "POST /api/v1/cases/{id}/evidence",
+      "POST /api/v1/cases/{id}/resolve",
+    ],
   },
   {
     key: "developer_home",

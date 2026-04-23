@@ -54,6 +54,8 @@ export interface paths {
                     "x-step-up-token"?: string;
                     "x-step-up-challenge-id"?: string;
                     "x-request-id"?: string;
+                    /** @description Frontend generated idempotency key for dispute case creation. */
+                    "x-idempotency-key"?: string;
                 };
                 path?: never;
                 cookie?: never;
@@ -919,6 +921,8 @@ export interface paths {
                     "x-tenant-id": string;
                     "x-user-id"?: string;
                     "x-request-id"?: string;
+                    /** @description Frontend generated idempotency key; backend also replays identical content by hash. */
+                    "x-idempotency-key"?: string;
                 };
                 path: {
                     id: string;
@@ -1001,6 +1005,8 @@ export interface paths {
                     "x-role": string;
                     "x-user-id": string;
                     "x-request-id"?: string;
+                    /** @description Frontend generated idempotency key for high-risk dispute resolution. */
+                    "x-idempotency-key"?: string;
                     "x-step-up-token"?: string;
                     "x-step-up-challenge-id"?: string;
                 };

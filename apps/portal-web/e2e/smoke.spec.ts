@@ -143,4 +143,15 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
 
   await page.goto("/billing/refunds?preview=empty");
   await expect(page.getByText("请输入 order_id 与 case_id 后执行退款/赔付")).toBeVisible();
+
+  await page.goto("/support/cases/new?preview=forbidden");
+  await expect(page.getByText("争议页面权限态")).toBeVisible();
+  await expect(page.getByText("dispute.case.read", { exact: false }).first()).toBeVisible();
+
+  await page.goto("/support/cases/new?preview=empty");
+  await expect(page.getByText("请输入 order_id 创建或跟踪争议")).toBeVisible();
+
+  await page.goto("/support/cases/new?preview=error");
+  await expect(page.getByText("争议页错误态")).toBeVisible();
+  await expect(page.getByText("DISPUTE_STATUS_INVALID", { exact: false })).toBeVisible();
 });

@@ -51,6 +51,12 @@ paths:
           required: false
           schema:
             type: string
+        - in: header
+          name: x-idempotency-key
+          required: false
+          schema:
+            type: string
+          description: Frontend generated idempotency key for dispute case creation.
       requestBody:
         required: true
         content:
@@ -767,6 +773,12 @@ paths:
           required: false
           schema:
             type: string
+        - in: header
+          name: x-idempotency-key
+          required: false
+          schema:
+            type: string
+          description: Frontend generated idempotency key; backend also replays identical content by hash.
       requestBody:
         required: true
         content:
@@ -829,6 +841,12 @@ paths:
           required: false
           schema:
             type: string
+        - in: header
+          name: x-idempotency-key
+          required: false
+          schema:
+            type: string
+          description: Frontend generated idempotency key for high-risk dispute resolution.
         - in: header
           name: x-step-up-token
           required: false

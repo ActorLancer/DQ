@@ -111,6 +111,18 @@ export class PlatformClient {
     );
   }
 
+  async postFormData<TResponse, TQuery = Record<string, unknown>>(
+    pathTemplate: string,
+    options: RequestOptions<TQuery, FormData> = {},
+  ): Promise<TResponse> {
+    return this.requestBody<TResponse, TQuery, FormData>(
+      pathTemplate,
+      "POST",
+      options,
+      "form-data",
+    );
+  }
+
   private async requestJson<
     TResponse,
     TQuery = Record<string, unknown>,
@@ -119,6 +131,24 @@ export class PlatformClient {
     pathTemplate: string,
     method: string,
     options: RequestOptions<TQuery, TBody>,
+  ): Promise<TResponse> {
+    return this.requestBody<TResponse, TQuery, TBody>(
+      pathTemplate,
+      method,
+      options,
+      "json",
+    );
+  }
+
+  private async requestBody<
+    TResponse,
+    TQuery = Record<string, unknown>,
+    TBody = unknown,
+  >(
+    pathTemplate: string,
+    method: string,
+    options: RequestOptions<TQuery, TBody>,
+    bodyMode: "json" | "form-data",
   ): Promise<TResponse> {
     const headers = new Headers(this.defaultHeaders);
     const requestHeaders = new Headers(options.headers);
@@ -139,10 +169,25 @@ export class PlatformClient {
     };
 
     if (options.body !== undefined) {
+      if (bodyMode === "form-data") {
+        init.body = options.body as BodyInit;
+      } else {
+        if (!headers.has("content-type")) {
+          headers.set("content-type", "application/json");
+        }
+        init.body = JSON.stringify(options.body);
+      }
+    }
+
+    if (bodyMode === "form-data" && headers.has("content-type")) {
+      const contentType = headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        headers.delete("content-type");
+      }
+    } else if (options.body !== undefined && bodyMode === "json") {
       if (!headers.has("content-type")) {
         headers.set("content-type", "application/json");
       }
-      init.body = JSON.stringify(options.body);
     }
 
     const response = await this.fetchImpl(url, init);

@@ -1,5 +1,10 @@
 import { PlatformClient } from "../core/http";
-import type { PathParams, RequestBody, SuccessBody } from "../core/openapi";
+import type {
+  MultipartBody,
+  PathParams,
+  RequestBody,
+  SuccessBody,
+} from "../core/openapi";
 import type { paths as BillingPaths } from "../generated/billing";
 
 type GetBillingOrderOperation = NonNullable<
@@ -11,6 +16,15 @@ type ExecuteRefundOperation = NonNullable<
 type ExecuteCompensationOperation = NonNullable<
   BillingPaths["/api/v1/compensations"]["post"]
 >;
+type CreateDisputeCaseOperation = NonNullable<
+  BillingPaths["/api/v1/cases"]["post"]
+>;
+type UploadDisputeEvidenceOperation = NonNullable<
+  BillingPaths["/api/v1/cases/{id}/evidence"]["post"]
+>;
+type ResolveDisputeCaseOperation = NonNullable<
+  BillingPaths["/api/v1/cases/{id}/resolve"]["post"]
+>;
 
 export type BillingOrderDetailResponse =
   SuccessBody<GetBillingOrderOperation>;
@@ -20,6 +34,18 @@ export type ExecuteCompensationRequest =
   RequestBody<ExecuteCompensationOperation>;
 export type ExecuteCompensationResponse =
   SuccessBody<ExecuteCompensationOperation>;
+export type CreateDisputeCaseRequest =
+  RequestBody<CreateDisputeCaseOperation>;
+export type CreateDisputeCaseResponse =
+  SuccessBody<CreateDisputeCaseOperation>;
+export type UploadDisputeEvidenceMultipartRequest =
+  MultipartBody<UploadDisputeEvidenceOperation>;
+export type UploadDisputeEvidenceResponse =
+  SuccessBody<UploadDisputeEvidenceOperation>;
+export type ResolveDisputeCaseRequest =
+  RequestBody<ResolveDisputeCaseOperation>;
+export type ResolveDisputeCaseResponse =
+  SuccessBody<ResolveDisputeCaseOperation>;
 
 export type BillingMutationOptions = {
   idempotencyKey: string;
@@ -65,6 +91,46 @@ export function createBillingClient(client: PlatformClient) {
         ExecuteCompensationResponse,
         ExecuteCompensationRequest
       >("/api/v1/compensations", {
+        body,
+        headers: mutationHeaders(options),
+      });
+    },
+    createDisputeCase(
+      body: CreateDisputeCaseRequest,
+      options: BillingMutationOptions,
+    ) {
+      return client.postJson<CreateDisputeCaseResponse, CreateDisputeCaseRequest>(
+        "/api/v1/cases",
+        {
+          body,
+          headers: mutationHeaders(options),
+        },
+      );
+    },
+    uploadDisputeEvidence(
+      pathParams: PathParams<UploadDisputeEvidenceOperation>,
+      body: FormData,
+      options: BillingMutationOptions,
+    ) {
+      return client.postFormData<UploadDisputeEvidenceResponse>(
+        "/api/v1/cases/{id}/evidence",
+        {
+          pathParams,
+          body,
+          headers: mutationHeaders(options),
+        },
+      );
+    },
+    resolveDisputeCase(
+      pathParams: PathParams<ResolveDisputeCaseOperation>,
+      body: ResolveDisputeCaseRequest,
+      options: BillingMutationOptions,
+    ) {
+      return client.postJson<
+        ResolveDisputeCaseResponse,
+        ResolveDisputeCaseRequest
+      >("/api/v1/cases/{id}/resolve", {
+        pathParams,
         body,
         headers: mutationHeaders(options),
       });

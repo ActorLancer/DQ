@@ -24,6 +24,14 @@ export type RequestBody<TOperation> = TOperation extends {
   ? TBody
   : never;
 
+export type MultipartBody<TOperation> = TOperation extends {
+  requestBody: {
+    content: { "multipart/form-data": infer TBody };
+  };
+}
+  ? TBody
+  : never;
+
 export type QueryParams<TOperation> = TOperation extends {
   parameters: { query?: infer TQuery };
 }

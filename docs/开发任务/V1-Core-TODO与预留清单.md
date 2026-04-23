@@ -79,6 +79,7 @@
 
 ## 批次更新记录
 
+- `BATCH-287`（`WEB-013`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；争议提交页已真实接入 `GET /api/v1/orders/{id}`、`POST /api/v1/cases`、`POST /api/v1/cases/{id}/evidence`、`POST /api/v1/cases/{id}/resolve`，覆盖案件创建、证据 multipart 上传、裁决查看与平台 step-up 提交入口；写操作统一透传 `X-Idempotency-Key`，证据页面隐藏对象真实路径，并通过桌面/移动浏览器 smoke、真实 API、数据库/审计/outbox 回查、MinIO 证据对象清理与前端不直连受限系统验证。
 - `BATCH-286`（`WEB-012`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；账单中心和退款/赔付处理页已真实接入 `GET /api/v1/billing/{order_id}`、`POST /api/v1/refunds`、`POST /api/v1/compensations`，覆盖幂等键、step-up、正式角色口径、权限/空态/错态/加载态、桌面/移动浏览器 smoke、审计回查、临时业务数据清理与前端不直连受限系统验证。
 - `BATCH-280`（`WEB-006`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；卖方主页已真实接入 `GET /api/v1/sellers/{orgId}/profile` 与 `seller_profile_featured` 推荐位，补齐 `SellerProfile` 的认证标签、在售商品与信誉摘要契约，覆盖权限态、空态、错态、桌面/移动浏览器 smoke、审计回查与前端不直连受限系统验证。
 - `BATCH-281`（`WEB-007`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；卖方上架中心已真实接入商品列表、草稿创建/编辑、SKU 创建、元信息、质量报告、模板绑定与提交审核 API，写操作通过 `X-Idempotency-Key` 留痕，覆盖 8 个标准 SKU、权限/空态/错态/加载态、桌面/移动浏览器 smoke、数据库回查与业务测试数据清理。

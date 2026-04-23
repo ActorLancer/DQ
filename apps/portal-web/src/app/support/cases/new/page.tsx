@@ -1,5 +1,12 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { DisputeWorkflowShell } from "@/components/portal/dispute-workflow-shell";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
-export default function DisputeCreatePage() {
-  return <PortalRoutePage routeKey="dispute_create" />;
+export default async function DisputeCreatePage() {
+  const session = await readPortalSession();
+  return (
+    <DisputeWorkflowShell
+      sessionMode={session.mode}
+      initialSubject={readPortalSessionPreview(session)}
+    />
+  );
 }
