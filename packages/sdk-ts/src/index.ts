@@ -12,6 +12,7 @@ import { createTradeClient } from "./domains/trade";
 export type { PlatformClientConfig, RequestOptions } from "./core/http";
 export { PlatformApiError, PlatformClient } from "./core/http";
 export type {
+  HeaderParams,
   MultipartBody,
   PathParams,
   QueryParams,

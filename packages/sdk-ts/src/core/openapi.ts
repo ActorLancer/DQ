@@ -43,3 +43,9 @@ export type PathParams<TOperation> = TOperation extends {
 }
   ? NonNullable<TPath>
   : never;
+
+export type HeaderParams<TOperation> = TOperation extends {
+  parameters: { header?: infer THeader };
+}
+  ? NonNullable<THeader>
+  : never;

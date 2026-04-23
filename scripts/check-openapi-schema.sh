@@ -162,6 +162,9 @@ done
 for token in \
   "AUDIT_REPLAY_DRY_RUN_ONLY" \
   "AUDIT_LEGAL_HOLD_ACTIVE" \
+  "x-idempotency-key" \
+  "x-step-up-token" \
+  "x-step-up-challenge-id" \
   "state_replay" \
   "execution_policy" \
   "audit.package.export" \

@@ -102,7 +102,17 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "audit.trace.read",
     primaryPermissions: [],
     description: "按订单号、request_id、tx_hash 等主键联查全链路事实。",
-    apiBindings: ["/api/v1/audit/traces", "/api/v1/audit/orders/{id}"],
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "GET /api/v1/audit/traces",
+      "GET /api/v1/audit/orders/{id}",
+      "GET /api/v1/developer/trace",
+      "GET /api/v1/ops/trade-monitor/orders/{orderId}",
+      "GET /api/v1/ops/trade-monitor/orders/{orderId}/checkpoints",
+      "GET /api/v1/ops/external-facts",
+      "GET /api/v1/ops/projection-gaps",
+      "POST /api/v1/audit/packages/export",
+    ],
   },
   {
     key: "audit_package_export",
@@ -112,7 +122,10 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "audit.event.read",
     primaryPermissions: ["audit.package.export"],
     description: "证据包导出、导出留痕与高风险提示入口。",
-    apiBindings: ["/api/v1/audit/packages/export"],
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "POST /api/v1/audit/packages/export",
+    ],
   },
   {
     key: "consistency_trace",

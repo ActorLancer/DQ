@@ -10,11 +10,16 @@ export type ConsoleSession =
       mode: "bearer";
       accessToken: string;
       label?: string;
+      userId?: string;
+      tenantId?: string;
+      role?: string;
     }
   | {
       mode: "local";
       loginId: string;
       role: string;
+      userId?: string;
+      tenantId?: string;
     };
 
 export async function readConsoleSession(): Promise<ConsoleSession> {
@@ -31,6 +36,9 @@ export async function readConsoleSession(): Promise<ConsoleSession> {
         mode: "bearer",
         accessToken: decoded.accessToken,
         label: typeof decoded.label === "string" ? decoded.label : undefined,
+        userId: typeof decoded.userId === "string" ? decoded.userId : undefined,
+        tenantId: typeof decoded.tenantId === "string" ? decoded.tenantId : undefined,
+        role: typeof decoded.role === "string" ? decoded.role : undefined,
       };
     }
     if (
@@ -42,6 +50,8 @@ export async function readConsoleSession(): Promise<ConsoleSession> {
         mode: "local",
         loginId: decoded.loginId,
         role: decoded.role,
+        userId: typeof decoded.userId === "string" ? decoded.userId : undefined,
+        tenantId: typeof decoded.tenantId === "string" ? decoded.tenantId : undefined,
       };
     }
   } catch {
@@ -76,6 +86,9 @@ export function buildSessionHeaders(session: ConsoleSession): HeadersInit {
   if (session.mode === "bearer") {
     return {
       authorization: `Bearer ${session.accessToken}`,
+      ...(session.userId ? { "x-user-id": session.userId } : {}),
+      ...(session.tenantId ? { "x-tenant-id": session.tenantId } : {}),
+      ...(session.role ? { "x-role": session.role } : {}),
     };
   }
 
@@ -83,6 +96,8 @@ export function buildSessionHeaders(session: ConsoleSession): HeadersInit {
     return {
       "x-login-id": session.loginId,
       "x-role": session.role,
+      ...(session.userId ? { "x-user-id": session.userId } : {}),
+      ...(session.tenantId ? { "x-tenant-id": session.tenantId } : {}),
     };
   }
 

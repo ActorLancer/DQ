@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { AuditTraceShell } from "@/components/console/audit-trace-shell";
 
 export default function AuditTracePage() {
-  return <ConsoleRoutePage routeKey="audit_trace" />;
+  return <AuditTraceShell />;
 }

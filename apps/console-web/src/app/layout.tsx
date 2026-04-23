@@ -44,16 +44,16 @@ export default async function RootLayout({
         : "Guest";
 
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className="overflow-x-hidden">
       <body
-        className={`${sans.variable} ${mono.variable} min-h-screen bg-[var(--page)] font-sans text-[var(--ink-strong)] antialiased`}
+        className={`${sans.variable} ${mono.variable} min-h-screen overflow-x-hidden bg-[var(--page)] font-sans text-[var(--ink-strong)] antialiased`}
       >
         <AppProviders>
           <div className="mx-auto flex min-h-screen w-full max-w-[1720px] flex-col gap-4 px-4 py-4 lg:flex-row lg:px-6">
             <aside className="w-full shrink-0 lg:sticky lg:top-4 lg:w-[340px] lg:self-start">
               <ConsoleNavigation />
             </aside>
-            <main className="flex-1 space-y-4">
+            <main className="min-w-0 flex-1 space-y-4">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
                 <div className="flex-1">
                   <IdentityStrip sessionLabel={sessionLabel} />

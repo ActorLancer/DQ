@@ -10,6 +10,15 @@ test("console home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/ops/audit/trace?preview=empty");
   await expect(page.getByText("空态预演")).toBeVisible();
 
+  await page.goto("/ops/audit/trace");
+  await expect(
+    page.getByText("审计事件、链回执、外部事实和证据包导出在控制台闭环。"),
+  ).toBeVisible();
+  await expect(page.getByText("WEB-014")).toBeVisible();
+
+  await page.goto("/ops/audit/packages?preview=forbidden");
+  await expect(page.getByText("权限态预演")).toBeVisible();
+
   await page.goto("/developer/apps?preview=forbidden");
   await expect(page.getByText("权限态预演")).toBeVisible();
 

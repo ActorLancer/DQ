@@ -1,5 +1,5 @@
 import { PlatformClient } from "../core/http";
-import type { QueryParams, SuccessBody } from "../core/openapi";
+import type { PathParams, QueryParams, SuccessBody } from "../core/openapi";
 import type { paths as OpsPaths } from "../generated/ops";
 
 type HealthLiveOperation = OpsPaths["/health/live"]["get"];
@@ -9,6 +9,14 @@ type DeveloperTraceOperation = OpsPaths["/api/v1/developer/trace"]["get"];
 type OutboxOperation = OpsPaths["/api/v1/ops/outbox"]["get"];
 type ObservabilityOverviewOperation =
   OpsPaths["/api/v1/ops/observability/overview"]["get"];
+type TradeMonitorOverviewOperation =
+  OpsPaths["/api/v1/ops/trade-monitor/orders/{orderId}"]["get"];
+type TradeMonitorCheckpointsOperation =
+  OpsPaths["/api/v1/ops/trade-monitor/orders/{orderId}/checkpoints"]["get"];
+type ExternalFactsOperation = OpsPaths["/api/v1/ops/external-facts"]["get"];
+type ProjectionGapsOperation = OpsPaths["/api/v1/ops/projection-gaps"]["get"];
+type ConsistencyOperation =
+  OpsPaths["/api/v1/ops/consistency/{refType}/{refId}"]["get"];
 
 export type HealthLiveResponse = SuccessBody<HealthLiveOperation>;
 export type HealthReadyResponse = SuccessBody<HealthReadyOperation>;
@@ -19,6 +27,22 @@ export type OutboxQuery = QueryParams<OutboxOperation>;
 export type OutboxResponse = SuccessBody<OutboxOperation>;
 export type ObservabilityOverviewResponse =
   SuccessBody<ObservabilityOverviewOperation>;
+export type TradeMonitorOverviewPath =
+  PathParams<TradeMonitorOverviewOperation>;
+export type TradeMonitorOverviewResponse =
+  SuccessBody<TradeMonitorOverviewOperation>;
+export type TradeMonitorCheckpointsPath =
+  PathParams<TradeMonitorCheckpointsOperation>;
+export type TradeMonitorCheckpointsQuery =
+  QueryParams<TradeMonitorCheckpointsOperation>;
+export type TradeMonitorCheckpointsResponse =
+  SuccessBody<TradeMonitorCheckpointsOperation>;
+export type ExternalFactsQuery = QueryParams<ExternalFactsOperation>;
+export type ExternalFactsResponse = SuccessBody<ExternalFactsOperation>;
+export type ProjectionGapsQuery = QueryParams<ProjectionGapsOperation>;
+export type ProjectionGapsResponse = SuccessBody<ProjectionGapsOperation>;
+export type ConsistencyPath = PathParams<ConsistencyOperation>;
+export type ConsistencyResponse = SuccessBody<ConsistencyOperation>;
 
 export function createOpsClient(client: PlatformClient) {
   return {
@@ -50,6 +74,50 @@ export function createOpsClient(client: PlatformClient) {
     getObservabilityOverview() {
       return client.getJson<ObservabilityOverviewResponse>(
         "/api/v1/ops/observability/overview",
+      );
+    },
+    getTradeMonitorOverview(path: TradeMonitorOverviewPath) {
+      return client.getJson<TradeMonitorOverviewResponse>(
+        "/api/v1/ops/trade-monitor/orders/{orderId}",
+        {
+          pathParams: path,
+        },
+      );
+    },
+    listTradeMonitorCheckpoints(
+      path: TradeMonitorCheckpointsPath,
+      query: TradeMonitorCheckpointsQuery = {},
+    ) {
+      return client.getJson<
+        TradeMonitorCheckpointsResponse,
+        TradeMonitorCheckpointsQuery
+      >("/api/v1/ops/trade-monitor/orders/{orderId}/checkpoints", {
+        pathParams: path,
+        query,
+      });
+    },
+    listExternalFacts(query: ExternalFactsQuery = {}) {
+      return client.getJson<ExternalFactsResponse, ExternalFactsQuery>(
+        "/api/v1/ops/external-facts",
+        {
+          query,
+        },
+      );
+    },
+    listProjectionGaps(query: ProjectionGapsQuery = {}) {
+      return client.getJson<ProjectionGapsResponse, ProjectionGapsQuery>(
+        "/api/v1/ops/projection-gaps",
+        {
+          query,
+        },
+      );
+    },
+    getConsistency(path: ConsistencyPath) {
+      return client.getJson<ConsistencyResponse>(
+        "/api/v1/ops/consistency/{refType}/{refId}",
+        {
+          pathParams: path,
+        },
       );
     },
   };

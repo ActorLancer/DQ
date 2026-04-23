@@ -66,8 +66,21 @@ export async function connectConsoleSession(
   );
 
   try {
-    await sdk.iam.getAuthMe();
-    await writeConsoleSession(session);
+    const auth = await sdk.iam.getAuthMe();
+    const verifiedSession: Exclude<ConsoleSession, { mode: "guest" }> =
+      session.mode === "bearer"
+        ? {
+            ...session,
+            userId: auth.data.user_id ?? undefined,
+            tenantId: auth.data.tenant_id ?? auth.data.org_id ?? undefined,
+            role: auth.data.roles[0],
+          }
+        : {
+            ...session,
+            userId: auth.data.user_id ?? undefined,
+            tenantId: auth.data.tenant_id ?? auth.data.org_id ?? undefined,
+          };
+    await writeConsoleSession(verifiedSession);
     revalidatePath("/", "layout");
 
     return {

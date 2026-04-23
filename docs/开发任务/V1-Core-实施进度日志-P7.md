@@ -378,6 +378,106 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-287` 无新增项。
 
+### BATCH-288（计划中）
+- 任务：`WEB-014` 实现审计联查页：按订单号查看审计事件、证据对象、链回执、外部事实
+- 状态：计划中
+- 说明：本批将控制台 `/ops/audit/trace` 与证据包导出入口从路由脚手架升级为正式审计联查页面。页面必须真实读取当前主体与权限上下文，通过 `packages/sdk-ts` 调用 `platform-core` 的 `GET /api/v1/audit/traces`、`GET /api/v1/audit/orders/{id}`、`GET /api/v1/developer/trace`、`GET /api/v1/ops/trade-monitor/orders/{orderId}`、`GET /api/v1/ops/external-facts`、`GET /api/v1/ops/projection-gaps` 与 `POST /api/v1/audit/packages/export`；导出动作必须携带 `X-Idempotency-Key` 与 step-up 头，页面不得展示对象存储真实路径。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-013` 已完成并提交，`console-web` 工程、受控 `/api/platform/**` 代理、主体条、争议/账单/交付/订单页面基线可复用。本批继续保持 `console-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-014` 只实现审计联查页，不合并通知联查、ops 总览或开发者完整页面；DoD 要求页面可访问、空态/错态/权限态可用、接口契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认审计联查页按 `order_id / request_id / tx_hash / case_id / delivery_id` 查询，并展示订单状态、链事件、账单事件、交付记录、审计事件、错误码；证据包导出页必须导出主体摘要、商品/合同快照、交付回执、下载日志、裁决结果和链摘要，且下载类页面不得暴露真实对象路径。
+  - `docs/数据库设计/接口协议/审计、证据链与回放接口协议正式版.md`：确认 V1 正式接口为 `audit/traces`、`audit/evidence-manifests/{id}`、`audit/packages/export`、replay、legal hold 与 anchor batches；导出、原文查看、回放等敏感动作必须有权限、step-up 与审计留痕。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`：确认 `/ops/audit/trace` 查看权限 `audit.trace.read`，证据包导出入口 `/ops/audit/packages` 查看/主动作权限为 `audit.event.read / audit.package.export`，导出属于高风险动作并要求人工确认 / step-up。
+  - 通用边界文档、OpenAPI 冻结表、统一错误码字典、测试矩阵、本地环境、配置项、技术选型、总体架构与全集成基线：确认前端只调用 `platform-core` 正式 API；写接口必须携带 `X-Idempotency-Key`；敏感页面展示主体、角色、租户、作用域；链页面展示 `request_id / tx_hash / 链状态 / 投影状态`；不得发明 SKU、状态或错误码语义。
+  - `docs/05-test-cases/audit-consistency-cases.md`、`delivery-cases.md`、`payment-billing-cases.md`、`notification-cases.md`：确认审计联查、证据包导出、贸易监控、外部事实、投影差异、开发者 trace 与数据库回查的验收点。
+  - `packages/openapi/audit.yaml`、`ops.yaml`、`iam.yaml` 与对应 `docs/02-openapi/*.yaml`：确认审计联查、证据导出、开发者 trace、贸易监控、外部事实、投影差异和主体上下文 schema；两份 OpenAPI 副本当前同步。
+  - `apps/platform-core/src/modules/audit/**`、`apps/platform-core/src/modules/iam/**`、`packages/sdk-ts/**`、`apps/console-web/**`：确认后端已有正式审计/ops 路由、权限矩阵、step-up 头读取、导出返回结构和控制台路由脚手架；SDK audit / ops domain 仍需补齐当前页面用到的封装方法。
+- 当前完成标准理解：
+  - 审计联查页必须真实支持 `order_id / request_id / tx_hash / case_id / delivery_id` 五类查询键，并按正式 API 返回展示审计事件、证据对象、链回执、外部事实、投影差异、订单/交付/账单事件分组与错误码。
+  - 页面必须展示当前主体、角色、租户/组织、作用域；无权限、空结果、后端错误、加载中和高风险导出缺 step-up 都必须有明确状态。
+  - 证据包导出必须使用 React Hook Form + Zod 校验，前端生成并透传 `X-Idempotency-Key`，传递 `X-Step-Up-Token` 或等价 challenge，重复点击期间禁用主按钮，成功后仅展示 package / manifest / digest / count 等元信息，不展示 `storage_uri`。
+  - 长列表必须使用分页或虚拟滚动策略；审计事件表需要排序/筛选/空态/加载态，不能只渲染静态样例。
+  - 页面与 E2E / smoke 必须证明浏览器只访问 `/api/platform/**`，SDK 与 OpenAPI 契约一致，前端没有直连受限系统或对象存储。
+- 实施计划：
+  1. 扩展 `packages/sdk-ts` 的 audit / ops domain，补齐审计订单、证据包导出、贸易监控、外部事实、投影差异与链路联查 SDK 方法及单测。
+  2. 新增控制台审计联查视图模型、Zod/RHF schema、权限判断、查询键映射、错误码格式化、证据对象隐藏、幂等键生成与单元测试。
+  3. 替换 `/ops/audit/trace` 与 `/ops/audit/packages` 为正式业务组件，接入真实 API、TanStack Query/Table/Virtual、权限态、空态、错态、加载态、step-up、导出结果和审计留痕提示。
+  4. 更新 OpenAPI 防漂移检查、控制台路由元数据和 Playwright smoke，执行前端/后端/契约验证、真实 curl + 浏览器 smoke、数据库回查和测试数据清理。
+
+### BATCH-288（待审批）
+- 任务：`WEB-014` 实现审计联查页：按订单号查看审计事件、证据对象、链回执、外部事实
+- 状态：待审批
+- 当前任务编号：`WEB-014`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-013` 已完成并作为本批基线。实现保持 `console-web -> /api/platform -> platform-core` 边界，未新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 完成情况：
+  - `packages/sdk-ts` 扩展 Audit / Ops domain：新增 `getOrderAudit`、`exportPackage`、`listAnchorBatches`、`getTradeMonitorOverview`、`listTradeMonitorCheckpoints`、`listExternalFacts`、`listProjectionGaps`、`getConsistency`，证据包导出正式透传 `X-Idempotency-Key`、`X-Step-Up-Token / X-Step-Up-Challenge-Id`。
+  - `packages/openapi/audit.yaml` 与 `docs/02-openapi/audit.yaml` 同步为 `POST /api/v1/audit/packages/export` 补齐幂等与 step-up 头声明，`scripts/check-openapi-schema.sh` 增加防漂移 token 检查；生成后的 `packages/sdk-ts/src/generated/audit.ts` 已更新。
+  - 新增 `apps/console-web/src/lib/audit-trace.ts` 与单测，覆盖五类联查键映射、正式 V1 审计角色、developer trace 权限、导出 step-up 校验、证据对象 `storage_uri` 隐藏、审计事件分组、幂等键生成和错误码格式化。
+  - 新增 `AuditTraceShell` / `AuditPackageExportShell` 并替换 `/ops/audit/trace`、`/ops/audit/packages`：页面读取 `auth/me`，展示主体、角色、租户/组织、作用域，支持 `order_id / request_id / tx_hash / case_id / delivery_id` 联查，展示订单状态、审计事件、链回执、外部事实、投影差异、生命周期 checkpoint、证据对象和证据包导出结果。
+  - 审计事件长列表使用 TanStack Query + TanStack Table + TanStack Virtual，支持事件组筛选、时间排序、加载态、空态、错态与权限态；证据包导出表单使用 React Hook Form + Zod，导出结果只显示 package / manifest / digest / count，不展示真实对象路径。
+  - 控制台会话修正：本地 / Bearer 会话在 `auth/me` 验证后保存并透传 `user_id / tenant_id / role`，使高风险审计导出经 `/api/platform/**` 代理时满足后端 `x-user-id` 要求，不依赖人工补头。
+  - `console-routes` 与 Playwright smoke 已更新，`audit_trace` 的 API 绑定显式列出 `auth/me`、audit、developer trace、trade monitor、external facts、projection gaps 和 package export；布局补 `min-w-0 / overflow-x-hidden`，确保桌面和移动页面级响应式加载不被长表格污染。
+- 验证：
+  - 前端 / SDK / 契约：
+    - `pnpm install`
+    - `pnpm --filter @datab/sdk-ts openapi:generate`
+    - `pnpm --filter @datab/sdk-ts typecheck`
+    - `pnpm --filter @datab/sdk-ts test`
+    - `pnpm --filter @datab/console-web lint`
+    - `pnpm --filter @datab/console-web typecheck`
+    - `pnpm --filter @datab/console-web test:unit`
+    - `pnpm --filter @datab/console-web test:e2e`
+    - `pnpm --filter @datab/console-web build`
+    - `./scripts/check-openapi-schema.sh`
+    - 根级 `pnpm lint`
+    - 根级 `pnpm typecheck`
+    - 根级 `pnpm test`
+    - 根级 `pnpm build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 真实联调与 smoke：
+    - `./scripts/verify-local-stack.sh core`
+    - `./scripts/seed-local-iam-test-identities.sh`
+    - 宿主机方式启动 `platform-core`：`APP_MODE=local APP_PORT=8094 APP_HOST=127.0.0.1 PROVIDER_MODE=mock KAFKA_BROKERS=127.0.0.1:9094 cargo run -p platform-core-bin`
+    - 使用 `auditor.admin@luna.local / platform_audit_security` 本地控制台主体直连 `platform-core` 验证：
+      - `GET /api/v1/auth/me`
+      - `GET /api/v1/audit/traces?order_id=0b0c5dce-3fca-420e-b416-2433a1552e3e`
+      - `GET /api/v1/audit/orders/0b0c5dce-3fca-420e-b416-2433a1552e3e`
+      - `GET /api/v1/developer/trace?tx_hash=0xaud0241776853622420`
+      - `GET /api/v1/ops/trade-monitor/orders/0b0c5dce-3fca-420e-b416-2433a1552e3e`
+      - `GET /api/v1/ops/external-facts?order_id=0b0c5dce-3fca-420e-b416-2433a1552e3e`
+      - `GET /api/v1/ops/projection-gaps?order_id=0b0c5dce-3fca-420e-b416-2433a1552e3e`
+      - `POST /api/v1/audit/packages/export` 缺 step-up 失败、带 `X-Step-Up-Token` 与 `X-Idempotency-Key` 成功。
+    - 生产构建方式启动 `console-web`：`PLATFORM_CORE_BASE_URL=http://127.0.0.1:8094 pnpm --filter @datab/console-web exec next start --hostname 127.0.0.1 --port 3114`。
+    - 经控制台 `/api/platform/**` 代理验证 `auth/me`、`audit/traces` 与证据包导出缺 step-up 错误，确认代理已透传本地会话 `user_id / tenant_id / role`，错误收敛为 step-up 缺失而不是主体缺失。
+    - 使用 Playwright + `datab_console_session` HttpOnly Cookie 在桌面 `1440x980` 与移动 `390x900` 打开 `/ops/audit/trace`，输入订单 `0b0c5dce-3fca-420e-b416-2433a1552e3e` 后确认 `buyer_locked`、`anchored`、`fabric_submit_receipt`、`projection_lag`、链回执、外部事实、投影差异可见；浏览器捕获 `8` 个 `/api/platform/**` 请求，`directForbiddenCount=0`，`documentElement` 桌面 / 移动横向检查均通过。
+    - 数据库回查：
+      - `audit.audit_event` 中该订单审计事件与 `audit.package.export` 导出事件可查。
+      - `audit.evidence_package / audit.evidence_manifest` 中导出 package / manifest 各 `1` 条，`audit.access_audit` 与 `ops.system_log` 均有 `request_id=web014-export-success` 记录。
+      - `trade.order_main` 返回 `status=buyer_locked`、`payment_status=paid`、`proof_commit_state=anchored`、`external_fact_status=confirmed`、`reconcile_status=matched`。
+      - `ops.external_fact_receipt` 返回 `fabric_submit_receipt`，`ops.chain_projection_gap` 返回 `projection_lag/open`，`ops.trade_lifecycle_checkpoint` 返回对应 lifecycle checkpoint。
+- 验证结果：
+  - 所有前端、SDK、OpenAPI、后端、SQLx 与查询编译校验均通过；`pnpm test` 中 portal / console 的 Playwright WebServer 仍会打印既有 `127.0.0.1:8094` 未启动时的代理噪声，但对应 E2E 用例最终通过，本批另行完成了启动真实 `platform-core` 的控制台浏览器 smoke。
+  - 权限与 step-up：`platform_audit_security` 可读审计联查与 developer trace；证据包导出缺 step-up 返回正式错误，带 step-up 与幂等键成功；经控制台代理时已透传本地主体 `x-user-id / x-tenant-id / x-role`。
+  - 前端边界：浏览器真实请求只落 `/api/platform/**`，未发现直连 `platform-core`、`PostgreSQL`、`Kafka`、`OpenSearch`、`Redis`、`Fabric` 或 `MinIO`；页面导出结果隐藏 `storage_uri`。
+  - 证据包导出产生的 package、manifest、MinIO 对象与对应审计记录作为 append-only 审计 artifact 保留；本批未创建需要清理的业务订单 / 争议 / 账单临时数据。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-014`
+  - `页面说明书-V1-完整版.md`：10.1 审计联查页、10.2 证据包导出页、全局页面规范
+  - `审计、证据链与回放接口协议正式版.md`：V1 审计联查、证据包导出、step-up 与审计留痕边界
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`、`菜单树与路由表正式版.md`：审计联查、证据包导出、developer trace、ops trade monitor / external facts / projection gaps 权限边界
+  - `audit-consistency-cases.md`、`delivery-cases.md`、`payment-billing-cases.md`：审计联查、证据导出、链回执、外部事实、投影差异、数据库回查验收点
+  - `packages/openapi/audit.yaml`、`ops.yaml`、`iam.yaml` 与 `docs/02-openapi/*.yaml`
+- 覆盖的任务清单条目：`WEB-014`
+- 未覆盖项：
+  - 无。`WEB-014` 要求的按订单号查看审计事件、证据对象、链回执、外部事实、权限态/空态/错态/加载态、SDK/OpenAPI 绑定、真实 API、E2E / 浏览器 smoke、数据库回查、证据路径隐藏与日志留痕均已完成；通知联查、ops 页面和开发者页面完整业务细节继续由后续 WEB task 承接。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-288` 无新增项。
+
 ### BATCH-281（计划中）
 - 任务：`WEB-007` 实现卖方上架中心：商品草稿、SKU 编辑、元信息、质量报告、模板绑定、提交审核
 - 状态：计划中

@@ -111,6 +111,26 @@ paths:
         `audit.audit_event`, `audit.access_audit`, and `ops.system_log`. This is a high-risk
         control-plane action and requires `audit.package.export` plus `x-step-up-token` or a
         verified `x-step-up-challenge-id`.
+      parameters:
+        - name: x-idempotency-key
+          in: header
+          required: false
+          description: Client-generated idempotency key for WEB / console export submissions.
+          schema:
+            type: string
+            minLength: 8
+        - name: x-step-up-token
+          in: header
+          required: false
+          description: Step-up token for high-risk evidence package export.
+          schema:
+            type: string
+        - name: x-step-up-challenge-id
+          in: header
+          required: false
+          description: Verified step-up challenge identifier accepted as an equivalent high-risk control.
+          schema:
+            type: string
       requestBody:
         required: true
         content:

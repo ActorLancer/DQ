@@ -40,4 +40,24 @@ describe("console routes", () => {
       ),
     ).toBe(false);
   });
+
+  it("binds audit trace routes to formal audit and ops APIs only", () => {
+    expect(consoleRouteMap.audit_trace.apiBindings).toContain(
+      "GET /api/v1/audit/traces",
+    );
+    expect(consoleRouteMap.audit_trace.apiBindings).toContain(
+      "GET /api/v1/developer/trace",
+    );
+    expect(consoleRouteMap.audit_trace.apiBindings).toContain(
+      "GET /api/v1/ops/external-facts",
+    );
+    expect(consoleRouteMap.audit_package_export.apiBindings).toContain(
+      "POST /api/v1/audit/packages/export",
+    );
+
+    const forbiddenBindings = consoleRouteMap.audit_trace.apiBindings.filter((binding) =>
+      /postgres|kafka|opensearch|redis|fabric|minio/i.test(binding),
+    );
+    expect(forbiddenBindings).toEqual([]);
+  });
 });

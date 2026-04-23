@@ -148,7 +148,14 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Client-generated idempotency key for WEB / console export submissions. */
+                    "x-idempotency-key"?: string;
+                    /** @description Step-up token for high-risk evidence package export. */
+                    "x-step-up-token"?: string;
+                    /** @description Verified step-up challenge identifier accepted as an equivalent high-risk control. */
+                    "x-step-up-challenge-id"?: string;
+                };
                 path?: never;
                 cookie?: never;
             };
