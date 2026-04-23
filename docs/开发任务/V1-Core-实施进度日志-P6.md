@@ -219,6 +219,72 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-282（计划中）
+- 任务：`SEARCHREC-014` 逐任务复核与正式重验（五条标准链路固定推荐位样例）
+- 状态：计划中
+- 说明：按 `SEARCHREC-014` 的冻结口径，重新核对 `home_featured` 是否仍把五条标准链路官方商品样例固化在 PostgreSQL 权威配置里，并确保 staging 推荐读链会稳定返回 `S1 -> S2 -> S3 -> S4 -> S5`、`placement:fixed_sample` 与 `scenario:S1..S5` 证据；重点确认这不是 README/demo 文案，而是 `recommend.placement_definition.metadata.fixed_samples + developer.test_application + GET /api/v1/recommendations + audit/access/system_log` 的真实闭环。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-014`，不提前进入 `SEARCHREC-015` 的一致性与 worker 可靠性测试补强。
+
+### BATCH-282（待审批）
+- 任务：`SEARCHREC-014` 逐任务复核与正式重验（五条标准链路固定推荐位样例）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-014`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-009` 至 `SEARCHREC-013` 已重验推荐读取、local 最小候选、推荐位运维和重建链路，本批在该基线上只重验 `home_featured` 的五条标准链路固定样例，不提前进入 `SEARCHREC-015` 的一致性与 worker 可靠性测试矩阵。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-014` 只收口演示环境首页固定推荐位样例，要求业务规则、状态机、审计、事件与测试齐备，并与上下游模块联调通过。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认首页推荐位必须能稳定进入五条标准链路闭环，且推荐读取仍走正式 Bearer + PostgreSQL 最终业务校验。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`、`packages/openapi/recommendation.yaml`：确认 `home_featured.metadata.fixed_sample_set=five_standard_scenarios_v1`、`fixed_samples=5`、响应顺序必须为 `S1 -> S2 -> S3 -> S4 -> S5`，并要求结果项保留 `placement:fixed_sample + scenario:S1..S5`。
+  - `apps/platform-core/src/modules/recommendation/repo/mod.rs`、`tests/recommendation_api_db.rs`：复核 `parse_fixed_samples(...)`、`fixed_sample_candidates(...)` 和 `recommendation_home_featured_standard_scenarios_db_smoke` 仍以 `recommend.placement_definition.metadata.fixed_samples` 作为唯一权威源，不依赖 README/demo 占位。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。`home_featured` 仍通过 `recommend.placement_definition.metadata.fixed_samples` 固化五条标准链路商品样例，并由 `parse_fixed_samples(...)` 解析为 `placement_sample` 候选。
+  - `developer.test_application` 中 `scenario_code=S1..S5` 的 `metadata.primary_product_id` 仍与 `home_featured.metadata.fixed_samples[].entity_id` 一一对应，没有出现配置漂移。
+  - staging 推荐读链在真实 Bearer 请求下仍返回固定顺序 `309 -> 310 -> 311 -> 312 -> 313`，并保留 `placement:fixed_sample + scenario:S1..S5`；正式审计链 `audit.access_audit + ops.system_log` 仍然存在。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_home_featured_standard_scenarios_db_smoke -- --nocapture`
+  - 真实运行态 Bearer 联调：
+    - 先用 `psql` 回查 `recommend.placement_definition.metadata.fixed_sample_set='five_standard_scenarios_v1'`、`jsonb_array_length(metadata->'fixed_samples')=5`
+    - 再用 `psql` 回查 `developer.test_application(metadata.primary_product_id, metadata.scenario_code)` 与 `home_featured.metadata.fixed_samples[].entity_id` 的一一映射
+    - Keycloak password grant（`local-buyer-operator`）调用 `GET http://127.0.0.1:18080/api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id=10000000-0000-0000-0000-000000000102&limit=5`
+    - 使用 `psql` 回查 `recommend.recommendation_request.candidate_source_summary`、`recommend.recommendation_result_item.explanation_codes`、`audit.access_audit`、`ops.system_log`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `recommendation_home_featured_standard_scenarios_db_smoke` 通过，继续证明 `home_featured` 在 staging 模式下固定返回五条标准链路样例，顺序与 `scenario_name` 一致，且 `recommendation_request.candidate_source_summary ->> 'placement_sample' = '5'`。
+  - 权威配置回查：
+    - `recommend.placement_definition.metadata.fixed_sample_set='five_standard_scenarios_v1'`
+    - `jsonb_array_length(metadata->'fixed_samples') = 5`
+    - `developer.test_application` 的 `S1..S5` `metadata.primary_product_id` 与 `home_featured.metadata.fixed_samples[].entity_id` 全量一致，分别对应 `20000000-...309/310/311/312/313`
+  - 真实 staging Bearer 联调成功：
+    - `request_id=req-searchrec014-live-home-1776907491`
+    - `HTTP 200`
+    - 返回标题顺序为：
+      - `工业设备运行指标 API 订阅`
+      - `工业质量与产线日报文件包交付`
+      - `供应链协同查询沙箱`
+      - `零售门店经营分析 API / 报告订阅`
+      - `商圈/门店选址查询服务`
+    - 五个结果项的 `explanation_codes` 均包含 `placement:fixed_sample`，并分别包含 `scenario:S1` 至 `scenario:S5`
+  - `psql` 回查结果：
+    - `recommend.recommendation_request`：`candidate_backend='opensearch'`、`runtime_mode='staging'`、`candidate_source_summary ->> 'placement_sample' = '5'`
+    - `recommend.recommendation_result`：`candidate_backend='opensearch'`、`runtime_mode='staging'`、`returned_count=5`
+    - `recommend.recommendation_result_item`：5 条记录的 `position_no=1..5` 与 `entity_id=309/310/311/312/313` 完全对应，并保留 `placement:fixed_sample + scenario:S1..S5`
+    - `audit.access_audit`：`request_id=req-searchrec014-live-home-1776907491` 对应 1 条 `buyer_operator | recommendation_result | masked`
+    - `ops.system_log`：同一请求对应 1 条 `recommendation lookup executed: GET /api/v1/recommendations`
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮没有新的查询编译漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-014`
+  - `商品推荐与个性化发现设计.md`、`商品推荐与个性化发现接口协议正式版.md`：首页推荐位样例与正式读取边界
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐读链与演示样例必须仍然走正式主链，而不是 README/demo 占位
+  - `recommendation-runtime.md`、`search-rec-cases.md`、`packages/openapi/recommendation.yaml`：`fixed_sample_set`、`placement_sample=5`、`scenario:S1..S5` 和正式 Bearer 读审计要求
+- 覆盖的任务清单条目：`SEARCHREC-014`
+- 未覆盖项：
+  - 无。`SEARCHREC-014` 要求的五条标准链路固定样例、权威配置映射、staging 推荐响应与正式审计/系统日志均已重新验证；`SEARCHREC-015` 的一致性与 worker 可靠性测试矩阵仍留在下一 task 处理。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
