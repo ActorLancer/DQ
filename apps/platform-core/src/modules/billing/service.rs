@@ -64,6 +64,7 @@ pub fn is_allowed(role: &str, permission: BillingPermission) -> bool {
             "platform_admin"
                 | "platform_finance_operator"
                 | "platform_risk_settlement"
+                | "buyer_operator"
                 | "tenant_admin"
                 | "tenant_operator"
         ),
@@ -253,6 +254,10 @@ mod tests {
         ));
         assert!(is_allowed(
             "tenant_operator",
+            BillingPermission::BillingEventRead
+        ));
+        assert!(is_allowed(
+            "buyer_operator",
             BillingPermission::BillingEventRead
         ));
         assert!(is_allowed(

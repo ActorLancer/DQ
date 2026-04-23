@@ -420,7 +420,10 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "billing.statement.read",
     primaryPermissions: ["billing.invoice.request"],
     description: "账单、支付、退款与赔付概览。",
-    apiBindings: ["/api/v1/billing/{order_id}"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/billing/{order_id}",
+    ],
   },
   {
     key: "billing_refund_compensation",
@@ -433,7 +436,12 @@ export const portalRouteList: PortalRouteMeta[] = [
       "billing.compensation.execute",
     ],
     description: "退款、赔付与二次认证入口。",
-    apiBindings: ["/api/v1/refunds", "/api/v1/compensations"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/billing/{order_id}",
+      "POST /api/v1/refunds",
+      "POST /api/v1/compensations",
+    ],
   },
   {
     key: "dispute_create",

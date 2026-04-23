@@ -990,10 +990,10 @@ paths:
                       split_placeholders: []
                       invoices: []
                       tax_placeholder:
-                        tax_mode: "manual_placeholder"
-                        tax_required: false
-                        latest_invoice_request_id: null
-                        latest_invoice_status: null
+                        tax_engine_status: "placeholder"
+                        tax_rule_code: "tax-placeholder-v1"
+                        currency_code: "CNY"
+                        latest_invoice_title: null
                         latest_tax_no: null
                         tax_breakdown_ready: false
                       invoice_placeholder:

@@ -1,5 +1,12 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { BillingRefundCompensationShell } from "@/components/portal/billing-workflow-shell";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
-export default function BillingRefundsPage() {
-  return <PortalRoutePage routeKey="billing_refund_compensation" />;
+export default async function BillingRefundsPage() {
+  const session = await readPortalSession();
+  return (
+    <BillingRefundCompensationShell
+      sessionMode={session.mode}
+      initialSubject={readPortalSessionPreview(session)}
+    />
+  );
 }

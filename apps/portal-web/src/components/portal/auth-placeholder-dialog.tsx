@@ -34,7 +34,10 @@ const formSchema = z.discriminatedUnion("mode", [
       "platform_admin",
       "platform_risk_settlement",
     ]),
-    tenantId: z.string().uuid("请输入本地测试租户 UUID"),
+    tenantId: z.string().regex(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      "请输入本地测试租户 UUID",
+    ),
   }),
 ]);
 

@@ -199,6 +199,94 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-286（计划中）
+- 任务：`WEB-012` 实现账单页面：账单明细、支付状态、退款/赔付状态、争议入口
+- 状态：计划中
+- 说明：本批将 `/billing` 与 `/billing/refunds` 从路由脚手架升级为正式账单与售后页面，真实读取订单账单聚合、支付状态、结算结果、退款/赔付状态、发票/税务占位、SKU 计费规则和争议入口；高风险退款/赔付执行页必须使用正式 SDK、`X-Idempotency-Key` 与 `X-Step-Up-Token` / `X-Step-Up-Challenge-Id` 边界，不以前端 mock 替代后端执行。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-011` 已完成并提交，门户工程、受控 `/api/platform/**` 代理、会话主体条、订单详情、验收页和 `sdk-ts` 可复用。本批继续保持 `portal-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-012` 只实现账单页面与退款/赔付处理页，不合并 `WEB-013` 争议创建完整实现；DoD 要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认账单中心需联查订单、账单事件、结算结果和保证金状态，核心字段为 `billing_event_id / order_id / settlement_status / deposit_status`；退款/赔付处理页需展示责任判定摘要、退款金额、赔付金额和扣罚明细。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 V1 支付与轻结算要结构化表达货款、保证金、退款、赔付、人工打款与对账，且账务镜像、渠道结果和订单状态必须可联查。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认结算、退款、赔付流程从验收或争议裁决触发，写入 `billing_event / settlement_record / refund_record` 并保留审计摘要；争议裁决后的退款/赔付属于高风险执行。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`：确认路由 `/billing`、`/billing/refunds`，查看权限 `billing.statement.read`，主操作权限 `billing.invoice.request`、`billing.refund.execute`、`billing.compensation.execute`，退款/赔付高风险且需要 step-up。
+  - `docs/05-test-cases/payment-billing-cases.md`：确认必须覆盖支付状态不可回退、重复扣费防护、争议冻结、退款/赔付后结算重算、`GET /api/v1/billing/{order_id}` 联查账单摘要。
+  - `packages/openapi/billing.yaml` 与 `docs/02-openapi/billing.yaml`：确认 `GET /api/v1/billing/{order_id}`、`POST /api/v1/refunds`、`POST /api/v1/compensations` 已存在，退款/赔付写接口已声明 `x-idempotency-key` 和 step-up header；两份 OpenAPI 当前逐字同步。
+  - `apps/platform-core/src/modules/billing/**`、`packages/sdk-ts/**`、`apps/portal-web/**`：确认后端已有 Billing detail、退款与赔付执行、审计、outbox 与通知逻辑；当前 `packages/sdk-ts` 尚未暴露 billing domain，门户 `/billing` 和 `/billing/refunds` 仍为 `PortalRoutePage` 脚手架。
+- 当前完成标准理解：
+  - 账单中心必须通过 `auth/me` 与 `GET /api/v1/billing/{order_id}` 真实展示当前主体、角色、租户/组织、作用域、账单事件、支付状态、结算状态、退款/赔付状态、发票/税务占位和争议入口。
+  - 退款/赔付处理页必须展示责任判定摘要，使用 React Hook Form + Zod 校验 `order_id / case_id / decision_code / amount / reason_code / step-up / idempotency`，通过 SDK 调用正式写接口并回显结果、统一错误码与 `request_id`。
+  - 高风险按钮只按正式 V1 角色口径展示给 `platform_risk_settlement`，页面必须显式提示 step-up 和审计强留痕；账单读取至少按 `tenant_admin / buyer_operator / platform_risk_settlement` 正式种子权限承接，不把 `tenant_operator / platform_finance_operator` 传播到前端。
+  - 页面必须支持加载态、空态、错态、权限态、桌面/移动加载、E2E 预演、真实 API smoke、数据库回查和受限系统边界验证。
+- 实施计划：
+  1. 新增 `packages/sdk-ts` billing domain、导出和单测，封装 `getBillingOrder / executeRefund / executeCompensation`，写操作强制幂等键并支持 step-up header。
+  2. 必要时收敛 billing read 后端角色口径，使 `GET /api/v1/billing/{order_id}` 与 `billing.statement.read` 正式种子权限一致。
+  3. 新增 `billing-workflow` 视图模型、Zod/RHF schema、角色判断、金额/状态格式化、响应解包和错误格式化测试。
+  4. 替换 `/billing` 和 `/billing/refunds` 为正式页面，接入真实 API、账单明细、支付/结算/退款/赔付状态、责任摘要、争议入口、step-up/幂等表单和结果区。
+  5. 更新路由 API 绑定、Playwright 覆盖、OpenAPI checker，执行前端、SDK、后端、OpenAPI、真实 API、浏览器 smoke、数据库回查与受限系统边界验证。
+
+### BATCH-286（待审批）
+- 任务：`WEB-012` 实现账单页面：账单明细、支付状态、退款/赔付状态、争议入口
+- 状态：待审批
+- 当前任务编号：`WEB-012`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-011` 的门户、订单、交付与验收基线继续生效。页面实现只通过 `portal-web -> /api/platform -> platform-core` 访问正式 API，没有新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+- 完成情况：
+  - 新增 `packages/sdk-ts` billing domain，正式封装 `GET /api/v1/billing/{order_id}`、`POST /api/v1/refunds`、`POST /api/v1/compensations`，写接口强制传入 `X-Idempotency-Key` 并支持 `X-Step-Up-Token / X-Step-Up-Challenge-Id`。
+  - 将 `/billing` 替换为正式账单中心，展示当前主体、角色、租户、作用域、订单账单聚合、账单事件、支付状态、结算摘要、退款/赔付状态、发票/税务占位、SKU 计费规则、`request_id / tx_hash / 链状态 / 投影状态` 承接与争议入口。
+  - 将 `/billing/refunds` 替换为正式退款/赔付处理页，展示责任判定摘要、退款金额、赔付金额、扣罚/调整信息；表单使用 `React Hook Form + Zod` 校验 `order_id / case_id / decision_code / amount / reason_code / step-up / idempotency`，并通过 SDK 调用正式写接口。
+  - 前端角色口径按正式 V1 种子收敛：账单读取承接 `tenant_admin / buyer_operator / platform_risk_settlement`，退款/赔付高风险执行仅展示给 `platform_risk_settlement`；没有把 `tenant_operator / platform_finance_operator` 传播到前端权限判断。
+  - 后端 `GET /api/v1/billing/{order_id}` 读取权限与 `billing.statement.read` 种子权限对齐，补充 `buyer_operator` 读账单能力，并增加 DB smoke 覆盖同租户买方运营员读账单成功。
+  - 两份 billing OpenAPI 继续逐字同步，并修正税务占位示例字段为当前 schema / 后端实现中的 `tax_engine_status / tax_rule_code / currency_code / latest_invoice_title / latest_tax_no / tax_breakdown_ready`；`scripts/check-openapi-schema.sh` 增加 billing detail、refund、compensation、幂等与 step-up 最小防漂移检查。
+  - `apps/portal-web/e2e/smoke.spec.ts` 覆盖账单页与退款/赔付页的权限态、空态、错态；路由元数据同步声明 `/api/v1/auth/me`、billing detail、refund、compensation API 绑定。
+- 验证：
+  - 前端 / 工作区：
+    - `pnpm install`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `pnpm --filter @datab/sdk-ts openapi:generate`
+    - `pnpm --filter @datab/sdk-ts typecheck`
+    - `pnpm --filter @datab/sdk-ts test`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+  - 后端 / 契约：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+    - `./scripts/check-openapi-schema.sh`
+  - 真实联调与 smoke：
+    - `./scripts/seed-local-iam-test-identities.sh`
+    - 宿主机方式启动 `platform-core`：`APP_MODE=local APP_PORT=8094 ... cargo run -p platform-core`
+    - `curl` 验证 `GET /api/v1/auth/me` 返回 `local_test_user / buyer_operator / tenant_id=10000000-0000-0000-0000-000000000102`
+    - `curl` 验证 `GET /api/v1/billing/30000000-0000-0000-0000-000000000110` 返回账单事件、结算摘要、退款记录、赔付记录、发票/税务占位和 `SHARE_RO` SKU 计费规则
+    - `curl` 验证卖方角色读同一买方订单返回 `403 IAM_UNAUTHORIZED`
+    - `curl` 验证退款/赔付写接口缺少 step-up 时分别返回 `400 IAM_UNAUTHORIZED`，且请求携带 `X-Idempotency-Key`
+    - 浏览器 smoke：桌面 `1440x920` 与移动 `390x900` 打开 `/billing?order_id=...`、`/billing/refunds?order_id=...&case_id=...`，校验主体/角色/租户、账单事件、退款/赔付表单、step-up 提示与浏览器请求仅访问 `/api/platform/**`
+    - 数据库回查：`audit.audit_event` 中出现 `iam.session.context.read` 与 `billing.order.read` 审计事件；临时账单事件、结算、退款、赔付、发票记录测试后已清理为 `0`，审计记录按 append-only 保留。
+- 验证结果：
+  - 所有前端、SDK、后端、SQLx、OpenAPI 与查询编译校验均通过；`pnpm test` 期间仍可看到既有 `127.0.0.1:8094` 代理噪声，但最终 console / portal Playwright smoke 均通过。
+  - 真实 API 联调通过：billing detail 返回 `billing_events[0].event_type=one_time_charge`、`settlement_summary.summary_state=order_settlement:pending:manual`、退款 `processing`、赔付 `pending`、发票占位 `pending`；权限态和 step-up 拦截均按统一错误码回显。
+  - 浏览器 smoke 捕获到 `6` 次 `/api/platform/...` 请求，`directRestrictedCalls=0`，未发现浏览器直连 `platform-core` 或受限系统。
+  - 数据库清理回查通过：`billing.billing_event / settlement_record / refund_record / compensation_record / invoice_request` 中本批临时业务数据残留均为 `0`；审计事件按要求保留。
+  - 本批未新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-286` 无新增项。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-012`
+  - `页面说明书-V1-完整版.md`：8.1 账单中心、8.2 退款/赔付处理页
+  - `数据交易平台-全集成基线-V1.md`：27. 支付、资金流与轻结算
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`、`菜单树与路由表正式版.md`：账单查看、退款、赔付、争议入口权限
+  - `业务流程图-V1-完整版.md`、`payment-billing-cases.md`：争议冻结、退款/赔付后结算重算、账单联查与幂等/step-up
+  - `packages/openapi/billing.yaml`、`docs/02-openapi/billing.yaml`、`packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`
+- 覆盖的任务清单条目：`WEB-012`
+- 未覆盖项：
+  - 无。`WEB-012` 要求的账单明细、支付状态、退款/赔付状态、争议入口、权限态/空态/错态/加载态、SDK/OpenAPI 绑定、真实 API、E2E / 浏览器 smoke、数据库回查与日志留痕均已完成；完整争议创建和证据上传由后续 `WEB-013` 继续展开。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-281（计划中）
 - 任务：`WEB-007` 实现卖方上架中心：商品草稿、SKU 编辑、元信息、质量报告、模板绑定、提交审核
 - 状态：计划中

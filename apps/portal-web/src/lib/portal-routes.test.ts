@@ -82,5 +82,18 @@ describe("portal route registry", () => {
         "POST /api/v1/orders/{id}/reject",
       ]),
     );
+    expect(portalRouteMap.billing_center.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/auth/me",
+        "GET /api/v1/billing/{order_id}",
+      ]),
+    );
+    expect(portalRouteMap.billing_refund_compensation.apiBindings).toEqual(
+      expect.arrayContaining([
+        "GET /api/v1/billing/{order_id}",
+        "POST /api/v1/refunds",
+        "POST /api/v1/compensations",
+      ]),
+    );
   });
 });

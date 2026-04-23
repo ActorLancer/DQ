@@ -72,6 +72,18 @@ mod tests {
             detail["data"]["invoice_placeholder"]["invoice_required"].as_bool(),
             Some(true)
         );
+        let buyer_detail = get_billing_order_as_role(
+            &app,
+            &order.order_id,
+            &buyer_org_id,
+            "buyer_operator",
+            &format!("req-bil007-buyer-read-{suffix}"),
+        )
+        .await;
+        assert_eq!(
+            buyer_detail["data"]["order_id"].as_str(),
+            Some(order.order_id.as_str())
+        );
 
         let forbidden = app
             .clone()
@@ -117,13 +129,23 @@ mod tests {
         tenant_id: &str,
         request_id: &str,
     ) -> Value {
+        get_billing_order_as_role(app, order_id, tenant_id, "tenant_admin", request_id).await
+    }
+
+    async fn get_billing_order_as_role(
+        app: &Router,
+        order_id: &str,
+        tenant_id: &str,
+        role: &str,
+        request_id: &str,
+    ) -> Value {
         let response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
                     .uri(format!("/api/v1/billing/{order_id}"))
-                    .header("x-role", "tenant_admin")
+                    .header("x-role", role)
                     .header("x-tenant-id", tenant_id)
                     .header("x-request-id", request_id)
                     .body(Body::empty())

@@ -125,4 +125,22 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/acceptance?preview=error");
   await expect(page.getByText("验收页错误态")).toBeVisible();
   await expect(page.getByText("TRD_STATE_CONFLICT", { exact: false })).toBeVisible();
+
+  await page.goto("/billing?preview=forbidden");
+  await expect(page.getByText("账单页面权限态")).toBeVisible();
+  await expect(page.getByText("billing.statement.read", { exact: false }).first()).toBeVisible();
+
+  await page.goto("/billing?preview=empty");
+  await expect(page.getByText("没有可展示的账单数据")).toBeVisible();
+
+  await page.goto("/billing?preview=error");
+  await expect(page.getByText("账单中心错误态")).toBeVisible();
+  await expect(page.getByText("BIL_PROVIDER_FAILED", { exact: false })).toBeVisible();
+
+  await page.goto("/billing/refunds?preview=forbidden");
+  await expect(page.getByText("退款/赔付按钮权限不足")).toBeVisible();
+  await expect(page.getByText("platform_risk_settlement", { exact: false })).toBeVisible();
+
+  await page.goto("/billing/refunds?preview=empty");
+  await expect(page.getByText("请输入 order_id 与 case_id 后执行退款/赔付")).toBeVisible();
 });

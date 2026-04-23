@@ -1,5 +1,12 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { BillingCenterShell } from "@/components/portal/billing-workflow-shell";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
-export default function BillingPage() {
-  return <PortalRoutePage routeKey="billing_center" />;
+export default async function BillingPage() {
+  const session = await readPortalSession();
+  return (
+    <BillingCenterShell
+      sessionMode={session.mode}
+      initialSubject={readPortalSessionPreview(session)}
+    />
+  );
 }

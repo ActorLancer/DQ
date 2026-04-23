@@ -67,7 +67,7 @@ fn tenant_scope_id_for_role(
     headers: &HeaderMap,
     role: &str,
 ) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
-    if !matches!(role, "tenant_admin" | "tenant_operator") {
+    if !matches!(role, "buyer_operator" | "tenant_admin" | "tenant_operator") {
         return Ok(None);
     }
     header(headers, "x-tenant-id").map(Some).ok_or_else(|| {

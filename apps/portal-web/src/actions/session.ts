@@ -24,7 +24,13 @@ const connectSessionSchema = z.discriminatedUnion("mode", [
     mode: z.literal("local"),
     loginId: z.string().min(1, "请输入本地测试 login_id"),
     role: z.string().min(1, "请选择本地测试角色"),
-    tenantId: z.string().uuid("请输入本地测试租户 UUID").optional(),
+    tenantId: z
+      .string()
+      .regex(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        "请输入本地测试租户 UUID",
+      )
+      .optional(),
   }),
 ]);
 

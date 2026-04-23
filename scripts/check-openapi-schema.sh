@@ -420,4 +420,35 @@ done
 docs_delivery_file="docs/02-openapi/delivery.yaml"
 assert_synced_copy "$delivery_file" "$docs_delivery_file"
 
+billing_file="$OPENAPI_DIR/billing.yaml"
+for path in \
+  "/api/v1/billing/{order_id}" \
+  "/api/v1/refunds" \
+  "/api/v1/compensations"; do
+  grep -q "$path" "$billing_file" || {
+    echo "[error] $billing_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+for token in \
+  "BillingOrderDetailResponse" \
+  "BillingOrderDetail" \
+  "BillingEvent" \
+  "BillingSettlementSummary" \
+  "tax_engine_status" \
+  "tax_rule_code" \
+  "CreateRefundRequest" \
+  "RefundExecutionResponse" \
+  "CreateCompensationRequest" \
+  "CompensationExecutionResponse" \
+  "x-idempotency-key" \
+  "x-step-up-token" \
+  "x-step-up-challenge-id"; do
+  assert_file_contains "$billing_file" "$token" "billing web contract token"
+done
+
+docs_billing_file="docs/02-openapi/billing.yaml"
+assert_synced_copy "$billing_file" "$docs_billing_file"
+
 echo "[ok] openapi schema skeleton check passed"
