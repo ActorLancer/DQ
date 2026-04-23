@@ -263,6 +263,73 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 已登记本批“无新增”结论。
 
+### BATCH-294（计划中）
+- 任务：`WEB-020` 生成 `docs/05-test-cases/web-smoke-cases.md`
+- 状态：计划中
+- 当前任务编号：`WEB-020`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 继续满足；`WEB-001 ~ WEB-019` 已本地提交，现有 portal / console 路由、Playwright smoke 与页面说明书可作为本批文档归一事实源。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-020` 只生成 Web smoke 用例文档，不合并 `WEB-021 / WEB-022` 的页面显式映射或通知联查实现；DoD 要求文档落盘、结构完整、命名一致并被索引引用。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 smoke 文档需要服从测试分层，作为 UAT / 最小可用性验收的正式基线，不替代单元 / 集成 / 安全 / 性能测试。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认页面间路由关系和“页面覆盖校验”是 Web smoke 文档的官方命名来源，文档必须按首页 -> 搜索 -> 卖方主页 -> 产品详情 -> 下单 -> 订单详情 -> 交付 -> 验收 -> 账单/争议，以及控制台审计 / 一致性 / 搜索运维 / 开发者链路组织。
+  - `docs/05-test-cases/README.md`：确认当前 test-case 目录尚无 Web smoke 文档，本批必须新增并纳入 README 索引，且宿主机边界、正式命名和 smoke / regression 约束不能自创。
+  - `apps/portal-web/src/lib/portal-routes.ts`、`apps/console-web/src/lib/console-routes.ts`：确认当前 portal / console 正式 route key、路径、权限、API 绑定和页面分组，可直接作为 smoke 文档的最小用例矩阵基础。
+  - `apps/portal-web/e2e/smoke.spec.ts`、`apps/console-web/e2e/smoke.spec.ts`：确认当前最小自动化 smoke 已覆盖门户首页、搜索、商品详情、卖方主页、上架中心、下单、订单详情、交付、验收、账单、争议、审计联查、一致性联查、搜索运维、开发者链路与“浏览器不得直连受限系统”的断言。
+- 当前完成标准理解：
+  - `docs/05-test-cases/web-smoke-cases.md` 必须明确 portal / console 的最小 smoke 范围、入口、预期结果、自动化证据和手工 smoke 基线，并与当前 route key、页面标题、官方页面命名、权限术语和错误态命名完全一致。
+  - 文档必须被 `docs/05-test-cases/README.md` 引用，避免成为孤立文件。
+  - 本批不伪造尚未实现页面；如 `WEB-022` 通知联查尚未落地，需要在文档里按当前阶段范围明确排除，而不是发明假 smoke。
+- 实施计划：
+  1. 以现有 `portal-routes / console-routes` 与 Playwright smoke 为依据，整理 Web 最小 smoke 基线的范围、断言、路由和 API 绑定。
+  2. 新增 `docs/05-test-cases/web-smoke-cases.md`，按 scope / invariants / matrix / manual smoke / traceability 结构落盘。
+  3. 更新 `docs/05-test-cases/README.md` 索引，纳入新文档。
+  4. 执行最小验证：文档引用检查、`pnpm --filter @datab/portal-web test:e2e`、`pnpm --filter @datab/console-web test:e2e`、仓库级 `pnpm test` / `pnpm build` 与后端通用校验，随后更新 TODO 台账与待审批日志并本地提交。
+
+### BATCH-294（待审批）
+- 任务：`WEB-020` 生成 `docs/05-test-cases/web-smoke-cases.md`
+- 状态：待审批
+- 当前任务编号：`WEB-020`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001 ~ WEB-019` 基线继续生效；本批仅补齐 Web smoke 基线文档与索引，没有合并 `WEB-021` 的场景-SKU 显式映射实现，也没有提前伪造 `WEB-022` 通知联查页面。
+- 完成情况：
+  - 新增 `docs/05-test-cases/web-smoke-cases.md`，按 `Scope / Invariants / Matrix / Manual Smoke Baseline / Execution Commands / Traceability` 六段结构冻结 portal / console 的最小 Web smoke 基线。
+  - 文档矩阵覆盖 `WEB-SMOKE-001 ~ WEB-SMOKE-015`，显式串起门户首页、标准链路入口、搜索、卖方主页、商品详情、上架中心、下单、订单详情、交付、验收、账单、争议、开发者入口，以及控制台首页、审核台、审计联查、一致性联查、搜索运维、开发者入口和 live E2E。
+  - 文档已固定 Web 阶段受控边界与冻结约束：浏览器只能访问同源页面与 `/api/platform/**`，不得直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO / platform-core`；八个标准 SKU、五条标准链路命名、主体 / 角色 / 租户 / 作用域、`Idempotency-Key`、step-up / 审计提示和正式错误码展示均被列为 smoke invariant。
+  - `WEB-022` 的通知联查页被明确标注为当前范围外，继续以 `docs/05-test-cases/notification-cases.md` 承接通知 worker / topic / DB / 审计验收，避免把未落地页面写成假 smoke。
+  - `docs/05-test-cases/README.md` 已新增 `web-smoke-cases.md` 索引，确保该文档成为正式 test-case 目录的一部分而不是孤立文件。
+- 验证：
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 前端 / Web：
+    - `pnpm install --frozen-lockfile`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm --filter @datab/console-web test:e2e`
+    - `pnpm test`
+    - `pnpm build`
+- 验证结果：
+  - 后端通用校验全部通过；`cargo check/test` 与 `cargo sqlx prepare --workspace` 仅继续输出仓库既有 `unused` / `dead_code` warnings，没有新增失败。
+  - `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；`pnpm test` 中 SDK `39` 项、portal `56` 项、console `29` 项单测均通过。
+  - `pnpm --filter @datab/portal-web test:e2e` 与 `pnpm --filter @datab/console-web test:e2e` 全部通过；仍保留既有 `/api/platform/**` 代理访问 `127.0.0.1:8094` 的 `ECONNREFUSED` 噪音日志，但 Playwright 断言和退出码均为成功。
+  - `pnpm test` 复跑时 portal / console 的 Playwright smoke 继续通过，说明 `web-smoke-cases.md` 引用的现有自动化证据与实际工作区状态一致，没有因本批文档收口产生漂移。
+  - 本批没有新增业务写入、测试订单或临时数据库对象，因此无需额外业务数据清理；审计记录继续按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-020`
+  - `15-测试策略、验收标准与实施里程碑.md`：测试分层与 smoke/UAT 基线要求
+  - `页面说明书-V1-完整版.md`：页面间路由关系、页面覆盖校验、门户 / 控制台主链路命名
+  - `docs/05-test-cases/README.md`：test-case 目录索引与宿主机边界约束
+  - `apps/portal-web/src/lib/portal-routes.ts`、`apps/console-web/src/lib/console-routes.ts`
+  - `apps/portal-web/e2e/smoke.spec.ts`、`apps/console-web/e2e/smoke.spec.ts`
+- 覆盖的任务清单条目：`WEB-020`
+- 未覆盖项：
+  - 无。`WEB-020` 要求的文档 / 规则文件落盘、结构完整、命名一致、README 索引引用与最小 smoke 验证均已完成；通知联查页继续由 `WEB-022` 单独实现后再并入本文件。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-290（计划中）
 - 任务：`WEB-016` 实现开发者页面：应用管理、API Key、调用日志、trace 联查、Mock 支付操作入口
 - 状态：计划中
