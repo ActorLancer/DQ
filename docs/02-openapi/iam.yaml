@@ -552,9 +552,106 @@ paths:
   /api/v1/auth/me:
     get:
       summary: Resolve login context mirror
+      description: >
+        Returns the current browser/API session context mirror for portal and console
+        identity strips. `Bearer` requests resolve `mode=jwt_mirror`; local test
+        requests using `x-login-id` resolve `mode=local_test_user`. The response is
+        the formal V1 source for current subject, roles, tenant/org scope, and
+        `auth_context_level`.
       operationId: getAuthMe
       responses:
         "200":
           description: Session context resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseSessionContextView"
+              examples:
+                jwt_mirror:
+                  value:
+                    success: true
+                    data:
+                      mode: jwt_mirror
+                      user_id: "11111111-1111-1111-1111-111111111111"
+                      org_id: null
+                      login_id: null
+                      display_name: null
+                      tenant_id: "tenant-demo"
+                      roles: ["tenant_operator"]
+                      auth_context_level: "aal1"
+                local_test_user:
+                  value:
+                    success: true
+                    data:
+                      mode: local_test_user
+                      user_id: "22222222-2222-2222-2222-222222222222"
+                      org_id: "33333333-3333-3333-3333-333333333333"
+                      login_id: "buyer.demo"
+                      display_name: "Buyer Demo"
+                      tenant_id: null
+                      roles: ["tenant_operator"]
+                      auth_context_level: "aal1"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    SessionContextView:
+      type: object
+      required:
+        - mode
+        - roles
+        - auth_context_level
+      properties:
+        mode:
+          type: string
+          description: >
+            Session mirror mode. `jwt_mirror` is resolved from a Bearer token;
+            `local_test_user` is resolved from local test identity headers.
+          enum: [jwt_mirror, local_test_user]
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        org_id:
+          type: string
+          format: uuid
+          nullable: true
+        login_id:
+          type: string
+          nullable: true
+        display_name:
+          type: string
+          nullable: true
+        tenant_id:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+        auth_context_level:
+          type: string
+          description: Current authentication assurance / context level.
+    ApiResponseSessionContextView:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/SessionContextView"
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+          nullable: true

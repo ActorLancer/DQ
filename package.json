@@ -1,0 +1,12 @@
+{
+  "name": "datab-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.33.1",
+  "scripts": {
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "openapi:generate": "pnpm --filter @datab/sdk-ts openapi:generate"
+  }
+}

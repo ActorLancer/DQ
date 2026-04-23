@@ -260,4 +260,47 @@ assert_file_not_contains "$recommendation_file" "x-role" "legacy placeholder aut
 docs_recommendation_file="docs/02-openapi/recommendation.yaml"
 assert_synced_copy "$recommendation_file" "$docs_recommendation_file"
 
+catalog_file="$OPENAPI_DIR/catalog.yaml"
+for path in \
+  "/api/v1/catalog/standard-scenarios"; do
+  grep -q "$path" "$catalog_file" || {
+    echo "[error] $catalog_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+for token in \
+  "getStandardScenarioTemplates" \
+  "ApiResponseStandardScenarioTemplateList" \
+  "catalog.standard.scenarios.read" \
+  "StandardScenarioTemplate"; do
+  assert_file_contains "$catalog_file" "$token" "catalog standard-scenarios contract token"
+done
+
+docs_catalog_file="docs/02-openapi/catalog.yaml"
+assert_synced_copy "$catalog_file" "$docs_catalog_file"
+
+iam_file="$OPENAPI_DIR/iam.yaml"
+for path in \
+  "/api/v1/auth/me"; do
+  grep -q "$path" "$iam_file" || {
+    echo "[error] $iam_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+for token in \
+  "getAuthMe" \
+  "ApiResponseSessionContextView" \
+  "SessionContextView" \
+  "jwt_mirror" \
+  "local_test_user" \
+  "auth_context_level" \
+  "application/json"; do
+  assert_file_contains "$iam_file" "$token" "iam auth/me contract token"
+done
+
+docs_iam_file="docs/02-openapi/iam.yaml"
+assert_synced_copy "$iam_file" "$docs_iam_file"
+
 echo "[ok] openapi schema skeleton check passed"

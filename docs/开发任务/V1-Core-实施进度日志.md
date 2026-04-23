@@ -11,7 +11,7 @@
 
 ## 当前活动分卷
 
-- `docs/开发任务/V1-Core-实施进度日志-P6.md`
+- `docs/开发任务/V1-Core-实施进度日志-P7.md`
 
 ## 历史分卷
 
@@ -27,6 +27,8 @@
   - AUD 阶段起始分卷
 - `docs/开发任务/V1-Core-实施进度日志-P6.md`
   - SEARCHREC 阶段起始分卷
+- `docs/开发任务/V1-Core-实施进度日志-P7.md`
+  - WEB 阶段起始分卷
 
 ## Agent 读写规则
 

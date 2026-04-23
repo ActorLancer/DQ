@@ -22,6 +22,8 @@ node_modules/
 .next/
 dist/
 build/
+test-results/
+*.tsbuildinfo
 
 # Logs and temp
 *.log

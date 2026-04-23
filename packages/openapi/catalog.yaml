@@ -6,6 +6,10 @@ paths:
   /api/v1/catalog/standard-scenarios:
     get:
       summary: List frozen standard scenario templates
+      description: >
+        Returns the frozen five standard scenario templates used by homepage demos,
+        official scenario mapping, and order-entry guidance. Successful reads also
+        append the formal audit trail for `catalog.standard.scenarios.read`.
       operationId: getStandardScenarioTemplates
       responses:
         "200":
@@ -13,9 +17,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/StandardScenarioTemplate"
+                $ref: "#/components/schemas/ApiResponseStandardScenarioTemplateList"
   /api/v1/products:
     post:
       summary: Create product draft
@@ -2441,6 +2443,18 @@ components:
         - acceptance_template
         - refund_template
         - review_sample
+    ApiResponseStandardScenarioTemplateList:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StandardScenarioTemplate"
     ProductSubmit:
       type: object
       properties:

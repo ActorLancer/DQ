@@ -12,8 +12,8 @@
 
 当前子域成熟度：
 
-- `iam.yaml`：IAM/Party/Access 领域 V1 当前接口参考。
-- `catalog.yaml`：Catalog/Review/Support 领域 V1 当前接口参考。
+- `iam.yaml`：IAM/Party/Access 领域 V1 当前接口参考；`WEB-001` 已补齐 `GET /api/v1/auth/me` 的 `SessionContextView` / `ApiResponseSessionContextView` 正式响应体，并与 `docs/02-openapi/iam.yaml` 保持逐字同步，由 `./scripts/check-openapi-schema.sh` 对该接口做最小防漂移校验。
+- `catalog.yaml`：Catalog/Review/Support 领域 V1 当前接口参考；`WEB-001` 已补齐 `GET /api/v1/catalog/standard-scenarios` 的正式 `ApiResponse` 包装响应，并与 `docs/02-openapi/catalog.yaml` 保持逐字同步，由 `./scripts/check-openapi-schema.sh` 对该接口做最小防漂移校验。
 - `trade.yaml`：Order/Contract/Authorization 主交易链路 V1 当前接口参考。
 - `billing.yaml`：Billing/Payment/Settlement/Dispute 子域 V1 当前接口参考。
 - `delivery.yaml`：Delivery/Storage/Query Execution 子域 V1 当前接口参考。

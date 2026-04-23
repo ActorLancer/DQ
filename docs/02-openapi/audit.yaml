@@ -606,7 +606,7 @@ components:
         dry_run:
           type: boolean
           default: true
-          description: `V1` only accepts `true`; `false` fails with `AUDIT_REPLAY_DRY_RUN_ONLY`.
+          description: "`V1` only accepts `true`; `false` fails with `AUDIT_REPLAY_DRY_RUN_ONLY`."
         options:
           type: object
           additionalProperties: true

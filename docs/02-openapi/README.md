@@ -29,7 +29,8 @@
   - `docs/02-openapi/ops.yaml`
   - 相关请求/响应示例、`event_type / target_topic / aggregate_type` 过滤口径
 
-- `iam.yaml`：IAM/Party/Access 领域 V1 接口归档（与 `packages/openapi/iam.yaml` 同步）。
+- `iam.yaml`：IAM/Party/Access 领域 V1 接口归档（与 `packages/openapi/iam.yaml` 同步）；`WEB-001` 已补齐 `GET /api/v1/auth/me` 的正式响应体，并通过 `./scripts/check-openapi-schema.sh` 做最小防漂移校验。
+- `catalog.yaml`：Catalog/Review/Support 领域 V1 接口归档（与 `packages/openapi/catalog.yaml` 同步）；`WEB-001` 已补齐 `GET /api/v1/catalog/standard-scenarios` 的正式 `ApiResponse` 包装响应，并通过 `./scripts/check-openapi-schema.sh` 做最小防漂移校验。
 - `billing.yaml`：Billing/Payment/Settlement/Dispute 子域 V1 接口归档（与 `packages/openapi/billing.yaml` 同步）。
 - `trade.yaml`：Order/Contract/Authorization 主交易链路 V1 接口归档（与 `packages/openapi/trade.yaml` 同步）。
 - `delivery.yaml`：Delivery/Storage/Query Execution 子域 V1 接口归档（与 `packages/openapi/delivery.yaml` 同步）。
