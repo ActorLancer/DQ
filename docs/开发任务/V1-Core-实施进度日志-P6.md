@@ -299,7 +299,7 @@
 - 已阅读证据（文件+要点）：
   - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-018` 只收口“统一鉴权门面与正式权限点”，要求业务规则、状态机、审计、事件与测试齐备，并与上下游联调通过。
   - `docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认搜索前台、搜索 ops、推荐前台、推荐 ops 的正式认证口径均是 `Authorization: Bearer <access_token>`，不是 `x-role` header。
-  - `docs/权限设计/接口权限校验清单.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`：确认正式权限点分别为 `portal.catalog.search.read`、`portal.recommendation.read`、`ops.search_*`、`ops.recommendation.*`、`ops.recommend_rebuild.execute`，且 ops 读取/写入动作都应进入正式审计链。
+  - `docs/权限设计/接口权限校验清单.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`：确认正式权限点分别为 `portal.search.read`、`portal.recommendation.read`、`ops.search_*`、`ops.recommendation.*`、`ops.recommend_rebuild.execute`，且 ops 读取/写入动作都应进入正式审计链。
   - `apps/platform-core/src/modules/search/service.rs`、`api/handlers.rs`、`apps/platform-core/src/modules/recommendation/service.rs`、`api/handlers.rs`：复核运行态 service 仍只认正式 permission code，handler 统一走 Bearer 权限门面；`rg -n "x-role" apps/platform-core/src/modules/search apps/platform-core/src/modules/recommendation` 无结果，证明模块树内已无 `x-role` 旁路。
   - `apps/platform-core/src/modules/search/tests/mod.rs`、`apps/platform-core/src/modules/recommendation/tests/mod.rs`：复核路由测试仍覆盖“无 Bearer 拒绝”“无权限拒绝”“formal roles matrix”。
 - 复核结论：
@@ -351,6 +351,86 @@
 - 覆盖的任务清单条目：`SEARCHREC-018`
 - 未覆盖项：
   - 无。`SEARCHREC-018` 要求的统一 Bearer 鉴权门面、正式 permission code、`x-role` 彻底失效和成功请求审计/系统日志都已重新验证；`SEARCHREC-019` 的高风险写接口 `step-up` 收口仍留在下一 task。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-284（计划中）
+- 任务：`SEARCHREC-019` 逐任务复核与正式重验（运维写接口 `step-up` / 审计 / 搜索域错误码）
+- 状态：计划中
+- 说明：按 `SEARCHREC-019` 的冻结口径，重新核对搜索运维写接口是否已经统一为正式 `X-Step-Up-Token + X-Idempotency-Key + SEARCH_*` 错误码，并确认推荐运维写接口的高风险控制与审计要求没有漂移；重点验证搜索 reindex / alias / ranking patch 的错误码和 `step-up` 绑定、以及推荐 placement / ranking / rebuild 的高风险写链在真实 Bearer 下能写入正式审计链。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-019`，不提前进入 `SEARCHREC-020` 的 consumer 幂等 / 双层 DLQ 闭环。
+
+### BATCH-284（待审批）
+- 任务：`SEARCHREC-019` 逐任务复核与正式重验（运维写接口 `step-up` / 审计 / 搜索域错误码）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-019`
+- 前置依赖核对结果：`AUD-022`、`SEARCHREC-018` 已在前序阶段完成；本批只重验搜索运维写接口的正式 `X-Step-Up-Token + X-Idempotency-Key + SEARCH_*` 错误码，以及推荐运维写接口的高风险控制与审计要求，不提前进入 `SEARCHREC-020` 的 consumer 幂等 / 双层 DLQ 闭环。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-019` 只收口 SEARCHREC 运维写接口的 `step-up`、审计与搜索域错误码，并要求实现与冻结文档不漂移。
+  - `docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`：确认所有搜索运维写接口必须带 `X-Idempotency-Key`，高风险控制面必须收敛到 `SEARCH_QUERY_INVALID / SEARCH_RESULT_STALE / SEARCH_BACKEND_UNAVAILABLE / SEARCH_REINDEX_FORBIDDEN / SEARCH_ALIAS_SWITCH_FORBIDDEN / SEARCH_CACHE_INVALIDATE_FORBIDDEN`。
+  - `docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认推荐配置修改、排序配置修改和 rebuild 属于高风险动作，必须审计并建议 `step-up`。
+  - `docs/权限设计/接口权限校验清单.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：确认搜索 reindex / alias / ranking patch 与推荐 placement / ranking / rebuild 的正式权限点、`step-up` 绑定目标、审计对象类型和 Redis/OpenSearch/PG 回查要求。
+  - `apps/platform-core/src/modules/search/api/handlers.rs`、`service.rs`、`tests/search_api_db.rs`：复核搜索写接口仍通过 `require_write_controls(...)` 强制 `X-Step-Up-Token` 绑定、`SEARCH_*` 错误码映射和 `audit.audit_event + audit.access_audit + ops.system_log` 写入。
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`、`service.rs`、`tests/recommendation_api_db.rs`：复核推荐 placement / ranking / rebuild 继续通过 `require_ops_write_controls(...)` 强制 `step-up` 绑定、`RECOMMENDATION_*` 高风险错误码、审计留痕和 Redis 缓存/派生表副作用。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。搜索写接口已经统一使用正式搜索域错误码，不再回退到通用 `OPS_*`；推荐高风险写接口继续要求正式 Bearer、`X-Idempotency-Key`、必要 `X-Step-Up-Token`，并将 `iam.step_up_challenge` 绑定写入正式审计链。
+  - `search_api_and_ops_db_smoke` 与 `recommendation_api_full_runtime_db_smoke` 仍真实覆盖搜索 reindex / alias / cache / ranking patch，以及推荐 placement / ranking / rebuild 的 `step-up`、审计、缓存/派生表副作用和失败路径，没有因前序 rerun 出现契约回退。
+  - 真实运行态下，搜索运维写接口已能同时证明：
+    - 无权限时返回 `SEARCH_REINDEX_FORBIDDEN`
+    - 缺少 `X-Step-Up-Token` 时返回 `SEARCH_QUERY_INVALID`
+    - 带验证通过的 `iam.step_up_challenge` 后成功入队，并写 `audit.audit_event + audit.access_audit + ops.system_log`
+  - 推荐运维写接口已能同时证明：
+    - 缺少 `X-Step-Up-Token` 时返回 `RECOMMENDATION_REBUILD_INVALID`
+    - 带验证通过的 `iam.step_up_challenge` 后成功 rebuild，并把 `step_up_challenge_id` 绑定进正式审计链
+- 验证：
+  - `cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - 真实运行态 Bearer 联调（staging `platform-core`：`http://127.0.0.1:18080`，Keycloak password grant 获取 `local-platform-admin` / `local-buyer-operator` token）：
+    - buyer token 调用 `POST /api/v1/ops/search/reindex`，验证搜索域无权限错误码
+    - admin token + `X-Idempotency-Key` 调用 `POST /api/v1/ops/search/reindex`，故意缺少 `X-Step-Up-Token`，验证 `SEARCH_QUERY_INVALID`
+    - 通过 `psql` 插入 `iam.step_up_challenge(target_action='ops.search_reindex.execute', target_ref_type='product', target_ref_id=<product_id>)`
+    - admin token + `X-Idempotency-Key + X-Step-Up-Token` 调用 `POST /api/v1/ops/search/reindex`
+    - admin token + `X-Idempotency-Key` 调用 `POST /api/v1/ops/recommendation/rebuild`，故意缺少 `X-Step-Up-Token`，验证 `RECOMMENDATION_REBUILD_INVALID`
+    - 通过 `psql` 插入 `iam.step_up_challenge(target_action='recommendation.rebuild.execute', target_ref_type='recommendation_rebuild')`
+    - admin token + `X-Idempotency-Key + X-Step-Up-Token` 调用 `POST /api/v1/ops/recommendation/rebuild`
+    - 使用 `psql` 回查 `audit.audit_event`、`audit.access_audit`、`ops.system_log`、`search.index_sync_task`
+  - `cargo fmt --all --check`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - 自动 smoke 通过：
+    - `search_api_and_ops_db_smoke` 通过，继续覆盖搜索 reindex / cache invalidate / alias switch / ranking patch 的 `SEARCH_*` 错误码、`step-up` 绑定、Redis 版本推进、OpenSearch alias 切换和审计留痕。
+    - `recommendation_api_full_runtime_db_smoke` 通过，继续覆盖推荐读取、曝光/点击、placement/ranking patch、rebuild 的正式 Bearer、`step-up`、审计、缓存失效和派生表重刷。
+  - 真实运行态 Bearer 联调成功：
+    - `req-searchrec019-live-search-forbidden-1776908069`：buyer token 调用 `POST /api/v1/ops/search/reindex`，`HTTP 403`，`code=SEARCH_REINDEX_FORBIDDEN`
+    - `req-searchrec019-live-search-missing-stepup-1776908069`：admin token 缺少 `X-Step-Up-Token` 调用同一路径，`HTTP 400`，`code=SEARCH_QUERY_INVALID`，消息为 `X-Step-Up-Token is required for search reindex execute`
+    - `req-searchrec019-live-search-reindex-ok-1776908091`：admin token + `X-Step-Up-Token=288c3df4-aba4-4972-885b-390b22aab54a` 调用同一路径，`HTTP 200`，返回 `entity_scope=product`、`mode=single`、`enqueued_count=1`
+    - `req-searchrec019-live-rec-missing-stepup-1776908069`：admin token 缺少 `X-Step-Up-Token` 调用 `POST /api/v1/ops/recommendation/rebuild`，`HTTP 400`，`code=RECOMMENDATION_REBUILD_INVALID`
+    - `req-searchrec019-live-rec-rebuild-ok-1776908091`：admin token + `X-Step-Up-Token=ebdcec1d-ce6b-4ac4-9483-19bbce4d8b23` 调用同一路径，`HTTP 200`，返回 `scope=all`、`cache_keys_deleted=1`、`refreshed_subject_profiles=9`、`refreshed_cohort_rows=21`、`refreshed_signal_rows=7`、`refreshed_similarity_rows=248`、`refreshed_bundle_rows=248`
+  - `psql` 回查结果：
+    - `audit.audit_event`：
+      - `req-searchrec019-live-search-reindex-ok-1776908091 | search.reindex.queue | queued | ops.search_reindex.execute | 288c3df4-aba4-4972-885b-390b22aab54a`
+      - `req-searchrec019-live-rec-rebuild-ok-1776908091 | recommendation.rebuild.execute | rebuilt | ops.recommend_rebuild.execute | ebdcec1d-ce6b-4ac4-9483-19bbce4d8b23`
+    - `audit.access_audit`：
+      - `req-searchrec019-live-search-reindex-ok-1776908091 | platform_admin | search_reindex | queued | 288c3df4-aba4-4972-885b-390b22aab54a`
+      - `req-searchrec019-live-rec-rebuild-ok-1776908091 | platform_admin | recommendation_rebuild | rebuilt | ebdcec1d-ce6b-4ac4-9483-19bbce4d8b23`
+    - `ops.system_log`：
+      - `req-searchrec019-live-search-reindex-ok-1776908091 | INFO | search ops action executed: POST /api/v1/ops/search/reindex`
+      - `req-searchrec019-live-rec-rebuild-ok-1776908091 | INFO | recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild`
+    - `search.index_sync_task`：针对 `product_id=20000000-0000-0000-0000-000000000309` 的 `queued` 任务在 5 分钟窗口内新增 1 条，证明搜索 reindex 不是只写审计而未真实入队。
+  - 通用校验通过：`cargo check -p platform-core`、`cargo test -p platform-core`（`355 passed; 0 failed; 1 ignored`）、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 均通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-019`
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索运维写接口请求头、运维接口族与 `SEARCH_*` 错误码
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐运维修改动作必须审计并建议 `step-up`
+  - `接口权限校验清单.md`：搜索重建高风险控制与推荐配置修改高风险控制
+  - `A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`：SEARCHREC 统一鉴权 / `step-up` / 审计 / 错误码收口
+  - `search-reindex.md`、`recommendation-runtime.md`、`search-rec-cases.md`：运维写接口 runbook、验收矩阵与回查口径
+- 覆盖的任务清单条目：`SEARCHREC-019`
+- 未覆盖项：
+  - 无。`SEARCHREC-019` 要求的搜索运维写接口 `step-up + 审计 + SEARCH_*` 错误码，以及推荐运维高风险写接口的正式 Bearer / Idempotency / Step-Up / 审计要求均已重新验证；`SEARCHREC-020` 的 consumer 幂等与双层 DLQ 闭环仍留在下一 task。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
