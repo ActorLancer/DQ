@@ -24,6 +24,12 @@ describe("portal route registry", () => {
         "/api/v1/catalog/search",
       ]),
     );
+    expect(portalRouteMap.seller_profile.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/sellers/{orgId}/profile",
+        "/api/v1/recommendations?placement_code=seller_profile_featured",
+      ]),
+    );
     expect(portalRouteMap.order_create.primaryPermissions).toContain(
       "trade.order.create",
     );

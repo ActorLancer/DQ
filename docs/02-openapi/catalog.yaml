@@ -2376,6 +2376,16 @@ components:
           type: array
           items:
             type: string
+        certification_tags:
+          type: array
+          items:
+            type: string
+        featured_products:
+          type: array
+          items:
+            $ref: "#/components/schemas/SellerFeaturedProduct"
+        rating_summary:
+          $ref: "#/components/schemas/SellerRatingSummary"
         credit_level:
           type: integer
         risk_level:
@@ -2398,12 +2408,58 @@ components:
         - org_type
         - status
         - industry_tags
+        - certification_tags
+        - featured_products
+        - rating_summary
         - credit_level
         - risk_level
         - reputation_score
         - listed_product_count
         - search_document_version
         - index_sync_status
+    SellerFeaturedProduct:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        price_amount:
+          type: string
+          nullable: true
+        currency_code:
+          type: string
+          nullable: true
+      required:
+        - product_id
+        - title
+    SellerRatingSummary:
+      type: object
+      properties:
+        rating_count:
+          type: integer
+        average_rating:
+          type: number
+          nullable: true
+        last_rating_at:
+          type: string
+          nullable: true
+        reputation_score:
+          type: number
+        credit_level:
+          type: integer
+        risk_level:
+          type: integer
+        effective_at:
+          type: string
+          nullable: true
     StandardScenarioTemplate:
       type: object
       properties:

@@ -280,6 +280,11 @@ for token in \
   "getSellerProfile" \
   "ApiResponseSellerProfile" \
   "SellerProfile" \
+  "SellerFeaturedProduct" \
+  "SellerRatingSummary" \
+  "certification_tags" \
+  "featured_products" \
+  "rating_summary" \
   "catalog.standard.scenarios.read" \
   "StandardScenarioTemplate"; do
   assert_file_contains "$catalog_file" "$token" "catalog standard-scenarios contract token"

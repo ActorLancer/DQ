@@ -78,8 +78,11 @@ export const portalRouteList: PortalRouteMeta[] = [
     path: "/sellers/:orgId",
     viewPermission: "portal.seller.read",
     primaryPermissions: [],
-    description: "卖方主体信息、认证标识与商品入口。",
-    apiBindings: ["/api/v1/sellers/{orgId}/profile"],
+    description: "卖方主体信息、认证标识、信誉风险、在售商品与咨询入口。",
+    apiBindings: [
+      "/api/v1/sellers/{orgId}/profile",
+      "/api/v1/recommendations?placement_code=seller_profile_featured",
+    ],
   },
   {
     key: "product_detail",

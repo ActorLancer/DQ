@@ -1287,6 +1287,9 @@ export interface components {
             country_code?: string | null;
             region_code?: string | null;
             industry_tags: string[];
+            certification_tags: string[];
+            featured_products: components["schemas"]["SellerFeaturedProduct"][];
+            rating_summary: components["schemas"]["SellerRatingSummary"];
             credit_level: number;
             risk_level: number;
             reputation_score: string;
@@ -1295,6 +1298,24 @@ export interface components {
             description?: string | null;
             search_document_version: number;
             index_sync_status: string;
+        };
+        SellerFeaturedProduct: {
+            /** Format: uuid */
+            product_id: string;
+            title: string;
+            subtitle?: string | null;
+            category?: string | null;
+            price_amount?: string | null;
+            currency_code?: string | null;
+        };
+        SellerRatingSummary: {
+            rating_count?: number;
+            average_rating?: number | null;
+            last_rating_at?: string | null;
+            reputation_score?: number;
+            credit_level?: number;
+            risk_level?: number;
+            effective_at?: string | null;
         };
         StandardScenarioTemplate: {
             scenario_code: string;

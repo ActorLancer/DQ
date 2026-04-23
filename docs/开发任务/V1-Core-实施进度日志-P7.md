@@ -114,6 +114,97 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-280（计划中）
+- 任务：`WEB-006` 实现卖方主页：主体信息、认证标识、商品列表、联系方式/咨询入口
+- 状态：计划中
+- 说明：在 `WEB-005` 商品详情页已经真实读取卖方 profile 的基础上，本批将 `/sellers/{orgId}` 从路由脚手架升级为正式卖方主页。页面必须真实读取 `GET /api/v1/sellers/{orgId}/profile`，并接入 `seller_profile_featured` 推荐位展示该卖方在售商品/服务与高质量推荐，同时展示主体信息、认证标识、行业标签、信誉/风险摘要、最近成交与争议摘要、联系方式/咨询入口、空态/错态/权限态和敏感访问上下文。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-005` 已本地提交，门户会话、受控 `/api/platform/**` 代理、SDK、搜索页与商品详情页可复用。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-006` 只实现卖方主页，不提前合并下单页、审核台或订单页任务；DoD 要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认卖方主页需展示主体信息卡、行业标签、信誉与风险摘要、在售商品/服务列表、最近成交与争议摘要；推荐区目标为该卖方热门商品、高质量商品和同类优质卖方。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认流程为搜索结果点击卖方主体，经 Search API 查询 seller_search_document，再由 PostgreSQL 校验组织状态、公开展示策略和风险状态，返回主体、标签、信誉/风险、在售数、近期成交与争议摘要。
+  - `docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`：确认 V1 相关接口为 `GET /api/v1/catalog/search` 与 `GET /api/v1/sellers/{orgId}/profile`，搜索/推荐后端仍由 `platform-core` 访问 OpenSearch / PostgreSQL / Redis，前端不得直连。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`：确认卖方主页查看权限 `portal.seller.read`，卖方主页推荐区权限 `portal.recommendation.read`，推荐曝光/点击写接口需要幂等键但本批页面先不伪造曝光写入。
+  - `docs/05-test-cases/search-rec-cases.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/04-runbooks/opensearch-local.md`、`infra/docker/docker-compose.local.yml`：确认 `seller_profile_featured`、`recommend_v1_seller`、本地 PostgreSQL fallback、Keycloak、Kafka/OpenSearch/Redis 宿主机边界。
+  - `packages/openapi/catalog.yaml`、`search.yaml`、`recommendation.yaml`、`iam.yaml` 与 `docs/02-openapi/*.yaml`：确认卖方 profile / 搜索 / 推荐 / 会话契约；发现 `SellerProfileView` 后端已返回 `certification_tags / featured_products / rating_summary`，但 catalog OpenAPI 与 SDK 尚未声明，需要本批同步补齐。
+  - `apps/platform-core/src/modules/catalog/**`、`search/**`、`recommendation/**`、`apps/portal-web/**`、`packages/sdk-ts/**`：确认 `/sellers/[orgId]` 仍是脚手架；后端卖方 profile 已写 `catalog.seller.profile.read` 审计，推荐读取会写 `recommendation_result` 访问审计。
+- 当前完成标准理解：
+  - 卖方主页必须只通过 `portal-web -> /api/platform -> platform-core` 调用正式 API，不直连 Kafka / PostgreSQL / OpenSearch / Redis / Fabric。
+  - Bearer 会话下真实读取卖方 profile 与 `seller_profile_featured` 推荐；guest/local 或缺少 claims 时显示权限态。
+  - 页面需显式展示当前主体、角色、租户/组织、作用域，并展示 `org_id / org_name / org_type / industry_tags / reputation_score / risk_level / listed_product_count / search_document_version / index_sync_status`。
+  - 在售商品/服务列表优先来自正式推荐位和卖方投影 `featured_products`，不能以前端 mock 伪造；若后端返回空结果必须展示空态。
+  - 联系方式/咨询入口不得暴露私密联系方式或对象路径；本批以受控下单/支持工单入口承接咨询动作。
+- 实施计划：
+  1. 补齐 catalog OpenAPI 两份 `SellerProfile` schema，并重新生成 `packages/sdk-ts`，避免 profile 扩展字段继续漂移。
+  2. 新增卖方主页视图工具与单测，安全解析 `featured_products / rating_summary`，并约束风险/认证展示文案。
+  3. 新增 `SellerProfileShell` 并替换 `/sellers/[orgId]` 脚手架，接入 seller profile、`seller_profile_featured` 推荐、状态预演、权限态、空态和错误态。
+  4. 更新 E2E 与路由 API 绑定，执行前端、后端、OpenAPI、SDK、真实 API、浏览器 smoke 与数据库审计回查验证。
+
+### BATCH-280（待审批）
+- 任务：`WEB-006` 实现卖方主页：主体信息、认证标识、商品列表、联系方式/咨询入口
+- 状态：待审批
+- 当前任务编号：`WEB-006`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-005` 均已本地提交并提供门户会话、受控代理、SDK、搜索与商品详情基础。
+- 完成情况：
+  - 将 `/sellers/[orgId]` 从路由脚手架升级为正式卖方主页，`SellerProfileShell` 通过 `portal-web -> /api/platform -> platform-core` 读取 `GET /api/v1/sellers/{orgId}/profile`，并显示主体、角色、租户/组织、作用域等敏感访问上下文。
+  - 页面展示 `org_id / org_name / org_type / industry_tags / listed_product_count / search_document_version / index_sync_status`、认证标识、信誉/风险摘要、最近成交与争议摘要、链路投影说明、咨询工单入口与下单入口；下载/咨询区域不暴露真实对象路径。
+  - 正式接入 `GET /api/v1/recommendations?placement_code=seller_profile_featured`，把推荐结果与卖方 profile 投影中的 `featured_products` 合并为在售商品/服务列表，并覆盖重复去重、空态、错态和无权限态。
+  - 补齐 `packages/openapi/catalog.yaml` 与 `docs/02-openapi/catalog.yaml` 的 `SellerProfile.certification_tags / featured_products / rating_summary` 契约，新增 `SellerFeaturedProduct` 与 `SellerRatingSummary` schema，同步重新生成 `packages/sdk-ts`。
+  - `scripts/check-openapi-schema.sh` 增加 `SellerProfile` 扩展字段防漂移检查，避免后续 OpenAPI / SDK 再次退化。
+  - 新增 `seller-profile-view` 工具与 Vitest 单测，覆盖认证标签、风险等级、信誉分、价格格式化和推荐/投影合并逻辑。
+  - `portal-routes` 与 E2E smoke 已同步声明卖方主页的正式 API 绑定和预演态断言。
+- 验证：
+  - 前端 / SDK：
+    - `pnpm --filter @datab/sdk-ts openapi:generate`
+    - `pnpm --filter @datab/sdk-ts typecheck`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm --filter @datab/portal-web build`
+    - `pnpm install --frozen-lockfile`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+    - `./scripts/check-openapi-schema.sh`
+    - `./scripts/check-keycloak-realm.sh`
+  - 真实联调与 smoke：
+    - 真实 password grant 获取 `local-platform-admin / platform_admin` Bearer Token。
+    - 直连 `platform-core` 验证 `GET /api/v1/sellers/10000000-0000-0000-0000-000000000101/profile`，请求头包含 `Authorization / X-Role / X-Tenant-Id / X-Request-Id`。
+    - 直连 `platform-core` 验证 `GET /api/v1/recommendations?placement_code=seller_profile_featured&context_entity_scope=seller&context_entity_id=10000000-0000-0000-0000-000000000101&limit=8`。
+    - 生产构建启动 `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm --filter @datab/portal-web exec next start --hostname 127.0.0.1 --port 3102`。
+    - 桌面视口 `1440x1000` 与移动视口 `Pixel 5` 浏览器 smoke 注入真实 Bearer，校验 `Luna Seller Org`、认证标识、在售商品、推荐位、咨询入口与主体上下文。
+    - 数据库回查 `audit.audit_event` 的 `catalog.seller.profile.read`、`audit.access_audit` 的 `recommendation_result`、`recommend.recommendation_request` 的 `seller_profile_featured` 请求记录。
+    - 静态扫描与浏览器请求捕获确认 `portal-web` 未直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`，浏览器端正式 API 请求均落在 `/api/platform/**`。
+- 验证结果：
+  - 前端 / SDK 单体与全工作区 `pnpm install / lint / typecheck / test / build` 全部通过；`portal-web` 单测、E2E 与生产构建通过。
+  - `pnpm test` 与 `portal-web` E2E 期间仍会打印既有 `ECONNREFUSED 127.0.0.1:8094` 代理噪音，但最终断言通过，未影响本批卖方主页交付。
+  - Rust 通用验证全部通过；`cargo check -p platform-core` 与 `cargo test -p platform-core` 仅保留仓库既有 warning，本批未引入新的 Rust 失败。
+  - 真实 seller profile API 返回 `success=true`、`org_name=Luna Seller Org`、`certification_tags=["compliance:l2","real_name_verified"]`、`featured_products=3`、`listed_product_count=11`、`index_sync_status=pending` 与 `search_document_version=31`。
+  - 真实推荐 API 返回 `seller_profile_featured`、`count=8`，首条商品为 `工业设备运行指标 API 订阅`，`status=listed`，解释码包含 `local:same_seller`。
+  - 桌面 / 移动浏览器 smoke 均通过，`horizontalFit=true`；浏览器捕获到 `platformProxyRequests=2`、`directPlatformCoreRequests=0`、`restrictedSystemRequests=0`。
+  - 数据库回查确认 `audit.audit_event` 存在 `request_id=web006-curl-seller-profile` 的 `catalog.seller.profile.read / success` 记录，`audit.access_audit` 存在 `request_id=web006-curl-seller-recommendations` 的 `recommendation_result` 记录，`recommend.recommendation_request` 最近记录为 `placement_code=seller_profile_featured / status=served / backend=postgresql_local_minimal`。
+  - 本批没有新增业务测试数据；审计记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-006`
+  - `页面说明书-V1-完整版.md`：卖方主页主体信息、认证、在售商品、信誉/风险与咨询入口
+  - `业务流程图-V1-完整版.md`：搜索结果到卖方主页、卖方 profile 校验与卖方商品过滤流程
+  - `商品搜索、排序与索引同步接口协议正式版.md`：`GET /api/v1/sellers/{orgId}/profile` 与搜索/推荐后端边界
+  - `菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`：`portal.seller.read` 与 `portal.recommendation.read`
+  - `packages/openapi/catalog.yaml`、`docs/02-openapi/catalog.yaml`、`packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`
+- 覆盖的任务清单条目：`WEB-006`
+- 未覆盖项：
+  - 无。`WEB-006` 要求的卖方主页主体、认证标识、商品列表、联系方式/咨询入口、真实 API 接入、SDK 契约、状态覆盖、E2E / 浏览器 smoke 与数据库回查均已完成；下单创建流程和咨询工单完整写入由后续对应 WEB task 展开。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（计划中）
 - 任务：`WEB-005` 实现商品详情页：元信息、卖方信息、SKU、价格、样例预览、下单入口、审核状态徽标
 - 状态：计划中

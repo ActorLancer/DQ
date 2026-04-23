@@ -32,6 +32,20 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/products/20000000-0000-0000-0000-000000000309?preview=empty");
   await expect(page.getByText("没有可展示的商品详情")).toBeVisible();
 
+  await page.goto("/sellers/10000000-0000-0000-0000-000000000101?preview=forbidden");
+  await expect(page.getByText("卖方主页权限态")).toBeVisible();
+  await expect(
+    page.getByText("需要权限：`portal.seller.read`；当前会话模式 guest，角色 无。", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await page.goto("/sellers/10000000-0000-0000-0000-000000000101?preview=empty");
+  await expect(page.getByText("没有可展示的卖方主页")).toBeVisible();
+
+  await page.goto("/sellers/10000000-0000-0000-0000-000000000101?preview=error");
+  await expect(page.getByText("CAT_VALIDATION_FAILED")).toBeVisible();
+
   await page.goto("/trade/orders/new?preview=forbidden");
   await expect(page.getByText("权限态预演")).toBeVisible();
 });
