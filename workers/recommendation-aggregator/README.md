@@ -13,5 +13,9 @@
 本地启动：
 
 ```bash
-KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
+KAFKA_BROKERS=127.0.0.1:9094 \
+REDIS_URL=redis://default:datab_redis_pass@127.0.0.1:6379/1 \
+cargo run -p recommendation-aggregator
 ```
+
+如果手工覆盖了 `REDIS_URL`，必须保留 Redis 鉴权信息；否则缓存失效会报 `NOAUTH`，consumer 会按正式可靠性策略把事件送入 `ops.dead_letter_event + dtp.dead-letter`。

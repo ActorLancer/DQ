@@ -88,6 +88,75 @@
 - 说明：按 `SEARCHREC-009` 的冻结口径，重新核对推荐结果读取接口是否仍然满足“正式 Bearer 鉴权 + `portal.recommendation.read` + OpenSearch 候选召回 + PostgreSQL 最终业务校验 + 审计/系统日志留痕 + local 最小候选兜底”这一整条读链；重点确认结果不会直接把 OpenSearch 命中当成最终事实返回，也不会被后续 task 的 ops/behavior 改动带偏。
 - 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-009`，不提前进入 `SEARCHREC-010`。
 
+### BATCH-278（计划中）
+- 任务：`SEARCHREC-010` 逐任务复核与正式重验（推荐曝光/点击记录接口）
+- 状态：计划中
+- 说明：按 `SEARCHREC-010` 的冻结口径，重新核对 `POST /api/v1/recommendations/track/exposure`、`/click` 是否仍然满足“正式 Bearer 鉴权 + 非空 `X-Idempotency-Key` + `portal.recommendation.read` + `recommend.behavior_recorded -> dtp.recommend.behavior` canonical outbox + recommendation-aggregator 消费副作用 + 审计/系统日志”这一整条行为链；重点确认重复曝光/点击不会再次写行为事件，也不会偏离 `dtp.recommend.behavior` / `cg-recommendation-aggregator` 的正式契约。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-010`，不提前进入 `SEARCHREC-011`。
+
+### BATCH-278（待审批）
+- 任务：`SEARCHREC-010` 逐任务复核与正式重验（推荐曝光/点击记录接口）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-010`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已作为前序完成基线存在；`SEARCHREC-001` 至 `SEARCHREC-009` 已重验搜索投影、OpenSearch 候选召回、推荐基础模型、Keycloak 本地运行态与推荐结果读取接口，本批只在该基线上重验推荐行为写接口，不提前合并 `SEARCHREC-011` 的推荐位运维读写。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-010` DoD 为 exposure/click 正式接口、DTO、权限、审计、错误码与最小测试齐备，并要求与 OpenAPI 不漂移。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认推荐行为写接口必须走 `portal.recommendation.read + X-Idempotency-Key`，并与 `recommend.behavior_recorded -> dtp.recommend.behavior` 正式行为流契约一致。
+  - `问题修复任务/A09-推荐主链路与行为流契约缺口.md`、`问题修复任务/A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`：确认推荐行为 topic 唯一收口到 `dtp.recommend.behavior`，consumer 必须基于统一 envelope `event_id` 幂等处理，失败时进入 `ops.dead_letter_event + dtp.dead-letter` 双层隔离。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`、`workers/recommendation-aggregator/README.md`：复核运行态/验收文档是否仍覆盖 Bearer 鉴权、曝光/点击、Redis 缓存失效、aggregator 消费副作用与本地复现命令。
+  - `apps/platform-core/src/modules/recommendation/repo/mod.rs`、`api/handlers.rs`、`tests/recommendation_api_db.rs`、`workers/recommendation-aggregator/src/main.rs`、`packages/openapi/recommendation.yaml`：复核实现仍以 `placement_code + recommendation_request/result/item`、`X-Idempotency-Key`、canonical outbox、consumer 幂等和 `portal.recommendation.read` 为统一 authority。
+- 复核结论：
+  - 当前实现满足冻结口径，无需修改 Rust 代码。`POST /api/v1/recommendations/track/exposure` 继续要求 `placement_code`、非空 `X-Idempotency-Key`、正式 Bearer 和 `portal.recommendation.read`；成功后写入 `recommendation_panel_viewed + recommendation_item_exposed`，重复请求返回 `deduplicated_count` 且不再生成新行为事件或 outbox。
+  - `POST /api/v1/recommendations/track/click` 继续要求 `recommendation_request_id + recommendation_result_id + recommendation_result_item_id + entity_scope + entity_id`，成功后写入点击事件、canonical outbox 和审计/系统日志，不会退化回 `x-role` 占位或“只写普通日志”。
+  - `recommendation-aggregator` 的实现仍以默认 `REDIS_URL=redis://default:datab_redis_pass@127.0.0.1:6379/1` 失效推荐缓存；本批暴露的漂移只在 runbook/README，本地命令未明确 Redis 鉴权，按旧命令会因为 `NOAUTH` 把真实行为事件送入 DLQ。已在文档中补齐正式 Redis 连接串，避免后续 SEARCHREC / AUD 运行态复验再踩同一坑。
+  - 实时联调中第一次手工曝光请求少带 `placement_code` 被正式 422 拦截；按 OpenAPI 补齐字段后，接口返回 200，说明当前实现与正式 DTO 仍保持一致，没有偷放宽校验。
+- 验证：
+  - `cargo check -p platform-core`
+  - `cargo check -p recommendation-aggregator`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - 真实运行态 Bearer 联调：
+    - `DATABASE_URL=... APP_MODE=staging APP_PORT=18080 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
+    - `DATABASE_URL=... KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p outbox-publisher`
+    - `DATABASE_URL=... KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 APP_MODE=staging cargo run -p recommendation-aggregator`
+    - Keycloak password grant（`local-buyer-operator`）调用 `GET /api/v1/recommendations`，随后以同一 Bearer 调用 `POST /api/v1/recommendations/track/exposure`、重复曝光和 `POST /api/v1/recommendations/track/click`
+    - Keycloak password grant（`local-audit-security`）调用同一 exposure 接口验证正式 403
+    - `psql` 回查 `recommend.behavior_event`、`ops.outbox_event`、`ops.consumer_idempotency_record`、`search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation`、`audit.audit_event`、`audit.access_audit`、`ops.system_log`
+  - `cargo fmt --all`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `recommendation_api_full_runtime_db_smoke` 与 `recommendation_aggregator_db_smoke` 全部通过，继续证明 recommendation 行为写接口、consumer 幂等、副作用、DLQ 路径和 canonical topic 契约未回退。
+  - 真实 Bearer 第二轮正式联调成功：
+    - `GET /api/v1/recommendations`：`request_id=req-searchrec010-live2-get-1776905895`，返回 `recommendation_request_id=0a011005-b900-4faf-8b4c-2d0fdc61d778`、`recommendation_result_id=a2d00b99-1f97-43b0-b2c3-3063545427cf`、`placement_code=home_featured`
+    - `POST /track/exposure`：`request_id=req-searchrec010-live2-exposure-1776905895`，`accepted_count=4`、`outbox_enqueued_count=4`
+    - 重复 exposure：`accepted_count=0`、`deduplicated_count=4`、`outbox_enqueued_count=0`
+    - `POST /track/click`：`request_id=req-searchrec010-live2-click-1776905895`，`accepted_count=1`、`outbox_enqueued_count=1`
+    - 无权限 Bearer：`request_id=req-searchrec010-live2-deny-1776905895`，返回 `HTTP 403` 和 `IAM_UNAUTHORIZED`
+  - `psql` 回查结果：
+    - `recommend.behavior_event`：共 5 条，事件类型为 `recommendation_panel_viewed + 3*recommendation_item_exposed + recommendation_item_clicked`
+    - `ops.outbox_event`：共 5 条，全部 `target_topic='dtp.recommend.behavior'` 且 `published_at IS NOT NULL`
+    - `ops.consumer_idempotency_record`：5 条全部由 `recommendation-aggregator` 记为 `processed`，`dead_letter=0`
+    - `recommend.recommendation_result_item`：首条结果项 `74daa00d-8e7b-4dac-89ce-871830343f69` 已被回写为 `click_status='clicked'`
+    - `search.index_sync_task`：商品 `20000000-0000-0000-0000-000000000309` 新增 `sync_status='queued'` 的 OpenSearch 刷新任务
+    - `search.search_signal_aggregate`：同一商品热度聚合已更新为 `exposure_count=4`、`click_count=4`、`hotness_score=4.8000`
+    - `recommend.entity_similarity` / `recommend.bundle_relation`：均能回查 `last_behavior_event_id=15cc4c2d-f9c6-4083-98cf-6911f3491fe3` 的最新关系边增量
+    - `audit.access_audit`：保留 `buyer_operator | portal.recommendation.read | recommendation_behavior`
+    - `ops.system_log`：保留 `recommendation behavior tracked: POST /api/v1/recommendations/track/exposure|/click` 与 `outbox event published to kafka`
+  - 第一轮 live probe 曾因手工覆盖错误的 `REDIS_URL=redis://127.0.0.1:6379/0` 导致 `recommendation-aggregator` 把 5 条事件送入 `ops.dead_letter_event`；确认根因仅是手工环境变量偏离正式默认值后，已删除该轮临时 `dead_letter / consumer_idempotency / outbox / behavior_event / recommendation_request` 测试数据，并以第二轮正式命令重验通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-010`
+  - `商品推荐与个性化发现设计.md`、`商品推荐与个性化发现接口协议正式版.md`：推荐行为写接口 DTO、权限与行为流契约
+  - `A09-推荐主链路与行为流契约缺口.md`：`recommend.behavior_recorded -> dtp.recommend.behavior`
+  - `A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`：consumer `event_id` 幂等、双层 DLQ 与副作用闭环
+  - `recommendation-runtime.md`、`search-rec-cases.md`、`workers/recommendation-aggregator/README.md`：运行态复现命令、审计与回查口径
+- 覆盖的任务清单条目：`SEARCHREC-010`
+- 未覆盖项：
+  - 无。`SEARCHREC-010` 要求的正式 Bearer、`X-Idempotency-Key` 幂等、canonical outbox、Kafka publish、consumer 副作用、审计和失败用例均已重新验证。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-277（待审批）
 - 任务：`SEARCHREC-009` 逐任务复核与正式重验（推荐结果接口 `GET /api/v1/recommendations`）
 - 状态：待审批

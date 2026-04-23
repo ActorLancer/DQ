@@ -12,12 +12,15 @@
 ```bash
 cargo run -p platform-core
 KAFKA_BROKERS=127.0.0.1:9094 cargo run -p search-indexer
-KAFKA_BROKERS=127.0.0.1:9094 cargo run -p recommendation-aggregator
+KAFKA_BROKERS=127.0.0.1:9094 \
+REDIS_URL=redis://default:datab_redis_pass@127.0.0.1:6379/1 \
+cargo run -p recommendation-aggregator
 ```
 
 注意：
 
 - 宿主机运行 worker 时，Kafka 地址应使用 `127.0.0.1:9094`。
+- `recommendation-aggregator` 本地运行时，`REDIS_URL` 必须带上 Redis 鉴权信息；否则缓存失效步骤会因为 `NOAUTH` 失败，并把真实 `dtp.recommend.behavior` 事件送入 `ops.dead_letter_event + dtp.dead-letter`。
 - `REDIS_URL` 默认推荐使用 DB `1`，避免与主会话缓存混用。
 
 ## 推荐主链路
