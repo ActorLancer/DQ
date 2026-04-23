@@ -50,7 +50,11 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "review.subject.read",
     primaryPermissions: ["review.subject.review"],
     description: "主体资料、认证状态与审核动作入口。",
-    apiBindings: ["/api/v1/ops/review/subjects"],
+    apiBindings: [
+      "GET /api/v1/iam/orgs?status=pending_review",
+      "GET /api/v1/iam/orgs/{id}",
+      "POST /api/v1/review/subjects/{id}",
+    ],
   },
   {
     key: "review_products",
@@ -60,7 +64,11 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "review.product.read",
     primaryPermissions: ["review.product.review"],
     description: "产品审核队列、审核明细与结论操作入口。",
-    apiBindings: ["/api/v1/ops/review/products"],
+    apiBindings: [
+      "GET /api/v1/products?status=pending_review",
+      "GET /api/v1/products/{id}",
+      "POST /api/v1/review/products/{id}",
+    ],
   },
   {
     key: "review_compliance",
@@ -70,7 +78,11 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "review.compliance.read",
     primaryPermissions: ["review.compliance.review", "review.compliance.block"],
     description: "合规命中、封禁建议与复核入口。",
-    apiBindings: ["/api/v1/ops/review/compliance"],
+    apiBindings: [
+      "GET /api/v1/products?status=pending_review",
+      "GET /api/v1/products/{id}",
+      "POST /api/v1/review/compliance/{id}",
+    ],
   },
   {
     key: "risk_console",

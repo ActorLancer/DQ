@@ -340,7 +340,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReviewDecision"
+                $ref: "#/components/schemas/ApiResponseReviewDecision"
   /api/v1/review/products/{id}:
     post:
       summary: Product review decision
@@ -370,7 +370,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductSubmit"
+                $ref: "#/components/schemas/ApiResponseProductSubmit"
   /api/v1/review/compliance/{id}:
     post:
       summary: Compliance review decision
@@ -382,6 +382,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -394,7 +400,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReviewDecision"
+                $ref: "#/components/schemas/ApiResponseReviewDecision"
   /api/v1/skus/{id}:
     patch:
       summary: Patch draft SKU
@@ -2766,6 +2772,16 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/ProductSubmit"
+    ApiResponseReviewDecision:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ReviewDecision"
     ProductSubmit:
       type: object
       properties:

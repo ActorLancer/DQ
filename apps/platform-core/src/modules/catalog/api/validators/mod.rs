@@ -1,6 +1,5 @@
 use axum::Json;
 use axum::http::{HeaderMap, StatusCode};
-use db::GenericClient;
 use kernel::{ErrorCode, ErrorResponse};
 
 use crate::modules::catalog::domain::{
@@ -13,7 +12,6 @@ use crate::modules::catalog::domain::{
     ReviewDecisionRequest, SubmitProductRequest, SuspendProductRequest,
     default_trade_mode_for_sku_type, is_standard_sku_type,
 };
-use crate::modules::catalog::repository::PostgresCatalogRepository;
 use crate::modules::catalog::service::is_valid_sku_trade_mode_pair;
 
 use super::support::header;
@@ -143,6 +141,19 @@ pub(in crate::modules::catalog::api) fn validate_review_decision_payload(
     payload: &ReviewDecisionRequest,
     headers: &HeaderMap,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if header(headers, "x-idempotency-key")
+        .as_deref()
+        .is_none_or(|key| key.trim().is_empty())
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                code: ErrorCode::CatValidationFailed.as_str().to_string(),
+                message: "X-Idempotency-Key is required for review decision".to_string(),
+                request_id: header(headers, "x-request-id"),
+            }),
+        ));
+    }
     if !matches!(payload.action_name.as_str(), "approve" | "reject") {
         return Err((
             StatusCode::BAD_REQUEST,

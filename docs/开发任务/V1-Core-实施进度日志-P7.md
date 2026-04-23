@@ -205,6 +205,71 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-282（计划中）
+- 任务：`WEB-008` 实现审核工作台：主体审核、商品审核、合规审核列表与详情
+- 状态：计划中
+- 说明：本批将 `console-web` 的 `/ops/review/subjects`、`/ops/review/products`、`/ops/review/compliance` 从路由脚手架升级为正式审核工作台。页面必须真实读取待审主体和待审商品，展示主体/商品/合规详情，支持审核通过、驳回和高风险合规阻断确认；所有写操作必须携带 `X-Idempotency-Key`，敏感页面必须展示当前主体、角色、租户、作用域和审计留痕提示，并只通过 `console-web -> /api/platform -> platform-core` 调用正式 API。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-007` 已本地提交，门户/控制台工程、SDK、会话上下文、受控代理、商品列表/详情和提交审核链路可复用。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-008` 只实现审核工作台，不提前合并下单页、订单页、交付页、账单页或审计联查页；DoD 要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认主体审核台需覆盖组织准入、主体资料和身份绑定状态；产品审核台需覆盖商品上架内容、Hash、模板和元数据完整性；合规审核台需覆盖分类分级、使用目的、地域、导出限制、自动阻断结果、人工复核结论和高风险标签。
+  - `docs/权限设计/菜单权限映射表.md`、`docs/权限设计/按钮级权限说明.md`、`docs/权限设计/接口权限校验清单.md`：确认路由权限为 `review.subject.read / review.product.read / review.compliance.read`，审核动作权限为 `review.subject.review / review.product.review / review.compliance.review`，合规阻断为高风险动作 `review.compliance.block`，写接口必须校验幂等、生成 request_id 并写审计。
+  - `docs/业务流程/业务流程图-V1-完整版.md` 与全集成基线：确认主体状态、商品状态和合规风控状态由 `platform-core + PostgreSQL` 承担，搜索/推荐/缓存/链上投影仅作为受控后端能力，前端不得直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`。
+  - `docs/数据库设计/接口协议/身份与会话接口协议正式版.md`、`docs/数据库设计/接口协议/目录与商品接口协议正式版.md`、`packages/openapi/iam.yaml`、`packages/openapi/catalog.yaml`、`docs/02-openapi/iam.yaml`、`docs/02-openapi/catalog.yaml`：确认审核动作已存在于 catalog API；同时发现 IAM 组织列表/详情后端和领域结构已存在但 OpenAPI 仍为骨架，本批按后端实现、接口协议和页面说明共同语义补齐两份 OpenAPI 并重新生成 SDK。
+  - `apps/platform-core/src/modules/iam/**`、`apps/platform-core/src/modules/catalog/**`、`apps/console-web/**`、`packages/sdk-ts/**`：确认 IAM 已有 `GET /api/v1/iam/orgs` 和 `GET /api/v1/iam/orgs/{id}`，catalog 已有 `POST /api/v1/review/subjects/{id}`、`POST /api/v1/review/products/{id}`、`POST /api/v1/review/compliance/{id}`；控制台审核路由仍是 `ConsoleRoutePage` 脚手架，SDK domain 尚未封装审核写操作和 IAM 组织读取。
+- 当前完成标准理解：
+  - 三个审核页必须真实读取 `platform-core` API，列表、详情、分页/筛选、加载态、空态、错态、权限态和移动/桌面加载均可用。
+  - 审核动作必须经 SDK 发送 `X-Idempotency-Key`，重复点击防护、后端错误码回显、审计事件提示和高风险合规阻断确认必须可见。
+  - 敏感页面必须显示当前主体、角色、租户和作用域；无 `platform_reviewer / platform_admin` 等正式角色时必须拦截主按钮。
+  - 商品审核和合规审核不得发明 SKU 大类、状态名或错误码；若展示 SKU，必须保留八个标准 SKU 真值。
+  - 浏览器端只能请求 `/api/platform/**` 受控代理，不能直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric` 或 `platform-core` 端口。
+- 实施计划：
+  1. 补齐 IAM 组织列表/详情 OpenAPI 与 SDK，补齐 catalog 审核写操作 SDK、合规审核幂等头声明和最小防漂移校验。
+  2. 修正后端审核读取/写入所需的正式角色与幂等校验，确保 `platform_reviewer` 可读取待审商品并执行审核动作。
+  3. 新增审核工作台视图模型、Zod/RHF 决策表单、TanStack Query/Table/Virtual 列表、权限判断、错误码映射和单元测试。
+  4. 替换三个 console 审核路由为正式工作台，接入主体/商品/合规详情、通过/驳回/阻断确认、审计提示、身份条和状态预演。
+  5. 执行前端、SDK、后端、OpenAPI、真实 API、数据库回查、Playwright 与浏览器 smoke 验证，再更新 TODO、写“待审批”并本地提交。
+
+### BATCH-282（待审批）
+- 任务：`WEB-008` 实现审核工作台：主体审核、商品审核、合规审核列表与详情
+- 状态：待审批
+- 当前任务编号：`WEB-008`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-007` 已本地提交并提供门户/控制台工程、受控 `/api/platform` 代理、会话上下文、SDK 和商品读取/提交审核基础。
+- 完成情况：
+  - 将 `/ops/review/subjects`、`/ops/review/products`、`/ops/review/compliance` 从 `ConsoleRoutePage` 脚手架升级为正式审核工作台，接入主体审核、商品审核与合规审核的列表、详情、筛选、加载态、空态、错态、权限态和桌面/移动加载。
+  - 新增 `ReviewWorkbenchShell`，使用 `TanStack Query` 读取正式 API、`TanStack Table + Virtual` 渲染长列表、`React Hook Form + Zod` 校验审核表单，并在所有写动作中生成和透传 `X-Idempotency-Key`。
+  - 审核页显示当前主体、角色、租户/组织、作用域和审计留痕提示；无 `platform_reviewer / platform_admin` 时拦截主按钮；合规阻断要求输入 `BLOCK`，并支持透传 `X-Step-Up-Token` / `x-step-up-challenge-id`。
+  - 商品/合规详情展示八个标准 SKU 真值覆盖，不把 `SHARE_RO / QRY_LITE / RPT_STD` 误并入大类；合规页展示分类分级、使用目的、地域、导出限制、风险标签和自动阻断结果。
+  - 补齐 `packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml` 的 `GET /api/v1/iam/orgs`、`GET /api/v1/iam/orgs/{id}`、`OrganizationAggregateView` 与响应 wrapper；补齐 `packages/openapi/catalog.yaml` 与 `docs/02-openapi/catalog.yaml` 的审核响应 wrapper 和合规审核 `X-Idempotency-Key`。
+  - 重新生成 `packages/sdk-ts`，新增 IAM 组织读取 domain、catalog 审核写 domain、审核写 header 透传和 SDK 单测；`scripts/check-openapi-schema.sh` 增加 IAM 组织与 catalog 审核防漂移检查。
+  - 后端新增正式 `platform_reviewer` 角色种子和权限断言，允许审核员读取待审商品并执行审核；catalog 审核写入校验缺失/空 `X-Idempotency-Key` 并返回统一错误码 `CAT_VALIDATION_FAILED`。
+  - 更新 console 路由 API 绑定、审核入口 E2E、登录态占位角色，移除旧 `platform_auditor` 口径并使用正式角色 `platform_reviewer / platform_audit_security`。
+- 验证结果：
+  - 依赖与生成：`pnpm install`、`pnpm --filter @datab/sdk-ts openapi:generate` 通过。
+  - SDK：`pnpm --filter @datab/sdk-ts typecheck`、`pnpm --filter @datab/sdk-ts test` 通过。
+  - console：`pnpm --filter @datab/console-web lint`、`typecheck`、`test:unit`、`test:e2e`、`build` 通过；E2E 覆盖审核路由预览与 product review API 绑定。
+  - workspace：`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 通过；并保留 `pnpm test` 中 portal/console Playwright 在未启动 core 时预期出现的 `ECONNREFUSED` 噪声，测试结果仍为通过。
+  - 后端：`cargo fmt --all`、`cargo fmt --all -- --check`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 通过；既存 unused warning 仍存在，不属于本批新增。
+  - OpenAPI：`./scripts/check-openapi-schema.sh` 通过；`packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml`、`packages/openapi/catalog.yaml` 与 `docs/02-openapi/catalog.yaml` 已同步。
+  - 真实 API 联调：按 runbook 显式设置 `KAFKA_BROKERS=127.0.0.1:9094`、`KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094` 后启动 `platform-core` 于 `127.0.0.1:8096`，`GET /api/v1/auth/me` 返回 `local_test_user / web008.reviewer / platform_reviewer / aal1`。
+  - curl 覆盖：`GET /api/v1/iam/orgs?status=pending_review`、`GET /api/v1/iam/orgs/{id}`、`GET /api/v1/products?status=pending_review`、`GET /api/v1/products/{id}` 均返回 WEB-008 临时数据；`buyer_operator` 读取主体审核队列返回 `IAM_UNAUTHORIZED`；缺少 `X-Idempotency-Key` 的审核写返回 `CAT_VALIDATION_FAILED` 且未产生 `review_task`。
+  - 写操作联调：`POST /api/v1/review/subjects/{id}` approve、`POST /api/v1/review/compliance/{id}` reject、`POST /api/v1/review/products/{id}` approve 均通过；产品审核后 `product.status=listed`。
+  - 数据库回查：`review.review_task` 覆盖 `subject_review=approved`、`compliance_review=rejected`、`product_review=approved`；`review.review_step` 写入三个动作；`audit.audit_event` 保留 `catalog.review.subject / compliance / product` 三条审计；`ops.outbox_event` 写入 `catalog.product.status.changed` 与 `search.product.changed`，均带 `idem-web008-product-approve`；搜索投影 `listing_status=listed`、`visibility_status=visible`、`sku_types={API_PPU,API_SUB,FILE_STD,FILE_SUB,QRY_LITE,RPT_STD,SBX_STD,SHARE_RO}`。
+  - 浏览器 smoke：`console-web` 以 `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8096` 启动于 `127.0.0.1:3112`，Playwright 访问三条审核路由和移动端主体页，捕获 `proxyRequestCount=12`、`directPlatformRequestCount=0`，确认浏览器只访问 `/api/platform/**`。
+  - 受限系统边界：运行时依赖与 import 检查未发现 `pg / postgres / kafkajs / node-rdkafka / @opensearch-project/opensearch / ioredis / redis / fabric-network / fabric-ca-client` 等前端直连依赖；宽泛文本检查仅命中 SDK 生成文件中的 ops/search 文档注释。
+  - 业务测试数据清理：`core.organization / core.user_account / catalog.product / catalog.product_sku / catalog.asset_version / catalog.data_asset / review.review_task / review.review_step / ops.outbox_event` 的 WEB-008 临时业务数据均已清理为 `0`；`audit.audit_event` 三条审计按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-008`
+  - `页面说明书-V1-完整版.md`：审核工作台、主体审核台、产品审核台、合规审核台、敏感页面身份上下文展示
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`：审核页查看、主按钮权限、高风险合规阻断提示
+  - `业务流程图-V1-完整版.md`：主体准入、商品上架审核、合规复核链路
+  - `身份与会话接口协议正式版.md`、`目录与商品接口协议正式版.md`、`packages/openapi/iam.yaml`、`packages/openapi/catalog.yaml`、`docs/02-openapi/iam.yaml`、`docs/02-openapi/catalog.yaml`
+- 覆盖的任务清单条目：`WEB-008`
+- 未覆盖项：
+  - 无。`WEB-008` 要求的主体/商品/合规审核列表与详情、权限态、错态、空态、加载态、幂等头、SDK/OpenAPI 契约、真实 API 联调、浏览器 smoke、数据库回查与清理均已完成；下单页、订单页、交付页、账单页和审计联查页按后续 WEB task 顺序继续推进。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 无需新增条目。
+
 ### BATCH-280（计划中）
 - 任务：`WEB-006` 实现卖方主页：主体信息、认证标识、商品列表、联系方式/咨询入口
 - 状态：计划中

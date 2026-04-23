@@ -79,7 +79,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get organization aggregate */
+        /**
+         * Get organization aggregate
+         * @description Returns the formal organization aggregate used by the subject review workbench. The view mirrors the backend `OrganizationAggregateView` and includes admission status, jurisdiction, certification/compliance levels, risk/review linkage fields, blacklist activity and timestamps.
+         */
         get: operations["getOrganization"];
         put?: never;
         post?: never;
@@ -96,7 +99,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List organizations */
+        /**
+         * List organizations
+         * @description Lists organization aggregates for console review pages. V1 supports filtering by organization status and organization type; callers use this endpoint for subject admission queues instead of reading PostgreSQL directly.
+         */
         get: operations["listOrganizations"];
         put?: never;
         post?: never;
@@ -737,6 +743,36 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        OrganizationAggregateView: {
+            /** Format: uuid */
+            org_id: string;
+            org_name: string;
+            org_type: string;
+            org_status: string;
+            jurisdiction_code?: string | null;
+            compliance_level?: string | null;
+            certification_level?: string | null;
+            whitelist_refs: string[];
+            graylist_refs: string[];
+            blacklist_refs: string[];
+            review_status?: string | null;
+            risk_status?: string | null;
+            sellable_status?: string | null;
+            freeze_reason?: string | null;
+            blacklist_active: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ApiResponseOrganizationAggregateView: {
+            success: boolean;
+            data: components["schemas"]["OrganizationAggregateView"];
+        };
+        ApiResponseOrganizationAggregateViewList: {
+            success: boolean;
+            data: components["schemas"]["OrganizationAggregateView"][];
+        };
         SessionContextView: {
             /**
              * @description Session mirror mode. `jwt_mirror` is resolved from a Bearer token; `local_test_user` is resolved from local test identity headers.
@@ -890,7 +926,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseOrganizationAggregateView"];
+                };
             };
             /** @description Not found */
             404: {
@@ -903,7 +941,12 @@ export interface operations {
     };
     listOrganizations: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organization status filter, for example `pending_review`. */
+                status?: string;
+                /** @description Organization type filter, for example `seller` or `buyer`. */
+                org_type?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -915,7 +958,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseOrganizationAggregateViewList"];
+                };
             };
         };
     };

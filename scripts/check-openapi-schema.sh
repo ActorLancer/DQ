@@ -268,6 +268,9 @@ for path in \
   "/api/v1/products/{id}/skus" \
   "/api/v1/products/{id}/metadata-profile" \
   "/api/v1/products/{id}/submit" \
+  "/api/v1/review/subjects/{id}" \
+  "/api/v1/review/products/{id}" \
+  "/api/v1/review/compliance/{id}" \
   "/api/v1/sellers/{orgId}/profile"; do
   grep -q "$path" "$catalog_file" || {
     echo "[error] $catalog_file missing path: $path" >&2
@@ -283,6 +286,11 @@ for token in \
   "ApiResponseDataProduct" \
   "ApiResponseProductSku" \
   "ApiResponseProductSubmit" \
+  "ApiResponseReviewDecision" \
+  "reviewSubject" \
+  "reviewProduct" \
+  "reviewCompliance" \
+  "ReviewDecisionRequest" \
   "X-Idempotency-Key" \
   "getProductDetail" \
   "ApiResponseProductDetail" \
@@ -305,6 +313,8 @@ assert_synced_copy "$catalog_file" "$docs_catalog_file"
 
 iam_file="$OPENAPI_DIR/iam.yaml"
 for path in \
+  "/api/v1/iam/orgs" \
+  "/api/v1/iam/orgs/{id}" \
   "/api/v1/auth/me"; do
   grep -q "$path" "$iam_file" || {
     echo "[error] $iam_file missing path: $path" >&2
@@ -313,6 +323,15 @@ for path in \
 done
 
 for token in \
+  "listOrganizations" \
+  "getOrganization" \
+  "ApiResponseOrganizationAggregateView" \
+  "ApiResponseOrganizationAggregateViewList" \
+  "OrganizationAggregateView" \
+  "review_status" \
+  "risk_status" \
+  "sellable_status" \
+  "blacklist_active" \
   "getAuthMe" \
   "ApiResponseSessionContextView" \
   "SessionContextView" \

@@ -23,4 +23,21 @@ describe("console routes", () => {
 
     expect(new Set(groupedKeys).size).toBe(groupedKeys.length);
   });
+
+  it("binds review routes to formal platform-core APIs", () => {
+    expect(consoleRouteMap.review_subjects.apiBindings).toContain(
+      "GET /api/v1/iam/orgs?status=pending_review",
+    );
+    expect(consoleRouteMap.review_products.apiBindings).toContain(
+      "POST /api/v1/review/products/{id}",
+    );
+    expect(consoleRouteMap.review_compliance.apiBindings).toContain(
+      "POST /api/v1/review/compliance/{id}",
+    );
+    expect(
+      consoleRouteMap.review_subjects.apiBindings.some((binding) =>
+        binding.includes("/api/v1/ops/review"),
+      ),
+    ).toBe(false);
+  });
 });

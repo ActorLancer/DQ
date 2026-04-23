@@ -65,4 +65,54 @@ describe("catalog domain client", () => {
       "web-007-test-key",
     );
   });
+
+  it("sends review idempotency and step-up headers", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            review_task_id: "20000000-0000-0000-0000-000000000801",
+            review_type: "compliance_review",
+            ref_type: "compliance",
+            ref_id: "20000000-0000-0000-0000-000000000802",
+            status: "rejected",
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      ),
+    );
+    const client = createCatalogClient(
+      new PlatformClient({ baseUrl: "http://127.0.0.1:8080", fetch: fetchImpl }),
+    );
+
+    await client.reviewCompliance(
+      { id: "20000000-0000-0000-0000-000000000802" },
+      {
+        action_name: "reject",
+        action_reason: "WEB-008 高风险合规阻断",
+      },
+      {
+        idempotencyKey: "web-008-review-key",
+        stepUpToken: "step-up-token-demo",
+        stepUpChallengeId: "step-up-challenge-demo",
+      },
+    );
+
+    const [input, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(String(input)).toContain(
+      "/api/v1/review/compliance/20000000-0000-0000-0000-000000000802",
+    );
+    const headers = new Headers(init?.headers);
+    expect(headers.get("x-idempotency-key")).toBe("web-008-review-key");
+    expect(headers.get("x-step-up-token")).toBe("step-up-token-demo");
+    expect(headers.get("x-step-up-challenge-id")).toBe(
+      "step-up-challenge-demo",
+    );
+  });
 });

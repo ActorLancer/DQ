@@ -1394,6 +1394,10 @@ export interface components {
             success: boolean;
             data: components["schemas"]["ProductSubmit"];
         };
+        ApiResponseReviewDecision: {
+            success: boolean;
+            data: components["schemas"]["ReviewDecision"];
+        };
         ProductSubmit: {
             /** Format: uuid */
             product_id: string;
@@ -1868,7 +1872,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReviewDecision"];
+                    "application/json": components["schemas"]["ApiResponseReviewDecision"];
                 };
             };
         };
@@ -1897,7 +1901,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductSubmit"];
+                    "application/json": components["schemas"]["ApiResponseProductSubmit"];
                 };
             };
         };
@@ -1905,7 +1909,10 @@ export interface operations {
     reviewCompliance: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1923,7 +1930,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReviewDecision"];
+                    "application/json": components["schemas"]["ApiResponseReviewDecision"];
                 };
             };
         };

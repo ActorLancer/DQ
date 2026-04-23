@@ -66,10 +66,14 @@ export function AuthPlaceholderDialog() {
               <div className="inline-flex rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
                 Keycloak / IAM placeholder
               </div>
-              <CardTitle>控制台登录态占位</CardTitle>
-              <CardDescription>
-                当前阶段不在控制台实现正式登录页，而是通过已获取的 Bearer Token 或本地测试身份注入 HttpOnly Cookie。
-              </CardDescription>
+              <Dialog.Title asChild>
+                <CardTitle>控制台登录态占位</CardTitle>
+              </Dialog.Title>
+              <Dialog.Description asChild>
+                <CardDescription>
+                  当前阶段不在控制台实现正式登录页，而是通过已获取的 Bearer Token 或本地测试身份注入 HttpOnly Cookie。
+                </CardDescription>
+              </Dialog.Description>
             </div>
             <Dialog.Close asChild>
               <Button variant="ghost" size="sm">
@@ -99,7 +103,7 @@ export function AuthPlaceholderDialog() {
                 form.reset({
                   mode: "local",
                   loginId: "platform.console.demo",
-                  role: "platform_auditor",
+                  role: "platform_reviewer",
                 })
               }
             >
@@ -139,8 +143,9 @@ export function AuthPlaceholderDialog() {
               <div className="space-y-4">
                 <div className="flex flex-wrap gap-2">
                   {[
-                    ["platform_auditor", "平台审计员"],
+                    ["platform_reviewer", "平台审核员"],
                     ["platform_admin", "平台管理员"],
+                    ["platform_audit_security", "平台审计安全"],
                     ["platform_risk_settlement", "风控结算员"],
                     ["tenant_admin", "租户管理员"],
                   ].map(([role, label]) => (
@@ -163,7 +168,7 @@ export function AuthPlaceholderDialog() {
                   </label>
                   <label className="block space-y-2">
                     <span className="text-sm font-medium text-[var(--ink-strong)]">role</span>
-                    <Input {...form.register("role")} placeholder="platform_auditor" />
+                    <Input {...form.register("role")} placeholder="platform_reviewer" />
                     <FormError message={form.getFieldState("role").error?.message} />
                   </label>
                 </div>

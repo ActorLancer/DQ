@@ -12,4 +12,15 @@ test("console home and scaffold pages are reachable", async ({ page }) => {
 
   await page.goto("/developer/apps?preview=forbidden");
   await expect(page.getByText("权限态预演")).toBeVisible();
+
+  await page.goto("/ops/review/subjects?preview=empty");
+  await expect(page.getByText("空态预演")).toBeVisible();
+
+  await page.goto("/ops/review/products");
+  await expect(
+    page.getByText("审核队列、详情、权限和决策写入在同一工作台闭环。"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("GET /api/v1/products?status=pending_review"),
+  ).toBeVisible();
 });

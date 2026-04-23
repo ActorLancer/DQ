@@ -21,7 +21,10 @@ pub fn is_allowed(role: &str, permission: CatalogPermission) -> bool {
             matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
         }
         CatalogPermission::ProductList => {
-            matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
+            matches!(
+                role,
+                "platform_admin" | "platform_reviewer" | "tenant_admin" | "seller_operator"
+            )
         }
         CatalogPermission::ProductRead => {
             matches!(
@@ -115,6 +118,10 @@ mod tests {
             CatalogPermission::ProductDraftWrite
         ));
         assert!(is_allowed("platform_admin", CatalogPermission::ProductList));
+        assert!(is_allowed(
+            "platform_reviewer",
+            CatalogPermission::ProductList
+        ));
         assert!(is_allowed("tenant_admin", CatalogPermission::ProductList));
         assert!(is_allowed(
             "seller_operator",

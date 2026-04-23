@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { ReviewWorkbenchShell } from "@/components/console/review-workbench-shell";
 
 export default function ReviewCompliancePage() {
-  return <ConsoleRoutePage routeKey="review_compliance" />;
+  return <ReviewWorkbenchShell kind="compliance" />;
 }

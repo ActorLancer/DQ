@@ -49,6 +49,11 @@ paths:
   /api/v1/iam/orgs/{id}:
     get:
       summary: Get organization aggregate
+      description: >
+        Returns the formal organization aggregate used by the subject review
+        workbench. The view mirrors the backend `OrganizationAggregateView` and
+        includes admission status, jurisdiction, certification/compliance
+        levels, risk/review linkage fields, blacklist activity and timestamps.
       operationId: getOrganization
       parameters:
         - name: id
@@ -60,15 +65,85 @@ paths:
       responses:
         "200":
           description: Organization aggregate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOrganizationAggregateView"
+              examples:
+                pending_subject_review:
+                  value:
+                    success: true
+                    data:
+                      org_id: "33333333-3333-3333-3333-333333333333"
+                      org_name: "WEB-008 Data Supplier"
+                      org_type: "seller"
+                      org_status: "pending_review"
+                      jurisdiction_code: "CN"
+                      compliance_level: "L2"
+                      certification_level: "verified_basic"
+                      whitelist_refs: []
+                      graylist_refs: ["risk-ticket-demo"]
+                      blacklist_refs: []
+                      review_status: "manual_review"
+                      risk_status: "watch"
+                      sellable_status: "restricted"
+                      freeze_reason: null
+                      blacklist_active: false
+                      created_at: "2026-04-23T00:00:00.000Z"
+                      updated_at: "2026-04-23T00:00:00.000Z"
         "404":
           description: Not found
   /api/v1/iam/orgs:
     get:
       summary: List organizations
+      description: >
+        Lists organization aggregates for console review pages. V1 supports
+        filtering by organization status and organization type; callers use this
+        endpoint for subject admission queues instead of reading PostgreSQL
+        directly.
       operationId: listOrganizations
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Organization status filter, for example `pending_review`.
+        - name: org_type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Organization type filter, for example `seller` or `buyer`.
       responses:
         "200":
           description: Organization list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseOrganizationAggregateViewList"
+              examples:
+                pending_subjects:
+                  value:
+                    success: true
+                    data:
+                      - org_id: "33333333-3333-3333-3333-333333333333"
+                        org_name: "WEB-008 Data Supplier"
+                        org_type: "seller"
+                        org_status: "pending_review"
+                        jurisdiction_code: "CN"
+                        compliance_level: "L2"
+                        certification_level: "verified_basic"
+                        whitelist_refs: []
+                        graylist_refs: ["risk-ticket-demo"]
+                        blacklist_refs: []
+                        review_status: "manual_review"
+                        risk_status: "watch"
+                        sellable_status: "restricted"
+                        freeze_reason: null
+                        blacklist_active: false
+                        created_at: "2026-04-23T00:00:00.000Z"
+                        updated_at: "2026-04-23T00:00:00.000Z"
   /api/v1/iam/departments:
     get:
       summary: List departments
@@ -599,6 +674,88 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
+    OrganizationAggregateView:
+      type: object
+      required:
+        - org_id
+        - org_name
+        - org_type
+        - org_status
+        - whitelist_refs
+        - graylist_refs
+        - blacklist_refs
+        - blacklist_active
+        - created_at
+        - updated_at
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        org_name:
+          type: string
+        org_type:
+          type: string
+        org_status:
+          type: string
+        jurisdiction_code:
+          type: string
+          nullable: true
+        compliance_level:
+          type: string
+          nullable: true
+        certification_level:
+          type: string
+          nullable: true
+        whitelist_refs:
+          type: array
+          items:
+            type: string
+        graylist_refs:
+          type: array
+          items:
+            type: string
+        blacklist_refs:
+          type: array
+          items:
+            type: string
+        review_status:
+          type: string
+          nullable: true
+        risk_status:
+          type: string
+          nullable: true
+        sellable_status:
+          type: string
+          nullable: true
+        freeze_reason:
+          type: string
+          nullable: true
+        blacklist_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ApiResponseOrganizationAggregateView:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/OrganizationAggregateView"
+    ApiResponseOrganizationAggregateViewList:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationAggregateView"
     SessionContextView:
       type: object
       required:

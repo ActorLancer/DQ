@@ -620,6 +620,10 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
                 .header("content-type", "application/json")
                 .header("x-role", "platform_admin")
                 .header("x-request-id", &review_approve_req)
+                .header(
+                    "x-idempotency-key",
+                    format!("idem-cat024-review-approve-a-{suffix}"),
+                )
                 .body(Body::from(
                     json!({
                         "action_name": "approve",
@@ -844,6 +848,10 @@ async fn cat024_catalog_listing_review_end_to_end_db_smoke() {
                 .header("content-type", "application/json")
                 .header("x-role", "platform_admin")
                 .header("x-request-id", &review_reject_req)
+                .header(
+                    "x-idempotency-key",
+                    format!("idem-cat024-review-reject-b-{suffix}"),
+                )
                 .body(Body::from(
                     json!({
                         "action_name": "reject",

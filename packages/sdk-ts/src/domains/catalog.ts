@@ -27,6 +27,10 @@ export type ProductMetadataProfileResponse =
   SuccessBody<CatalogOperations["putProductMetadataProfile"]>;
 export type AssetQualityReportResponse =
   SuccessBody<CatalogOperations["createAssetQualityReport"]>;
+export type ReviewDecisionResponse =
+  SuccessBody<CatalogOperations["reviewSubject"]>;
+export type ProductReviewResponse =
+  SuccessBody<CatalogOperations["reviewProduct"]>;
 
 export type ListProductsQuery = QueryParams<CatalogOperations["listProducts"]>;
 export type CreateDataProductRequest =
@@ -45,15 +49,26 @@ export type BindTemplateRequest =
   RequestBody<CatalogOperations["bindSkuTemplate"]>;
 export type CreateAssetQualityReportRequest =
   RequestBody<CatalogOperations["createAssetQualityReport"]>;
+export type ReviewDecisionRequest =
+  RequestBody<CatalogOperations["reviewSubject"]>;
 
 export type CatalogMutationOptions = {
   idempotencyKey: string;
+  stepUpToken?: string;
+  stepUpChallengeId?: string;
 };
 
 function mutationHeaders(options: CatalogMutationOptions): HeadersInit {
-  return {
+  const headers: Record<string, string> = {
     "X-Idempotency-Key": options.idempotencyKey,
   };
+  if (options.stepUpToken) {
+    headers["X-Step-Up-Token"] = options.stepUpToken;
+  }
+  if (options.stepUpChallengeId) {
+    headers["x-step-up-challenge-id"] = options.stepUpChallengeId;
+  }
+  return headers;
 }
 
 export function createCatalogClient(client: PlatformClient) {
@@ -129,6 +144,48 @@ export function createCatalogClient(client: PlatformClient) {
     ) {
       return client.postJson<ProductSkuResponse, CreateProductSkuRequest>(
         "/api/v1/products/{id}/skus",
+        {
+          pathParams,
+          body,
+          headers: mutationHeaders(options),
+        },
+      );
+    },
+    reviewSubject(
+      pathParams: PathParams<CatalogOperations["reviewSubject"]>,
+      body: ReviewDecisionRequest,
+      options: CatalogMutationOptions,
+    ) {
+      return client.postJson<ReviewDecisionResponse, ReviewDecisionRequest>(
+        "/api/v1/review/subjects/{id}",
+        {
+          pathParams,
+          body,
+          headers: mutationHeaders(options),
+        },
+      );
+    },
+    reviewProduct(
+      pathParams: PathParams<CatalogOperations["reviewProduct"]>,
+      body: ReviewDecisionRequest,
+      options: CatalogMutationOptions,
+    ) {
+      return client.postJson<ProductReviewResponse, ReviewDecisionRequest>(
+        "/api/v1/review/products/{id}",
+        {
+          pathParams,
+          body,
+          headers: mutationHeaders(options),
+        },
+      );
+    },
+    reviewCompliance(
+      pathParams: PathParams<CatalogOperations["reviewCompliance"]>,
+      body: ReviewDecisionRequest,
+      options: CatalogMutationOptions,
+    ) {
+      return client.postJson<ReviewDecisionResponse, ReviewDecisionRequest>(
+        "/api/v1/review/compliance/{id}",
         {
           pathParams,
           body,

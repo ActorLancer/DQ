@@ -29,7 +29,22 @@ mod tests {
     #[test]
     fn role_matrix_for_session_read() {
         assert!(is_allowed("tenant_developer", IamPermission::SessionRead));
+        assert!(is_allowed("platform_reviewer", IamPermission::SessionRead));
         assert!(!is_allowed("guest", IamPermission::SessionRead));
+    }
+
+    #[test]
+    fn role_matrix_for_platform_reviewer_subject_queue() {
+        assert!(is_allowed("platform_reviewer", IamPermission::OrgRead));
+        assert!(is_allowed("platform_reviewer", IamPermission::IdentityRead));
+        assert!(is_allowed(
+            "platform_reviewer",
+            IamPermission::AccessPolicyRead
+        ));
+        assert!(!is_allowed(
+            "platform_reviewer",
+            IamPermission::IdentityWrite
+        ));
     }
 
     #[test]
