@@ -25,6 +25,15 @@ type UploadDisputeEvidenceOperation = NonNullable<
 type ResolveDisputeCaseOperation = NonNullable<
   BillingPaths["/api/v1/cases/{id}/resolve"]["post"]
 >;
+type MockPaymentSuccessOperation = NonNullable<
+  BillingPaths["/api/v1/mock/payments/{id}/simulate-success"]["post"]
+>;
+type MockPaymentFailOperation = NonNullable<
+  BillingPaths["/api/v1/mock/payments/{id}/simulate-fail"]["post"]
+>;
+type MockPaymentTimeoutOperation = NonNullable<
+  BillingPaths["/api/v1/mock/payments/{id}/simulate-timeout"]["post"]
+>;
 
 export type BillingOrderDetailResponse =
   SuccessBody<GetBillingOrderOperation>;
@@ -46,6 +55,12 @@ export type ResolveDisputeCaseRequest =
   RequestBody<ResolveDisputeCaseOperation>;
 export type ResolveDisputeCaseResponse =
   SuccessBody<ResolveDisputeCaseOperation>;
+export type MockPaymentSimulationPath =
+  PathParams<MockPaymentSuccessOperation>;
+export type MockPaymentSimulationRequest =
+  RequestBody<MockPaymentSuccessOperation>;
+export type MockPaymentSimulationResponse =
+  SuccessBody<MockPaymentSuccessOperation>;
 
 export type BillingMutationOptions = {
   idempotencyKey: string;
@@ -130,6 +145,48 @@ export function createBillingClient(client: PlatformClient) {
         ResolveDisputeCaseResponse,
         ResolveDisputeCaseRequest
       >("/api/v1/cases/{id}/resolve", {
+        pathParams,
+        body,
+        headers: mutationHeaders(options),
+      });
+    },
+    simulateMockPaymentSuccess(
+      pathParams: PathParams<MockPaymentSuccessOperation>,
+      body: RequestBody<MockPaymentSuccessOperation>,
+      options: BillingMutationOptions,
+    ) {
+      return client.postJson<
+        SuccessBody<MockPaymentSuccessOperation>,
+        RequestBody<MockPaymentSuccessOperation>
+      >("/api/v1/mock/payments/{id}/simulate-success", {
+        pathParams,
+        body,
+        headers: mutationHeaders(options),
+      });
+    },
+    simulateMockPaymentFail(
+      pathParams: PathParams<MockPaymentFailOperation>,
+      body: RequestBody<MockPaymentFailOperation>,
+      options: BillingMutationOptions,
+    ) {
+      return client.postJson<
+        SuccessBody<MockPaymentFailOperation>,
+        RequestBody<MockPaymentFailOperation>
+      >("/api/v1/mock/payments/{id}/simulate-fail", {
+        pathParams,
+        body,
+        headers: mutationHeaders(options),
+      });
+    },
+    simulateMockPaymentTimeout(
+      pathParams: PathParams<MockPaymentTimeoutOperation>,
+      body: RequestBody<MockPaymentTimeoutOperation>,
+      options: BillingMutationOptions,
+    ) {
+      return client.postJson<
+        SuccessBody<MockPaymentTimeoutOperation>,
+        RequestBody<MockPaymentTimeoutOperation>
+      >("/api/v1/mock/payments/{id}/simulate-timeout", {
         pathParams,
         body,
         headers: mutationHeaders(options),

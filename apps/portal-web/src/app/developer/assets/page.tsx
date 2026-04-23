@@ -1,5 +1,5 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { DeveloperAssetsShell } from "@/components/portal/developer-workbench-shell";
 
 export default function DeveloperAssetsPage() {
-  return <PortalRoutePage routeKey="developer_assets" />;
+  return <DeveloperAssetsShell />;
 }

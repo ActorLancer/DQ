@@ -1,5 +1,5 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { DeveloperHomeShell } from "@/components/portal/developer-workbench-shell";
 
 export default function DeveloperHomePage() {
-  return <PortalRoutePage routeKey="developer_home" />;
+  return <DeveloperHomeShell />;
 }

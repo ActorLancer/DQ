@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { DeveloperTraceShell } from "@/components/console/developer-workbench-shell";
 
 export default function DeveloperTracePage() {
-  return <ConsoleRoutePage routeKey="developer_trace" />;
+  return <DeveloperTraceShell />;
 }

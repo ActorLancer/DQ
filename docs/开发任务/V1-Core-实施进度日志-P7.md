@@ -114,6 +114,111 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-290（计划中）
+- 任务：`WEB-016` 实现开发者页面：应用管理、API Key、调用日志、trace 联查、Mock 支付操作入口
+- 状态：计划中
+- 当前任务编号：`WEB-016`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-015` 已完成并作为本批基线。本批继续保持 `portal-web / console-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-016` 只实现开发者页面，不合并通知联查或后续全局收口任务；DoD 要求页面可访问、空态/错态/权限态可用、接口契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认 11.1 开发者首页、11.2 测试应用页、11.3 状态联查页必须覆盖网络信息、测试应用、API Key、调用配置、trace 状态联查与调试导航。
+  - `docs/权限设计/按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`：确认 `developer.home.read / developer.app.read / developer.app.create / developer.app.update / developer.trace.read / developer.mock_payment.simulate` 的页面、按钮、接口权限和 Mock 支付非生产审计口径。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认开发者泳道包括创建测试应用、API Key 管理、本地 / staging / demo 模式、Mock Provider、按 `order_id / event_id / tx_hash` 联查状态与 Mock 支付成功 / 失败 / 超时入口。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`、`统一错误码字典正式版.md`、`测试用例矩阵正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 WEB 前端只能调用 `platform-core` 正式 API，写操作附带 `Idempotency-Key`，敏感页显示主体 / 角色 / 租户 / 作用域，错误码与权限口径不得漂移。
+  - `packages/openapi/ops.yaml`、`billing.yaml`、`iam.yaml` 与 `docs/02-openapi/*.yaml`：确认开发者 trace 已有 `GET /api/v1/developer/trace` 正式契约，Mock 支付已有 simulate-success / fail / timeout 契约；同时发现 `GET/POST /api/v1/apps` 与 API Key 轮换 / 撤销接口在 `iam.yaml` 中仍偏骨架化，需要按后端现有实现和冻结页面 / 权限语义补齐 schema 后再生成 SDK。
+  - `apps/platform-core/src/modules/iam/api.rs`、`domain.rs`、`repository.rs` 与 `apps/platform-core/src/modules/audit/api/router.rs`：确认应用管理返回 `ApplicationView`，开发者 trace 返回 `DeveloperTraceLookupResponse`，均通过 `platform-core` 访问真实 PostgreSQL / 审计 / outbox 投影，不允许前端绕过后端直连底层系统。
+  - `apps/portal-web/**`、`apps/console-web/**`、`packages/sdk-ts/**`：确认现有开发者路由仍为说明页 / skeleton，不能视为已完成；本批将替换为正式页面与 SDK 绑定。
+- 当前完成标准理解：
+  - portal / console 的开发者首页、测试应用页、状态联查页和 Mock 支付入口必须可访问，并具备加载态、空态、错态、权限态和审计留痕提示。
+  - 应用管理与 API Key 页面必须通过 `packages/sdk-ts` 调用 `platform-core` 的 `/api/v1/apps` 与 credentials 接口；所有创建、更新、轮换、撤销动作都附带 `Idempotency-Key`，不暴露真实密钥明文或对象路径。
+  - trace 联查必须使用 `/api/v1/developer/trace` 显示 `request_id / trace_id / tx_hash / 链状态 / 投影状态 / 审计与日志摘要`；调用日志不得伪造为前端 mock。
+  - Mock 支付操作入口必须绑定 `/api/v1/mock/payments/{id}/simulate-success|fail|timeout`，展示非生产限制、权限态、幂等提交和审计提示。
+  - 页面必须继续显示当前主体、角色、租户、作用域，并验证浏览器端仅访问受控 `/api/platform/**` 边界。
+- 实施计划：
+  1. 补齐 IAM 应用管理 OpenAPI schema，同步 `packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml`，增加最小防漂移校验并重新生成 SDK。
+  2. 扩展 `packages/sdk-ts` 的 IAM 应用 / API Key 与 Billing Mock 支付方法，补齐请求头、幂等键和契约测试。
+  3. 实现 `portal-web` 与 `console-web` 开发者页面：开发者首页、应用 / API Key 管理、trace / 调用日志联查、Mock 支付入口，并补齐权限、表单校验、空态 / 错态 / 加载态。
+  4. 执行前端专项验证、后端通用验证、真实 API 联调、数据库回查、浏览器 smoke 与 E2E，并更新 TODO / 待审批日志后本地提交。
+
+### BATCH-290（待审批）
+- 任务：`WEB-016` 实现开发者页面：应用管理、API Key、调用日志、trace 联查、Mock 支付操作入口
+- 状态：待审批
+- 当前任务编号：`WEB-016`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001 ~ WEB-015` 基线继续生效；本批继续保持 `portal-web / console-web -> /api/platform -> platform-core` 边界，没有新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 完成情况：
+  - `packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml` 同步补齐 `/api/v1/apps`、`/api/v1/apps/{id}`、`credentials/rotate`、`credentials/revoke` 的正式响应体、请求体、幂等头和应用视图 schema；`scripts/check-openapi-schema.sh` 已纳入最小防漂移校验，防止 IAM 应用契约再次退化为 skeleton。
+  - `packages/sdk-ts` 已重新生成 IAM 类型并新增应用管理 / API Key domain 方法；Billing domain 新增 Mock 支付 success / fail / timeout 方法；单测覆盖请求头、路径、幂等键和响应解包，确保 SDK 与 OpenAPI 契约一致。
+  - `console-web` 新增正式开发者工作台、测试应用与 API Key、状态与调用日志联查、Mock 支付与测试资产页面；应用页使用 TanStack Table + Virtual，表单使用 React Hook Form + Zod，创建 / 更新 / 轮换 / 撤销均透传 `Idempotency-Key` 并展示审计提示、权限态、加载态、空态和错误态。
+  - `portal-web` 新增对应门户开发者页面，提供移动友好的应用卡片、trace 联查、Mock 支付表单和调试导航；页面统一显示当前主体、角色、租户、作用域，API Key 明文不展示、不持久化，下载或对象路径不在前端暴露。
+  - Developer trace 页面真实绑定 `GET /api/v1/developer/trace`，按 `order_id / event_id / tx_hash` 展示 `request_id / trace_id / tx_hash / 链状态 / 投影状态 / 审计 / outbox / dead letter / system log` 摘要，不以前端 mock 伪造调用日志。
+  - Mock 支付入口真实绑定 `/api/v1/mock/payments/{id}/simulate-success|fail|timeout`，展示非生产限制、step-up / 幂等提示、provider 结果、webhook 处理状态和支付投影。
+  - `portal-routes` 与 `console-routes` 的开发者页面 API 绑定、权限点和 Playwright smoke 已同步更新。
+- 验证：
+  - 前端 / 契约：
+    - `pnpm openapi:generate`
+    - `./scripts/check-openapi-schema.sh`
+    - `pnpm install --frozen-lockfile`
+    - `pnpm install`
+    - `pnpm --filter @datab/sdk-ts typecheck`
+    - `pnpm --filter @datab/console-web typecheck`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/sdk-ts test`
+    - `pnpm --filter @datab/console-web test:unit`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/console-web lint`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm --filter @datab/console-web test:e2e`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm test`
+    - `pnpm build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+    - `./infra/kafka/init-topics.sh`
+  - 真实 API / DB / 浏览器联调：
+    - `./scripts/seed-local-iam-test-identities.sh`
+    - `GET /api/v1/auth/me`：本地 `developer.admin@luna.local` 返回 `mode=local_test_user`、`tenant_admin`、正式 `user_id / tenant_id / auth_context_level`
+    - `GET /api/v1/apps`、`POST /api/v1/apps`、`PATCH /api/v1/apps/{id}`、`POST /credentials/rotate`、`POST /credentials/revoke`
+    - `GET /api/v1/developer/trace?order_id=0b0c5dce-3fca-420e-b416-2433a1552e3e`
+    - `POST /api/v1/mock/payments/{payment_intent_id}/simulate-success`
+    - DB 回查 `core.application`、`developer.mock_payment_case`、`payment.payment_transaction`、`audit.audit_event`、`audit.access_audit`、`ops.system_log`
+    - 桌面 console `1440x920` 与移动 portal `390x844` 浏览器 smoke：注入本地会话 Cookie 后访问开发者首页 / 应用页 / trace 页 / Mock 支付页，并捕获浏览器端 API 请求
+    - 前端受限系统扫描：`rg` 检查 `apps/portal-web`、`apps/console-web`、`packages/sdk-ts` 未引入直连 PostgreSQL / Kafka / OpenSearch / Redis / Fabric 客户端或端口访问
+- 验证结果：
+  - 全量前端 lint / typecheck / unit / E2E / build 均通过；`pnpm test` 中 portal 与 console E2E 均通过。未启动后端时 E2E 会输出预期的 `ECONNREFUSED 127.0.0.1:8094` 代理错误态日志，但最终断言通过；真实后端联调阶段已单独启动 `platform-core` 验证成功路径。
+  - 后端通用验证全部通过；`cargo check/test/sqlx prepare` 仅输出仓库既有 warning，未引入新的 Rust / SQLx 回归。
+  - OpenAPI 防漂移通过，且 `packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml` 在本批新增应用管理契约上保持同步。
+  - 真实 API 联调通过：
+    - `auth/me` 返回 `Developer Admin / tenant_admin / 10000000-0000-0000-0000-000000000102 / aal1`
+    - 应用创建、更新、API Key 轮换和撤销均成功，响应中的 `client_secret_status` 从 `active` 变为 `revoked`
+    - developer trace 返回订单业务状态、支付状态、交付状态、链证明状态、投影状态和 system log 摘要，并写入 `audit.access_audit` 与 `ops.system_log`
+    - Mock 支付 success 返回 `provider_kind=mock`、`provider_status=succeeded`、`webhook_processed_status=processed`、重复 webhook 为 `duplicate`
+  - DB 回查通过：
+    - `core.application` 命中测试应用并展示 `client_secret_status=revoked`
+    - `audit.audit_event` 命中 `iam.app.create / iam.app.patch / iam.app.secret.rotate / iam.app.secret.revoke / mock.payment.simulate / payment.webhook.processed / payment.webhook.duplicate`
+    - `developer.mock_payment_case` 命中 `scenario_type=success`、`status=executed`、`webhook_processed_status=processed`
+    - `payment.payment_transaction` 命中 1 条支付交易
+    - developer trace 命中 1 条 `audit.access_audit(target_type=developer_trace_query)` 与 1 条 `ops.system_log`
+  - 浏览器 smoke 通过：console 桌面和 portal 移动均能渲染开发者页面与主体条；捕获到的正式请求全部是 `/api/platform/**`，`directRequests=[]`，没有浏览器直连 `127.0.0.1:8094` 或底层中间件。
+  - 业务测试数据已清理：本批创建的 `core.application`、`payment.payment_intent`、`developer.mock_payment_case`、`payment.payment_transaction`、`payment.payment_webhook_event` 均已删除或级联清理，残留回查为 `0`；审计与访问日志按 append-only 保留。
+  - 本批未新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 已登记 `BATCH-290` 无新增项。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-016`
+  - `页面说明书-V1-完整版.md`：开发者首页、测试应用页、状态联查页、Mock 支付 / 测试资产入口
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`：开发者页面查看、应用管理、trace 读取、Mock 支付模拟权限
+  - `业务流程图-V1-完整版.md`：开发者创建测试应用、API Key 管理、trace 联查、Mock Provider 调试路径
+  - `packages/openapi/iam.yaml`、`billing.yaml`、`ops.yaml` 与 `docs/02-openapi/*.yaml`
+- 覆盖的任务清单条目：`WEB-016`
+- 未覆盖项：
+  - 无。`WEB-016` 要求的开发者页面、应用管理、API Key、调用日志 / trace 联查、Mock 支付入口、SDK 契约、真实 API 联调、DB 回查、浏览器 smoke 与受控边界验证均已完成；通知联查由 `WEB-022` 继续承接。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-285（计划中）
 - 任务：`WEB-011` 实现验收页面：通过、拒收、拒收原因、生命周期摘要
 - 状态：计划中

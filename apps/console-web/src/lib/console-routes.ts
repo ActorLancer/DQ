@@ -191,7 +191,12 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "developer.home.read",
     primaryPermissions: [],
     description: "开发调试导航、网络信息与联调说明入口。",
-    apiBindings: ["/api/v1/developer/trace"],
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "GET /health/deps",
+      "GET /api/v1/apps",
+      "GET /api/v1/developer/trace",
+    ],
   },
   {
     key: "developer_apps",
@@ -201,7 +206,14 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "developer.app.read",
     primaryPermissions: ["developer.app.create", "developer.app.update"],
     description: "测试应用、API Key 与调用配置入口。",
-    apiBindings: ["/api/v1/apps", "/api/v1/apps/{id}"],
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "GET /api/v1/apps",
+      "POST /api/v1/apps",
+      "PATCH /api/v1/apps/{id}",
+      "POST /api/v1/apps/{id}/credentials/rotate",
+      "POST /api/v1/apps/{id}/credentials/revoke",
+    ],
   },
   {
     key: "developer_trace",
@@ -211,17 +223,22 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "developer.trace.read",
     primaryPermissions: [],
     description: "order / event / tx_hash 级别的开发态 trace 联查入口。",
-    apiBindings: ["/api/v1/developer/trace"],
+    apiBindings: ["GET /api/v1/auth/me", "GET /api/v1/developer/trace"],
   },
   {
     key: "developer_assets",
     group: "开发者通道",
     title: "测试资产页",
     path: "/developer/assets",
-    viewPermission: "developer.test_asset.read",
-    primaryPermissions: [],
-    description: "测试钱包、测试账号、Mock 数据和样例资产入口。",
-    apiBindings: ["/api/v1/developer/assets"],
+    viewPermission: "developer.test_asset.read / developer.mock_payment.simulate",
+    primaryPermissions: ["developer.mock_payment.simulate"],
+    description: "测试钱包、测试账号、Mock 数据和 Mock 支付操作入口。",
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "POST /api/v1/mock/payments/{id}/simulate-success",
+      "POST /api/v1/mock/payments/{id}/simulate-fail",
+      "POST /api/v1/mock/payments/{id}/simulate-timeout",
+    ],
   },
 ];
 

@@ -318,6 +318,10 @@ iam_file="$OPENAPI_DIR/iam.yaml"
 for path in \
   "/api/v1/iam/orgs" \
   "/api/v1/iam/orgs/{id}" \
+  "/api/v1/apps" \
+  "/api/v1/apps/{id}" \
+  "/api/v1/apps/{id}/credentials/rotate" \
+  "/api/v1/apps/{id}/credentials/revoke" \
   "/api/v1/auth/me"; do
   grep -q "$path" "$iam_file" || {
     echo "[error] $iam_file missing path: $path" >&2
@@ -335,6 +339,19 @@ for token in \
   "risk_status" \
   "sellable_status" \
   "blacklist_active" \
+  "listApplications" \
+  "createApplication" \
+  "patchApplication" \
+  "rotateApplicationSecret" \
+  "revokeApplicationSecret" \
+  "ApiResponseApplicationView" \
+  "ApiResponseApplicationViewList" \
+  "ApplicationView" \
+  "CreateApplicationRequest" \
+  "PatchApplicationRequest" \
+  "RotateApplicationSecretRequest" \
+  "client_secret_status" \
+  "X-Idempotency-Key" \
   "getAuthMe" \
   "ApiResponseSessionContextView" \
   "SessionContextView" \

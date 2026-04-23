@@ -467,7 +467,11 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "developer.home.read",
     primaryPermissions: [],
     description: "开发者工作台、应用和调试导航。",
-    apiBindings: ["/api/v1/developer/trace"],
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "GET /api/v1/apps",
+      "GET /api/v1/developer/trace",
+    ],
   },
   {
     key: "developer_apps",
@@ -477,7 +481,14 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "developer.app.read",
     primaryPermissions: ["developer.app.create", "developer.app.update"],
     description: "应用、API Key 与调用配置入口。",
-    apiBindings: ["/api/v1/apps", "/api/v1/apps/{id}"],
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "GET /api/v1/apps",
+      "POST /api/v1/apps",
+      "PATCH /api/v1/apps/{id}",
+      "POST /api/v1/apps/{id}/credentials/rotate",
+      "POST /api/v1/apps/{id}/credentials/revoke",
+    ],
   },
   {
     key: "developer_trace",
@@ -487,17 +498,22 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "developer.trace.read",
     primaryPermissions: [],
     description: "订单、事件、链回执和观测联查入口。",
-    apiBindings: ["/api/v1/developer/trace"],
+    apiBindings: ["GET /api/v1/auth/me", "GET /api/v1/developer/trace"],
   },
   {
     key: "developer_assets",
     group: "开发者通道",
     title: "测试资产页",
     path: "/developer/assets",
-    viewPermission: "developer.test_asset.read",
-    primaryPermissions: [],
-    description: "测试资产、样例和开发调试资源入口。",
-    apiBindings: ["/internal/dev/overview"],
+    viewPermission: "developer.test_asset.read / developer.mock_payment.simulate",
+    primaryPermissions: ["developer.mock_payment.simulate"],
+    description: "测试资产、样例和 Mock 支付操作入口。",
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "POST /api/v1/mock/payments/{id}/simulate-success",
+      "POST /api/v1/mock/payments/{id}/simulate-fail",
+      "POST /api/v1/mock/payments/{id}/simulate-timeout",
+    ],
   },
 ];
 

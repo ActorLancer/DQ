@@ -221,16 +221,78 @@ paths:
   /api/v1/apps:
     get:
       summary: List applications
+      description: List developer/test applications visible to the current tenant scope.
       operationId: listApplications
+      parameters:
+        - name: org_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Application list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseApplicationViewList"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create application
+      description: Create a developer/test application. Write callers must provide an idempotency key and the platform records an audit event.
       operationId: createApplication
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up-Token
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Step-Up-Challenge-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApplicationRequest"
       responses:
         "200":
           description: Application created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseApplicationView"
+        "400":
+          description: Invalid request or missing idempotency context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/apps/{id}:
     get:
       summary: Get application
@@ -245,10 +307,25 @@ paths:
       responses:
         "200":
           description: Application detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseApplicationView"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     patch:
       summary: Patch application
+      description: Update a developer/test application. Write callers must provide an idempotency key and the platform records an audit event.
       operationId: patchApplication
       parameters:
         - name: id
@@ -257,14 +334,56 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up-Token
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Step-Up-Challenge-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchApplicationRequest"
       responses:
         "200":
           description: Application patched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseApplicationView"
+        "400":
+          description: Invalid request or missing idempotency context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/apps/{id}/credentials/rotate:
     post:
       summary: Rotate application secret
+      description: Rotate an application API secret hash. The response only exposes secret status and never returns plaintext secret material.
       operationId: rotateApplicationSecret
       parameters:
         - name: id
@@ -273,14 +392,56 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up-Token
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Step-Up-Challenge-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateApplicationSecretRequest"
       responses:
         "200":
           description: Application secret rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseApplicationView"
+        "400":
+          description: Invalid request or missing idempotency context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/apps/{id}/credentials/revoke:
     post:
       summary: Revoke application secret
+      description: Revoke an application API secret hash. The response only exposes secret status and never returns plaintext secret material.
       operationId: revokeApplicationSecret
       parameters:
         - name: id
@@ -289,11 +450,46 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up-Token
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Step-Up-Challenge-Id
+          in: header
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Application secret revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseApplicationView"
+        "400":
+          description: Invalid request or missing idempotency context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/users/invite:
     post:
       summary: Invite user shortcut endpoint
@@ -756,6 +952,92 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OrganizationAggregateView"
+    ApplicationView:
+      type: object
+      required:
+        - app_id
+        - org_id
+        - app_name
+        - app_type
+        - status
+        - client_id
+        - client_secret_status
+      properties:
+        app_id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        app_name:
+          type: string
+        app_type:
+          type: string
+          description: Application category such as `api_client`; values are owned by IAM.
+        status:
+          type: string
+          description: Application lifecycle status as stored by IAM.
+        client_id:
+          type: string
+        client_secret_status:
+          type: string
+          description: Secret material status mirror; plaintext secrets are never returned.
+    CreateApplicationRequest:
+      type: object
+      required:
+        - org_id
+        - app_name
+        - client_id
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        app_name:
+          type: string
+        app_type:
+          type: string
+          nullable: true
+          default: api_client
+        client_id:
+          type: string
+        client_secret_hash:
+          type: string
+          nullable: true
+          description: Pre-hashed secret material. Plaintext secrets must not be sent to or returned from the web client.
+    PatchApplicationRequest:
+      type: object
+      properties:
+        app_name:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+    RotateApplicationSecretRequest:
+      type: object
+      properties:
+        client_secret_hash:
+          type: string
+          nullable: true
+          description: Optional pre-hashed replacement secret. If omitted, IAM generates internal secret material and returns only status.
+    ApiResponseApplicationView:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ApplicationView"
+    ApiResponseApplicationViewList:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicationView"
     SessionContextView:
       type: object
       required:

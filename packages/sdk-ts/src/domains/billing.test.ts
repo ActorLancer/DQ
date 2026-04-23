@@ -160,4 +160,66 @@ describe("billing domain client", () => {
     expect(headers.get("x-idempotency-key")).toBe("idem-resolve-001");
     expect(headers.get("x-step-up-token")).toBe("step-up-token");
   });
+
+  it("binds developer mock payment simulations to formal endpoints", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            mock_payment_case_id: "case-1",
+            payment_intent_id: "30000000-0000-0000-0000-000000000101",
+            scenario_type: "success",
+            provider_key: "mock_payment_provider",
+            provider_kind: "mock",
+            provider_event_id: "evt-1",
+            provider_status: "succeeded",
+            webhook_processed_status: "processed",
+            duplicate_webhook: false,
+          },
+        }),
+        {
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const sdk = createBillingClient(new PlatformClient({
+      baseUrl: "http://platform.test",
+      fetch: fetchMock,
+    }));
+    const path = { id: "30000000-0000-0000-0000-000000000101" };
+
+    await sdk.simulateMockPaymentSuccess(
+      path,
+      { delay_seconds: 0, duplicate_webhook: false, partial_refund_amount: null },
+      { idempotencyKey: "web-016:mock-payment-success" },
+    );
+    await sdk.simulateMockPaymentFail(
+      path,
+      { delay_seconds: 1, duplicate_webhook: true, partial_refund_amount: null },
+      { idempotencyKey: "web-016:mock-payment-fail" },
+    );
+    await sdk.simulateMockPaymentTimeout(
+      path,
+      { delay_seconds: 2, duplicate_webhook: false, partial_refund_amount: null },
+      { idempotencyKey: "web-016:mock-payment-timeout" },
+    );
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://platform.test/api/v1/mock/payments/30000000-0000-0000-0000-000000000101/simulate-success",
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "http://platform.test/api/v1/mock/payments/30000000-0000-0000-0000-000000000101/simulate-fail",
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      "http://platform.test/api/v1/mock/payments/30000000-0000-0000-0000-000000000101/simulate-timeout",
+    );
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-idempotency-key")).toBe(
+      "web-016:mock-payment-success",
+    );
+    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("x-idempotency-key")).toBe(
+      "web-016:mock-payment-timeout",
+    );
+  });
 });

@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { DeveloperHomeShell } from "@/components/console/developer-workbench-shell";
 
 export default function DeveloperHomePage() {
-  return <ConsoleRoutePage routeKey="developer_home" />;
+  return <DeveloperHomeShell />;
 }

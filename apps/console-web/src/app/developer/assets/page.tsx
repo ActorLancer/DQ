@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { DeveloperAssetsShell } from "@/components/console/developer-workbench-shell";
 
 export default function DeveloperAssetsPage() {
-  return <ConsoleRoutePage routeKey="developer_assets" />;
+  return <DeveloperAssetsShell />;
 }

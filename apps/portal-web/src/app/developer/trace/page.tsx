@@ -1,5 +1,5 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { DeveloperTraceShell } from "@/components/portal/developer-workbench-shell";
 
 export default function DeveloperTracePage() {
-  return <PortalRoutePage routeKey="developer_trace" />;
+  return <DeveloperTraceShell />;
 }

@@ -206,10 +206,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List applications */
+        /**
+         * List applications
+         * @description List developer/test applications visible to the current tenant scope.
+         */
         get: operations["listApplications"];
         put?: never;
-        /** Create application */
+        /**
+         * Create application
+         * @description Create a developer/test application. Write callers must provide an idempotency key and the platform records an audit event.
+         */
         post: operations["createApplication"];
         delete?: never;
         options?: never;
@@ -231,7 +237,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch application */
+        /**
+         * Patch application
+         * @description Update a developer/test application. Write callers must provide an idempotency key and the platform records an audit event.
+         */
         patch: operations["patchApplication"];
         trace?: never;
     };
@@ -244,7 +253,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rotate application secret */
+        /**
+         * Rotate application secret
+         * @description Rotate an application API secret hash. The response only exposes secret status and never returns plaintext secret material.
+         */
         post: operations["rotateApplicationSecret"];
         delete?: never;
         options?: never;
@@ -261,7 +273,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke application secret */
+        /**
+         * Revoke application secret
+         * @description Revoke an application API secret hash. The response only exposes secret status and never returns plaintext secret material.
+         */
         post: operations["revokeApplicationSecret"];
         delete?: never;
         options?: never;
@@ -773,6 +788,46 @@ export interface components {
             success: boolean;
             data: components["schemas"]["OrganizationAggregateView"][];
         };
+        ApplicationView: {
+            /** Format: uuid */
+            app_id: string;
+            /** Format: uuid */
+            org_id: string;
+            app_name: string;
+            /** @description Application category such as `api_client`; values are owned by IAM. */
+            app_type: string;
+            /** @description Application lifecycle status as stored by IAM. */
+            status: string;
+            client_id: string;
+            /** @description Secret material status mirror; plaintext secrets are never returned. */
+            client_secret_status: string;
+        };
+        CreateApplicationRequest: {
+            /** Format: uuid */
+            org_id: string;
+            app_name: string;
+            /** @default api_client */
+            app_type: string | null;
+            client_id: string;
+            /** @description Pre-hashed secret material. Plaintext secrets must not be sent to or returned from the web client. */
+            client_secret_hash?: string | null;
+        };
+        PatchApplicationRequest: {
+            app_name?: string | null;
+            status?: string | null;
+        };
+        RotateApplicationSecretRequest: {
+            /** @description Optional pre-hashed replacement secret. If omitted, IAM generates internal secret material and returns only status. */
+            client_secret_hash?: string | null;
+        };
+        ApiResponseApplicationView: {
+            success: boolean;
+            data: components["schemas"]["ApplicationView"];
+        };
+        ApiResponseApplicationViewList: {
+            success: boolean;
+            data: components["schemas"]["ApplicationView"][];
+        };
         SessionContextView: {
             /**
              * @description Session mirror mode. `jwt_mirror` is resolved from a Bearer token; `local_test_user` is resolved from local test identity headers.
@@ -1119,7 +1174,10 @@ export interface operations {
     };
     listApplications: {
         parameters: {
-            query?: never;
+            query?: {
+                org_id?: string;
+                status?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1131,25 +1189,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseApplicationViewList"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
     createApplication: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Idempotency-Key": string;
+                "X-Step-Up-Token"?: string;
+                "X-Step-Up-Challenge-Id"?: string;
+            };
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApplicationRequest"];
+            };
+        };
         responses: {
             /** @description Application created */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseApplicationView"];
+                };
+            };
+            /** @description Invalid request or missing idempotency context */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
@@ -1169,75 +1266,152 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseApplicationView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
     patchApplication: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Idempotency-Key": string;
+                "X-Step-Up-Token"?: string;
+                "X-Step-Up-Challenge-Id"?: string;
+            };
             path: {
                 id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchApplicationRequest"];
+            };
+        };
         responses: {
             /** @description Application patched */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseApplicationView"];
+                };
+            };
+            /** @description Invalid request or missing idempotency context */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
     rotateApplicationSecret: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Idempotency-Key": string;
+                "X-Step-Up-Token"?: string;
+                "X-Step-Up-Challenge-Id"?: string;
+            };
             path: {
                 id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RotateApplicationSecretRequest"];
+            };
+        };
         responses: {
             /** @description Application secret rotated */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseApplicationView"];
+                };
+            };
+            /** @description Invalid request or missing idempotency context */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
     revokeApplicationSecret: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-Idempotency-Key": string;
+                "X-Step-Up-Token"?: string;
+                "X-Step-Up-Challenge-Id"?: string;
+            };
             path: {
                 id: string;
             };
@@ -1250,14 +1424,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiResponseApplicationView"];
+                };
+            };
+            /** @description Invalid request or missing idempotency context */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };

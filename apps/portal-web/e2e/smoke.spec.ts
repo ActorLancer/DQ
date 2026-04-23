@@ -154,4 +154,21 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/support/cases/new?preview=error");
   await expect(page.getByText("争议页错误态")).toBeVisible();
   await expect(page.getByText("DISPUTE_STATUS_INVALID", { exact: false })).toBeVisible();
+
+  await page.goto("/developer");
+  await expect(page.getByRole("heading", { name: "开发者工作台", exact: true })).toBeVisible();
+  await expect(page.getByText("当前主体 / 角色 / 租户 / 作用域").first()).toBeVisible();
+
+  await page.goto("/developer/apps");
+  await expect(page.getByText("应用管理与 API Key")).toBeVisible();
+  await expect(page.getByText("应用列表")).toBeVisible();
+  await expect(page.getByText("Idempotency-Key").first()).toBeVisible();
+
+  await page.goto("/developer/trace");
+  await expect(page.getByText("Trace 与调用日志联查")).toBeVisible();
+  await expect(page.getByText("request_id").first()).toBeVisible();
+
+  await page.goto("/developer/assets");
+  await expect(page.getByRole("heading", { name: "Mock 支付操作入口", exact: true })).toBeVisible();
+  await expect(page.getByText("developer.mock_payment.simulate").first()).toBeVisible();
 });

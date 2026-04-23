@@ -22,6 +22,23 @@ test("console home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/developer/apps?preview=forbidden");
   await expect(page.getByText("权限态预演")).toBeVisible();
 
+  await page.goto("/developer");
+  await expect(page.getByText("开发者控制面")).toBeVisible();
+  await expect(page.getByText("当前主体 / 角色 / 租户 / 作用域").first()).toBeVisible();
+
+  await page.goto("/developer/apps");
+  await expect(page.getByText("测试应用与 API Key")).toBeVisible();
+  await expect(page.getByText("应用列表")).toBeVisible();
+  await expect(page.getByText("Idempotency-Key").first()).toBeVisible();
+
+  await page.goto("/developer/trace");
+  await expect(page.getByText("状态与调用日志联查")).toBeVisible();
+  await expect(page.getByText("request_id").first()).toBeVisible();
+
+  await page.goto("/developer/assets");
+  await expect(page.getByText("Mock 支付与测试资产")).toBeVisible();
+  await expect(page.getByText("developer.mock_payment.simulate").first()).toBeVisible();
+
   await page.goto("/ops/review/subjects?preview=empty");
   await expect(page.getByText("空态预演")).toBeVisible();
 
