@@ -155,6 +155,70 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-281（计划中）
+- 任务：`SEARCHREC-013` 逐任务复核与正式重验（local 模式最小候选召回策略）
+- 状态：计划中
+- 说明：按 `SEARCHREC-013` 的冻结口径，重新核对 `GET /api/v1/recommendations` 在 `APP_MODE=local` 下是否仍真实走 PostgreSQL 搜索投影驱动的最小候选召回，而不是继续依赖 OpenSearch 多路召回；重点确认“最新上架、同类目、同卖方、热销、零结果兜底”五类召回源、`postgresql_local_minimal` 运行态标记、Redis 推荐缓存命中、审计/系统日志和 PostgreSQL 最终业务校验没有回退成历史占位。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-013`，不提前进入 `SEARCHREC-014` 的固定推荐位样例。
+
+### BATCH-281（待审批）
+- 任务：`SEARCHREC-013` 逐任务复核与正式重验（local 模式最小候选召回策略）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-013`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-009` 至 `SEARCHREC-012` 已重验推荐读取、曝光/点击、推荐位运维接口和 rebuild 基线，本批在该基线上只重验 `APP_MODE=local` 的 PostgreSQL 最小候选召回，不提前进入 `SEARCHREC-014` 的固定推荐位样例。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-013` 只收口 local 模式最小候选召回策略，要求业务规则、状态机、审计、事件与测试齐备，并与上下游联调通过。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认推荐正式链路仍以 PostgreSQL 为权威源，`APP_MODE=local` 允许退化到 PostgreSQL 搜索投影驱动的最小候选召回，且零结果页必须有兜底推荐。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`、`packages/openapi/recommendation.yaml`：确认 local 模式必须覆盖“最新上架、同类目、同卖方、热销、零结果兜底”、`cache_hit=false -> true`、`candidate_backend=postgresql_local_minimal`、`fallback:zero_result` 证据和正式 Bearer 读审计。
+  - `apps/platform-core/src/modules/recommendation/repo/mod.rs`、`tests/recommendation_api_db.rs`：复核 `generate_local_candidate_snapshot(...)`、`generate_local_zero_result_snapshot(...)`、`recall_same_category_projection(...)`、`recall_same_seller_projection(...)`、`recall_new_arrival_projection(...)`、`recall_popular_projection(...)` 与 `recommendation_local_minimal_candidate_db_smoke` 的实现没有被后续 task 带偏。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。`candidate_backend_for_runtime(...)` 在 `APP_MODE=local` 下仍固定返回 `CandidateBackend::PostgresqlLocalMinimal`，推荐读取不会继续依赖 OpenSearch。
+  - local 候选生成仍以 PostgreSQL 搜索投影表 `search.product_search_document / search.seller_search_document` 为基础，按正式口径合并 `new_arrival`、`popular`、`same_category`、`same_seller` 和 `fallback:zero_result`；结果在返回前仍落 `recommend.recommendation_request / recommendation_result / recommendation_result_item`，并写 `audit.access_audit + ops.system_log`。
+  - Redis 推荐短缓存仍是真接入：相同 local 请求第二次命中会返回 `cache_hit=true`，同时 Redis 中真实留下 `datab:v1:recommend:<subject_org_id>:anonymous:*` 缓存 key，TTL 维持 600 秒窗口内的倒计时值。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
+  - 真实运行态 Bearer 联调：
+    - 以 `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local APP_PORT=18081 OPENSEARCH_ENDPOINT=http://127.0.0.1:1 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core` 启动 local 实例
+    - Keycloak password grant（`local-buyer-operator`）调用 `GET /api/v1/recommendations`：
+      - `placement_code=home_featured` 两次，验证 `cache_hit=false -> true`
+      - `placement_code=product_detail_similar&context_entity_id=20000000-0000-0000-0000-000000000309`，验证 `local:same_category`
+      - `placement_code=product_detail_similar&context_entity_id=20000000-0000-0000-0000-000000000311`，验证 `local:same_seller + recall:seller_related`
+      - `placement_code=search_zero_result_fallback&context_entity_id=20000000-0000-0000-0000-000000000309`，验证 `fallback:zero_result`
+    - 使用 `psql` 回查 `recommend.recommendation_request / recommendation_result / recommendation_result_item` 的 `candidate_backend`、`runtime_mode`、`candidate_source_summary`、`recall_sources / explanation_codes`
+    - 使用 `redis-cli -u redis://default:datab_redis_pass@127.0.0.1:6379/1` 回查 `datab:v1:recommend:10000000-0000-0000-0000-000000000102:anonymous:*` 缓存 key 和 TTL
+    - 使用 `psql` 回查 `audit.access_audit` 和 `ops.system_log`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `recommendation_local_minimal_candidate_db_smoke` 通过，继续证明 local 模式会退化到 PostgreSQL 最小候选召回，`home_featured` 第二次请求命中缓存，`product_detail_bundle`/`search_zero_result_fallback` 能回查 same-seller 与 zero-result 兜底证据。
+  - 真实 local Bearer 联调成功：
+    - `req-searchrec013-live-home1-1776907074`：`HTTP 200`，`cache_hit=false`
+    - `req-searchrec013-live-home2-1776907074`：`HTTP 200`，`cache_hit=true`
+    - `req-searchrec013-live-similar-1776907107`：`HTTP 200`，结果项可见 `local:same_category`，`recall_sources={new_arrival,popular,similar}`
+    - `req-searchrec013-live-seller-1776907188`：`HTTP 200`，结果项可见 `local:same_seller`，`recall_sources={new_arrival,popular,seller_related}`
+    - `req-searchrec013-live-zero-1776907074`：`HTTP 200`，结果项可见 `fallback:zero_result`
+  - `psql` / Redis 回查结果：
+    - `recommend.recommendation_request.request_attrs`：上述 5 个请求全部为 `candidate_backend='postgresql_local_minimal'`、`runtime_mode='local'`；其中 `home1 -> cache_hit=false`、`home2 -> cache_hit=true`
+    - `recommend.recommendation_request.candidate_source_summary`：`home1/home2={"popular":5,"new_arrival":5,"placement_sample":5}`；`similar={"popular":10,"similar":10,"new_arrival":10}`；`seller={"popular":10,"new_arrival":10,"seller_related":9}`；`zero={"popular":5,"similar":5,"new_arrival":3}`
+    - `recommend.recommendation_result.metadata`：对应请求全部为 `candidate_backend='postgresql_local_minimal'`、`runtime_mode='local'`
+    - `recommend.recommendation_result_item`：`search_zero_result_fallback` 结果项可回查 `explanation_codes` 中的 `fallback:zero_result`；`product_detail_similar(context=...311)` 结果项可回查 `local:same_seller + recall:seller_related`
+    - Redis：`datab:v1:recommend:10000000-0000-0000-0000-000000000102:anonymous:*` 共可扫描到 5 个 key，TTL 实测仍在 `444~508` 秒区间，证明推荐短缓存真实使用
+    - `audit.access_audit` 与 `ops.system_log`：上述 5 个请求各有 1 条正式读审计和 1 条系统日志，`target_type='recommendation_result'`，日志消息为 `recommendation lookup executed: GET /api/v1/recommendations`
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮没有新的查询编译漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-013`
+  - `商品推荐与个性化发现设计.md`、`商品推荐与个性化发现接口协议正式版.md`：local 最小候选召回、零结果兜底和 PostgreSQL 最终业务校验边界
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐读取链必须在 local 模式保留正式候选/审计/缓存闭环
+  - `recommendation-runtime.md`、`search-rec-cases.md`、`packages/openapi/recommendation.yaml`：`postgresql_local_minimal`、`fallback:zero_result`、Redis 缓存命中和正式 Bearer 读审计要求
+- 覆盖的任务清单条目：`SEARCHREC-013`
+- 未覆盖项：
+  - 无。`SEARCHREC-013` 要求的 local 最小候选召回、Redis 缓存、正式 Bearer 读审计、零结果兜底与 PostgreSQL 最终校验均已重新验证；`SEARCHREC-014` 的固定推荐位样例仍留在下一 task 处理。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
