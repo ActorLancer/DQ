@@ -31,6 +31,14 @@ export type ReviewDecisionResponse =
   SuccessBody<CatalogOperations["reviewSubject"]>;
 export type ProductReviewResponse =
   SuccessBody<CatalogOperations["reviewProduct"]>;
+export type RawIngestBatchResponse =
+  SuccessBody<CatalogOperations["createRawIngestBatch"]>;
+export type RawObjectManifestResponse =
+  SuccessBody<CatalogOperations["createRawObjectManifest"]>;
+export type AssetObjectResponse =
+  SuccessBody<CatalogOperations["createAssetObject"]>;
+export type AssetReleasePolicyResponse =
+  SuccessBody<CatalogOperations["patchAssetReleasePolicy"]>;
 
 export type ListProductsQuery = QueryParams<CatalogOperations["listProducts"]>;
 export type CreateDataProductRequest =
@@ -51,6 +59,14 @@ export type CreateAssetQualityReportRequest =
   RequestBody<CatalogOperations["createAssetQualityReport"]>;
 export type ReviewDecisionRequest =
   RequestBody<CatalogOperations["reviewSubject"]>;
+export type CreateRawIngestBatchRequest =
+  RequestBody<CatalogOperations["createRawIngestBatch"]>;
+export type CreateRawObjectManifestRequest =
+  RequestBody<CatalogOperations["createRawObjectManifest"]>;
+export type CreateAssetObjectRequest =
+  RequestBody<CatalogOperations["createAssetObject"]>;
+export type PatchAssetReleasePolicyRequest =
+  RequestBody<CatalogOperations["patchAssetReleasePolicy"]>;
 
 export type CatalogMutationOptions = {
   idempotencyKey: string;
@@ -247,6 +263,58 @@ export function createCatalogClient(client: PlatformClient) {
         pathParams,
         body,
         headers: mutationHeaders(options),
+      });
+    },
+    createRawIngestBatch(
+      pathParams: PathParams<CatalogOperations["createRawIngestBatch"]>,
+      body: CreateRawIngestBatchRequest,
+    ) {
+      return client.postJson<RawIngestBatchResponse, CreateRawIngestBatchRequest>(
+        "/api/v1/assets/{assetId}/raw-ingest-batches",
+        {
+          pathParams,
+          body,
+        },
+      );
+    },
+    createRawObjectManifest(
+      pathParams: PathParams<CatalogOperations["createRawObjectManifest"]>,
+      body: CreateRawObjectManifestRequest,
+    ) {
+      return client.postJson<
+        RawObjectManifestResponse,
+        CreateRawObjectManifestRequest
+      >("/api/v1/raw-ingest-batches/{id}/manifests", {
+        pathParams,
+        body,
+      });
+    },
+    createAssetObject(
+      pathParams: PathParams<CatalogOperations["createAssetObject"]>,
+      body: CreateAssetObjectRequest,
+      options: Pick<CatalogMutationOptions, "idempotencyKey">,
+    ) {
+      return client.postJson<AssetObjectResponse, CreateAssetObjectRequest>(
+        "/api/v1/assets/{versionId}/objects",
+        {
+          pathParams,
+          body,
+          headers: {
+            "X-Idempotency-Key": options.idempotencyKey,
+          },
+        },
+      );
+    },
+    patchAssetReleasePolicy(
+      pathParams: PathParams<CatalogOperations["patchAssetReleasePolicy"]>,
+      body: PatchAssetReleasePolicyRequest,
+    ) {
+      return client.patchJson<
+        AssetReleasePolicyResponse,
+        PatchAssetReleasePolicyRequest
+      >("/api/v1/assets/{assetId}/release-policy", {
+        pathParams,
+        body,
       });
     },
     submitProduct(

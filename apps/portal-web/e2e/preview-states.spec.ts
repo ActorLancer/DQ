@@ -1,5 +1,10 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
+test.skip(
+  process.env.WEB_E2E_PREVIEW !== "1",
+  "Set WEB_E2E_PREVIEW=1 with NEXT_PUBLIC_WEB_ROUTE_PREVIEW=1 to run preview-state E2E.",
+);
+
 const STANDARD_PRODUCT_ID = "20000000-0000-0000-0000-000000000309";
 const STANDARD_SKU_ID = "20000000-0000-0000-0000-000000000409";
 const SEEDED_ORDER_ID = "30000000-0000-0000-0000-000000000101";

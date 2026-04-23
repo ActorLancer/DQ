@@ -47,3 +47,9 @@ PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm --filter @datab/portal-web dev
 - 通知相关控制面能力若后续进入门户，也必须先走 `platform-core` facade，不能直连 `notification-worker`
 - 页面写操作后续必须透传 `X-Idempotency-Key`
 - 高风险操作后续必须透传 `X-Step-Up-Token` 或等价链路
+
+## Scaffold 与 Preview 口径
+
+- `PortalRouteScaffold` 只负责布局、路由元信息、权限/API 提示，不构成页面完成证据。
+- 正式页面默认只走真实 `platform-core` API 状态，不允许依赖 URL `preview` 参数作为功能态。
+- `preview` 仅在显式设置 `NEXT_PUBLIC_WEB_ROUTE_PREVIEW=1`（或 `true`）时启用，用于调试 UI 状态测试，不纳入正式完成判定。

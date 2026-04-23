@@ -1003,11 +1003,16 @@ async fn search_api_and_ops_db_smoke() {
         industry: None,
         tags: Vec::new(),
         delivery_mode: None,
+        seller_org_id: None,
+        seller_type: None,
+        data_classification: None,
+        price_mode: None,
         price_min: None,
         price_max: None,
         sort: "composite".to_string(),
         page: Some(1),
         page_size: Some(10),
+        include_facets: true,
     };
     let all_query = SearchQuery {
         entity_scope: "all".to_string(),
@@ -2267,11 +2272,16 @@ async fn search_catalog_pg_fallback_db_smoke() {
         industry: None,
         tags: Vec::new(),
         delivery_mode: None,
+        seller_org_id: None,
+        seller_type: None,
+        data_classification: None,
+        price_mode: None,
         price_min: None,
         price_max: None,
         sort: "composite".to_string(),
         page: Some(1),
         page_size: Some(10),
+        include_facets: true,
     };
     let cache_key = cache_key_for_query(&query, "postgresql");
 
@@ -2514,11 +2524,16 @@ async fn search_catalog_composite_ranking_db_smoke() {
         industry: None,
         tags: Vec::new(),
         delivery_mode: None,
+        seller_org_id: None,
+        seller_type: None,
+        data_classification: None,
+        price_mode: None,
         price_min: None,
         price_max: None,
         sort: "composite".to_string(),
         page: Some(1),
         page_size: Some(10),
+        include_facets: true,
     };
     let opensearch_cache_key = cache_key_for_query(&query, "opensearch");
     let postgresql_cache_key = cache_key_for_query(&query, "postgresql");

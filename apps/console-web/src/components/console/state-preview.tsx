@@ -16,14 +16,24 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 const previewStates = ["ready", "loading", "empty", "error", "forbidden"] as const;
+const previewEnabled =
+  process.env.NEXT_PUBLIC_WEB_ROUTE_PREVIEW === "1" ||
+  process.env.NEXT_PUBLIC_WEB_ROUTE_PREVIEW === "true";
 
 export type PreviewState = (typeof previewStates)[number];
+export function isRoutePreviewEnabled() {
+  return previewEnabled;
+}
 
 export function PreviewStateControls() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const current = (searchParams.get("preview") as PreviewState | null) ?? "ready";
+
+  if (!isRoutePreviewEnabled()) {
+    return null;
+  }
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -110,6 +120,9 @@ export function StatePreview({ state }: { state: PreviewState }) {
 }
 
 export function getPreviewState(searchParams: ReadonlyURLSearchParams): PreviewState {
+  if (!isRoutePreviewEnabled()) {
+    return "ready";
+  }
   const preview = searchParams.get("preview");
   return previewStates.includes(preview as PreviewState)
     ? (preview as PreviewState)

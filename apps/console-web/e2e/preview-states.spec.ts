@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test.skip(
+  process.env.WEB_E2E_PREVIEW !== "1",
+  "Set WEB_E2E_PREVIEW=1 with NEXT_PUBLIC_WEB_ROUTE_PREVIEW=1 to run preview-state E2E.",
+);
+
 const SEEDED_ORDER_ID = "30000000-0000-0000-0000-000000000101";
 const restrictedPorts = new Set([
   "5432",

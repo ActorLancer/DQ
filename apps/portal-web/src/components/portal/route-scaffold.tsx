@@ -13,6 +13,7 @@ import {
   ScaffoldPill,
   StatePreview,
   getPreviewState,
+  isRoutePreviewEnabled,
 } from "./state-preview";
 
 export function PortalRouteScaffold({
@@ -22,7 +23,7 @@ export function PortalRouteScaffold({
 }: {
   routeKey: PortalRouteKey;
   params?: Record<string, string>;
-  children?: ReactNode;
+  children: ReactNode;
 }) {
   const meta = portalRouteMap[routeKey];
   const searchParams = useSearchParams();
@@ -41,7 +42,9 @@ export function PortalRouteScaffold({
             <div className="flex flex-wrap gap-2">
               <ScaffoldPill>{meta.group}</ScaffoldPill>
               <ScaffoldPill>{meta.key}</ScaffoldPill>
-              <ScaffoldPill tone="warning">preview:{preview}</ScaffoldPill>
+              {isRoutePreviewEnabled() ? (
+                <ScaffoldPill tone="warning">preview:{preview}</ScaffoldPill>
+              ) : null}
             </div>
             <div>
               <CardTitle className="text-2xl">{meta.title}</CardTitle>
@@ -63,7 +66,7 @@ export function PortalRouteScaffold({
                   .join(" / ")}
               </div>
             ) : null}
-            <PreviewStateControls />
+            {isRoutePreviewEnabled() ? <PreviewStateControls /> : null}
           </div>
         </Card>
 
@@ -98,14 +101,7 @@ export function PortalRouteScaffold({
           transition={{ delay: 0.06, duration: 0.28 }}
           className="space-y-4"
         >
-          {children ?? (
-            <Card>
-              <CardTitle>页面结构已接入</CardTitle>
-              <CardDescription>
-                该路由已纳入正式导航、权限元数据和状态预演体系；默认展示统一的受控状态结构。
-              </CardDescription>
-            </Card>
-          )}
+          {children}
         </motion.section>
       ) : (
         <StatePreview state={preview} />

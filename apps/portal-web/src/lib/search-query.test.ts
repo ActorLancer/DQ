@@ -56,6 +56,7 @@ describe("search query helpers", () => {
       sort: "price_asc",
       page: 2,
       page_size: 12,
+      include_facets: true,
     });
     expect(formValuesToUrlSearchParams(defaultSearchFormValues).get("page")).toBe(
       "1",

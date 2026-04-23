@@ -1,14 +1,20 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { AssetRawIngestShell } from "@/components/portal/advanced-route-shells";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
 export default async function RawIngestPage({
   params,
 }: {
   params: Promise<{ assetId: string }>;
 }) {
+  const [resolvedParams, session] = await Promise.all([
+    params,
+    readPortalSession(),
+  ]);
   return (
-    <PortalRoutePage
-      routeKey="asset_raw_ingest_center"
-      params={await params}
+    <AssetRawIngestShell
+      assetId={resolvedParams.assetId}
+      sessionMode={session.mode}
+      initialSubject={readPortalSessionPreview(session)}
     />
   );
 }

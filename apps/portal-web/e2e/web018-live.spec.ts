@@ -73,7 +73,7 @@ test.describe("WEB-018 live portal chain", () => {
     const idempotencyKey = `web-018-e2e-order-${Date.now()}`;
     await installPortalLocalBuyerSession(page);
     await page.goto(
-      `/trade/orders/new?product_id=${standardProductId}&sku_id=${standardSkuId}&scenario=S1&preview=empty`,
+      `/trade/orders/new?product_id=${standardProductId}&sku_id=${standardSkuId}&scenario=S1`,
     );
     await expect(page.getByRole("heading", { name: "询单 / 下单页", exact: true })).toBeVisible();
     await expect(page.getByText("五条标准链路下单入口")).toBeVisible();

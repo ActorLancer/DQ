@@ -90,10 +90,13 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     group: "审核与风控",
     title: "风控工作台",
     path: "/ops/risk",
-    viewPermission: "risk.event.read",
-    primaryPermissions: ["risk.rule.hit_handle", "risk.subject.freeze"],
+    viewPermission: "risk.fairness_incident.read",
+    primaryPermissions: ["risk.fairness_incident.handle"],
     description: "风险事件、主体信誉和冻结建议联动入口。",
-    apiBindings: ["/api/v1/ops/risk/events"],
+    apiBindings: [
+      "GET /api/v1/ops/fairness-incidents",
+      "POST /api/v1/ops/fairness-incidents/{id}/handle",
+    ],
   },
   {
     key: "audit_trace",

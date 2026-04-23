@@ -58,23 +58,18 @@ import {
   PreviewStateControls,
   ScaffoldPill,
   getPreviewState,
+  isRoutePreviewEnabled,
 } from "./state-preview";
 
 const sdk = createBrowserSdk();
 const meta = portalRouteMap.catalog_search;
-const unsupportedFacetFields = [
-  "Facet 聚合统计",
-  "卖方主体类型",
-  "敏感等级",
-  "价格模式",
-  "供方筛选",
-] as const;
 
 type SearchShellProps = {
   sessionMode: "guest" | "bearer" | "local";
   initialSubject: PortalSessionPreview | null;
 };
 type SearchResultItem = SearchCatalogResponse["data"]["items"][number];
+type SearchFacetSummary = SearchCatalogResponse["data"]["facets"];
 
 export function SearchShell({ sessionMode, initialSubject }: SearchShellProps) {
   const router = useRouter();
@@ -116,6 +111,31 @@ export function SearchShell({ sessionMode, initialSubject }: SearchShellProps) {
   const pageSize = response?.page_size ?? formValues.page_size;
   const total = response?.total ?? 0;
   const maxPage = Math.max(1, Math.ceil(total / pageSize));
+  const facets = response?.facets;
+  const hasFacetSummary = Boolean(
+    facets &&
+      (facets.seller_org_ids.length > 0 ||
+        facets.seller_types.length > 0 ||
+        facets.data_classifications.length > 0 ||
+        facets.price_modes.length > 0),
+  );
+
+  const applyFacet = (
+    field: "seller_org_id" | "seller_type" | "data_classification" | "price_mode",
+    value: string,
+  ) => {
+    const currentValues = form.getValues();
+    const nextValue = currentValues[field] === value ? "" : value;
+    const nextValues: SearchFormValues = {
+      ...currentValues,
+      [field]: nextValue,
+    };
+    form.setValue(field, nextValue, { shouldDirty: true });
+    const params = formValuesToUrlSearchParams(nextValues, 1);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}` as Route);
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -181,6 +201,24 @@ export function SearchShell({ sessionMode, initialSubject }: SearchShellProps) {
                 </Field>
               </div>
 
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <Field label="供方组织 ID" error={form.formState.errors.seller_org_id?.message}>
+                  <Input placeholder="seller_org_id(UUID)" {...form.register("seller_org_id")} />
+                </Field>
+                <Field label="供方主体类型" error={form.formState.errors.seller_type?.message}>
+                  <Input placeholder="enterprise / institution" {...form.register("seller_type")} />
+                </Field>
+                <Field
+                  label="敏感等级"
+                  error={form.formState.errors.data_classification?.message}
+                >
+                  <Input placeholder="L1 / L2 / L3" {...form.register("data_classification")} />
+                </Field>
+                <Field label="价格模式" error={form.formState.errors.price_mode?.message}>
+                  <Input placeholder="fixed / subscription / ppu" {...form.register("price_mode")} />
+                </Field>
+              </div>
+
               <Field label="标签" error={form.formState.errors.tags?.message}>
                 <Input placeholder="质量, 能耗, 门店" {...form.register("tags")} />
               </Field>
@@ -238,26 +276,6 @@ export function SearchShell({ sessionMode, initialSubject }: SearchShellProps) {
               </div>
             </form>
           </Card>
-
-          <Card className="border-[var(--warning-ring)] bg-[var(--warning-soft)]">
-            <div className="space-y-3">
-              <Badge className="bg-white/60 text-[var(--warning-ink)]">契约边界</Badge>
-              <CardTitle>未伪造的设计项</CardTitle>
-              <CardDescription className="text-[var(--warning-ink)]">
-                页面说明书要求以下能力，但当前 OpenAPI / SDK / 后端搜索读取契约尚未提供对应字段或聚合返回，本批不以前端 mock 替代真实接口。
-              </CardDescription>
-              <div className="flex flex-wrap gap-2">
-                {unsupportedFacetFields.map((field) => (
-                  <span
-                    key={field}
-                    className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-[var(--warning-ink)]"
-                  >
-                    {field}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </Card>
         </motion.aside>
 
         <motion.section
@@ -289,11 +307,25 @@ export function SearchShell({ sessionMode, initialSubject }: SearchShellProps) {
           ) : response && items.length === 0 ? (
             <>
               <SearchStats response={response} queryLabel={describeQuery(formValues)} />
+              {hasFacetSummary ? (
+                <SearchFacetPanel
+                  facets={facets}
+                  filters={formValues}
+                  onApplyFacet={applyFacet}
+                />
+              ) : null}
               <SearchEmptyState keyword={formValues.q || "当前筛选条件"} />
             </>
           ) : response ? (
             <>
               <SearchStats response={response} queryLabel={describeQuery(formValues)} />
+              {hasFacetSummary ? (
+                <SearchFacetPanel
+                  facets={facets}
+                  filters={formValues}
+                  onApplyFacet={applyFacet}
+                />
+              ) : null}
               <div className="grid gap-4">
                 {items.map((item) => (
                   <SearchResultCard key={`${item.entity_scope}-${item.entity_id}`} item={item} />
@@ -337,7 +369,9 @@ function SearchHeader({
           <div className="flex flex-wrap gap-2">
             <ScaffoldPill>{meta.group}</ScaffoldPill>
             <ScaffoldPill>{meta.key}</ScaffoldPill>
-            <ScaffoldPill tone="warning">preview:{preview}</ScaffoldPill>
+            {isRoutePreviewEnabled() ? (
+              <ScaffoldPill tone="warning">preview:{preview}</ScaffoldPill>
+            ) : null}
             <ScaffoldPill>{canSearch ? "Bearer API ready" : "requires Bearer"}</ScaffoldPill>
           </div>
           <div className="max-w-3xl">
@@ -417,6 +451,62 @@ function SearchStats({
   );
 }
 
+function SearchFacetPanel({
+  facets,
+  filters,
+  onApplyFacet,
+}: {
+  facets: SearchFacetSummary | undefined;
+  filters: SearchFormValues;
+  onApplyFacet: (
+    field: "seller_org_id" | "seller_type" | "data_classification" | "price_mode",
+    value: string,
+  ) => void;
+}) {
+  if (!facets) {
+    return null;
+  }
+
+  return (
+    <Card className="bg-white/90">
+      <div className="space-y-4">
+        <div>
+          <CardTitle>Facet 聚合统计</CardTitle>
+          <CardDescription className="mt-1">
+            聚合来源为 `platform-core` 返回，点击任意项可回填筛选条件。
+          </CardDescription>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <FacetGroup
+            title="供方组织"
+            buckets={facets.seller_org_ids}
+            activeValue={filters.seller_org_id}
+            onSelect={(value) => onApplyFacet("seller_org_id", value)}
+          />
+          <FacetGroup
+            title="主体类型"
+            buckets={facets.seller_types}
+            activeValue={filters.seller_type}
+            onSelect={(value) => onApplyFacet("seller_type", value)}
+          />
+          <FacetGroup
+            title="敏感等级"
+            buckets={facets.data_classifications}
+            activeValue={filters.data_classification}
+            onSelect={(value) => onApplyFacet("data_classification", value)}
+          />
+          <FacetGroup
+            title="价格模式"
+            buckets={facets.price_modes}
+            activeValue={filters.price_mode}
+            onSelect={(value) => onApplyFacet("price_mode", value)}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function SearchResultCard({ item }: { item: SearchResultItem }) {
   const isProduct = item.entity_scope === "product";
   const canOrder = isProduct && item.status === "listed";
@@ -463,6 +553,9 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
             {item.delivery_modes.map((mode) => (
               <Tag key={`delivery-${mode}`}>{mode}</Tag>
             ))}
+            {item.seller_type ? <Tag>seller_type:{item.seller_type}</Tag> : null}
+            {item.data_classification ? <Tag>classification:{item.data_classification}</Tag> : null}
+            {item.price_mode ? <Tag>price_mode:{item.price_mode}</Tag> : null}
           </div>
           <div className="grid gap-3 text-sm text-[var(--ink-soft)] md:grid-cols-2">
             <InlineInfo icon={<Building2 className="size-4" />} label="卖方" value={item.seller_name ?? "未返回"} />
@@ -504,6 +597,50 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
         </div>
       </div>
     </Card>
+  );
+}
+
+function FacetGroup({
+  title,
+  buckets,
+  activeValue,
+  onSelect,
+}: {
+  title: string;
+  buckets: SearchFacetSummary["seller_org_ids"];
+  activeValue: string;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white p-3">
+      <div className="text-xs uppercase tracking-[0.16em] text-[var(--ink-subtle)]">
+        {title}
+      </div>
+      {buckets.length === 0 ? (
+        <div className="mt-2 text-xs text-[var(--ink-subtle)]">无聚合项</div>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {buckets.map((bucket) => {
+            const isActive = activeValue === bucket.value;
+            return (
+              <button
+                key={`${title}-${bucket.value}`}
+                type="button"
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-medium transition",
+                  isActive
+                    ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                    : "border-black/10 bg-black/[0.03] text-[var(--ink-soft)] hover:bg-black/[0.06]",
+                )}
+                onClick={() => onSelect(bucket.value)}
+              >
+                {bucket.value} ({bucket.count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -745,6 +882,10 @@ function describeQuery(values: SearchFormValues): string {
     values.q ? `关键词 ${values.q}` : "全部关键词",
     `范围 ${values.entity_scope}`,
     values.industry ? `行业 ${values.industry}` : null,
+    values.seller_org_id ? `供方 ${values.seller_org_id}` : null,
+    values.seller_type ? `主体类型 ${values.seller_type}` : null,
+    values.data_classification ? `敏感等级 ${values.data_classification}` : null,
+    values.price_mode ? `价格模式 ${values.price_mode}` : null,
     values.tags ? `标签 ${values.tags}` : null,
     values.delivery_mode ? `交付 ${values.delivery_mode}` : null,
     `排序 ${values.sort}`,

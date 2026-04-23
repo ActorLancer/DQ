@@ -2946,7 +2946,10 @@
 
 这一组落地门户和控制台的最小页面闭环。
 
-- **WEB-001** [AGENT][P0][W2][no] 初始化 `apps/portal-web/` Next.js 项目，接入 pnpm workspace、基础布局、登录态占位、API SDK。
+- `PortalRouteScaffold / ConsoleRouteScaffold` 仅是布局与元信息容器，不构成任务完成证据。
+- `preview` 仅用于显式调试态测试；正式页面与主回归验收必须基于真实 API 状态，不得依赖 `preview` URL 参数。
+
+- **WEB-001** [AGENT][P0][W2][no] 初始化 `apps/portal-web/` Next.js 项目，接入 pnpm workspace、基础布局、登录态接入、API SDK。
   依赖：BOOT-007; CORE-026; TRADE-028; BIL-020
   交付：apps/portal-web/
   完成定义：页面可访问；空态/错态/权限态可用；与接口契约对齐；最小 E2E 或手工 smoke 通过。
@@ -3065,11 +3068,11 @@
   验收：页面手工 smoke 或 Playwright/Cypress 最小链路通过。
   阻塞风险：前端命名或展示漂移会让场景与 SKU 真值失配。
   技术参考：../页面说明书/页面说明书-V1-完整版.md:L137（4.1 首页） | ../全集成文档/数据交易平台-全集成基线-V1.md:L216（5.3.2 首批 5 条标准链路） | ../页面说明书/页面说明书-V1-完整版.md:L936（12. 页面间路由关系）
-- **WEB-018** [AGENT][P1][W3][no] 为 portal/console 编写最小 E2E 测试：登录、搜索、商品查看、下单、交付、验收、联查。
+- **WEB-018** [AGENT][P1][W3][no] 为 portal/console 编写最小 E2E 测试：登录、搜索、商品查看、下单、交付、验收、联查；拆分 live 回归与 preview 状态预演两套用例并独立执行。
   依赖：BOOT-007; CORE-026; TRADE-028; BIL-020
   交付：apps/portal-web/**; apps/console-web/**; packages/sdk-ts/**
   完成定义：页面可访问；空态/错态/权限态可用；与接口契约对齐；最小 E2E 或手工 smoke 通过。
-  验收：页面手工 smoke 或 Playwright/Cypress 最小链路通过。
+  验收：页面手工 smoke 或 Playwright/Cypress 最小链路通过；live 套件不得依赖 `preview` URL 参数，预演态需独立测试套件承接。
   阻塞风险：前端命名或展示漂移会让场景与 SKU 真值失配。
   技术参考：../data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md:L5（15.1 测试策略） | ../页面说明书/页面说明书-V1-完整版.md:L996（14. 页面覆盖校验） | ../全集成文档/数据交易平台-全集成基线-V1.md:L216（5.3.2 首批 5 条标准链路）
 - **WEB-019** [AGENT][P1][W3][no] 建立前端错误码到文案映射，确保和后端统一错误码字典对齐。

@@ -13,6 +13,10 @@ export type OrderLifecycleSnapshotsResponse =
   SuccessBody<TradeOperations["getOrderLifecycleSnapshots"]>;
 export type CancelOrderResponse =
   SuccessBody<TradeOperations["cancelOrder"]>;
+export type ConfirmOrderContractRequest =
+  RequestBody<TradeOperations["confirmOrderContract"]>;
+export type ConfirmOrderContractResponse =
+  SuccessBody<TradeOperations["confirmOrderContract"]>;
 
 export type TradeMutationOptions = {
   idempotencyKey: string;
@@ -64,6 +68,18 @@ export function createTradeClient(client: PlatformClient) {
           headers: mutationHeaders(options),
         },
       );
+    },
+    confirmOrderContract(
+      pathParams: PathParams<TradeOperations["confirmOrderContract"]>,
+      body: ConfirmOrderContractRequest,
+    ) {
+      return client.postJson<
+        ConfirmOrderContractResponse,
+        ConfirmOrderContractRequest
+      >("/api/v1/orders/{id}/contract-confirm", {
+        pathParams,
+        body,
+      });
     },
   };
 }

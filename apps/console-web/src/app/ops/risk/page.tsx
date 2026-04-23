@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { RiskConsoleShell } from "@/components/console/risk-console-shell";
 
 export default function RiskConsolePage() {
-  return <ConsoleRoutePage routeKey="risk_console" />;
+  return <RiskConsoleShell />;
 }

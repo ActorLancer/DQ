@@ -1,14 +1,20 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { SellerQuerySurfaceShell } from "@/components/portal/advanced-route-shells";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
 export default async function SellerQuerySurfacePage({
   params,
 }: {
   params: Promise<{ productId: string }>;
 }) {
+  const [resolvedParams, session] = await Promise.all([
+    params,
+    readPortalSession(),
+  ]);
   return (
-    <PortalRoutePage
-      routeKey="seller_query_surface"
-      params={await params}
+    <SellerQuerySurfaceShell
+      productId={resolvedParams.productId}
+      sessionMode={session.mode}
+      initialSubject={readPortalSessionPreview(session)}
     />
   );
 }

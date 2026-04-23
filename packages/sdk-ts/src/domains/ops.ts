@@ -31,6 +31,10 @@ type ConsistencyOperation =
   OpsPaths["/api/v1/ops/consistency/{refType}/{refId}"]["get"];
 type ConsistencyReconcileOperation =
   OpsPaths["/api/v1/ops/consistency/reconcile"]["post"];
+type FairnessIncidentsOperation =
+  OpsPaths["/api/v1/ops/fairness-incidents"]["get"];
+type FairnessIncidentHandleOperation =
+  OpsPaths["/api/v1/ops/fairness-incidents/{id}/handle"]["post"];
 
 export type HealthLiveResponse = SuccessBody<HealthLiveOperation>;
 export type HealthReadyResponse = SuccessBody<HealthReadyOperation>;
@@ -78,6 +82,16 @@ export type ConsistencyReconcileRequest =
   RequestBody<ConsistencyReconcileOperation>;
 export type ConsistencyReconcileResponse =
   SuccessBody<ConsistencyReconcileOperation>;
+export type FairnessIncidentsQuery =
+  QueryParams<FairnessIncidentsOperation>;
+export type FairnessIncidentsResponse =
+  SuccessBody<FairnessIncidentsOperation>;
+export type FairnessIncidentHandlePath =
+  PathParams<FairnessIncidentHandleOperation>;
+export type FairnessIncidentHandleRequest =
+  RequestBody<FairnessIncidentHandleOperation>;
+export type FairnessIncidentHandleResponse =
+  SuccessBody<FairnessIncidentHandleOperation>;
 
 export interface OpsStepUpOptions {
   stepUpToken?: string;
@@ -242,6 +256,26 @@ export function createOpsClient(client: PlatformClient) {
       >("/api/v1/ops/consistency/reconcile", {
         body,
         headers: controlPlaneHeaders(options),
+      });
+    },
+    listFairnessIncidents(query: FairnessIncidentsQuery = {}) {
+      return client.getJson<FairnessIncidentsResponse, FairnessIncidentsQuery>(
+        "/api/v1/ops/fairness-incidents",
+        { query },
+      );
+    },
+    handleFairnessIncident(
+      path: FairnessIncidentHandlePath,
+      body: FairnessIncidentHandleRequest,
+      options: OpsStepUpOptions = {},
+    ) {
+      return client.postJson<
+        FairnessIncidentHandleResponse,
+        FairnessIncidentHandleRequest
+      >("/api/v1/ops/fairness-incidents/{id}/handle", {
+        pathParams: path,
+        body,
+        headers: stepUpHeaders(options),
       });
     },
   };

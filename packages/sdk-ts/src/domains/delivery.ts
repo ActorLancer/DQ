@@ -38,6 +38,12 @@ type GetQueryRunsOperation = NonNullable<
 type GetApiUsageLogOperation = NonNullable<
   DeliveryPaths["/api/v1/orders/{id}/usage-log"]["get"]
 >;
+type ManageQuerySurfaceOperation = NonNullable<
+  DeliveryPaths["/api/v1/products/{id}/query-surfaces"]["post"]
+>;
+type ManageQueryTemplateOperation = NonNullable<
+  DeliveryPaths["/api/v1/query-surfaces/{id}/templates"]["post"]
+>;
 
 export type CommitOrderDeliveryRequest =
   RequestBody<CommitOrderDeliveryOperation>;
@@ -69,6 +75,14 @@ export type ManageSandboxWorkspaceResponse =
   SuccessBody<ManageSandboxWorkspaceOperation>;
 export type QueryRunsResponse = SuccessBody<GetQueryRunsOperation>;
 export type ApiUsageLogResponse = SuccessBody<GetApiUsageLogOperation>;
+export type ManageQuerySurfaceRequest =
+  RequestBody<ManageQuerySurfaceOperation>;
+export type ManageQuerySurfaceResponse =
+  SuccessBody<ManageQuerySurfaceOperation>;
+export type ManageQueryTemplateRequest =
+  RequestBody<ManageQueryTemplateOperation>;
+export type ManageQueryTemplateResponse =
+  SuccessBody<ManageQueryTemplateOperation>;
 
 export type DeliveryMutationOptions = {
   idempotencyKey: string;
@@ -211,6 +225,30 @@ export function createDeliveryClient(client: PlatformClient) {
         "/api/v1/orders/{id}/usage-log",
         { pathParams },
       );
+    },
+    manageQuerySurface(
+      pathParams: PathParams<ManageQuerySurfaceOperation>,
+      body: ManageQuerySurfaceRequest,
+    ) {
+      return client.postJson<
+        ManageQuerySurfaceResponse,
+        ManageQuerySurfaceRequest
+      >("/api/v1/products/{id}/query-surfaces", {
+        pathParams,
+        body,
+      });
+    },
+    manageQueryTemplate(
+      pathParams: PathParams<ManageQueryTemplateOperation>,
+      body: ManageQueryTemplateRequest,
+    ) {
+      return client.postJson<
+        ManageQueryTemplateResponse,
+        ManageQueryTemplateRequest
+      >("/api/v1/query-surfaces/{id}/templates", {
+        pathParams,
+        body,
+      });
     },
   };
 }

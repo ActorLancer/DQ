@@ -166,13 +166,55 @@ components:
         listing_product_count:
           type: integer
           nullable: true
+        seller_type:
+          type: string
+          nullable: true
+        data_classification:
+          type: string
+          nullable: true
+        price_mode:
+          type: string
+          nullable: true
         document_version:
           type: integer
         index_sync_status:
           type: string
+    SearchFacetBucket:
+      type: object
+      required: [value, count]
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+          format: int64
+    SearchFacetSummary:
+      type: object
+      required:
+        - seller_org_ids
+        - seller_types
+        - data_classifications
+        - price_modes
+      properties:
+        seller_org_ids:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchFacetBucket"
+        seller_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchFacetBucket"
+        data_classifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchFacetBucket"
+        price_modes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchFacetBucket"
     SearchResponse:
       type: object
-      required: [entity_scope, total, page, page_size, cache_hit, backend, items]
+      required: [entity_scope, total, page, page_size, cache_hit, backend, facets, items]
       properties:
         entity_scope:
           type: string
@@ -188,6 +230,8 @@ components:
         backend:
           type: string
           enum: [opensearch, postgresql]
+        facets:
+          $ref: "#/components/schemas/SearchFacetSummary"
         items:
           type: array
           items:
@@ -538,6 +582,23 @@ paths:
           in: query
           schema:
             type: string
+        - name: seller_org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: seller_type
+          in: query
+          schema:
+            type: string
+        - name: data_classification
+          in: query
+          schema:
+            type: string
+        - name: price_mode
+          in: query
+          schema:
+            type: string
         - name: price_min
           in: query
           schema:
@@ -561,6 +622,10 @@ paths:
           in: query
           schema:
             type: integer
+        - name: include_facets
+          in: query
+          schema:
+            type: boolean
       responses:
         "200":
           description: search results

@@ -23,11 +23,16 @@ export interface paths {
                     industry?: string;
                     tags?: string[];
                     delivery_mode?: string;
+                    seller_org_id?: string;
+                    seller_type?: string;
+                    data_classification?: string;
+                    price_mode?: string;
                     price_min?: number;
                     price_max?: number;
                     sort?: "composite" | "latest" | "price_asc" | "price_desc" | "quality" | "reputation" | "hotness";
                     page?: number;
                     page_size?: number;
+                    include_facets?: boolean;
                 };
                 header?: {
                     /** @description Optional caller-supplied request correlation id. */
@@ -622,8 +627,22 @@ export interface components {
             quality_score?: string | null;
             hotness_score?: string | null;
             listing_product_count?: number | null;
+            seller_type?: string | null;
+            data_classification?: string | null;
+            price_mode?: string | null;
             document_version: number;
             index_sync_status: string;
+        };
+        SearchFacetBucket: {
+            value: string;
+            /** Format: int64 */
+            count: number;
+        };
+        SearchFacetSummary: {
+            seller_org_ids: components["schemas"]["SearchFacetBucket"][];
+            seller_types: components["schemas"]["SearchFacetBucket"][];
+            data_classifications: components["schemas"]["SearchFacetBucket"][];
+            price_modes: components["schemas"]["SearchFacetBucket"][];
         };
         SearchResponse: {
             /** @enum {string} */
@@ -634,6 +653,7 @@ export interface components {
             cache_hit: boolean;
             /** @enum {string} */
             backend: "opensearch" | "postgresql";
+            facets: components["schemas"]["SearchFacetSummary"];
             items: components["schemas"]["SearchResultItem"][];
         };
         SearchSyncTaskView: {

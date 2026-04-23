@@ -114,6 +114,70 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-298（计划中）
+- 任务：`WEB` 阶段复审整改（收敛残余占位路径）：移除 live E2E 对 `preview` 参数依赖、收紧 RouteScaffold 必须注入真实业务主体、同步 WEB 文档口径
+- 状态：计划中
+- 说明：当前主链路已切到真实 API，但复审仍发现两处残余“可被误判为占位完成”的实现：`web018-live` 仍有一处 `preview=empty`；`RouteScaffold` 仍保留“页面组件缺失”兜底卡。当前批次在不削减功能前提下完成收口：live 套件彻底去 `preview` 依赖、scaffold 强制 `children`、README 与任务清单补充“scaffold/preview 不构成完成证据”规则，并做全量回归。
+- 前置依赖核对结果：延续 `WEB-001 ~ WEB-022` 已有实现基线；本批不改变 `portal-web / console-web -> /api/platform/** -> platform-core` 受控边界。
+- 实施计划：
+  1. 修正 `apps/portal-web/e2e/web018-live.spec.ts`，删除 live 路径中的 `preview` 参数。
+  2. 修改 `apps/portal-web` 与 `apps/console-web` 的 `RouteScaffold` / `RoutePage`，强制 `children`，移除“页面组件缺失”占位兜底渲染。
+  3. 同步 `apps/portal-web/README.md`、`apps/console-web/README.md`、`docs/开发任务/README.md`、`v1-core-开发任务清单.csv/.md` 的口径说明。
+  4. 执行前后端全量回归与 SQLx 校验，确认无回归后补“待审批”日志并提交本地 git。
+
+### BATCH-298（待审批）
+- 任务：`WEB` 阶段复审整改（收敛残余占位路径）
+- 状态：待审批
+- 当前任务编号：`WEB-001`、`WEB-018`（以及 `WEB` 阶段执行规则收口）
+- 前置依赖核对结果：沿用已落地 `WEB-001 ~ WEB-022` 基线；本批未改动前后端边界，浏览器仍只访问同源页面与 `/api/platform/**`。
+- 完成情况：
+  - live E2E 去 `preview` 依赖：
+    - `apps/portal-web/e2e/web018-live.spec.ts` 删除 `order create` 路径中的 `preview=empty`，live 用例全部改为真实页面状态承接。
+  - RouteScaffold 去占位兜底：
+    - `apps/portal-web/src/components/portal/route-scaffold.tsx`
+    - `apps/console-web/src/components/console/route-scaffold.tsx`
+    - `apps/portal-web/src/components/portal/route-page.tsx`
+    - `apps/console-web/src/components/console/route-page.tsx`
+    - 以上组件改为强制 `children`，移除“页面组件缺失”兜底卡，避免路由壳被误当作完成页。
+  - 文档口径同步：
+    - `apps/portal-web/README.md`
+    - `apps/console-web/README.md`
+    - `docs/开发任务/README.md`
+    - `docs/开发任务/v1-core-开发任务清单.csv`
+    - `docs/开发任务/v1-core-开发任务清单.md`
+    - 明确 `RouteScaffold`/`preview` 仅用于布局与调试；主回归必须基于真实 API；`WEB-018` 要求 live 与 preview 用例拆分且 live 不依赖 `preview` 参数。
+- 验证：
+  - 前端：
+    - `pnpm install`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `pnpm --filter @datab/portal-web test:e2e:preview`
+    - `pnpm --filter @datab/console-web test:e2e:preview`
+  - 后端：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 关键复核：
+    - `rg -n "preview=" apps/portal-web/e2e/smoke-live.spec.ts apps/portal-web/e2e/web018-live.spec.ts apps/console-web/e2e/smoke-live.spec.ts apps/console-web/e2e/web018-live.spec.ts`（无匹配）
+    - `rg -n "页面组件缺失" apps/portal-web/src/components/portal apps/console-web/src/components/console`（无匹配）
+- 验证结果：
+  - 前端 `lint/typecheck/test/build` 全部通过；live 与 preview 两套 E2E 都通过。
+  - 运行中仍有既有 `ECONNREFUSED 127.0.0.1:8094` 代理日志噪音，但不影响断言与退出码。
+  - `cargo fmt/check/test/sqlx/query-compile` 全部通过；仅有仓库既有 warning，无新增失败。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-001`、`WEB-018`（登录态接入口径与 E2E 拆分口径）
+  - `页面说明书-V1-完整版.md`：正式页面状态承接与敏感页信息展示要求
+  - `服务清单与服务边界正式版.md`：前端只走 `platform-core` 受控边界
+- 覆盖的任务清单条目：`WEB-001`、`WEB-018`（复审整改维度）
+- 未覆盖项：
+  - 无。当前批次目标为“消除残余占位证据路径并固化验收口径”，已完成代码、文档、测试与回归闭环。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-292（计划中）
 - 任务：`WEB-018` 为 portal/console 编写最小 E2E 测试：登录、搜索、商品查看、下单、交付、验收、联查
 - 状态：计划中

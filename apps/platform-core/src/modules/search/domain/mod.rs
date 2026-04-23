@@ -16,12 +16,18 @@ pub struct SearchQuery {
     #[serde(default)]
     pub tags: Vec<String>,
     pub delivery_mode: Option<String>,
+    pub seller_org_id: Option<String>,
+    pub seller_type: Option<String>,
+    pub data_classification: Option<String>,
+    pub price_mode: Option<String>,
     pub price_min: Option<f64>,
     pub price_max: Option<f64>,
     #[serde(default = "default_sort")]
     pub sort: String,
     pub page: Option<u32>,
     pub page_size: Option<u32>,
+    #[serde(default = "default_include_facets")]
+    pub include_facets: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,8 +53,25 @@ pub struct SearchResultItem {
     pub quality_score: Option<String>,
     pub hotness_score: Option<String>,
     pub listing_product_count: Option<i64>,
+    pub seller_type: Option<String>,
+    pub data_classification: Option<String>,
+    pub price_mode: Option<String>,
     pub document_version: i64,
     pub index_sync_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchFacetBucket {
+    pub value: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchFacetSummary {
+    pub seller_org_ids: Vec<SearchFacetBucket>,
+    pub seller_types: Vec<SearchFacetBucket>,
+    pub data_classifications: Vec<SearchFacetBucket>,
+    pub price_modes: Vec<SearchFacetBucket>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +82,7 @@ pub struct SearchResponse {
     pub page_size: u32,
     pub cache_hit: bool,
     pub backend: String,
+    pub facets: SearchFacetSummary,
     pub items: Vec<SearchResultItem>,
 }
 
@@ -178,4 +202,8 @@ fn default_entity_scope() -> String {
 
 fn default_sort() -> String {
     "composite".to_string()
+}
+
+fn default_include_facets() -> bool {
+    true
 }

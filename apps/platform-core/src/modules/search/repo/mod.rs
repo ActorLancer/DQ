@@ -949,6 +949,38 @@ async fn fetch_scope_candidates_from_projection(
     } else {
         query.delivery_mode.clone()
     };
+    let seller_org_id = query
+        .seller_org_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    let seller_type = query
+        .seller_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    let data_classification = if entity_scope == "seller" {
+        None
+    } else {
+        query
+            .data_classification
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    };
+    let price_mode = if entity_scope == "seller" {
+        None
+    } else {
+        query
+            .price_mode
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    };
     let product_type = if entity_scope == "product"
         && normalized_scope(&query.entity_scope).as_str() == "service"
     {
@@ -973,6 +1005,10 @@ async fn fetch_scope_candidates_from_projection(
                 &product_type,
                 &limit,
                 &offset,
+                &seller_org_id,
+                &seller_type,
+                &data_classification,
+                &price_mode,
                 &ranking_weights.lexical,
                 &ranking_weights.quality,
                 &ranking_weights.reputation,
@@ -1025,6 +1061,20 @@ fn build_search_request_body(
     }
     if let Some(delivery_mode) = query.delivery_mode.as_deref() {
         filters.push(json!({ "term": { "delivery_modes.keyword": delivery_mode } }));
+    }
+    if let Some(seller_org_id) = query.seller_org_id.as_deref() {
+        filters.push(json!({ "term": { "org_id.keyword": seller_org_id } }));
+    }
+    if let Some(seller_type) = query.seller_type.as_deref() {
+        filters.push(json!({ "term": { "seller_type.keyword": seller_type } }));
+    }
+    if entity_scope != "seller" {
+        if let Some(data_classification) = query.data_classification.as_deref() {
+            filters.push(json!({ "term": { "data_classification.keyword": data_classification } }));
+        }
+        if let Some(price_mode) = query.price_mode.as_deref() {
+            filters.push(json!({ "term": { "price_mode.keyword": price_mode } }));
+        }
     }
     if !query.tags.is_empty() {
         filters.push(json!({ "terms": { "tags.keyword": query.tags } }));
@@ -1302,7 +1352,10 @@ async fn fetch_product_result(
                COALESCE(spd.quality_score, 0)::text,
                COALESCE(spd.hotness_score, 0)::text,
                COALESCE(spd.document_version, 0)::bigint,
-               COALESCE(spd.index_sync_status, 'pending')
+               COALESCE(spd.index_sync_status, 'pending'),
+               spd.seller_type,
+               spd.data_classification,
+               spd.price_mode
              FROM catalog.product p
              JOIN search.product_search_document spd ON spd.product_id = p.product_id
              JOIN core.organization org ON org.org_id = p.seller_org_id
@@ -1339,6 +1392,9 @@ async fn fetch_product_result(
         quality_score: row.get(15),
         hotness_score: row.get(16),
         listing_product_count: None,
+        seller_type: row.get(19),
+        data_classification: row.get(20),
+        price_mode: row.get(21),
         document_version: row.get(17),
         index_sync_status: row.get(18),
     }))
@@ -1375,7 +1431,10 @@ async fn fetch_seller_result(
                COALESCE(ssd.listing_product_count, 0)::bigint,
                COALESCE(ssd.document_version, 0)::bigint,
                COALESCE(ssd.index_sync_status, 'pending'),
-               org.country_code
+               org.country_code,
+               org.org_type,
+               NULL,
+               NULL
              FROM core.organization org
              JOIN search.seller_search_document ssd ON ssd.org_id = org.org_id
              WHERE org.org_id = $1::text::uuid
@@ -1407,6 +1466,9 @@ async fn fetch_seller_result(
         quality_score: row.get(15),
         hotness_score: row.get(16),
         listing_product_count: row.get(17),
+        seller_type: row.get(21),
+        data_classification: row.get(22),
+        price_mode: row.get(23),
         document_version: row.get(18),
         index_sync_status: row.get(19),
     }))
@@ -1454,6 +1516,18 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
     } else {
         "AND COALESCE(d.visible_to_search, false)".to_string()
     };
+    let seller_org_filter = "AND ($10::text IS NULL OR d.org_id::text = $10::text)";
+    let seller_type_filter = "AND ($11::text IS NULL OR d.seller_type = $11)";
+    let data_classification_filter = if entity_scope == "seller" {
+        "AND ($12::text IS NULL OR true)".to_string()
+    } else {
+        "AND ($12::text IS NULL OR d.data_classification = $12)".to_string()
+    };
+    let price_mode_filter = if entity_scope == "seller" {
+        "AND ($13::text IS NULL OR true)".to_string()
+    } else {
+        "AND ($13::text IS NULL OR d.price_mode = $13)".to_string()
+    };
     let sort_value_expr = projection_sort_value_expr(entity_scope, sort_key);
 
     format!(
@@ -1462,12 +1536,12 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
                     WHEN $1::text IS NULL THEN NULL::tsquery
                     ELSE websearch_to_tsquery('simple', $1)
                   END AS ts_query,
-                  $10::float8 AS lexical_weight,
-                  $11::float8 AS quality_weight,
-                  $12::float8 AS reputation_weight,
-                  $13::float8 AS freshness_weight,
-                  $14::float8 AS trade_weight,
-                  $15::float8 AS completeness_weight
+                  $14::float8 AS lexical_weight,
+                  $15::float8 AS quality_weight,
+                  $16::float8 AS reputation_weight,
+                  $17::float8 AS freshness_weight,
+                  $18::float8 AS trade_weight,
+                  $19::float8 AS completeness_weight
          ),
          scoped AS (
            SELECT
@@ -1486,6 +1560,10 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
              {delivery_filter}
              {price_min_filter}
              {price_max_filter}
+             {seller_org_filter}
+             {seller_type_filter}
+             {data_classification_filter}
+             {price_mode_filter}
              {visibility_filter}
              {product_type_filter}
          )
@@ -1516,6 +1594,10 @@ fn projection_query_sql(entity_scope: &str, sort_key: &str) -> String {
         delivery_filter = delivery_filter,
         price_min_filter = price_min_filter,
         price_max_filter = price_max_filter,
+        seller_org_filter = seller_org_filter,
+        seller_type_filter = seller_type_filter,
+        data_classification_filter = data_classification_filter,
+        price_mode_filter = price_mode_filter,
         visibility_filter = visibility_filter,
         product_type_filter = product_type_filter,
         order_by = order_by,

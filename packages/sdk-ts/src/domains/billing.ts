@@ -10,6 +10,15 @@ import type { paths as BillingPaths } from "../generated/billing";
 type GetBillingOrderOperation = NonNullable<
   BillingPaths["/api/v1/billing/{order_id}"]["get"]
 >;
+type CreatePaymentIntentOperation = NonNullable<
+  BillingPaths["/api/v1/payments/intents"]["post"]
+>;
+type GetPaymentIntentOperation = NonNullable<
+  BillingPaths["/api/v1/payments/intents/{id}"]["get"]
+>;
+type LockOrderPaymentOperation = NonNullable<
+  BillingPaths["/api/v1/orders/{id}/lock"]["post"]
+>;
 type ExecuteRefundOperation = NonNullable<
   BillingPaths["/api/v1/refunds"]["post"]
 >;
@@ -37,6 +46,16 @@ type MockPaymentTimeoutOperation = NonNullable<
 
 export type BillingOrderDetailResponse =
   SuccessBody<GetBillingOrderOperation>;
+export type CreatePaymentIntentRequest =
+  RequestBody<CreatePaymentIntentOperation>;
+export type CreatePaymentIntentResponse =
+  SuccessBody<CreatePaymentIntentOperation>;
+export type PaymentIntentDetailResponse =
+  SuccessBody<GetPaymentIntentOperation>;
+export type LockOrderPaymentRequest =
+  RequestBody<LockOrderPaymentOperation>;
+export type LockOrderPaymentResponse =
+  SuccessBody<LockOrderPaymentOperation>;
 export type ExecuteRefundRequest = RequestBody<ExecuteRefundOperation>;
 export type ExecuteRefundResponse = SuccessBody<ExecuteRefundOperation>;
 export type ExecuteCompensationRequest =
@@ -84,6 +103,36 @@ export function createBillingClient(client: PlatformClient) {
       return client.getJson<BillingOrderDetailResponse>(
         "/api/v1/billing/{order_id}",
         { pathParams },
+      );
+    },
+    createPaymentIntent(
+      body: CreatePaymentIntentRequest,
+      options: BillingMutationOptions,
+    ) {
+      return client.postJson<
+        CreatePaymentIntentResponse,
+        CreatePaymentIntentRequest
+      >("/api/v1/payments/intents", {
+        body,
+        headers: mutationHeaders(options),
+      });
+    },
+    getPaymentIntent(pathParams: PathParams<GetPaymentIntentOperation>) {
+      return client.getJson<PaymentIntentDetailResponse>(
+        "/api/v1/payments/intents/{id}",
+        { pathParams },
+      );
+    },
+    lockOrderPayment(
+      pathParams: PathParams<LockOrderPaymentOperation>,
+      body: LockOrderPaymentRequest,
+    ) {
+      return client.postJson<LockOrderPaymentResponse, LockOrderPaymentRequest>(
+        "/api/v1/orders/{id}/lock",
+        {
+          pathParams,
+          body,
+        },
       );
     },
     executeRefund(

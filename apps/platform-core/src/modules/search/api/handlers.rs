@@ -18,8 +18,8 @@ use crate::modules::audit::repo as audit_repo;
 use crate::modules::audit::repo::{AccessAuditInsert, SystemLogInsert};
 use crate::modules::search::domain::{
     AliasSwitchRequest, CacheInvalidateRequest, PatchRankingProfileRequest, RankingProfileView,
-    ReindexRequest, ReindexResponse, SearchQuery, SearchResponse, SearchSyncQuery,
-    SearchSyncTaskView,
+    ReindexRequest, ReindexResponse, SearchFacetBucket, SearchFacetSummary, SearchQuery,
+    SearchResponse, SearchResultItem, SearchSyncQuery, SearchSyncTaskView,
 };
 use crate::modules::search::repo;
 use crate::modules::search::service::{
@@ -87,11 +87,16 @@ pub(in crate::modules::search) async fn search_catalog(
             "industry": query.industry,
             "tags": query.tags,
             "delivery_mode": query.delivery_mode,
+            "seller_org_id": query.seller_org_id,
+            "seller_type": query.seller_type,
+            "data_classification": query.data_classification,
+            "price_mode": query.price_mode,
             "price_min": query.price_min,
             "price_max": query.price_max,
             "sort": query.sort,
             "page": query.page.unwrap_or(1).max(1),
             "page_size": query.page_size.unwrap_or(20).clamp(1, 50),
+            "include_facets": query.include_facets,
             "backend": candidate_page.backend,
             "cache_hit": cache_hit,
             "total": candidate_page.total,
@@ -107,6 +112,16 @@ pub(in crate::modules::search) async fn search_catalog(
         page_size: query.page_size.unwrap_or(20).clamp(1, 50),
         cache_hit,
         backend: candidate_page.backend,
+        facets: if query.include_facets {
+            build_search_facet_summary(&items)
+        } else {
+            SearchFacetSummary {
+                seller_org_ids: Vec::new(),
+                seller_types: Vec::new(),
+                data_classifications: Vec::new(),
+                price_modes: Vec::new(),
+            }
+        },
         items,
     }))
 }
@@ -793,7 +808,43 @@ fn validate_search_query(
         }
     }
 
+    if let Some(seller_org_id) = query.seller_org_id.as_deref() {
+        if Uuid::parse_str(seller_org_id.trim()).is_err() {
+            return Err(search_bad_request(
+                request_id,
+                format!("seller_org_id must be UUID; got `{seller_org_id}`"),
+            ));
+        }
+    }
+
     Ok(())
+}
+
+fn build_search_facet_summary(items: &[SearchResultItem]) -> SearchFacetSummary {
+    SearchFacetSummary {
+        seller_org_ids: collect_facet(items.iter().filter_map(|item| item.seller_org_id.clone())),
+        seller_types: collect_facet(items.iter().filter_map(|item| item.seller_type.clone())),
+        data_classifications: collect_facet(
+            items
+                .iter()
+                .filter_map(|item| item.data_classification.clone()),
+        ),
+        price_modes: collect_facet(items.iter().filter_map(|item| item.price_mode.clone())),
+    }
+}
+
+fn collect_facet(values: impl Iterator<Item = String>) -> Vec<SearchFacetBucket> {
+    let mut counts = std::collections::BTreeMap::<String, u64>::new();
+    for value in values {
+        if value.trim().is_empty() {
+            continue;
+        }
+        *counts.entry(value).or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(value, count)| SearchFacetBucket { value, count })
+        .collect()
 }
 
 async fn record_search_write_side_effects(
