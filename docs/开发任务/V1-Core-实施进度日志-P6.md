@@ -100,6 +100,61 @@
 - 说明：按 `SEARCHREC-011` 的冻结口径，重新核对推荐位配置接口是否仍然满足“正式 Bearer 鉴权 + `ops.recommendation.read/manage` + `PATCH` 侧 `X-Idempotency-Key + X-Step-Up-Token` + PostgreSQL 权威更新 + Redis 推荐缓存失效 + 审计/系统日志”这一整条推荐运营链；重点确认接口不会退化为只改表不失效缓存，也不会用普通日志替代正式审计或绕过 step-up。
 - 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-011`，不提前进入 `SEARCHREC-012`。
 
+### BATCH-280（计划中）
+- 任务：`SEARCHREC-012` 逐任务复核与正式重验（推荐重建接口 `POST /api/v1/ops/recommendation/rebuild`）
+- 状态：计划中
+- 说明：按 `SEARCHREC-012` 的冻结口径，重新核对推荐重建接口是否仍然满足“正式 Bearer 鉴权 + `ops.recommend_rebuild.execute` + `X-Idempotency-Key + X-Step-Up-Token` + Redis 缓存失效 + `recommend.subject_profile_snapshot / cohort_popularity / search_signal_aggregate / entity_similarity / bundle_relation` 真实重刷 + 审计/系统日志”这一整条高风险运维链；重点确认接口不会退化为只回 200 但不重刷派生表，也不会跳过 step-up 或审计。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-012`，不提前进入 `SEARCHREC-013`。
+
+### BATCH-280（待审批）
+- 任务：`SEARCHREC-012` 逐任务复核与正式重验（推荐重建接口 `POST /api/v1/ops/recommendation/rebuild`）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-012`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已在前序阶段完成；`SEARCHREC-001` 至 `SEARCHREC-011` 已重验搜索主链、推荐读取、曝光/点击、推荐位运维接口和 Keycloak Bearer 基线，本批在该基线上只重验推荐重建接口，不提前进入 `SEARCHREC-013` 的 local 候选召回策略。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-012` DoD 是推荐重建接口、DTO、权限校验、审计、错误码和最小验证齐备，且与 OpenAPI 不漂移。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认推荐正式链路仍是 `PostgreSQL 主存 + OpenSearch 候选召回 + Redis 缓存 + Kafka 行为流 + PostgreSQL 最终业务校验`，`POST /api/v1/ops/recommendation/rebuild` 属于正式推荐运维链。
+  - `docs/开发任务/问题修复任务/A09-推荐主链路与行为流契约缺口.md`：确认推荐重建不能退化成“只有 repo 逻辑，没有正式 Bearer/step-up/审计”的假完成状态。
+  - `docs/权限设计/接口权限校验清单.md`、`docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`、`packages/openapi/recommendation.yaml`、`apps/platform-core/src/modules/recommendation/**`：复核 `ops.recommend_rebuild.execute`、`X-Idempotency-Key`、`X-Step-Up-Token`、Redis 缓存失效、派生表重刷和审计/系统日志回查要求仍保持一致。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。`POST /api/v1/ops/recommendation/rebuild` 继续要求正式 Bearer、`ops.recommend_rebuild.execute`、非空 `X-Idempotency-Key` 和真实 `iam.step_up_challenge(target_action='recommendation.rebuild.execute', target_ref_type='recommendation_rebuild', target_ref_id IS NULL)` 绑定。
+  - `repo::rebuild_runtime(...)` 仍支持 `all / cache / features / subject_profile / cohort / signals / similarity / bundle`，`scope=all` 会同步重刷 `recommend.subject_profile_snapshot`、`recommend.cohort_popularity`、`search.search_signal_aggregate`、`recommend.entity_similarity`、`recommend.bundle_relation`，并在 `purge_cache=true` 时删除推荐结果缓存和 `seen` key。
+  - 高风险写链仍会写入 `audit.audit_event(action_name='recommendation.rebuild.execute', result_code='rebuilt')`、`audit.access_audit(target_type='recommendation_rebuild', access_mode='rebuilt')` 和 `ops.system_log`，没有回退到只看普通日志。
+- 验证：
+  - `cargo check -p platform-core`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - 真实运行态 Bearer 联调：
+    - Keycloak password grant（`local-buyer-operator`）调用 `POST /api/v1/ops/recommendation/rebuild` 验证正式 `403 / RECOMMENDATION_REBUILD_FORBIDDEN`
+    - `psql` 插入 `iam.step_up_challenge(challenge_status='verified', target_action='recommendation.rebuild.execute', target_ref_type='recommendation_rebuild', target_ref_id=NULL)`，挑战 ID `29e26fff-cde5-4e80-95e5-3c36768c5e36`
+    - `redis-cli -u redis://default:datab_redis_pass@127.0.0.1:6379/1` 预先种入 `datab:v1:recommend:10000000-0000-0000-0000-000000000102:anonymous:rebuild-live-1776906593` 与 `datab:v1:recommend:seen:10000000-0000-0000-0000-000000000102:home_featured`
+    - Keycloak password grant（`local-platform-admin`）携带 `Authorization: Bearer`、`X-Idempotency-Key=searchrec012-live-rebuild-1776906593`、`X-Step-Up-Token=29e26fff-cde5-4e80-95e5-3c36768c5e36` 调用 `POST /api/v1/ops/recommendation/rebuild`
+    - `psql` / `redis-cli` 回查派生表、审计、系统日志与 Redis key 删除结果
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `recommendation_api_full_runtime_db_smoke` 继续通过，证明推荐读取、曝光/点击、placement/ranking/rebuild 的统一 smoke 未因前序 SEARCHREC 重验而回退。
+  - 真实 Bearer 运维联调成功：
+    - 无权限 Bearer：`request_id=req-searchrec012-live-forbidden-1776906593`，`HTTP 403`，返回 `RECOMMENDATION_REBUILD_FORBIDDEN`
+    - 管理员重建：`request_id=req-searchrec012-live-rebuild-1776906593`，`HTTP 200`，返回 `scope=all`、`cache_keys_deleted=2`、`refreshed_subject_profiles=9`、`refreshed_cohort_rows=21`、`refreshed_signal_rows=7`、`refreshed_similarity_rows=52`、`refreshed_bundle_rows=52`
+  - `psql` / Redis 回查结果：
+    - Redis：预先种入的两个 key 在重建后均 `EXISTS=0`
+    - `audit.audit_event`：最新事件 `result_code='rebuilt'`、`permission_code='ops.recommend_rebuild.execute'`、`endpoint='POST /api/v1/ops/recommendation/rebuild'`、`idempotency_key='searchrec012-live-rebuild-1776906593'`、`cache_keys_deleted='2'`
+    - `audit.access_audit`：`target_type='recommendation_rebuild'` 计数为 1，且 `step_up_challenge_id=29e26fff-cde5-4e80-95e5-3c36768c5e36`
+    - `ops.system_log`：命中 `recommendation ops action executed: POST /api/v1/ops/recommendation/rebuild`
+    - 派生表：`recommend.subject_profile_snapshot` 对组织 `10000000-0000-0000-0000-000000000102` 计数为 1；`recommend.cohort_popularity` 对 `cohort_key='org:10000000-0000-0000-0000-000000000102'` 计数为 3；`search.search_signal_aggregate` 计数为 7；`recommend.entity_similarity` 和 `recommend.bundle_relation` 中 `rebuild_source='recommendation_result_item'` 的记录各为 52
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮没有新的查询编译漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-012`
+  - `商品推荐与个性化发现设计.md`、`商品推荐与个性化发现接口协议正式版.md`：推荐正式链路、推荐重建接口、权限与运维边界
+  - `A09-推荐主链路与行为流契约缺口.md`：推荐重建属于正式主链的一部分，不能停留在占位实现
+  - `接口权限校验清单.md`、`recommendation-runtime.md`、`search-rec-cases.md`、`packages/openapi/recommendation.yaml`：`ops.recommend_rebuild.execute`、`step-up`、Redis 失效、派生表重刷与审计回查要求
+- 覆盖的任务清单条目：`SEARCHREC-012`
+- 未覆盖项：
+  - 无。`SEARCHREC-012` 要求的推荐重建接口、正式 Bearer 权限链、真实 `iam.step_up_challenge` 绑定、缓存失效、派生表重刷和审计/系统日志均已重新验证；`SEARCHREC-013` 的 local 最小候选召回策略仍留在下一 task 处理。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
