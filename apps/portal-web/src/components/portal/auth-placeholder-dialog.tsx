@@ -130,7 +130,7 @@ export function AuthPlaceholderDialog() {
                   <span className="text-sm font-medium text-[var(--ink-strong)]">Access Token</span>
                   <Textarea
                     {...form.register("accessToken")}
-                    placeholder="粘贴 Keycloak / IAM Access Token，用于 /api/v1/auth/me 与门户 Bearer 接口。"
+                    placeholder="粘贴 Keycloak / IAM Access Token，用于门户 Bearer API 校验与 token claims 会话。"
                   />
                   <FormError message={form.getFieldState("accessToken").error?.message} />
                 </label>

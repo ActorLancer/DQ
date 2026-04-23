@@ -7,7 +7,9 @@ import { PlatformApiError } from "@datab/sdk-ts";
 
 import { createServerSdk } from "@/lib/platform-sdk";
 import {
+  buildSessionHeaders,
   clearPortalSession,
+  readPortalSessionPreview,
   type PortalSession,
   writePortalSession,
 } from "@/lib/session";
@@ -54,19 +56,61 @@ export async function connectPortalSession(
           role: parsed.data.role,
         };
 
-  const sdk = createServerSdk(
-    session.mode === "bearer"
-      ? {
-          authorization: `Bearer ${session.accessToken}`,
-        }
-      : {
-          "x-login-id": session.loginId,
-          "x-role": session.role,
-        },
-  );
+  const preview = readPortalSessionPreview(session);
+  if (session.mode === "bearer") {
+    if (!preview) {
+      return {
+        ok: false,
+        message: "Bearer Token 缺少可识别的 user_id / org_id / roles claims。",
+      };
+    }
+    if (preview.exp && preview.exp * 1000 <= Date.now()) {
+      return {
+        ok: false,
+        message: "Bearer Token 已过期，请重新获取 Keycloak / IAM access token。",
+      };
+    }
+  }
+
+  const sdk = createServerSdk(buildSessionHeaders(session));
 
   try {
-    await sdk.iam.getAuthMe();
+    if (session.mode === "bearer") {
+      const roles = preview?.roles ?? [];
+      if (roles.some((role) => role === "platform_admin" || role === "buyer_operator")) {
+        await sdk.search.searchCatalog({
+          q: "工业",
+          entity_scope: "all",
+          page: 1,
+          page_size: 1,
+        });
+      } else if (
+        preview?.tenant_id &&
+        roles.some((role) => role === "tenant_admin" || role === "seller_operator")
+      ) {
+        await sdk.recommendation.getRecommendations({
+          placement_code: "home_featured",
+          subject_scope: "organization",
+          subject_org_id: preview.tenant_id,
+          limit: 1,
+        });
+      } else {
+        await sdk.iam.getAuthMe();
+      }
+
+      if (
+        roles.some(
+          (role) =>
+            role === "platform_admin" ||
+            role === "tenant_admin" ||
+            role === "tenant_operator",
+        )
+      ) {
+        await sdk.catalog.getStandardScenarioTemplates();
+      }
+    } else {
+      await sdk.iam.getAuthMe();
+    }
     await writePortalSession(session);
     revalidatePath("/", "layout");
 
@@ -87,7 +131,10 @@ export async function connectPortalSession(
 
     return {
       ok: false,
-      message: "无法验证当前登录态占位，请检查 platform-core 或 Keycloak 配置。",
+      message:
+        error instanceof Error
+          ? `无法验证当前登录态占位：${error.message}`
+          : "无法验证当前登录态占位，请检查 platform-core 或 Keycloak 配置。",
     };
   }
 }

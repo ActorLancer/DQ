@@ -3,19 +3,29 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { createBrowserSdk } from "@/lib/platform-sdk";
+import type { PortalSessionPreview, PortalSession } from "@/lib/session";
 
 import { Badge } from "../ui/badge";
 import { Card } from "../ui/card";
 
 const sdk = createBrowserSdk();
 
-export function IdentityStrip({ sessionLabel }: { sessionLabel: string }) {
+export function IdentityStrip({
+  sessionLabel,
+  sessionMode,
+  initialSubject,
+}: {
+  sessionLabel: string;
+  sessionMode: PortalSession["mode"];
+  initialSubject: PortalSessionPreview | null;
+}) {
   const authQuery = useQuery({
     queryKey: ["portal", "auth-me"],
     queryFn: () => sdk.iam.getAuthMe(),
+    enabled: sessionMode === "local",
   });
 
-  const subject = authQuery.data?.data;
+  const subject = authQuery.data?.data ?? initialSubject;
 
   return (
     <Card className="border-none bg-[linear-gradient(135deg,rgba(15,92,126,0.12),rgba(255,255,255,0.96),rgba(11,132,101,0.10))] p-4">
@@ -40,11 +50,13 @@ export function IdentityStrip({ sessionLabel }: { sessionLabel: string }) {
           </div>
         </div>
         <div className="text-xs text-[var(--ink-subtle)]">
-          {authQuery.isPending
-            ? "正在向 platform-core 同步当前会话上下文…"
-            : authQuery.isError
-              ? "未建立可验证会话，当前为公开浏览态。"
-              : `${sessionLabel} 已通过 /api/v1/auth/me 校验。`}
+          {sessionMode === "bearer" && initialSubject
+            ? `${sessionLabel} 已按 Keycloak token claims 建立会话。`
+            : authQuery.isPending
+              ? "正在向 platform-core 同步当前会话上下文…"
+              : authQuery.isError
+                ? "未建立可验证会话，当前为公开浏览态。"
+                : `${sessionLabel} 已通过 /api/v1/auth/me 校验。`}
         </div>
       </div>
     </Card>

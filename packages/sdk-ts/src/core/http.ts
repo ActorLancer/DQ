@@ -188,6 +188,7 @@ export function appendQuery<TQuery>(
     return input;
   }
 
+  const isAbsolute = /^[a-z][a-z\d+.-]*:/i.test(input);
   const url = new URL(input, "http://local.invalid");
   const entries = Object.entries(query as Record<string, unknown>);
   for (const [key, value] of entries) {
@@ -207,8 +208,11 @@ export function appendQuery<TQuery>(
     url.searchParams.set(key, String(value));
   }
 
-  const rendered = url.pathname + url.search;
-  return rendered.startsWith("/") ? rendered : input;
+  if (isAbsolute) {
+    return `${url.origin}${url.pathname}${url.search}`;
+  }
+
+  return `${url.pathname}${url.search}`;
 }
 
 export function createRequestId(): string {

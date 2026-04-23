@@ -33,6 +33,18 @@ describe("appendQuery", () => {
       "/api/v1/catalog/search?q=factory&tags=industrial&tags=featured&price_min=0",
     );
   });
+
+  it("preserves origin for absolute URLs", () => {
+    expect(
+      appendQuery("http://127.0.0.1:8080/api/v1/catalog/search", {
+        q: "工业",
+        page: 1,
+        page_size: 3,
+      }),
+    ).toBe(
+      "http://127.0.0.1:8080/api/v1/catalog/search?q=%E5%B7%A5%E4%B8%9A&page=1&page_size=3",
+    );
+  });
 });
 
 describe("PlatformClient", () => {

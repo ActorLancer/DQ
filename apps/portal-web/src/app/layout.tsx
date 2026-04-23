@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { AuthPlaceholderDialog } from "@/components/portal/auth-placeholder-dialog";
 import { IdentityStrip } from "@/components/portal/identity-strip";
 import { PortalNavigation } from "@/components/portal/navigation";
-import { readPortalSession } from "@/lib/session";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 import { AppProviders } from "@/providers/app-providers";
 
 import "./globals.css";
@@ -36,6 +36,7 @@ export default async function RootLayout({
   children: ReactNode;
 }>) {
   const session = await readPortalSession();
+  const sessionPreview = readPortalSessionPreview(session);
   const sessionLabel =
     session.mode === "bearer"
       ? session.label || "Bearer Session"
@@ -54,7 +55,11 @@ export default async function RootLayout({
             <main className="flex-1 space-y-4">
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
                 <div className="flex-1">
-                  <IdentityStrip sessionLabel={sessionLabel} />
+                  <IdentityStrip
+                    sessionLabel={sessionLabel}
+                    sessionMode={session.mode}
+                    initialSubject={sessionPreview}
+                  />
                 </div>
                 <div className="flex shrink-0 justify-end">
                   <AuthPlaceholderDialog />

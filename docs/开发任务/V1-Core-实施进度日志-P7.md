@@ -214,3 +214,111 @@
   - 无。`WEB-002` 要求的控制台工程初始化、布局、登录态占位、正式路由挂载、SDK / 代理绑定、最小自动化与真实联调闭环均已完成；更完整的审核、审计、ops、开发者业务细节由 `WEB-008 / WEB-014 / WEB-015 / WEB-016` 等后续任务继续展开。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-277（计划中）
+- 任务：`WEB-003` 实现门户首页：场景导航、推荐位、搜索入口、标准链路快捷入口
+- 状态：计划中
+- 说明：`WEB-001` 已把门户工程、身份条、受控 `/api/platform/**` 代理和标准场景读取基线建好，`WEB-003` 开始把首页从“基线说明页”升级为正式业务首页。当前批将围绕 `portal_home` 的冻结职责落地四个首页主模块：场景导航、`home_featured` 推荐位、搜索入口与五条标准链路快捷入口；同时显式区分 `guest / local / bearer` 三种会话下的可见能力，不把需要 Bearer 的推荐/搜索 API 误走本地 header 占位链路。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001` 与 `WEB-002` 已分别提交 `e2c85e6`、`7b7c5cd`，可复用门户/控制台工程基线、`packages/sdk-ts`、`auth/me` 会话校验、受控代理和 `platform-core` 本地联调环境。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-003` 仅针对门户首页，不得跳到搜索详情或卖方主页的完整实现，但必须把首页四大模块和最小真实联调闭环做完整。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认首页需承载平台导航、热门行业入口、推荐商品/服务、高可信卖方推荐、平台能力说明，并在未登录或推荐异常时做受控降级。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`：确认首页推荐位至少覆盖热门数据、热门服务、新品推荐、高可信卖方推荐、行业特色推荐等首页推荐语义。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认首页官方展示必须显式覆盖五条标准链路，且八个标准 SKU 不能被错误并类。
+  - `docs/权限设计/菜单权限映射表.md`、`按钮级权限说明.md`、`接口权限校验清单.md`、`菜单树与路由表正式版.md`：确认首页查看权限 `portal.home.read`、推荐读取权限 `portal.recommendation.read`、搜索查看/执行权限 `portal.search.read / portal.search.use`，以及首页仍属于 `portal_home` 正式路由。
+  - `docs/05-test-cases/search-rec-cases.md`：确认 `home_featured` 在演示种子后必须返回五条标准链路官方商品样例，顺序固定为 `S1 -> S2 -> S3 -> S4 -> S5`，并且首页推荐异常时要能受控退化。
+  - `packages/openapi/catalog.yaml`、`recommendation.yaml`、`search.yaml` 与对应 `docs/02-openapi/*.yaml`：确认首页需要真实绑定 `GET /api/v1/catalog/standard-scenarios`、`GET /api/v1/recommendations`、`GET /api/v1/catalog/search` 的当前实现期契约。
+  - `apps/platform-core/src/modules/catalog/standard_scenarios.rs`、`recommendation/**`、`search/**`：确认五条标准链路与推荐 `home_featured`、搜索 API 的后端真实实现、权限矩阵和本地 / staging 运行边界。
+  - `apps/portal-web/**`、`packages/sdk-ts/**`：确认现有首页仍是 `WEB-001` 基线说明页，需要在当前 task 内替换为正式首页实现。
+- 当前完成标准理解：
+  - 首页必须真实显示场景导航、推荐位、搜索入口与标准链路快捷入口，不再停留在路由挂载说明页。
+  - 首页必须只通过 `portal-web -> /api/platform -> platform-core` 的正式边界读取数据；推荐与搜索预览只允许在 Bearer 会话下调用正式 API，`guest / local` 要给出明确可理解的空态 / 权限态 / 降级态。
+  - 首页必须显式展示五条标准链路和八个标准 SKU 的官方命名，不得改名、合并或弱化。
+  - 首页至少要补齐自动化与真实联调 smoke，证明浏览器端请求走受控代理而非直连 `platform-core`。
+- 实施计划：
+  1. 重构 `portal_home` 首页组件，落地首页 Hero、场景导航、标准链路快捷入口与推荐/搜索模块。
+  2. 扩展首页路由元数据与最小测试，确保 `portal_home` API 绑定包含 `recommendation / search`。
+  3. 执行 `pnpm lint / typecheck / test / build` 与后端通用校验。
+  4. 通过真实 Keycloak Bearer Token 启动门户生产构建，验证首页推荐、搜索预览、场景快捷入口、桌面/移动 smoke 以及浏览器仅访问 `/api/platform/**`。
+
+### BATCH-277（待审批）
+- 任务：`WEB-003` 实现门户首页：场景导航、推荐位、搜索入口、标准链路快捷入口
+- 状态：待审批
+- 当前任务编号：`WEB-003`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001` / `WEB-002` 基线继续生效；门户仍只经 `portal-web -> /api/platform -> platform-core` 访问正式 API，没有新增浏览器直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric` 的实现。
+- 完成情况：
+  - 将 `apps/portal-web/src/components/portal/home-shell.tsx` 从 `WEB-001` 基线说明页重构为正式首页，落下 Hero、场景导航、标准链路快捷入口、推荐位、搜索入口与首页联调概览五个主模块，并显式区分 `guest / local / bearer` 三种会话能力。
+  - 首页标准链路严格按冻结口径直出五条标准链路与八个标准 SKU：`FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD`；`S1 -> S5` 官方场景名与搜索入口映射保持不变，不再把 `SHARE_RO / QRY_LITE / RPT_STD` 错并回大类。
+  - 为 `catalog/standard-scenarios` 增加“Bearer 实时回填 + guest/local 冻结样例回退”双层承接：未登录或本地 header 占位时首页仍保留官方五链路入口，不把标准场景导航整体锁空；Bearer 建立后自动回填 `GET /api/v1/catalog/standard-scenarios` 真响应，并在首页指标区显示 `5 / live`。
+  - 推荐位正式绑定 `placement_code=home_featured`，Bearer 会话下走 `GET /api/v1/recommendations`；当推荐异常时退回官方五链路样例并保留错误提示。搜索入口正式绑定 `GET /api/v1/catalog/search`，采用 `useDeferredValue` 做首页预览，并把默认关键词和标准链路搜索词统一到官方场景名，避免 `S1` 快捷入口落空。
+  - `apps/portal-web/src/lib/session.ts`、`src/actions/session.ts`、`src/components/portal/identity-strip.tsx`、`src/app/layout.tsx`、`src/app/page.tsx` 已补齐 Bearer claims 会话预览：从 Keycloak token 解析 `user_id / org_id / preferred_username / name / roles / exp`，在门户主体条稳定显示“当前主体 / 角色 / 租户 / 作用域”，并在服务器到 `platform-core` 的受控调用上附带兼容头 `x-user-id / x-tenant-id / x-role`，用于当前仍依赖头部角色矩阵的 `catalog` / `iam` 读取接口。
+  - `packages/sdk-ts/src/core/http.ts` 修复了绝对 URL 场景下 `appendQuery()` 错误裁剪 origin 的缺陷；新增 `packages/sdk-ts/src/core/http.test.ts` 回归用例，确保服务端 `baseUrl=http://127.0.0.1:8080` 时不会再把请求降成非法相对路径。该修复直接解掉了门户 Bearer 登录校验阶段的 `Failed to parse URL from /api/v1/catalog/search?...` 阻塞。
+  - `apps/portal-web/src/lib/portal-routes.ts` 与测试已同步更新 `portal_home` 描述和 API 绑定，把 `health/ready`、`auth/me`、`catalog/standard-scenarios`、`recommendations`、`catalog/search`、`orders/standard-templates` 全部纳入首页正式边界说明。
+  - `apps/portal-web/e2e/smoke.spec.ts` 已同步刷新为首页当前业务语义，确保首页、搜索页和标准下单页的脚手架 / 状态预演断言与现状一致。
+- 验证：
+  - 前端 / 工作区：
+    - `pnpm install --frozen-lockfile`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `pnpm --filter @datab/sdk-ts test`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm --filter @datab/portal-web build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 真实联调与 smoke：
+    - `./scripts/check-keycloak-realm.sh`
+    - 真实 password grant 获取 `local-platform-admin / platform_admin` Bearer Token，并验证 token claims 含 `user_id / org_id / realm_access.roles`
+    - 直连 `platform-core`：
+      - `GET /api/v1/recommendations?placement_code=home_featured&subject_scope=organization&subject_org_id=10000000-0000-0000-0000-000000000103&limit=5`
+      - `GET /api/v1/catalog/search?q=工业设备运行指标&entity_scope=all&page=1&page_size=4`
+      - `GET /api/v1/catalog/standard-scenarios`
+    - 门户生产构建启动：
+      - `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm --filter @datab/portal-web exec next start --hostname 127.0.0.1 --port 3101`
+    - 浏览器端手工 / Playwright smoke：
+      - 桌面视口 `1440x1200`：登录态占位注入真实 Bearer，校验主体条、五条标准链路、`home_featured` 推荐位、搜索预览 `total 2` 与浏览器请求只落 `/api/platform/**`
+      - 移动视口 `iPhone 13`：校验首页可正常加载、标准链路/推荐位/搜索入口可见、页面无横向溢出
+    - 数据库回查：
+      - `select placement_code, page_context, status, jsonb_array_length(metadata->'fixed_samples') as fixed_sample_count from recommend.placement_definition where placement_code='home_featured';`
+      - `select placement_code, subject_scope, subject_org_id, status, candidate_source_summary->>'placement_sample' as placement_sample, request_attrs->>'candidate_backend' as candidate_backend, created_at from recommend.recommendation_request where placement_code='home_featured' order by created_at desc limit 3;`
+      - `select target_type, request_id, accessor_user_id, created_at from audit.access_audit where accessor_user_id='10000000-0000-0000-0000-000000000353' and target_type in ('recommendation_result','search_catalog') order by created_at desc limit 10;`
+- 验证结果：
+  - `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；`portal-web` 单体的 lint / typecheck / unit / e2e / build 也全部通过；`sdk-ts` 单测通过，确认绝对 URL 查询拼接回归已收住。
+  - `pnpm test` 期间 `console-web` 的 Playwright WebServer 仍会打印若干 `ECONNREFUSED 127.0.0.1:8094` 代理失败日志，但最终 smoke 断言通过；这是工作区现有控制台默认运行时噪音，不影响本批门户首页交付结果。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；本批没有引入新的 Rust / SQLx 回归。
+  - `./scripts/check-keycloak-realm.sh` 通过，重新确认本地 realm、`portal-web` password grant 与正式 `user_id / org_id / roles` claims 可用。
+  - 真实推荐 / 搜索联调通过：
+    - `home_featured` 返回 `5` 条官方样例，顺序为 `工业设备运行指标 API 订阅 -> 工业质量与产线日报文件包交付 -> 供应链协同查询沙箱 -> 零售门店经营分析 API / 报告订阅 -> 商圈/门店选址查询服务`
+    - `工业设备运行指标` 搜索返回 `total=2`
+  - 桌面浏览器 smoke 通过：主体条真实显示 `Local Platform Admin / platform_admin / 10000000-0000-0000-0000-000000000103 / aal1`；`home_featured` 推荐位、标准场景模板 `5 / live`、搜索预览 `total 2` 都成功渲染；捕获到的浏览器端正式 API 请求仅有：
+    - `/api/platform/health/ready`
+    - `/api/platform/api/v1/catalog/standard-scenarios`
+    - `/api/platform/api/v1/recommendations?...`
+    - `/api/platform/api/v1/catalog/search?...`
+    - `directPlatformCoreRequestCount = 0`
+  - 移动浏览器 smoke 通过：标准链路、推荐位、搜索入口与主体条都可见，桌面 / 移动的 `horizontalFit` 均为 `true`；其中桌面横向溢出问题已通过推荐卡 badge 折行修正收敛。
+  - 数据库回查与页面行为对齐：
+    - `recommend.placement_definition(home_featured)` 当前 `page_context='home'`、`status='active'`、`fixed_sample_count=5`
+    - 最近三条 `recommend.recommendation_request` 均为 `subject_scope='organization'`、`subject_org_id='10000000-0000-0000-0000-000000000103'`、`status='served'`、`placement_sample='5'`、`candidate_backend='postgresql_local_minimal'`
+    - `audit.access_audit` 中已出现本批首页 Bearer 读取产生的 `recommendation_result` 与 `search_catalog` 访问记录，请求时间与浏览器 smoke 一致
+  - 本批未新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；业务测试数据未向数据库插入额外临时对象，审计访问记录按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-003`
+  - `页面说明书-V1-完整版.md`：门户首页章节、登录后 / 未登录推荐差异、标准链路与搜索入口说明
+  - `商品推荐与个性化发现设计.md`：首页推荐位 `home_featured` 与首页推荐降级语义
+  - `数据交易平台-全集成基线-V1.md`：五条标准链路官方命名与八个标准 SKU 口径
+  - `search-rec-cases.md`：首页推荐与搜索 Bearer 边界、本地 `home_featured` 固定样例顺序
+  - `packages/openapi/catalog.yaml`、`recommendation.yaml`、`search.yaml`、`iam.yaml` 与 `docs/02-openapi/*.yaml`
+- 覆盖的任务清单条目：`WEB-003`
+- 未覆盖项：
+  - 无。`WEB-003` 要求的门户首页场景导航、推荐位、搜索入口、标准链路快捷入口、真实 API 接入、E2E / 浏览器 smoke、数据库回查与日志留痕均已完成；更完整的搜索结果页、商品详情页、卖方主页业务细节由 `WEB-004 / WEB-005 / WEB-006` 继续展开。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

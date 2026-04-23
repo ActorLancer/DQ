@@ -17,6 +17,13 @@ describe("portal route registry", () => {
     expect(portalRouteMap.catalog_search.viewPermission).toBe(
       "portal.search.read",
     );
+    expect(portalRouteMap.portal_home.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/catalog/standard-scenarios",
+        "/api/v1/recommendations",
+        "/api/v1/catalog/search",
+      ]),
+    );
     expect(portalRouteMap.order_create.primaryPermissions).toContain(
       "trade.order.create",
     );
