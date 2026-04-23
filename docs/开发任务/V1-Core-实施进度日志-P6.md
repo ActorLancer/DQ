@@ -76,6 +76,72 @@
 - 说明：按 `SEARCHREC-007` 的冻结口径，重新核对 `search.index_sync_task`、`search.index_sync_exception`、worker 成功/失败回写、dead letter 关联字段以及 `GET /api/v1/ops/search/sync` 的联查视图是否仍保持统一 authority；重点确认搜索同步失败会真实留下异常记录、对账状态和 DLQ 线索，成功重试会关闭异常并更新 `reconcile_status`，同时 ops 查询返回的 alias / projection / exception 摘要与数据库状态一致，不退回到仅凭普通日志判断。
 - 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-007`，不提前进入 `SEARCHREC-008`。
 
+### BATCH-276（计划中）
+- 任务：`SEARCHREC-008` 逐任务复核与正式重验（推荐基础模型：placement、candidate source、ranking profile、exposure/click event）
+- 状态：计划中
+- 说明：按 `SEARCHREC-008` 的冻结口径，重新核对推荐基础模型是否真实落在 PostgreSQL 权威表、canonical behavior route policy、推荐运行时 DTO/OpenAPI、runbook/test case 和行为回流链路上；重点确认推荐位、默认排序 profile、曝光/点击事件类型、`recommend.behavior_recorded -> dtp.recommend.behavior`、subject profile/cohort 热度衍生更新，以及推荐候选最终仍回 PostgreSQL 做业务校验，而不是只剩 schema 或骨架文档。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-008`，不提前进入 `SEARCHREC-009`。
+
+### BATCH-276（待审批）
+- 任务：`SEARCHREC-008` 逐任务复核与正式重验（推荐基础模型：placement、candidate source、ranking profile、exposure/click event）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-008`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已作为前序完成基线存在；`SEARCHREC-001` 至 `SEARCHREC-007` 已重验完成，推荐 schema、behavior route policy、OpenSearch/Redis/Kafka 运行时和 `recommendation-aggregator` 均已可运行。本批在此基线上重验基础模型，不提前合并 `SEARCHREC-009+` 的接口族整改。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：定位 `SEARCHREC-008` 的基础模型范围、DoD、验收与 `technical_reference`。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`：确认 V1 正式链路为 `PG 主存 + OpenSearch 候选召回 + Redis 缓存 + Kafka 行为流 + recommendation-service 编排 + PG 最终校验`，推荐与搜索共享投影但必须拥有独立推荐位/行为事件/排序配置。
+  - `docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认 `GET /api/v1/recommendations`、曝光/点击写接口、推荐位/排序 profile 视图与审计/幂等边界。
+  - `docs/数据库设计/V1/upgrade/058_recommendation_module.sql`、`073_recommendation_runtime_alignment.sql`：确认 `recommend.placement_definition`、`recommend.ranking_profile`、`recommend.behavior_event`、`recommend.subject_profile_snapshot`、`recommend.cohort_popularity` 等基础表与 canonical topic `dtp.recommend.behavior`。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`、`A09-推荐主链路与行为流契约缺口.md`：确认基础模型 baseline、行为回流、aggregator 消费、副作用与推荐不允许退回到 schema/seed 假闭环。
+  - `apps/platform-core/src/modules/recommendation/**`、`workers/recommendation-aggregator/**`、`packages/openapi/recommendation.yaml`、`docs/02-openapi/recommendation.yaml`：复核当前实现是否仍以正式基础模型为唯一 authority，而不是被后续 task 的运行态改动污染。
+- 完成情况：
+  - 复核后确认：`recommendation` 基础模型本身已在代码和 schema 中完整落地，`RECOMMENDATION_BASELINE_PLACEMENTS`、`RECOMMENDATION_BASELINE_RANKING_PROFILE_KEYS`、`RECOMMENDATION_BASELINE_BEHAVIOR_EVENT_TYPES` 与 `058/073`、OpenAPI、runbook、test case 保持一致，无需重写主模型。
+  - 当前批次发现真实缺口：`recommendation_model_baseline_db_smoke` 首次重跑失败，暴露本地运行态 `home_featured.default_ranking_profile_key` 已被历史失败 smoke 污染为 `recommend_v1_bundle`。根因是 `recommendation_api_full_runtime_db_smoke` 会临时 patch `home_featured` 与 `recommend_v1_bundle`，但一旦中途断言失败，原有 restore 不执行，导致全局推荐 baseline 漂移。
+  - `apps/platform-core/Cargo.toml`、`apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：为 `recommendation_api_full_runtime_db_smoke` 增加 panic-safe cleanup guard。修法不是放宽断言，而是把 placement/ranking profile 的全局恢复改为独立 `psql` 恢复脚本执行，确保即使 smoke 失败，`home_featured` 与 `recommend_v1_bundle` 也会回到测试开始前快照；成功路径仍继续清理 OpenSearch 文档和业务 seed graph，不再把本地数据库留在被 smoke 污染的状态。
+  - 当前批次同时清理了本地遗留污染数据：将 `home_featured.default_ranking_profile_key` 恢复为 `recommend_v1_default`，并移除 `recommend.placement_definition` / `recommend.ranking_profile` 中前次失败 smoke 留下的 `smoke_suffix / last_request_id / last_trace_id / last_actor_role` 临时 metadata。该清理仅针对业务测试临时数据，不影响 append-only 审计记录。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo check -p platform-core`
+  - `cargo check -p recommendation-aggregator`
+  - `cargo test -p platform-core normalized_hit_entity_id -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core recommendation_model_baseline_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 直接数据库回查：
+    - `SELECT placement_code, placement_scope, page_context, default_ranking_profile_key, status, candidate_policy_json -> 'recall' ... FROM recommend.placement_definition ...`
+    - `SELECT profile_key, placement_scope, backend_type, status FROM recommend.ranking_profile ...`
+    - `SELECT aggregate_type, event_type, target_topic, consumer_group_hint FROM ops.event_route_policy WHERE aggregate_type='recommend.behavior_event' AND event_type='recommend.behavior_recorded'`
+    - `SELECT tgname FROM pg_trigger WHERE tgrelid='recommend.behavior_event'::regclass AND tgname='trg_recommend_behavior_event_outbox'`
+    - `SELECT placement_code, default_ranking_profile_key, metadata ? 'smoke_suffix', metadata ? 'last_request_id' FROM recommend.placement_definition WHERE placement_code='home_featured'`
+- 验证结果：
+  - `recommendation_model_baseline_db_smoke` 首次真实抓出 baseline 漂移后，修复 cleanup guard 并恢复运行态基线，再次执行通过；证明 7 个正式推荐位仍是：
+    - `buyer_workbench_discovery -> recommend_v1_default`
+    - `home_featured -> recommend_v1_default`
+    - `industry_featured -> recommend_v1_default`
+    - `product_detail_bundle -> recommend_v1_bundle`
+    - `product_detail_similar -> recommend_v1_detail`
+    - `search_zero_result_fallback -> recommend_v1_default`
+    - `seller_profile_featured -> recommend_v1_seller`
+  - 4 个正式排序 profile 回查通过：`recommend_v1_bundle|service|rule|active`、`recommend_v1_default|mixed|rule|active`、`recommend_v1_detail|product|rule|active`、`recommend_v1_seller|seller|rule|active`。
+  - `ops.event_route_policy` 回查通过：`recommend.behavior_event|recommend.behavior_recorded|dtp.recommend.behavior|cg-recommendation-aggregator`；`pg_trigger` 回查结果为 `missing`，证明 legacy `trg_recommend_behavior_event_outbox` 仍不存在。
+  - `recommendation_api_full_runtime_db_smoke` 与 `recommendation_aggregator_db_smoke` 通过，证明基础模型不仅存在于 schema，还能驱动推荐结果、曝光/点击行为、canonical outbox、Kafka 行为流、aggregator 副作用和搜索投影回流。
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过。
+  - 最终直接回查确认：`home_featured|recommend_v1_default|false|false` 与 `recommend_v1_bundle|false|false`，说明当前本地推荐 baseline 已恢复干净，不再残留 smoke 临时字段。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-008`
+  - `商品推荐与个性化发现设计.md`：推荐位、排序 profile、行为事件与推荐主链边界
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐结果、曝光/点击与推荐 ops 契约
+  - `058_recommendation_module.sql`、`073_recommendation_runtime_alignment.sql`：推荐基础 schema 与 canonical route policy
+  - `recommendation-runtime.md`、`search-rec-cases.md`、`A09-推荐主链路与行为流契约缺口.md`：基础模型 baseline、行为回流、aggregator 与正式 topic
+- 覆盖的任务清单条目：`SEARCHREC-008`
+- 未覆盖项：
+  - 无。当前批次已同时重验基础模型 authority、行为回流 route policy、OpenAPI/runbook/test case 与可重复测试清理，不存在新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-275（待审批）
 - 任务：`SEARCHREC-007` 逐任务复核与正式重验（搜索同步作业表与异常记录表）
 - 状态：待审批

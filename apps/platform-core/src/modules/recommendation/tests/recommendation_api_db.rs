@@ -10,6 +10,7 @@ use db::{Client, Error, GenericClient, NoTls, connect};
 use redis::AsyncCommands;
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap};
+use std::process::Command;
 use std::sync::Mutex;
 use tower::ServiceExt;
 
@@ -45,7 +46,7 @@ impl Drop for ScopedEnvVar {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct SeedIds {
     org_id: String,
     asset_ids: Vec<String>,
@@ -61,13 +62,13 @@ struct StandardScenarioSample {
     product_id: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PlacementConfigSnapshot {
     default_ranking_profile_key: Option<String>,
     metadata: Value,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RankingProfileMetadataSnapshot {
     metadata: Value,
 }
@@ -1426,6 +1427,50 @@ async fn recommendation_api_full_runtime_db_smoke() {
         load_ranking_profile_metadata_snapshot(&client, ranking_profile_id)
             .await
             .expect("load ranking profile snapshot");
+    let _cleanup_guard = scopeguard::guard((), {
+        let dsn = dsn.clone();
+        let ranking_profile_id = ranking_profile_id.to_string();
+        let ranking_profile_snapshot = ranking_profile_snapshot.clone();
+        let placement_snapshot = placement_snapshot.clone();
+        move |_| {
+            let ranking_metadata = serde_json::to_string(&ranking_profile_snapshot.metadata)
+                .expect("serialize ranking metadata");
+            let placement_metadata = serde_json::to_string(&placement_snapshot.metadata)
+                .expect("serialize placement metadata");
+            let placement_profile_sql = placement_snapshot
+                .default_ranking_profile_key
+                .as_ref()
+                .map(|value| format!("'{}'", value.replace('\'', "''")))
+                .unwrap_or_else(|| "NULL".to_string());
+            let sql = format!(
+                "UPDATE recommend.ranking_profile
+                 SET metadata = $json${ranking_metadata}$json$::jsonb,
+                     updated_at = now()
+                 WHERE recommendation_ranking_profile_id = '{ranking_profile_id}'::uuid;
+                 UPDATE recommend.placement_definition
+                 SET default_ranking_profile_key = {placement_profile_sql},
+                     metadata = $json${placement_metadata}$json$::jsonb,
+                     updated_at = now()
+                 WHERE placement_code = 'home_featured';"
+            );
+            let path = format!(
+                "/tmp/recommendation-api-cleanup-{}-{}.sql",
+                std::process::id(),
+                ranking_profile_id
+            );
+            std::fs::write(&path, sql).expect("write recommendation cleanup sql");
+            let status = Command::new("psql")
+                .arg(&dsn)
+                .arg("-v")
+                .arg("ON_ERROR_STOP=1")
+                .arg("-f")
+                .arg(&path)
+                .status()
+                .expect("run recommendation cleanup sql");
+            let _ = std::fs::remove_file(&path);
+            assert!(status.success(), "recommendation cleanup sql failed");
+        }
+    });
 
     seed_redis_value(&placement_cache_key, "{\"seed\":true}", 300)
         .await
@@ -2179,16 +2224,6 @@ async fn recommendation_api_full_runtime_db_smoke() {
         Some(click_idempotency_key.as_str())
     );
 
-    restore_ranking_profile_metadata_snapshot(
-        &client,
-        ranking_profile_id,
-        &ranking_profile_snapshot,
-    )
-    .await
-    .expect("restore ranking profile snapshot");
-    restore_placement_config_snapshot(&client, "home_featured", &placement_snapshot)
-        .await
-        .expect("restore placement snapshot");
     cleanup_opensearch_documents(&ids).await;
     cleanup_graph(&client, &ids).await.expect("cleanup graph");
 }

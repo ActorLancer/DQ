@@ -2346,6 +2346,7 @@ dependencies = [
  "rdkafka",
  "redis",
  "reqwest",
+ "scopeguard",
  "sea-orm",
  "serde",
  "serde_json",
