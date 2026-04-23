@@ -59,6 +59,7 @@
 - `portal-web / console-web` 只调用 `platform-core` 对外 API
 - 外围进程优先消费 Kafka 事件或调用受控内部接口
 - 不允许前端直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`
+- 通知联查 / dead-letter replay 对外路径固定为 `platform-core /api/v1/ops/notifications/*`；`notification-worker /internal/notifications/*` 只作为服务到服务内部契约
 
 ### 2.4 命名规则
 
@@ -420,6 +421,13 @@
 内部接口建议：
 
 - `POST /internal/notifications/send`
+- `POST /internal/notifications/audit/search`
+- `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
+
+对前端/控制台的正式 facade：
+
+- `POST /api/v1/ops/notifications/audit/search`
+- `POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay`
 
 ## 7. 外部回调冻结
 

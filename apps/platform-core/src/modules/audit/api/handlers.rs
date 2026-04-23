@@ -58,6 +58,10 @@ const CONSISTENCY_RECONCILE_STEP_UP_ACTION: &str = "ops.consistency.reconcile";
 const EXTERNAL_FACT_CONFIRM_STEP_UP_ACTION: &str = "ops.external_fact.manage";
 const FAIRNESS_INCIDENT_HANDLE_STEP_UP_ACTION: &str = "risk.fairness_incident.handle";
 const PROJECTION_GAP_RESOLVE_STEP_UP_ACTION: &str = "ops.projection_gap.manage";
+const NOTIFICATION_LOOKUP_ENDPOINT: &str = "POST /api/v1/ops/notifications/audit/search";
+const NOTIFICATION_REPLAY_ENDPOINT: &str =
+    "POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay";
+const DEFAULT_NOTIFICATION_WORKER_BASE_URL: &str = "http://127.0.0.1:8097";
 const CONSISTENCY_RECONCILE_TARGET_TOPIC: &str = "dtp.consistency.reconcile";
 const REPLAY_DRY_RUN_ONLY_ERROR: &str = "AUDIT_REPLAY_DRY_RUN_ONLY";
 const DEAD_LETTER_REPROCESS_DRY_RUN_ONLY_ERROR: &str = "AUDIT_DEAD_LETTER_REPROCESS_DRY_RUN_ONLY";
@@ -90,6 +94,40 @@ struct DeveloperTraceResolution {
     matched_checkpoint: Option<repo::TradeLifecycleCheckpointRecord>,
     request_id: Option<String>,
     trace_id: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(in crate::modules::audit) struct PlatformNotificationAuditSearchRequest {
+    #[serde(default)]
+    order_id: Option<String>,
+    #[serde(default)]
+    case_id: Option<String>,
+    #[serde(default)]
+    aggregate_type: Option<String>,
+    #[serde(default)]
+    event_type: Option<String>,
+    #[serde(default)]
+    target_topic: Option<String>,
+    #[serde(default)]
+    template_code: Option<String>,
+    #[serde(default)]
+    notification_code: Option<String>,
+    #[serde(default)]
+    event_id: Option<String>,
+    #[serde(default)]
+    limit: Option<i64>,
+    reason: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(in crate::modules::audit) struct PlatformReplayDeadLetterRequest {
+    #[serde(default = "default_true")]
+    dry_run: bool,
+    reason: String,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub(in crate::modules::audit) async fn get_order_audit_traces(
@@ -600,6 +638,275 @@ pub(in crate::modules::audit) async fn get_ops_outbox(
             .map(OutboxEventView::from)
             .collect(),
     }))
+}
+
+pub(in crate::modules::audit) async fn search_ops_notification_audit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<PlatformNotificationAuditSearchRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_optional_uuid(payload.order_id.as_deref(), "order_id", &request_id)?;
+    validate_optional_uuid(payload.case_id.as_deref(), "case_id", &request_id)?;
+    validate_optional_uuid(payload.event_id.as_deref(), "event_id", &request_id)?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsOutboxRead,
+        "ops notification audit search",
+    )?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsDeadLetterRead,
+        "ops notification audit search",
+    )?;
+
+    let normalized_reason = normalize_required_reason(
+        payload.reason.as_str(),
+        &request_id,
+        "ops notification audit search",
+    )?;
+    let normalized_payload = PlatformNotificationAuditSearchRequest {
+        order_id: normalize_optional_filter(payload.order_id.as_deref(), "order_id", &request_id)?,
+        case_id: normalize_optional_filter(payload.case_id.as_deref(), "case_id", &request_id)?,
+        aggregate_type: normalize_optional_filter(
+            payload.aggregate_type.as_deref(),
+            "aggregate_type",
+            &request_id,
+        )?,
+        event_type: normalize_optional_filter(
+            payload.event_type.as_deref(),
+            "event_type",
+            &request_id,
+        )?,
+        target_topic: normalize_optional_filter(
+            payload.target_topic.as_deref(),
+            "target_topic",
+            &request_id,
+        )?,
+        template_code: normalize_optional_filter(
+            payload.template_code.as_deref(),
+            "template_code",
+            &request_id,
+        )?,
+        notification_code: normalize_optional_filter(
+            payload.notification_code.as_deref(),
+            "notification_code",
+            &request_id,
+        )?,
+        event_id: normalize_optional_filter(payload.event_id.as_deref(), "event_id", &request_id)?,
+        limit: Some(payload.limit.unwrap_or(20).clamp(1, 50)),
+        reason: normalized_reason,
+    };
+    let step_up_ticket = normalize_notification_step_up_ticket(
+        &headers,
+        &request_id,
+        "ops notification audit search",
+    )?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let response_body = forward_notification_worker_request(
+        "/internal/notifications/audit/search",
+        &request_id,
+        &trace_id,
+        None,
+        json!({
+            "order_id": normalized_payload.order_id,
+            "case_id": normalized_payload.case_id,
+            "aggregate_type": normalized_payload.aggregate_type,
+            "event_type": normalized_payload.event_type,
+            "target_topic": normalized_payload.target_topic,
+            "template_code": normalized_payload.template_code,
+            "notification_code": normalized_payload.notification_code,
+            "event_id": normalized_payload.event_id,
+            "limit": normalized_payload.limit,
+            "reason": normalized_payload.reason,
+            "step_up_ticket": step_up_ticket,
+            "request_id": request_id,
+            "trace_id": trace_id,
+        }),
+    )
+    .await?;
+
+    let result_total = response_body
+        .get("data")
+        .and_then(|value| value.get("total"))
+        .and_then(Value::as_u64);
+    let client = state_client(&state)?;
+    record_ops_lookup_side_effects(
+        &client,
+        &headers,
+        "notification_audit_query",
+        normalized_payload
+            .event_id
+            .clone()
+            .or_else(|| normalized_payload.order_id.clone())
+            .or_else(|| normalized_payload.case_id.clone()),
+        NOTIFICATION_LOOKUP_ENDPOINT,
+        json!({
+            "order_id": normalized_payload.order_id,
+            "case_id": normalized_payload.case_id,
+            "aggregate_type": normalized_payload.aggregate_type,
+            "event_type": normalized_payload.event_type,
+            "target_topic": normalized_payload.target_topic,
+            "template_code": normalized_payload.template_code,
+            "notification_code": normalized_payload.notification_code,
+            "event_id": normalized_payload.event_id,
+            "limit": normalized_payload.limit,
+            "reason": normalized_payload.reason,
+            "result_total": result_total,
+        }),
+    )
+    .await?;
+
+    Ok(Json(response_body))
+}
+
+pub(in crate::modules::audit) async fn replay_ops_notification_dead_letter(
+    State(state): State<AppState>,
+    Path(dead_letter_event_id): Path<String>,
+    headers: HeaderMap,
+    Json(payload): Json<PlatformReplayDeadLetterRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
+    let request_id = require_request_id(&headers)?;
+    validate_uuid(
+        dead_letter_event_id.as_str(),
+        "dead_letter_event_id",
+        &request_id,
+    )?;
+    require_permission(
+        &headers,
+        AuditPermission::OpsDeadLetterReprocess,
+        "ops notification dead letter replay",
+    )?;
+    ensure_step_up_header_present_for(
+        &headers,
+        &request_id,
+        "ops notification dead letter replay",
+    )?;
+    let idempotency_key = require_notification_idempotency_key(
+        &headers,
+        &request_id,
+        "ops notification dead letter replay",
+    )?;
+    let normalized_reason = normalize_required_reason(
+        payload.reason.as_str(),
+        &request_id,
+        "ops notification dead letter replay",
+    )?;
+
+    let client = state_client(&state)?;
+    let actor_user_id = require_user_id(&headers, &request_id)?;
+    let step_up = require_step_up_for_dead_letter_reprocess(
+        &client,
+        &headers,
+        &request_id,
+        actor_user_id.as_str(),
+        dead_letter_event_id.as_str(),
+    )
+    .await?;
+    let trace_id = header(&headers, "x-trace-id").unwrap_or_else(|| request_id.clone());
+    let step_up_ticket = step_up
+        .challenge_id
+        .clone()
+        .or_else(|| header(&headers, "x-step-up-token"))
+        .ok_or_else(|| {
+            bad_request(
+                &request_id,
+                "x-step-up-token or x-step-up-challenge-id is required for ops notification dead letter replay",
+            )
+        })?;
+
+    let response_body = forward_notification_worker_request(
+        format!("/internal/notifications/dead-letters/{dead_letter_event_id}/replay").as_str(),
+        &request_id,
+        &trace_id,
+        Some(idempotency_key.as_str()),
+        json!({
+            "dry_run": payload.dry_run,
+            "reason": normalized_reason,
+            "step_up_ticket": step_up_ticket,
+            "request_id": request_id,
+            "trace_id": trace_id,
+        }),
+    )
+    .await?;
+
+    let response_status = response_body
+        .get("data")
+        .and_then(|value| value.get("status"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let replay_event_id = response_body
+        .get("data")
+        .and_then(|value| value.get("replay_event_id"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let notification_code = response_body
+        .get("data")
+        .and_then(|value| value.get("notification_code"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let template_code = response_body
+        .get("data")
+        .and_then(|value| value.get("template_code"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let access_audit_id = repo::record_access_audit(
+        &client,
+        &AccessAuditInsert {
+            accessor_user_id: Some(actor_user_id.clone()),
+            accessor_role_key: Some(current_role(&headers)),
+            access_mode: "reprocess".to_string(),
+            target_type: "notification_dead_letter_event".to_string(),
+            target_id: Some(dead_letter_event_id.clone()),
+            masked_view: true,
+            breakglass_reason: None,
+            step_up_challenge_id: step_up.challenge_id.clone(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            metadata: json!({
+                "endpoint": NOTIFICATION_REPLAY_ENDPOINT,
+                "reason": payload.reason.trim(),
+                "dry_run": payload.dry_run,
+                "idempotency_key": idempotency_key,
+                "replay_event_id": replay_event_id,
+                "status": response_status,
+                "notification_code": notification_code,
+                "template_code": template_code,
+                "step_up_token_present": step_up.token_present,
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+    repo::record_system_log(
+        &client,
+        &SystemLogInsert {
+            service_name: "platform-core".to_string(),
+            log_level: "WARN".to_string(),
+            request_id: Some(request_id.clone()),
+            trace_id: Some(trace_id.clone()),
+            message_text: format!(
+                "ops notification replay forwarded: {NOTIFICATION_REPLAY_ENDPOINT}"
+            ),
+            structured_payload: json!({
+                "module": "ops",
+                "endpoint": NOTIFICATION_REPLAY_ENDPOINT,
+                "access_audit_id": access_audit_id,
+                "dead_letter_event_id": dead_letter_event_id,
+                "dry_run": payload.dry_run,
+                "idempotency_key": idempotency_key,
+                "replay_event_id": replay_event_id,
+                "status": response_status,
+                "notification_code": notification_code,
+                "template_code": template_code,
+                "role": current_role(&headers),
+            }),
+        },
+    )
+    .await
+    .map_err(map_db_error)?;
+
+    Ok(Json(response_body))
 }
 
 pub(in crate::modules::audit) async fn get_ops_dead_letters(
@@ -7679,6 +7986,114 @@ fn build_fairness_incident_handle_audit_event(
 
 fn state_client(state: &AppState) -> Result<db::Client, (StatusCode, Json<ErrorResponse>)> {
     state.db.client().map_err(map_db_error)
+}
+
+fn notification_worker_base_url() -> String {
+    if let Ok(raw) = std::env::var("NOTIFICATION_WORKER_BASE_URL") {
+        let trimmed = raw.trim().trim_end_matches('/');
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Ok(raw_port) = std::env::var("NOTIFICATION_WORKER_PORT") {
+        let port = raw_port.trim();
+        if !port.is_empty() {
+            return format!("http://127.0.0.1:{port}");
+        }
+    }
+    DEFAULT_NOTIFICATION_WORKER_BASE_URL.to_string()
+}
+
+fn normalize_notification_step_up_ticket(
+    headers: &HeaderMap,
+    request_id: &str,
+    action_label: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    ensure_step_up_header_present_for(headers, request_id, action_label)?;
+    header(headers, "x-step-up-challenge-id")
+        .or_else(|| header(headers, "x-step-up-token"))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            bad_request(
+                request_id,
+                format!("x-step-up-token or x-step-up-challenge-id is required for {action_label}"),
+            )
+        })
+}
+
+fn require_notification_idempotency_key(
+    headers: &HeaderMap,
+    request_id: &str,
+    action_label: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let Some(idempotency_key) = header(headers, "x-idempotency-key") else {
+        return Err(bad_request(
+            request_id,
+            format!("x-idempotency-key is required for {action_label}"),
+        ));
+    };
+    let normalized = idempotency_key.trim();
+    if normalized.is_empty() {
+        return Err(bad_request(
+            request_id,
+            format!("x-idempotency-key cannot be empty for {action_label}"),
+        ));
+    }
+    Ok(normalized.to_string())
+}
+
+async fn forward_notification_worker_request(
+    path: &str,
+    request_id: &str,
+    trace_id: &str,
+    idempotency_key: Option<&str>,
+    payload: Value,
+) -> Result<Value, (StatusCode, Json<ErrorResponse>)> {
+    let url = format!("{}{}", notification_worker_base_url(), path);
+    let mut request = reqwest::Client::new()
+        .post(url)
+        .timeout(std::time::Duration::from_secs(5))
+        .header("x-request-id", request_id)
+        .header("x-trace-id", trace_id);
+    if let Some(idempotency_key) = idempotency_key {
+        request = request.header("x-idempotency-key", idempotency_key);
+    }
+
+    let response = request.json(&payload).send().await.map_err(|err| {
+        internal_error(
+            Some(request_id.to_string()),
+            format!("notification worker request failed: {err}"),
+        )
+    })?;
+    let status = response.status();
+    let body: Value = response.json().await.map_err(|err| {
+        internal_error(
+            Some(request_id.to_string()),
+            format!("decode notification worker response failed: {err}"),
+        )
+    })?;
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(notification_worker_response_error(status, body, request_id))
+    }
+}
+
+fn notification_worker_response_error(
+    status: StatusCode,
+    body: Value,
+    request_id: &str,
+) -> (StatusCode, Json<ErrorResponse>) {
+    serde_json::from_value::<ErrorResponse>(body.clone())
+        .map(Json)
+        .map(|json| (status, json))
+        .unwrap_or_else(|_| {
+            internal_error(
+                Some(request_id.to_string()),
+                format!("notification worker returned unexpected error payload: {body}"),
+            )
+        })
 }
 
 fn map_db_error(err: db::Error) -> (StatusCode, Json<ErrorResponse>) {

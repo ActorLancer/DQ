@@ -13,6 +13,10 @@
 - `email` / `webhook`：仅保留 provider / adapter 边界，不作为 `V1` 完成证据
 - topic / consumer / retention 权威源：`infra/kafka/topics.v1.json`
 - route authority 权威源：`ops.event_route_policy`
+- `portal-web / console-web` 不得直连 `notification-worker`；通知联查 / replay 的对外正式入口固定为 `platform-core` facade：
+  - `POST /api/v1/ops/notifications/audit/search`
+  - `POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay`
+- `notification-worker /internal/notifications/*` 是内部执行契约，只供 `platform-core` 或运维 smoke 使用，不是浏览器目标。
 
 ## 当前批次边界
 
@@ -36,15 +40,24 @@
    TOPIC_DEAD_LETTER_EVENTS=dtp.dead-letter \
    cargo run -p notification-worker
    ```
-3. 校验 canonical topic 与 route seed：
+3. 若要验证正式通知控制面 facade，再单独启动 `platform-core`：
+   ```bash
+   APP_PORT=8080 \
+   DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+   REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/0 \
+   KAFKA_BROKERS=127.0.0.1:9094 \
+   NOTIFICATION_WORKER_BASE_URL=http://127.0.0.1:8097 \
+   cargo run -p platform-core-bin
+   ```
+4. 校验 canonical topic 与 route seed：
    - `./scripts/check-topic-topology.sh`
    - `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
    - `psql postgresql://datab:datab_local_pass@127.0.0.1:5432/datab -c "select aggregate_type, event_type, target_topic, consumer_group_hint, status from ops.event_route_policy where target_topic='dtp.notification.dispatch';"`
-4. 校验健康检查与依赖：
+5. 校验健康检查与依赖：
    - `curl -sS http://127.0.0.1:8097/health/live`
    - `curl -sS http://127.0.0.1:8097/health/ready`
    - `curl -sS http://127.0.0.1:8097/health/deps`
-5. 校验观测栈入口：
+6. 校验观测栈入口：
    - `curl -sS http://127.0.0.1:8097/metrics | rg 'notification_worker_'`
    - `curl -G -sS http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=up{job="notification-worker"}'`
    - `curl -G -sS http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=notification_worker_events_total'`
@@ -52,7 +65,7 @@
    - `curl -sS http://127.0.0.1:3000/api/health`
    - `curl -sS http://127.0.0.1:3100/ready`
    - `curl -sS http://127.0.0.1:3200/metrics | rg 'tempo_build_info'`
-6. 自动化 live smoke（`NOTIF-012`）：
+7. 自动化 live smoke（`NOTIF-012`）：
    - 执行前先停止任何已在运行的 `notification-worker` 进程；该 smoke 会以同一 `SERVICE_NAME` 订阅 `dtp.notification.dispatch`，不应与常驻实例并发抢消费。
    - 运行命令：
      ```bash
@@ -134,6 +147,7 @@ order by template_code, version_no;
 ### 模板预览
 
 - 入口：`POST /internal/notifications/templates/preview`
+- 边界：当前保留为 `notification-worker` 运维 / smoke 内部入口，不是浏览器或 console 的正式直连目标。
 - 最小请求示例：
 
 ```json
@@ -195,6 +209,7 @@ order by template_code, version_no;
 ### 手工注入
 
 - 入口：`POST /internal/notifications/send`
+- 边界：当前保留为 `notification-worker` 运维 / smoke 内部入口，不是浏览器或 console 的正式直连目标。
 - 建议显式传入：
   - `notification_code`
   - `audience_scope`
@@ -257,11 +272,13 @@ order by template_code, version_no;
 
 ### 通知联查
 
-- 入口：`POST /internal/notifications/audit/search`
+- 正式对外入口：`POST /api/v1/ops/notifications/audit/search`
+- 内部执行入口：`POST /internal/notifications/audit/search`
 - 必须提供：
   - 至少一个主过滤条件：`order_id / case_id / aggregate_type / event_type / target_topic / template_code / notification_code / event_id`
   - `reason`
-  - `step_up_ticket`
+  - `x-step-up-token` 或 `x-step-up-challenge-id`
+- 浏览器 / console 只能访问 `platform-core` facade；`platform-core` 负责权限、step-up、审计和 header 归一化，再转发到 worker。
 - `aggregate_type / event_type / target_topic` 针对正式通知 envelope / canonical outbox 路由，即：
   - `aggregate_type=notification.dispatch_request`
   - `event_type=notification.requested`
@@ -272,8 +289,7 @@ order by template_code, version_no;
 ```json
 {
   "order_id": "11111111-1111-1111-1111-111111111111",
-  "reason": "trace notification delivery for incident review",
-  "step_up_ticket": "step-up-local-1"
+  "reason": "trace notification delivery for incident review"
 }
 ```
 
@@ -300,9 +316,13 @@ order by template_code, version_no;
 2. 先做 dry-run：
    ```bash
    curl -sS -X POST \
-     http://127.0.0.1:8097/internal/notifications/dead-letters/<dead_letter_event_id>/replay \
+     http://127.0.0.1:8080/api/v1/ops/notifications/dead-letters/<dead_letter_event_id>/replay \
      -H 'content-type: application/json' \
-     -d '{"dry_run":true,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}'
+     -H 'x-login-id: local-platform-admin' \
+     -H 'x-role: platform_admin' \
+     -H 'x-step-up-token: step-up-local-1' \
+     -H 'x-idempotency-key: notif-replay-dry-run-001' \
+     -d '{"dry_run":true,"reason":"manual replay after mock-log recovery"}'
    ```
 3. 回查 dry-run 留痕：
    - `ops.system_log.message_text='notification dead letter replay dry-run prepared'`
@@ -310,15 +330,20 @@ order by template_code, version_no;
 4. 执行正式 replay：
    ```bash
    curl -sS -X POST \
-     http://127.0.0.1:8097/internal/notifications/dead-letters/<dead_letter_event_id>/replay \
+     http://127.0.0.1:8080/api/v1/ops/notifications/dead-letters/<dead_letter_event_id>/replay \
      -H 'content-type: application/json' \
-     -d '{"dry_run":false,"reason":"manual replay after mock-log recovery","step_up_ticket":"step-up-local-1"}'
+     -H 'x-login-id: local-platform-admin' \
+     -H 'x-role: platform_admin' \
+     -H 'x-step-up-token: step-up-local-1' \
+     -H 'x-idempotency-key: notif-replay-apply-001' \
+     -d '{"dry_run":false,"reason":"manual replay after mock-log recovery"}'
    ```
 5. 回查 replay 结果：
-   - 原 `ops.dead_letter_event.reprocess_status`：`not_reprocessed -> reprocess_requested -> reprocessed`
-   - 新 replay event 返回新的 `event_id / request_id / trace_id`
-   - replay 成功后，`ops.consumer_idempotency_record.result_code=processed`
-   - `audit.audit_event` 追加 `notification.dispatch.reprocess.requested`
+  - 原 `ops.dead_letter_event.reprocess_status`：`not_reprocessed -> reprocess_requested -> reprocessed`
+  - 新 replay event 返回新的 `event_id / request_id / trace_id`
+  - replay 成功后，`ops.consumer_idempotency_record.result_code=processed`
+  - `audit.audit_event` 追加 `notification.dispatch.reprocess.requested`
+6. 若要直接排查 worker 内部执行面，可再使用 `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay` 做服务到服务 smoke；该入口不对浏览器暴露。
 
 ## 失败排查
 

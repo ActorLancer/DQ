@@ -46,6 +46,14 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/v1/ops/outbox", get(handlers::get_ops_outbox))
         .route(
+            "/api/v1/ops/notifications/audit/search",
+            post(handlers::search_ops_notification_audit),
+        )
+        .route(
+            "/api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay",
+            post(handlers::replay_ops_notification_dead_letter),
+        )
+        .route(
             "/api/v1/ops/dead-letters",
             get(handlers::get_ops_dead_letters),
         )

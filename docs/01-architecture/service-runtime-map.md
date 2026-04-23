@@ -12,6 +12,7 @@
   - `apps/search-indexer`（搜索索引构建）
   - `apps/notification-worker`（通知下发）
 - 中间件：PostgreSQL、Redis、Kafka、MinIO、OpenSearch、Keycloak
+- 前端边界：`portal-web / console-web` 只调用 `platform-core` 正式 API；通知联查 / replay 对外路径固定为 `platform-core /api/v1/ops/notifications/*`，再由 `platform-core` 转发 `notification-worker /internal/notifications/*`
 
 ## CORE-032 三分边界冻结
 

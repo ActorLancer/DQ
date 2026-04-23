@@ -44,5 +44,6 @@ PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm --filter @datab/portal-web dev
 ## 约束
 
 - 前端不得直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`
+- 通知相关控制面能力若后续进入门户，也必须先走 `platform-core` facade，不能直连 `notification-worker`
 - 页面写操作后续必须透传 `X-Idempotency-Key`
 - 高风险操作后续必须透传 `X-Step-Up-Token` 或等价链路

@@ -28,6 +28,7 @@
 说明：
 
 - `notification-worker` 当前正式落位在 `apps/notification-worker`。
+- 新增通知控制面或前端联查页面时，浏览器入口仍固定在 `platform-core`；`notification-worker` 只保留内部执行接口，不直接暴露给 `portal-web / console-web`。
 
 ### 2.3 workers（异步与离线落位）
 

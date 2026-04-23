@@ -716,7 +716,8 @@ export interface paths {
         put?: never;
         /**
          * lookup notification dispatch records, retry timeline, and audit traces
-         * @description Returns notification dispatch records with rendered variables, channel result,
+         * @description Internal `notification-worker` control-plane lookup endpoint.
+         *     Returns notification dispatch records with rendered variables, channel result,
          *     retry timeline, dead-letter status, and audit timeline. Filters
          *     `aggregate_type / event_type / target_topic` apply to the formal notification
          *     envelope and its canonical outbox route, not the upstream business `source_event`.
@@ -890,7 +891,8 @@ export interface paths {
         put?: never;
         /**
          * dry-run or replay a notification dead letter
-         * @description Replays a notification dead letter produced by `notification-worker`.
+         * @description Internal `notification-worker` control-plane replay endpoint.
+         *     Replays a notification dead letter produced by `notification-worker`.
          *     `dry_run=true` previews the rendered template and audit trail without creating
          *     side effects. `dry_run=false` republishes a new `notification.requested`
          *     envelope back to `dtp.notification.dispatch` and records replay audit events.
@@ -950,6 +952,322 @@ export interface paths {
                 };
                 /** @description invalid replay request or non-notification dead letter */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description dead letter not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description dead letter already replayed or replay in progress */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description replay failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/notifications/audit/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * lookup notification dispatch records through platform-core facade
+         * @description Frontend-facing notification linkage lookup on `platform-core`.
+         *     `console-web` and other browser clients must call this route instead of the
+         *     worker internal endpoint. `platform-core` validates the current subject,
+         *     normalizes `request_id / trace_id`, requires `X-Step-Up-Token` or
+         *     `X-Step-Up-Challenge-Id`, records access audit / system log, then forwards
+         *     the normalized request to `notification-worker /internal/notifications/audit/search`.
+         *     Response schema intentionally preserves the worker-side dispatch record shape.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    /** @description Required when `X-Step-Up-Challenge-Id` is absent. */
+                    "X-Step-Up-Token"?: string;
+                    /** @description Optional verified step-up challenge identifier preferred over raw token markers. */
+                    "X-Step-Up-Challenge-Id"?: string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    /**
+                     * @example {
+                     *       "order_id": "22222222-2222-2222-2222-222222222222",
+                     *       "aggregate_type": "notification.dispatch_request",
+                     *       "event_type": "notification.requested",
+                     *       "target_topic": "dtp.notification.dispatch",
+                     *       "notification_code": "payment.succeeded",
+                     *       "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+                     *       "limit": 20,
+                     *       "reason": "trace notification delivery for incident review"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlatformNotificationAuditSearchRequest"];
+                };
+            };
+            responses: {
+                /** @description lookup result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": true,
+                         *       "data": {
+                         *         "request_id": "req-notif013-lookup",
+                         *         "trace_id": "trace-notif013-lookup",
+                         *         "filters": {
+                         *           "order_id": "22222222-2222-2222-2222-222222222222",
+                         *           "case_id": null,
+                         *           "aggregate_type": "notification.dispatch_request",
+                         *           "event_type": "notification.requested",
+                         *           "target_topic": "dtp.notification.dispatch",
+                         *           "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+                         *           "notification_code": "payment.succeeded",
+                         *           "event_id": "0b752495-6bd3-4f5b-9cbc-c54b0a0f04dc",
+                         *           "limit": 20
+                         *         },
+                         *         "total": 1,
+                         *         "records": [
+                         *           {
+                         *             "event_id": "0b752495-6bd3-4f5b-9cbc-c54b0a0f04dc",
+                         *             "aggregate_id": "27cc4028-6b17-4ff3-b9aa-2bf79195776d",
+                         *             "aggregate_type": "notification.dispatch_request",
+                         *             "event_type": "notification.requested",
+                         *             "target_topic": "dtp.notification.dispatch",
+                         *             "request_id": "req-notif013-send",
+                         *             "trace_id": "trace-notif013-send",
+                         *             "notification_code": "payment.succeeded",
+                         *             "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+                         *             "channel": "mock-log",
+                         *             "audience_scope": "buyer",
+                         *             "recipient": {
+                         *               "kind": "user",
+                         *               "address": "buyer@example.test",
+                         *               "display_name": "Buyer"
+                         *             },
+                         *             "source_event": {
+                         *               "aggregate_type": "billing.billing_event",
+                         *               "aggregate_id": "22222222-2222-2222-2222-222222222222",
+                         *               "event_type": "billing.event.recorded",
+                         *               "target_topic": "dtp.outbox.domain-events"
+                         *             },
+                         *             "subject_refs": [
+                         *               {
+                         *                 "ref_type": "order",
+                         *                 "ref_id": "22222222-2222-2222-2222-222222222222"
+                         *               }
+                         *             ],
+                         *             "links": [
+                         *               {
+                         *                 "link_code": "order_detail",
+                         *                 "href": "/trade/orders/22222222-2222-2222-2222-222222222222"
+                         *               }
+                         *             ],
+                         *             "rendered_variables": {
+                         *               "subject": "Payment success notification",
+                         *               "order_id": "22222222-2222-2222-2222-222222222222"
+                         *             },
+                         *             "current_status": "processed",
+                         *             "current_attempt": 1,
+                         *             "title": "Payment success notification",
+                         *             "body": "Buyer escrow completed and order is pending delivery.",
+                         *             "channel_result": {
+                         *               "provider": "mock-log",
+                         *               "status": "success"
+                         *             },
+                         *             "retry_timeline": [
+                         *               {
+                         *                 "status": "processed",
+                         *                 "message_text": "notification sent via mock-log",
+                         *                 "created_at": "2026-04-22T12:00:00Z",
+                         *                 "attempt": 1,
+                         *                 "error": null,
+                         *                 "payload": {
+                         *                   "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+                         *                   "channel": "mock-log"
+                         *                 }
+                         *               }
+                         *             ],
+                         *             "audit_timeline": [
+                         *               {
+                         *                 "action_name": "notification.dispatch.sent",
+                         *                 "result_code": "success",
+                         *                 "event_time": "2026-04-22T12:00:00Z",
+                         *                 "metadata": {
+                         *                   "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+                         *                   "channel": "mock-log"
+                         *                 }
+                         *               }
+                         *             ],
+                         *             "dead_letter": null
+                         *           }
+                         *         ]
+                         *       }
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ApiResponseNotificationAuditSearchResponse"];
+                    };
+                };
+                /** @description missing filter, reason, or step-up marker */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description permission denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description lookup failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * dry-run or replay a notification dead letter through platform-core facade
+         * @description Frontend-facing high-risk notification replay entrypoint on `platform-core`.
+         *     Browser clients must call this route instead of the worker internal endpoint.
+         *     `platform-core` requires `X-Idempotency-Key` plus `X-Step-Up-Token` or
+         *     `X-Step-Up-Challenge-Id`, mirrors access audit / system log, then forwards
+         *     a normalized replay request to `notification-worker`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description Required on replay writes to enforce browser retry safety. */
+                    "X-Idempotency-Key": string;
+                    /** @description Required when `X-Step-Up-Challenge-Id` is absent. */
+                    "X-Step-Up-Token"?: string;
+                    /** @description Optional verified step-up challenge identifier preferred over raw token markers. */
+                    "X-Step-Up-Challenge-Id"?: string;
+                };
+                path: {
+                    dead_letter_event_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    /**
+                     * @example {
+                     *       "dry_run": false,
+                     *       "reason": "manual replay after mock-log recovery"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlatformReplayDeadLetterRequest"];
+                };
+            };
+            responses: {
+                /** @description replay request accepted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": true,
+                         *       "data": {
+                         *         "dead_letter_event_id": "695646ea-35e6-4fd3-955e-a4336f455bb6",
+                         *         "original_event_id": "5335bc1d-c10e-496f-8123-a2c5a2cca5fc",
+                         *         "replay_event_id": "c6b7dd09-355c-45be-a903-2433e3bb75df",
+                         *         "request_id": "req-notif013-replay",
+                         *         "trace_id": "trace-notif013-replay",
+                         *         "dry_run": false,
+                         *         "status": "reprocess_requested",
+                         *         "notification_topic": "dtp.notification.dispatch",
+                         *         "dead_letter_topic": "dtp.dead-letter",
+                         *         "template_code": "NOTIFY_PAYMENT_SUCCEEDED_V1",
+                         *         "channel": "mock-log",
+                         *         "title": "Payment success notification",
+                         *         "body": "Buyer escrow completed and order is pending delivery."
+                         *       }
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ApiResponseReplayDeadLetterResponse"];
+                    };
+                };
+                /** @description invalid replay request or missing step-up/idempotency marker */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description permission denied */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3954,6 +4272,16 @@ export interface components {
             request_id?: string;
             trace_id?: string;
         };
+        /**
+         * @description Frontend-facing replay request handled by `platform-core`.
+         *     Step-up is conveyed through `X-Step-Up-Token` or `X-Step-Up-Challenge-Id`
+         *     headers and normalized into the worker-side `step_up_ticket`.
+         */
+        PlatformReplayDeadLetterRequest: {
+            /** @default true */
+            dry_run: boolean;
+            reason: string;
+        };
         ReplayDeadLetterResponse: {
             /** Format: uuid */
             dead_letter_event_id: string;
@@ -3997,6 +4325,31 @@ export interface components {
             step_up_ticket: string;
             request_id?: string;
             trace_id?: string;
+        };
+        /**
+         * @description Frontend-facing notification linkage lookup request handled by `platform-core`.
+         *     At least one primary filter is required. Step-up is conveyed through
+         *     `X-Step-Up-Token` or `X-Step-Up-Challenge-Id` headers and normalized into
+         *     the worker-side `step_up_ticket`.
+         */
+        PlatformNotificationAuditSearchRequest: {
+            /** Format: uuid */
+            order_id?: string;
+            /** Format: uuid */
+            case_id?: string;
+            /** @example notification.dispatch_request */
+            aggregate_type?: string;
+            /** @example notification.requested */
+            event_type?: string;
+            /** @example dtp.notification.dispatch */
+            target_topic?: string;
+            template_code?: string;
+            notification_code?: string;
+            /** Format: uuid */
+            event_id?: string;
+            /** @default 20 */
+            limit: number;
+            reason: string;
         };
         NotificationAuditSearchResponse: {
             request_id: string;

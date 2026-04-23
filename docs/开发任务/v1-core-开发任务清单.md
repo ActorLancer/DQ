@@ -3093,13 +3093,13 @@
   验收：页面手工 smoke 或 Playwright/Cypress 最小链路通过。
   阻塞风险：前端命名或展示漂移会让场景与 SKU 真值失配。
   技术参考：../全集成文档/数据交易平台-全集成基线-V1.md:L229（5.3.2A 首批标准场景到 V1 SKU 与模板映射） | ../页面说明书/页面说明书-V1-完整版.md:L501（6.1 询单/下单页） | ../页面说明书/页面说明书-V1-完整版.md:L262（4.5 产品详情页）
-- **WEB-022** [AGENT][P1][W3][no] 在 console 中补充通知联查页或嵌入式面板，支持按订单号查看已发送通知、失败通知、重试状态和关联模板。
+- **WEB-022** [AGENT][P1][W3][no] 在 console 中补充通知联查页或嵌入式面板，页面通过 `console-web` 同源代理调用 `platform-core` 的 `/api/v1/ops/notifications/*` 正式 facade，由 `platform-core` 内部转发 `notification-worker`，支持按订单号查看已发送通知、失败通知、重试状态、关联模板与 dead letter replay，不得使用 mock 或 UI 占位。
   依赖：NOTIF-010; WEB-015
-  交付：apps/portal-web/**; apps/console-web/**; packages/sdk-ts/**
-  完成定义：页面可访问；空态/错态/权限态可用；与接口契约对齐；最小 E2E 或手工 smoke 通过。
-  验收：页面手工 smoke 或 Playwright/Cypress 最小链路通过。
+  交付：apps/platform-core/**; apps/portal-web/**; apps/console-web/**; packages/sdk-ts/**; docs/05-test-cases/notification-cases.md; docs/04-runbooks/notification-worker.md
+  完成定义：页面可访问；空态/错态/权限态可用；与接口契约对齐；`console-web` 仅经 `/api/platform/**` 调用 `platform-core` 正式 API；`platform-core` 提供通知联查 / replay facade 并内部转发 `notification-worker`；最小 E2E 或手工 smoke 通过。
+  验收：页面手工 smoke 或 Playwright/Cypress 最小链路通过，并能证明浏览器只访问同源页面与 `/api/platform/**`；通知联查 / replay 由 `platform-core` facade 承接。
   阻塞风险：前端命名或展示漂移会让场景与 SKU 真值失配。
-  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../页面说明书/页面说明书-V1-完整版.md:L835（10.1 审计联查页） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型）
+  技术参考：../data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md:L15（12.2 事件模型） | ../页面说明书/页面说明书-V1-完整版.md:L835（10.1 审计联查页） | ../原始PRD/审计、证据链与回放设计.md:L93（4. 审计事件模型） | ../05-test-cases/notification-cases.md:L1（通知验收路径） | ../04-runbooks/notification-worker.md:L1（通知 worker 与 facade 边界） | ../开发准备/服务清单与服务边界正式版.md:L1（前端与 worker 边界） | ../packages/openapi/ops.yaml:L1（通知 facade 契约）
 
 ## 18. 测试、演示数据、验收与 CI [TEST]
 

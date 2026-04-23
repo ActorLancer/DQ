@@ -23,6 +23,7 @@
   - `NOTIF` 之前的任务统一记为 `yes`
   - `NOTIF` 及之后的任务统一记为 `no`
 - `NOTIF` 及之后即便已有占位代码、文档、README、runbook 或 OpenAPI 草稿，也不构成任务完成；后续需在正式实现批次中重新开发、验证和验收。
+- `WEB` 阶段前端只允许调用 `platform-core` 正式 API；通知联查 / replay 等控制面即使由 `notification-worker` 执行，也必须先由 `platform-core` 对外承接。
 - 实施流程以 [Agent-开发与半人工审核流程.md](./Agent-开发与半人工审核流程.md) 为准。
 - 实施日志入口固定为 [V1-Core-实施进度日志.md](./V1-Core-实施进度日志.md)，详细批次正文按 `V1-Core-实施进度日志-P*.md` 分卷保存。
 - `问题修复任务/A*.md` 属于问题治理与剩余边界说明文档；若任务 `technical_reference` 引用了这些文档，必须先看其 `## 0. 当前状态`，再看归档的历史问题起点，不能把历史问题起点误读成当前现状。

@@ -8,6 +8,7 @@ export type ConsoleRouteKey =
   | "audit_package_export"
   | "consistency_trace"
   | "outbox_dead_letter"
+  | "notification_ops"
   | "search_ops"
   | "developer_home"
   | "developer_apps"
@@ -158,6 +159,21 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     ],
   },
   {
+    key: "notification_ops",
+    group: "审计与监管",
+    title: "通知联查页",
+    path: "/ops/notifications",
+    viewPermission: "ops.outbox.read / ops.dead_letter.read",
+    primaryPermissions: ["ops.dead_letter.reprocess"],
+    description: "通知发送记录、失败轨迹、模板联查与 dead letter replay 入口。",
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "POST /api/v1/ops/notifications/audit/search",
+      "POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay",
+      "GET /api/v1/ops/observability/overview",
+    ],
+  },
+  {
     key: "search_ops",
     group: "审计与监管",
     title: "搜索运维页",
@@ -270,6 +286,7 @@ export const consoleNavigationGroups: Array<{
       "audit_package_export",
       "consistency_trace",
       "outbox_dead_letter",
+      "notification_ops",
       "search_ops",
     ],
   },

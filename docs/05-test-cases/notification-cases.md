@@ -10,8 +10,11 @@
 - 正式链路：`notification.requested -> dtp.notification.dispatch -> notification-worker`
 - `V1` 正式实接渠道：`mock-log`
 - `email` / `webhook`：仅保留 provider / adapter 边界，不作为 `V1` 完成证据
-- 正式联查入口：`POST /internal/notifications/audit/search`
-- 正式人工补发入口：`POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
+- 正式控制面联查入口：`POST /api/v1/ops/notifications/audit/search`
+- 正式控制面人工补发入口：`POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay`
+- `notification-worker` 内部执行入口保留为：
+  - `POST /internal/notifications/audit/search`
+  - `POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay`
 
 通知主权威源与辅助状态边界如下：
 
@@ -24,6 +27,7 @@
 
 - `notification-worker` 只消费 `dtp.notification.dispatch`，不直接把 `dtp.outbox.domain-events` 当正式通知消费入口。
 - `platform-core.integration` 必须以 `aggregate_type=notification.dispatch_request`、`event_type=notification.requested`、`target_topic=dtp.notification.dispatch` 写入 canonical outbox。
+- `portal-web / console-web` 只通过 `platform-core` 正式 API 访问通知控制面；通知联查 / replay 由 `platform-core` 对外 facade 承接，再内部转发给 `notification-worker`。
 - 模板真相源是 `ops.notification_template`；文件目录 `apps/notification-worker/templates/` 只作为 local fallback。
 - 宿主机本地验收默认使用：
   - Kafka：`127.0.0.1:9094`
@@ -78,8 +82,8 @@
 | 幂等去重 | 重放同一语义事件不会重复发送第二条通知 | `ops.consumer_idempotency_record`、`ops.system_log` 无重复发送记录 |
 | 失败重试 | 临时失败会进入 Redis retry 队列并在成功后转为 `processed` | Redis `retry-queue / retry-payload`、`ops.system_log`、`audit.audit_event` |
 | DLQ 隔离 | 重试耗尽后会同时进入 `ops.dead_letter_event` 与 Kafka `dtp.dead-letter` | PostgreSQL + Kafka 双回查 |
-| 人工补发 / replay | replay 必须要求 `step_up_ticket`，dry-run 不产生副作用，正式 replay 生成新 `event_id` 且保留 lineage | `POST /internal/notifications/dead-letters/{id}/replay`、审计记录、回放后新 outbox / send 记录 |
-| 审计联查 | 能通过 `POST /internal/notifications/audit/search` 用 `order_id / case_id / aggregate_type / event_type / target_topic / event_id` 等维度联查正式链路 | API 响应 + `audit.audit_event(action_name='notification.dispatch.lookup')` |
+| 人工补发 / replay | replay 必须要求 `step_up_ticket`，dry-run 不产生副作用，正式 replay 生成新 `event_id` 且保留 lineage | `POST /api/v1/ops/notifications/dead-letters/{id}/replay`、审计记录、回放后新 outbox / send 记录 |
+| 审计联查 | 能通过 `POST /api/v1/ops/notifications/audit/search` 用 `order_id / case_id / aggregate_type / event_type / target_topic / event_id` 等维度联查正式链路 | API 响应 + `audit.audit_event(action_name='notification.dispatch.lookup')` |
 
 ## Matrix
 
@@ -96,7 +100,7 @@
 | `NOTIF-CASE-009` | 失败重试后成功 | 构造一次 `notification.send` 临时失败，再恢复 `mock-log` | Redis retry 队列出现待重试任务；重试成功后发送完成，审计轨迹包含 `notification.dispatch.retry_scheduled -> notification.dispatch.sent` | `apps/notification-worker/src/main.rs` 中 `notif012_notification_worker_live_smoke` |
 | `NOTIF-CASE-010` | 进入 DLQ | 构造重试耗尽或不可恢复失败 | `ops.dead_letter_event.failure_stage='notification.send'`；Kafka `dtp.dead-letter` 可消费到对应 envelope；`ops.alert_event` 产生 `notification_dead_letter` | `apps/notification-worker/src/main.rs` 中 `notif012_notification_worker_live_smoke` |
 | `NOTIF-CASE-011` | 人工补发 / replay | 对目标 dead letter 执行 dry-run 与正式 replay | dry-run 只产出预演审计，不写发送副作用；正式 replay 生成新 `event_id / request_id / trace_id`，并保留 `replayed_from_dead_letter_id` lineage | `docs/04-runbooks/notification-worker.md` 中“人工补发 / replay”；`apps/notification-worker/src/main.rs` 中 `replay_envelope_preserves_idempotency_and_marks_lineage`、`replay_request_requires_reason_and_step_up_ticket` |
-| `NOTIF-CASE-012` | 审计联查 | 使用 `POST /internal/notifications/audit/search` 按 `order_id / event_id / aggregate_type / event_type / target_topic` 查询 | `filters` 与 `records[*]` 返回正式 envelope 路由字段；`audit.audit_event.action_name='notification.dispatch.lookup'` 记录本次联查 | `docs/04-runbooks/notification-worker.md` 中“通知审计联查”；`apps/notification-worker/src/main.rs` 中 `notification_lookup_metadata_includes_canonical_route_fields` |
+| `NOTIF-CASE-012` | 审计联查 | 使用 `POST /api/v1/ops/notifications/audit/search` 按 `order_id / event_id / aggregate_type / event_type / target_topic` 查询 | `filters` 与 `records[*]` 返回正式 envelope 路由字段；`audit.audit_event.action_name='notification.dispatch.lookup'` 记录本次联查 | `docs/04-runbooks/notification-worker.md` 中“通知审计联查”；`apps/notification-worker/src/main.rs` 中 `notification_lookup_metadata_includes_canonical_route_fields` |
 
 ## Recommended Smoke Path
 
@@ -119,6 +123,14 @@
    TOPIC_NOTIFICATION_DISPATCH=dtp.notification.dispatch \
    TOPIC_DEAD_LETTER_EVENTS=dtp.dead-letter \
    cargo run -p notification-worker
+   ```
+   ```bash
+   APP_PORT=8080 \
+   DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab \
+   REDIS_URL=redis://:datab_redis_pass@127.0.0.1:6379/0 \
+   KAFKA_BROKERS=127.0.0.1:9094 \
+   NOTIFICATION_WORKER_BASE_URL=http://127.0.0.1:8097 \
+   cargo run -p platform-core-bin
    ```
    ```bash
    curl -sS -X POST http://127.0.0.1:8097/internal/notifications/send \
@@ -160,21 +172,23 @@
      }'
    ```
    ```bash
-   curl -sS -X POST http://127.0.0.1:8097/internal/notifications/audit/search \
+   curl -sS -X POST http://127.0.0.1:8080/api/v1/ops/notifications/audit/search \
      -H 'Content-Type: application/json' \
+     -H 'x-login-id: local-platform-admin' \
+     -H 'x-role: platform_admin' \
+     -H 'x-step-up-token: step-up-local-1' \
      -d '{
        "aggregate_type":"notification.dispatch_request",
        "event_type":"notification.requested",
        "target_topic":"dtp.notification.dispatch",
        "notification_code":"payment.succeeded",
        "limit":5,
-       "reason":"notif014 manual lookup",
-       "step_up_ticket":"step-up-local-1"
+       "reason":"notif014 manual lookup"
      }'
    ```
 3. 若要覆盖人工补发，再按 runbook 对同一 dead letter 执行：
-   - dry-run：`POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay` with `{"dry_run":true,...}`
-   - 正式 replay：`POST /internal/notifications/dead-letters/{dead_letter_event_id}/replay` with `{"dry_run":false,...}`
+   - dry-run：`POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay` with `{"dry_run":true,...}`
+   - 正式 replay：`POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay` with `{"dry_run":false,...}`
 
 ## Manual Backcheck Template
 

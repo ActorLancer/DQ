@@ -15,6 +15,10 @@ type OutboxOperation = OpsPaths["/api/v1/ops/outbox"]["get"];
 type DeadLettersOperation = OpsPaths["/api/v1/ops/dead-letters"]["get"];
 type DeadLetterReprocessOperation =
   OpsPaths["/api/v1/ops/dead-letters/{id}/reprocess"]["post"];
+type NotificationAuditSearchOperation =
+  OpsPaths["/api/v1/ops/notifications/audit/search"]["post"];
+type NotificationReplayOperation =
+  OpsPaths["/api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay"]["post"];
 type ObservabilityOverviewOperation =
   OpsPaths["/api/v1/ops/observability/overview"]["get"];
 type TradeMonitorOverviewOperation =
@@ -43,6 +47,15 @@ export type DeadLetterReprocessRequest =
   RequestBody<DeadLetterReprocessOperation>;
 export type DeadLetterReprocessResponse =
   SuccessBody<DeadLetterReprocessOperation>;
+export type NotificationAuditSearchRequest =
+  RequestBody<NotificationAuditSearchOperation>;
+export type NotificationAuditSearchResponse =
+  SuccessBody<NotificationAuditSearchOperation>;
+export type NotificationReplayPath = PathParams<NotificationReplayOperation>;
+export type NotificationReplayRequest =
+  RequestBody<NotificationReplayOperation>;
+export type NotificationReplayResponse =
+  SuccessBody<NotificationReplayOperation>;
 export type ObservabilityOverviewResponse =
   SuccessBody<ObservabilityOverviewOperation>;
 export type TradeMonitorOverviewPath =
@@ -66,16 +79,19 @@ export type ConsistencyReconcileRequest =
 export type ConsistencyReconcileResponse =
   SuccessBody<ConsistencyReconcileOperation>;
 
+export interface OpsStepUpOptions {
+  stepUpToken?: string;
+  stepUpChallengeId?: string;
+}
+
 export interface OpsControlPlaneWriteOptions {
   idempotencyKey: string;
   stepUpToken?: string;
   stepUpChallengeId?: string;
 }
 
-function controlPlaneHeaders(options: OpsControlPlaneWriteOptions): HeadersInit {
-  const headers: Record<string, string> = {
-    "x-idempotency-key": options.idempotencyKey,
-  };
+function stepUpHeaders(options: OpsStepUpOptions): HeadersInit {
+  const headers: Record<string, string> = {};
   if (options.stepUpToken) {
     headers["x-step-up-token"] = options.stepUpToken;
   }
@@ -83,6 +99,13 @@ function controlPlaneHeaders(options: OpsControlPlaneWriteOptions): HeadersInit 
     headers["x-step-up-challenge-id"] = options.stepUpChallengeId;
   }
   return headers;
+}
+
+function controlPlaneHeaders(options: OpsControlPlaneWriteOptions): HeadersInit {
+  return {
+    ...stepUpHeaders(options),
+    "x-idempotency-key": options.idempotencyKey,
+  };
 }
 
 export function createOpsClient(client: PlatformClient) {
@@ -133,6 +156,32 @@ export function createOpsClient(client: PlatformClient) {
         body,
         headers: controlPlaneHeaders(options),
       });
+    },
+    searchNotificationAudit(
+      body: NotificationAuditSearchRequest,
+      options: OpsStepUpOptions = {},
+    ) {
+      return client.postJson<
+        NotificationAuditSearchResponse,
+        NotificationAuditSearchRequest
+      >("/api/v1/ops/notifications/audit/search", {
+        body,
+        headers: stepUpHeaders(options),
+      });
+    },
+    replayNotificationDeadLetter(
+      path: NotificationReplayPath,
+      body: NotificationReplayRequest,
+      options: OpsControlPlaneWriteOptions,
+    ) {
+      return client.postJson<NotificationReplayResponse, NotificationReplayRequest>(
+        "/api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay",
+        {
+          pathParams: path,
+          body,
+          headers: controlPlaneHeaders(options),
+        },
+      );
     },
     getObservabilityOverview() {
       return client.getJson<ObservabilityOverviewResponse>(

@@ -6,6 +6,9 @@ info:
     Ops / internal control-plane contract archive for the current implementation stage.
     Notification control-plane endpoints are frozen around the formal chain
     `notification.requested -> dtp.notification.dispatch -> notification-worker`.
+    Frontend-facing console traffic must call `platform-core` facade routes
+    `/api/v1/ops/notifications/*`; `notification-worker /internal/notifications/*`
+    remains the internal execution contract and must not be used as a browser target.
 paths:
   /health/live:
     get:
@@ -415,6 +418,7 @@ paths:
       summary: lookup notification dispatch records, retry timeline, and audit traces
       tags: [NotificationOps]
       description: |
+        Internal `notification-worker` control-plane lookup endpoint.
         Returns notification dispatch records with rendered variables, channel result,
         retry timeline, dead-letter status, and audit timeline. Filters
         `aggregate_type / event_type / target_topic` apply to the formal notification
@@ -530,6 +534,7 @@ paths:
       summary: dry-run or replay a notification dead letter
       tags: [NotificationOps]
       description: |
+        Internal `notification-worker` control-plane replay endpoint.
         Replays a notification dead letter produced by `notification-worker`.
         `dry_run=true` previews the rendered template and audit trail without creating
         side effects. `dry_run=false` republishes a new `notification.requested`
@@ -578,6 +583,240 @@ paths:
                   body: Buyer escrow completed and order is pending delivery.
         "400":
           description: invalid replay request or non-notification dead letter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: dead letter not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: dead letter already replayed or replay in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: replay failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/notifications/audit/search:
+    post:
+      summary: lookup notification dispatch records through platform-core facade
+      tags: [NotificationOps]
+      description: |
+        Frontend-facing notification linkage lookup on `platform-core`.
+        `console-web` and other browser clients must call this route instead of the
+        worker internal endpoint. `platform-core` validates the current subject,
+        normalizes `request_id / trace_id`, requires `X-Step-Up-Token` or
+        `X-Step-Up-Challenge-Id`, records access audit / system log, then forwards
+        the normalized request to `notification-worker /internal/notifications/audit/search`.
+        Response schema intentionally preserves the worker-side dispatch record shape.
+      parameters:
+        - in: header
+          name: X-Step-Up-Token
+          required: false
+          schema:
+            type: string
+          description: Required when `X-Step-Up-Challenge-Id` is absent.
+        - in: header
+          name: X-Step-Up-Challenge-Id
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional verified step-up challenge identifier preferred over raw token markers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformNotificationAuditSearchRequest"
+            example:
+              order_id: 22222222-2222-2222-2222-222222222222
+              aggregate_type: notification.dispatch_request
+              event_type: notification.requested
+              target_topic: dtp.notification.dispatch
+              notification_code: payment.succeeded
+              template_code: NOTIFY_PAYMENT_SUCCEEDED_V1
+              limit: 20
+              reason: trace notification delivery for incident review
+      responses:
+        "200":
+          description: lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseNotificationAuditSearchResponse"
+              example:
+                success: true
+                data:
+                  request_id: req-notif013-lookup
+                  trace_id: trace-notif013-lookup
+                  filters:
+                    order_id: 22222222-2222-2222-2222-222222222222
+                    case_id: null
+                    aggregate_type: notification.dispatch_request
+                    event_type: notification.requested
+                    target_topic: dtp.notification.dispatch
+                    template_code: NOTIFY_PAYMENT_SUCCEEDED_V1
+                    notification_code: payment.succeeded
+                    event_id: 0b752495-6bd3-4f5b-9cbc-c54b0a0f04dc
+                    limit: 20
+                  total: 1
+                  records:
+                    - event_id: 0b752495-6bd3-4f5b-9cbc-c54b0a0f04dc
+                      aggregate_id: 27cc4028-6b17-4ff3-b9aa-2bf79195776d
+                      aggregate_type: notification.dispatch_request
+                      event_type: notification.requested
+                      target_topic: dtp.notification.dispatch
+                      request_id: req-notif013-send
+                      trace_id: trace-notif013-send
+                      notification_code: payment.succeeded
+                      template_code: NOTIFY_PAYMENT_SUCCEEDED_V1
+                      channel: mock-log
+                      audience_scope: buyer
+                      recipient:
+                        kind: user
+                        address: buyer@example.test
+                        display_name: Buyer
+                      source_event:
+                        aggregate_type: billing.billing_event
+                        aggregate_id: 22222222-2222-2222-2222-222222222222
+                        event_type: billing.event.recorded
+                        target_topic: dtp.outbox.domain-events
+                      subject_refs:
+                        - ref_type: order
+                          ref_id: 22222222-2222-2222-2222-222222222222
+                      links:
+                        - link_code: order_detail
+                          href: /trade/orders/22222222-2222-2222-2222-222222222222
+                      rendered_variables:
+                        subject: Payment success notification
+                        order_id: 22222222-2222-2222-2222-222222222222
+                      current_status: processed
+                      current_attempt: 1
+                      title: Payment success notification
+                      body: Buyer escrow completed and order is pending delivery.
+                      channel_result:
+                        provider: mock-log
+                        status: success
+                      retry_timeline:
+                        - status: processed
+                          message_text: notification sent via mock-log
+                          created_at: "2026-04-22T12:00:00Z"
+                          attempt: 1
+                          error: null
+                          payload:
+                            template_code: NOTIFY_PAYMENT_SUCCEEDED_V1
+                            channel: mock-log
+                      audit_timeline:
+                        - action_name: notification.dispatch.sent
+                          result_code: success
+                          event_time: "2026-04-22T12:00:00Z"
+                          metadata:
+                            template_code: NOTIFY_PAYMENT_SUCCEEDED_V1
+                            channel: mock-log
+                      dead_letter: null
+        "400":
+          description: missing filter, reason, or step-up marker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay:
+    post:
+      summary: dry-run or replay a notification dead letter through platform-core facade
+      tags: [NotificationOps]
+      description: |
+        Frontend-facing high-risk notification replay entrypoint on `platform-core`.
+        Browser clients must call this route instead of the worker internal endpoint.
+        `platform-core` requires `X-Idempotency-Key` plus `X-Step-Up-Token` or
+        `X-Step-Up-Challenge-Id`, mirrors access audit / system log, then forwards
+        a normalized replay request to `notification-worker`.
+      parameters:
+        - in: path
+          name: dead_letter_event_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: X-Idempotency-Key
+          required: true
+          schema:
+            type: string
+          description: Required on replay writes to enforce browser retry safety.
+        - in: header
+          name: X-Step-Up-Token
+          required: false
+          schema:
+            type: string
+          description: Required when `X-Step-Up-Challenge-Id` is absent.
+        - in: header
+          name: X-Step-Up-Challenge-Id
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Optional verified step-up challenge identifier preferred over raw token markers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformReplayDeadLetterRequest"
+            example:
+              dry_run: false
+              reason: manual replay after mock-log recovery
+      responses:
+        "200":
+          description: replay request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseReplayDeadLetterResponse"
+              example:
+                success: true
+                data:
+                  dead_letter_event_id: 695646ea-35e6-4fd3-955e-a4336f455bb6
+                  original_event_id: 5335bc1d-c10e-496f-8123-a2c5a2cca5fc
+                  replay_event_id: c6b7dd09-355c-45be-a903-2433e3bb75df
+                  request_id: req-notif013-replay
+                  trace_id: trace-notif013-replay
+                  dry_run: false
+                  status: reprocess_requested
+                  notification_topic: dtp.notification.dispatch
+                  dead_letter_topic: dtp.dead-letter
+                  template_code: NOTIFY_PAYMENT_SUCCEEDED_V1
+                  channel: mock-log
+                  title: Payment success notification
+                  body: Buyer escrow completed and order is pending delivery.
+        "400":
+          description: invalid replay request or missing step-up/idempotency marker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: permission denied
           content:
             application/json:
               schema:
@@ -3150,6 +3389,19 @@ components:
           type: string
         trace_id:
           type: string
+    PlatformReplayDeadLetterRequest:
+      type: object
+      required: [dry_run, reason]
+      description: |
+        Frontend-facing replay request handled by `platform-core`.
+        Step-up is conveyed through `X-Step-Up-Token` or `X-Step-Up-Challenge-Id`
+        headers and normalized into the worker-side `step_up_ticket`.
+      properties:
+        dry_run:
+          type: boolean
+          default: true
+        reason:
+          type: string
     ReplayDeadLetterResponse:
       type: object
       required:
@@ -3238,6 +3490,44 @@ components:
         request_id:
           type: string
         trace_id:
+          type: string
+    PlatformNotificationAuditSearchRequest:
+      type: object
+      required: [reason]
+      description: |
+        Frontend-facing notification linkage lookup request handled by `platform-core`.
+        At least one primary filter is required. Step-up is conveyed through
+        `X-Step-Up-Token` or `X-Step-Up-Challenge-Id` headers and normalized into
+        the worker-side `step_up_ticket`.
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        case_id:
+          type: string
+          format: uuid
+        aggregate_type:
+          type: string
+          example: notification.dispatch_request
+        event_type:
+          type: string
+          example: notification.requested
+        target_topic:
+          type: string
+          example: dtp.notification.dispatch
+        template_code:
+          type: string
+        notification_code:
+          type: string
+        event_id:
+          type: string
+          format: uuid
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+        reason:
           type: string
     NotificationAuditSearchResponse:
       type: object

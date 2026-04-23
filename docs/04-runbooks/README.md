@@ -2,7 +2,7 @@
 
 用于收敛本地联调、中间件运行、故障排查与应急操作手册。
 
-- `notification-worker.md`：通知正式链路、审计联查、DLQ、人工补发 / replay。
+- `notification-worker.md`：通知正式链路、`platform-core` facade 下的审计联查 / replay、DLQ 与 `notification-worker` 内部执行排障。
 - `search-reindex.md`：`AUD-022 / AUD-026` 搜索运维控制面与 `search-indexer` worker 的 Bearer 鉴权、step-up、Redis 缓存失效、OpenSearch alias 切换、排序配置更新、consumer 幂等、双层 DLQ、dry-run reprocess 与审计回查。
 - `recommendation-runtime.md`：`SEARCHREC / AUD-026` 推荐主链路、`recommendation-aggregator` worker、副作用、consumer 幂等、双层 DLQ、dry-run reprocess 与缓存失效回归。
 - `fabric-local.md`：Fabric 本地网络、Gateway、anchor / callback 联调。

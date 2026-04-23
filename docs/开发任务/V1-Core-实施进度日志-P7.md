@@ -258,8 +258,61 @@
   - `身份与会话接口协议正式版.md`：身份 / 会话链路的 `AUTH_*` 与通用鉴权错误口径
   - `页面说明书-V1-完整版.md`、`docs/05-test-cases/*.md`：页面错误态、权限态、空态和 E2E 断言口径
 - 覆盖的任务清单条目：`WEB-019`
+
+### BATCH-296（计划中）
+- 任务：`WEB-022` 在 console 中补充通知联查页或嵌入式面板，支持按订单号查看已发送通知、失败通知、重试状态和关联模板
+- 状态：计划中
+- 当前任务编号：`WEB-022`
+- 前置依赖核对结果：`NOTIF-010` 已完成通知审计联查运行时与结构化留痕基线，`WEB-015` 已完成 console ops 工作台、受控 `/api/platform/** -> platform-core` 边界、权限态/step-up/幂等 header 展示与验证。本批按用户确认的 `B` 方案执行：`console-web` 继续只调用 `platform-core`，由 `platform-core` 提供正式 notification ops facade，再内部转发到 `notification-worker`；浏览器不直连 worker。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-022` 交付是 console 通知联查页或嵌入式面板，要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E 或手工 smoke。
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`docs/原始PRD/审计、证据链与回放设计.md`：确认通知联查与 replay 需要保留 `request_id / trace_id / action_name / result_code` 等审计字段，不得让前端绕过正式门面。
+  - `docs/05-test-cases/notification-cases.md`、`docs/04-runbooks/notification-worker.md`、`apps/notification-worker/src/main.rs`：确认正式链路为 `notification.requested -> dtp.notification.dispatch -> notification-worker`，当前运行时查询/replay 能力确实在 worker 内部控制面实现，且 `audit/search` 要求 `reason + step_up_ticket`。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`、`packages/sdk-ts/src/generated/ops.ts`：确认当前通知控制面契约仍以 `/internal/notifications/*` 归档，尚未形成 `platform-core` 对前端暴露的 facade 路径；本批需按 `B` 方案补齐对外 `api/v1/ops/notifications/*` 契约并保持归档副本同步。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`、`docs/00-context/service-to-module-map.md`、`docs/01-architecture/service-runtime-map.md`、`docs/01-architecture/service-worker-package-layout.md`、`docs/00-context/architecture-style.md`：确认 `notification-worker` 是内部执行服务，`portal-web / console-web` 只应通过 `platform-core` 正式 API 访问通知联查能力。
+  - `apps/platform-core/src/modules/audit/api/{router.rs,handlers.rs}`、`apps/platform-core/crates/config/src/lib.rs`：确认 `ops` 对外路由当前已集中在 `audit` 模块下，现有 handler 已具备权限校验、step-up 绑定、access_audit/system_log 留痕和 `reqwest` 内部访问模式，可在同一模块内新增 notification facade。
+  - `apps/console-web/src/components/console/ops-workbench-shell.tsx`、`apps/console-web/src/lib/{console-routes.ts,ops-workbench.ts,platform-sdk.ts}`、`packages/sdk-ts/src/domains/ops.ts`：确认 console ops 工作台已有统一 Hero、Subject、Permission、VirtualTable、写操作 header 展示与 `/api/platform/**` SDK 调用模式，本批应复用既有结构补通知联查面板，而不是新造直连 worker 的页面。
+- 当前完成标准理解：
+  - `console-web` 只能通过现有同源 `/api/platform/**` 访问 `platform-core`，不得新增浏览器对 `notification-worker` 的直连。
+  - `platform-core` 需要新增 notification ops facade：至少覆盖通知审计联查与 dead-letter replay；必要时同时补模板预览和手工发送对外门面。
+  - `platform-core` facade 需在服务端完成权限、step-up、审计/trace 归一化，并把请求转发到 `notification-worker` 内部接口；返回体必须保留 `filters / records / retry_timeline / audit_timeline / dead_letter / lineage` 等正式字段。
+  - OpenAPI、`sdk-ts`、console 页面、runbook、测试样例与服务边界文档要同步收口，避免后续继续把 worker 当浏览器入口。
+- 实施计划：
+  1. 先补 `platform-core` 对外 notification ops OpenAPI / 归档副本 / SDK 生成契约，并更新边界文档与任务清单说明，冻结 `platform-core facade -> notification-worker internal` 口径。
+  2. 在 `platform-core` `audit` 模块新增 `api/v1/ops/notifications/*` facade 路由、请求/响应模型、内部 HTTP 转发、权限 / step-up / 审计留痕与错误映射。
+  3. 在 `packages/sdk-ts` 暴露新 facade 方法，在 `console-web` `ops-workbench` 中补通知联查面板与 replay 入口，复用现有权限态、加载态、空态、错态和 header 组件。
+  4. 执行 OpenAPI / SDK / 前端 / 后端 / worker / E2E / 真实 API / 数据库回查验证，更新 TODO 清单与待审批日志后本地提交。
+
+### BATCH-296（待审批）
+- 任务：`WEB-022` 在 console 中补充通知联查页或嵌入式面板，支持按订单号查看已发送通知、失败通知、重试状态和关联模板
+- 状态：待审批
+- 当前任务编号：`WEB-022`
+- 前置依赖核对结果：`NOTIF-010`、`WEB-015` 已满足；本批继续保持 `console-web -> /api/platform/** -> platform-core` 边界，没有新增浏览器直连 `notification-worker`、`Kafka`、`PostgreSQL`、`OpenSearch`、`Redis` 或 `Fabric` 的实现。
+- 完成情况：
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml` 新增 `POST /api/v1/ops/notifications/audit/search` 与 `POST /api/v1/ops/notifications/dead-letters/{dead_letter_event_id}/replay` 正式 facade，并把 `notification-worker /internal/notifications/*` 明确标为内部执行契约；`scripts/check-openapi-schema.sh` 已补最小防漂移校验。
+  - `apps/platform-core/src/modules/audit/api/{router.rs,handlers.rs}` 新增通知联查 / replay facade：在 `platform-core` 侧完成权限校验、`x-step-up-token / x-step-up-challenge-id`、`x-idempotency-key`、审计与 `ops.system_log` 留痕，并内部转发 `notification-worker`；搜索接口保留 `filters / records / retry_timeline / audit_timeline / dead_letter` 等正式字段，replay 保留 worker 下游错误语义。
+  - `packages/sdk-ts/src/domains/ops.ts` 与 `generated/ops.ts` 新增 `searchNotificationAudit`、`replayNotificationDeadLetter` 契约和测试；`apps/console-web/src/lib/ops-workbench.ts`、`ops-workbench.test.ts`、`console-routes.ts`、`src/app/ops/notifications/page.tsx`、`src/components/console/ops-workbench-shell.tsx` 已落地 `/ops/notifications` 页面、权限矩阵、Zod 表单、虚拟列表、详情面板、replay 表单和幂等 / step-up 头展示。
+  - `apps/console-web/e2e/smoke.spec.ts` 新增 `WEB-022` Playwright 链路，断言通知联查与 replay 页面只访问同源 `/api/platform/api/v1/ops/notifications/*`，并把 `notification-worker` 的 `8097` 端口纳入浏览器受限系统扫描。
+  - `docs/05-test-cases/notification-cases.md`、`docs/04-runbooks/notification-worker.md`、`docs/04-runbooks/README.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`、`docs/00-context/*`、`docs/01-architecture/*`、`apps/*/README.md`、`docs/开发任务/*` 已同步收口：通知联查 / replay 的对外正式入口固定为 `platform-core` facade，`notification-worker` 只保留内部执行角色。
+- 验证：
+  - Rust / 契约：`cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo check -p notification-worker`、`cargo test -p notification-worker`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-openapi-schema.sh`
+  - 前端：`pnpm install`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`
+  - 真实联调：启动 `notification-worker` 于 `127.0.0.1:8097`，临时启动当前代码版本 `platform-core` 于 `127.0.0.1:18080` 且注入 `NOTIFICATION_WORKER_BASE_URL=http://127.0.0.1:8097`；执行 `curl` 命中 facade 查询 / replay 路径，并用 `psql` 回查 `audit.audit_event`、`ops.system_log` 与 `ops.dead_letter_event`
+- 验证结果：
+  - Rust / OpenAPI / SQLx 全部通过；`platform-core` 与 `notification-worker` 测试均通过，未出现新的编译错误，仅保留仓库既有 `unused` 警告。
+  - `pnpm install / lint / typecheck / test / build` 全部通过；`pnpm test` 中 portal / console 仍会打印既有的 `127.0.0.1:8094` 代理 `ECONNREFUSED` 噪音日志，但 Playwright 断言与退出码均成功。`WEB-022` 专项 E2E 通过，确认浏览器链路只打 `/api/platform/**`，未直连 `notification-worker`。
+  - 真实 facade 查询通过：`POST /api/v1/ops/notifications/audit/search` 返回 `success=true`、`request_id=web022-search-001`、`total=5`，响应内包含正式 `filters / records / audit_timeline / retry_timeline / dead_letter / template_code / target_topic` 字段。
+  - 数据库回查通过：`audit.audit_event` 中存在 `notification.dispatch.lookup / request_id=web022-search-001`；`ops.system_log` 中存在 `ops lookup executed: POST /api/v1/ops/notifications/audit/search / request_id=web022-search-001`，证明不是前端 mock。
+  - 真实 replay facade 验证到正式错误链路：第一次缺少 `x-user-id` 返回 `AUD_EVIDENCE_INVALID`，补齐高风险主体头后再次调用返回下游 `notification_worker_bad_request`，消息明确指出目标 dead letter `failure_stage=consumer_handler` 不可由 `notification-worker` replay；说明 `platform-core` facade 已真实转发并保留 worker 业务错误语义，而不是假成功占位。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-022`
+  - `页面说明书-V1-完整版.md`：审计联查页 / 控制台联查信息组织
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`
+  - `notification-cases.md`、`notification-worker.md`
+  - `服务清单与服务边界正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`、`service-to-module-map.md`、`service-runtime-map.md`
+- 覆盖的任务清单条目：`WEB-022`
 - 未覆盖项：
-  - 无。`WEB-019` 要求的前端错误码中文映射、页面接入、正式 / 兼容错误码承接、测试收口与日志留痕均已完成；后续 `WEB-020+` 继续处理文档、显式映射和剩余页面口径。
+  - 无。`WEB-022` 要求的 console 通知联查页面、真实 `platform-core` facade、内部转发 `notification-worker`、空态 / 错态 / 权限态、SDK 契约、E2E、真实 `curl + psql` 联调与边界文档收口均已完成。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 已登记本批“无新增”结论。
 

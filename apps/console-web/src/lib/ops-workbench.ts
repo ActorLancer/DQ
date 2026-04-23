@@ -5,6 +5,8 @@ import type {
   ConsistencyReconcileRequest,
   DeadLettersQuery,
   DeadLetterReprocessRequest,
+  NotificationAuditSearchRequest,
+  NotificationReplayRequest,
   OutboxQuery,
   RecommendationPlacementPatchRequest,
   RecommendationRankingProfilePatchRequest,
@@ -68,6 +70,49 @@ export const deadLetterFilterSchema = z.object({
 export const deadLetterReprocessSchema = z.object({
   dead_letter_event_id: z.string().uuid("请输入正式 dead_letter_event_id"),
   reason: z.string().trim().min(8, "重处理原因至少 8 个字符").max(500),
+  idempotency_key: z.string().trim().min(12, "幂等键不能为空"),
+  step_up_token: z.string().trim().optional(),
+  step_up_challenge_id: z.string().trim().optional(),
+}).superRefine(requireStepUp("step_up_token"));
+
+export const notificationAuditSearchSchema = z.object({
+  order_id: z.string().trim().uuid("请输入正式 order_id").optional().or(z.literal("")),
+  case_id: z.string().trim().uuid("请输入正式 case_id").optional().or(z.literal("")),
+  aggregate_type: z.string().trim().optional(),
+  event_type: z.string().trim().optional(),
+  target_topic: z.string().trim().optional(),
+  template_code: z.string().trim().optional(),
+  notification_code: z.string().trim().optional(),
+  event_id: z.string().trim().uuid("请输入正式 event_id").optional().or(z.literal("")),
+  limit: z.number().int().min(1).max(50),
+  reason: z.string().trim().min(8, "联查原因至少 8 个字符").max(500),
+  step_up_token: z.string().trim().optional(),
+  step_up_challenge_id: z.string().trim().optional(),
+}).superRefine((value, context) => {
+  const selectors = [
+    value.order_id,
+    value.case_id,
+    value.aggregate_type,
+    value.event_type,
+    value.target_topic,
+    value.template_code,
+    value.notification_code,
+    value.event_id,
+  ].filter((item) => item && item.trim().length > 0);
+  if (!selectors.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["order_id"],
+      message: "至少填写一个正式联查条件",
+    });
+  }
+  requireStepUp("step_up_token")(value, context);
+});
+
+export const notificationReplaySchema = z.object({
+  dead_letter_event_id: z.string().uuid("请输入正式 dead_letter_event_id"),
+  dry_run: z.boolean(),
+  reason: z.string().trim().min(8, "补发原因至少 8 个字符").max(500),
   idempotency_key: z.string().trim().min(12, "幂等键不能为空"),
   step_up_token: z.string().trim().optional(),
   step_up_challenge_id: z.string().trim().optional(),
@@ -183,6 +228,8 @@ export type ConsistencyReconcileFormValues = z.infer<typeof consistencyReconcile
 export type OutboxFilterFormValues = z.infer<typeof outboxFilterSchema>;
 export type DeadLetterFilterFormValues = z.infer<typeof deadLetterFilterSchema>;
 export type DeadLetterReprocessFormValues = z.infer<typeof deadLetterReprocessSchema>;
+export type NotificationAuditSearchFormValues = z.infer<typeof notificationAuditSearchSchema>;
+export type NotificationReplayFormValues = z.infer<typeof notificationReplaySchema>;
 export type SearchSyncFilterFormValues = z.infer<typeof searchSyncFilterSchema>;
 export type SearchReindexFormValues = z.infer<typeof searchReindexSchema>;
 export type AliasSwitchFormValues = z.infer<typeof aliasSwitchSchema>;
@@ -211,6 +258,14 @@ export function canReadOutbox(subject?: SessionSubject) {
 }
 
 export function canReprocessDeadLetter(subject?: SessionSubject) {
+  return hasAnyRole(subject, opsReadRoles);
+}
+
+export function canReadNotificationOps(subject?: SessionSubject) {
+  return hasAnyRole(subject, opsReadRoles);
+}
+
+export function canReplayNotificationOps(subject?: SessionSubject) {
   return hasAnyRole(subject, opsReadRoles);
 }
 
@@ -307,6 +362,32 @@ export function buildDeadLetterReprocessPayload(
       source: "console-web",
       task_id: "WEB-015",
     },
+  };
+}
+
+export function buildNotificationAuditSearchPayload(
+  values: NotificationAuditSearchFormValues,
+): NotificationAuditSearchRequest {
+  return compactBody({
+    order_id: values.order_id || undefined,
+    case_id: values.case_id || undefined,
+    aggregate_type: values.aggregate_type,
+    event_type: values.event_type,
+    target_topic: values.target_topic,
+    template_code: values.template_code,
+    notification_code: values.notification_code,
+    event_id: values.event_id || undefined,
+    limit: values.limit,
+    reason: values.reason.trim(),
+  });
+}
+
+export function buildNotificationReplayPayload(
+  values: NotificationReplayFormValues,
+): NotificationReplayRequest {
+  return {
+    dry_run: values.dry_run,
+    reason: values.reason.trim(),
   };
 }
 

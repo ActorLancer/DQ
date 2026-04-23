@@ -4,14 +4,19 @@ import {
   aliasSwitchSchema,
   buildAliasSwitchPayload,
   buildConsistencyPath,
+  buildNotificationAuditSearchPayload,
+  buildNotificationReplayPayload,
   buildRecommendationRebuildPayload,
   recommendationRebuildSchema,
   buildSearchReindexPayload,
   canManageSearchOps,
   canReadConsistency,
+  canReadNotificationOps,
   consistencyReconcileSchema,
   createOpsIdempotencyKey,
   deadLetterReprocessSchema,
+  notificationAuditSearchSchema,
+  notificationReplaySchema,
   parseJsonObject,
   searchReindexSchema,
   statusTone,
@@ -101,12 +106,51 @@ describe("ops workbench view model", () => {
     ).toEqual({
       scope: "all",
       placement_code: "home_featured",
-      purge_cache: true,
+        purge_cache: true,
+      });
+  });
+
+  it("builds notification linkage payloads from formal filters and replay form values", () => {
+    const search = notificationAuditSearchSchema.parse({
+      order_id: "10000000-0000-4000-8000-000000000010",
+      case_id: "",
+      aggregate_type: "notification.dispatch_request",
+      event_type: "notification.requested",
+      target_topic: "dtp.notification.dispatch",
+      template_code: "NOTIFY_PAYMENT_SUCCEEDED_V1",
+      notification_code: "payment.succeeded",
+      event_id: "",
+      limit: 20,
+      reason: "trace notification delivery",
+      step_up_challenge_id: "10000000-0000-4000-8000-000000000011",
+    });
+    const replay = notificationReplaySchema.parse({
+      dead_letter_event_id: "10000000-0000-4000-8000-000000000012",
+      dry_run: false,
+      reason: "manual replay after review",
+      idempotency_key: "web-022-notification-replay",
+      step_up_token: "10000000-0000-4000-8000-000000000013",
+    });
+
+    expect(buildNotificationAuditSearchPayload(search)).toEqual({
+      order_id: "10000000-0000-4000-8000-000000000010",
+      aggregate_type: "notification.dispatch_request",
+      event_type: "notification.requested",
+      target_topic: "dtp.notification.dispatch",
+      template_code: "NOTIFY_PAYMENT_SUCCEEDED_V1",
+      notification_code: "payment.succeeded",
+      limit: 20,
+      reason: "trace notification delivery",
+    });
+    expect(buildNotificationReplayPayload(replay)).toEqual({
+      dry_run: false,
+      reason: "manual replay after review",
     });
   });
 
   it("keeps role gates and status tones aligned to V1 ops semantics", () => {
     expect(canReadConsistency(platformAdmin)).toBe(true);
+    expect(canReadNotificationOps(platformAdmin)).toBe(true);
     expect(canManageSearchOps(platformAdmin)).toBe(true);
     expect(canManageSearchOps({ ...platformAdmin, roles: ["platform_audit_security"] })).toBe(
       false,
@@ -144,5 +188,30 @@ describe("ops workbench view model", () => {
         step_up_token: "10000000-0000-4000-8000-000000000009",
       }).success,
     ).toBe(true);
+  });
+
+  it("requires step-up and at least one selector for notification linkage search", () => {
+    expect(
+      notificationAuditSearchSchema.safeParse({
+        order_id: "",
+        case_id: "",
+        aggregate_type: "",
+        event_type: "",
+        target_topic: "",
+        template_code: "",
+        notification_code: "",
+        event_id: "",
+        limit: 20,
+        reason: "trace notification delivery",
+      }).success,
+    ).toBe(false);
+    expect(
+      notificationReplaySchema.safeParse({
+        dead_letter_event_id: "10000000-0000-4000-8000-000000000014",
+        dry_run: true,
+        reason: "manual replay after review",
+        idempotency_key: "web-022-notification-replay",
+      }).success,
+    ).toBe(false);
   });
 });

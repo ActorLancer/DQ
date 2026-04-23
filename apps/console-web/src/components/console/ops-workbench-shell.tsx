@@ -14,6 +14,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   ConsistencyResponse,
   DeadLettersResponse,
+  NotificationAuditSearchResponse,
   ObservabilityOverviewResponse,
   OutboxResponse,
   RecommendationPlacementsResponse,
@@ -24,6 +25,7 @@ import type {
 import {
   Activity,
   AlertTriangle,
+  BellRing,
   Boxes,
   DatabaseZap,
   GitCompareArrows,
@@ -59,6 +61,8 @@ import {
   buildConsistencyReconcilePayload,
   buildDeadLetterReprocessPayload,
   buildDeadLettersQuery,
+  buildNotificationAuditSearchPayload,
+  buildNotificationReplayPayload,
   buildOutboxQuery,
   buildRecommendationPlacementPatchPayload,
   buildRecommendationRankingPatchPayload,
@@ -71,10 +75,12 @@ import {
   canManageRecommendationOps,
   canManageSearchOps,
   canReadConsistency,
+  canReadNotificationOps,
   canReadObservability,
   canReadOutbox,
   canReadRecommendationOps,
   canReadSearchOps,
+  canReplayNotificationOps,
   canReconcileConsistency,
   canReprocessDeadLetter,
   consistencyLookupSchema,
@@ -84,6 +90,8 @@ import {
   deadLetterFilterSchema,
   deadLetterReprocessSchema,
   formatOpsError,
+  notificationAuditSearchSchema,
+  notificationReplaySchema,
   outboxFilterSchema,
   recommendationPlacementPatchSchema,
   recommendationRankingPatchSchema,
@@ -99,6 +107,8 @@ import {
   type ConsistencyReconcileFormValues,
   type DeadLetterFilterFormValues,
   type DeadLetterReprocessFormValues,
+  type NotificationAuditSearchFormValues,
+  type NotificationReplayFormValues,
   type OutboxFilterFormValues,
   type RecommendationPlacementPatchFormValues,
   type RecommendationRankingPatchFormValues,
@@ -118,6 +128,8 @@ const sdk = createBrowserSdk();
 type ConsistencyData = ConsistencyResponse["data"];
 type OutboxRow = OutboxResponse["data"]["items"][number];
 type DeadLetterRow = DeadLettersResponse["data"]["items"][number];
+type NotificationAuditData = NotificationAuditSearchResponse["data"];
+type NotificationAuditRow = NotificationAuditData["records"][number];
 type SearchSyncRow = SearchSyncResponse["data"][number];
 type SearchRankingRow = SearchRankingProfilesResponse["data"][number];
 type PlacementRow = RecommendationPlacementsResponse["data"][number];
@@ -589,6 +601,369 @@ export function OutboxDeadLetterShell() {
         </form>
         {reprocessMutation.isError ? <ErrorState error={reprocessMutation.error} compact /> : null}
         {reprocessResult ? <ResultBlock title="重处理预演结果" value={reprocessResult} /> : null}
+      </Card>
+    </ConsoleRouteScaffold>
+  );
+}
+
+export function NotificationOpsShell() {
+  const queryClient = useQueryClient();
+  const [submittedSearch, setSubmittedSearch] =
+    useState<NotificationAuditSearchFormValues | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [replayResult, setReplayResult] = useState<unknown>(null);
+  const authQuery = useAuthMe();
+  const subject = authQuery.data?.data;
+  const canRead = canReadNotificationOps(subject);
+  const canReplay = canReplayNotificationOps(subject);
+
+  const searchForm = useForm<NotificationAuditSearchFormValues>({
+    resolver: zodResolver(notificationAuditSearchSchema),
+    defaultValues: {
+      order_id: "",
+      case_id: "",
+      aggregate_type: "notification.dispatch_request",
+      event_type: "notification.requested",
+      target_topic: "dtp.notification.dispatch",
+      template_code: "",
+      notification_code: "",
+      event_id: "",
+      limit: 20,
+      reason: "",
+      step_up_token: "",
+      step_up_challenge_id: "",
+    },
+  });
+  const replayForm = useForm<NotificationReplayFormValues>({
+    resolver: zodResolver(notificationReplaySchema),
+    defaultValues: {
+      dead_letter_event_id: "",
+      dry_run: true,
+      reason: "",
+      idempotency_key: createOpsIdempotencyKey("notification-replay"),
+      step_up_token: "",
+      step_up_challenge_id: "",
+    },
+  });
+
+  const notificationQuery = useQuery({
+    queryKey: ["console", "ops", "notifications", submittedSearch],
+    queryFn: () =>
+      sdk.ops.searchNotificationAudit(
+        buildNotificationAuditSearchPayload(submittedSearch!),
+        {
+          stepUpToken: submittedSearch!.step_up_token,
+          stepUpChallengeId: submittedSearch!.step_up_challenge_id,
+        },
+      ),
+    enabled: Boolean(canRead && submittedSearch),
+  });
+
+  const replayMutation = useMutation({
+    mutationFn: (values: NotificationReplayFormValues) =>
+      sdk.ops.replayNotificationDeadLetter(
+        { dead_letter_event_id: values.dead_letter_event_id },
+        buildNotificationReplayPayload(values),
+        {
+          idempotencyKey: values.idempotency_key,
+          stepUpToken: values.step_up_token,
+          stepUpChallengeId: values.step_up_challenge_id,
+        },
+      ),
+    onSuccess: (response) => {
+      setReplayResult(response.data);
+      replayForm.setValue(
+        "idempotency_key",
+        createOpsIdempotencyKey("notification-replay"),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["console", "ops", "notifications"],
+      });
+    },
+  });
+
+  const notificationRows = useMemo(
+    () => notificationQuery.data?.data.records ?? [],
+    [notificationQuery.data],
+  );
+  const selectedRecord = useMemo(() => {
+    if (!notificationRows.length) {
+      return null;
+    }
+    return (
+      notificationRows.find((row) => row.event_id === selectedEventId) ??
+      notificationRows[0]
+    );
+  }, [notificationRows, selectedEventId]);
+  const notificationSummary = useMemo(() => {
+    const templates = new Set(notificationRows.map((row) => row.template_code));
+    const withDeadLetter = notificationRows.filter((row) => row.dead_letter);
+    const retrying = notificationRows.filter(
+      (row) => row.retry_timeline.length > 1 || (row.current_attempt ?? 1) > 1,
+    );
+    return {
+      total: notificationQuery.data?.data.total ?? 0,
+      templateCount: templates.size,
+      deadLetterCount: withDeadLetter.length,
+      retryCount: retrying.length,
+    };
+  }, [notificationQuery.data, notificationRows]);
+
+  const notificationColumns = useMemo<ColumnDef<NotificationAuditRow>[]>(
+    () => [
+      {
+        header: "event_id",
+        accessorKey: "event_id",
+        cell: ({ row }) => (
+          <button
+            className="text-left font-mono text-xs text-[var(--accent-strong)] underline-offset-4 hover:underline"
+            type="button"
+            onClick={() => setSelectedEventId(row.original.event_id)}
+          >
+            {row.original.event_id}
+          </button>
+        ),
+      },
+      { header: "notification_code", accessorKey: "notification_code" },
+      { header: "template_code", accessorKey: "template_code" },
+      {
+        header: "status",
+        accessorKey: "current_status",
+        cell: ({ row }) => (
+          <Badge className={badgeClass(statusTone(row.original.current_status))}>
+            {row.original.current_status}
+          </Badge>
+        ),
+      },
+      { header: "attempt", accessorKey: "current_attempt" },
+      { header: "channel", accessorKey: "channel" },
+      {
+        header: "dead_letter",
+        accessorFn: (row) => row.dead_letter?.dead_letter_event_id ?? "none",
+        cell: ({ row }) =>
+          row.original.dead_letter ? (
+            <button
+              className="text-left font-mono text-xs text-[var(--accent-strong)] underline-offset-4 hover:underline"
+              type="button"
+              onClick={() => {
+                replayForm.setValue(
+                  "dead_letter_event_id",
+                  row.original.dead_letter?.dead_letter_event_id ?? "",
+                  { shouldDirty: true },
+                );
+                setSelectedEventId(row.original.event_id);
+              }}
+            >
+              {row.original.dead_letter.dead_letter_event_id}
+            </button>
+          ) : (
+            <span className="text-[var(--ink-subtle)]">none</span>
+          ),
+      },
+      { header: "request_id", accessorKey: "request_id" },
+    ],
+    [replayForm],
+  );
+
+  const replayMode = useWatch({
+    control: replayForm.control,
+    name: "dry_run",
+  });
+
+  return (
+    <ConsoleRouteScaffold routeKey="notification_ops">
+      <OpsHero
+        title="通知联查与补发"
+        description="通过 platform-core facade 联查通知发送、失败、重试和模板渲染结果；dead letter replay 仍由后端受控转发到 notification-worker。"
+        icon={<BellRing className="size-5" />}
+        badges={["ops.outbox.read", "ops.dead_letter.read", "ops.dead_letter.reprocess"]}
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+        <SubjectCard subject={subject} loading={authQuery.isPending} />
+        <ObservabilityOverviewPanel subject={subject} />
+      </div>
+
+      {!canRead ? (
+        <PermissionNotice
+          title="当前主体缺少通知联查权限"
+          required="ops.outbox.read / ops.dead_letter.read"
+        />
+      ) : null}
+
+      <Card>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <CardTitle>通知联查条件</CardTitle>
+            <CardDescription className="mt-2">
+              正式入口：`POST /api/v1/ops/notifications/audit/search`。至少填写一个正式筛选条件，并显式附带 step-up 上下文。
+            </CardDescription>
+          </div>
+          <Badge className={canRead ? badgeClass("warn") : badgeClass("danger")}>
+            {canRead ? "需要 step-up" : "权限态"}
+          </Badge>
+        </div>
+        <form
+          className="mt-5 grid gap-4"
+          onSubmit={searchForm.handleSubmit((values) => {
+            setSubmittedSearch(values);
+            setSelectedEventId(null);
+          })}
+        >
+          <div className="grid gap-4 lg:grid-cols-3">
+            <TextInputField
+              label="order_id"
+              error={searchForm.formState.errors.order_id?.message}
+              {...searchForm.register("order_id")}
+            />
+            <TextInputField
+              label="case_id"
+              error={searchForm.formState.errors.case_id?.message}
+              {...searchForm.register("case_id")}
+            />
+            <TextInputField
+              label="event_id"
+              error={searchForm.formState.errors.event_id?.message}
+              {...searchForm.register("event_id")}
+            />
+            <TextInputField label="notification_code" {...searchForm.register("notification_code")} />
+            <TextInputField label="template_code" {...searchForm.register("template_code")} />
+            <TextInputField label="target_topic" {...searchForm.register("target_topic")} />
+            <TextInputField label="aggregate_type" {...searchForm.register("aggregate_type")} />
+            <TextInputField label="event_type" {...searchForm.register("event_type")} />
+            <TextInputField
+              label="limit"
+              type="number"
+              {...searchForm.register("limit", { valueAsNumber: true })}
+            />
+          </div>
+          <TextareaField
+            label="reason"
+            placeholder="说明为何需要联查通知发送与补发轨迹"
+            error={searchForm.formState.errors.reason?.message}
+            {...searchForm.register("reason")}
+          />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <TextInputField
+              label="X-Step-Up-Token"
+              error={searchForm.formState.errors.step_up_token?.message}
+              {...searchForm.register("step_up_token")}
+            />
+            <TextInputField
+              label="X-Step-Up-Challenge-Id"
+              {...searchForm.register("step_up_challenge_id")}
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <AuditHint />
+            <Button disabled={!canRead || notificationQuery.isFetching} type="submit">
+              {notificationQuery.isFetching ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <Search className="size-4" />
+              )}
+              联查通知轨迹
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <QueryPanel query={notificationQuery} title="通知联查结果">
+        {(response) => (
+          <div className="grid gap-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="records"
+                value={notificationSummary.total}
+                hint={`request_id: ${response.data.request_id}`}
+              />
+              <StatCard
+                label="templates"
+                value={notificationSummary.templateCount}
+                hint={`trace_id: ${response.data.trace_id}`}
+              />
+              <StatCard
+                label="dead letters"
+                value={notificationSummary.deadLetterCount}
+                hint="可回填 replay 目标"
+              />
+              <StatCard
+                label="retried"
+                value={notificationSummary.retryCount}
+                hint="重试或多 attempt 记录"
+              />
+            </div>
+            <VirtualTable
+              columns={notificationColumns}
+              data={response.data.records}
+              emptyLabel="当前筛选条件下没有通知发送记录"
+            />
+            {selectedRecord ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <ResultBlock title="当前通知记录" value={selectedRecord} />
+                <ResultBlock
+                  title="当前记录时间线"
+                  value={{
+                    retry_timeline: selectedRecord.retry_timeline,
+                    audit_timeline: selectedRecord.audit_timeline,
+                    dead_letter: selectedRecord.dead_letter,
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+        )}
+      </QueryPanel>
+
+      <Card>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <CardTitle>通知 dead letter replay</CardTitle>
+            <CardDescription className="mt-2">
+              正式入口：`POST /api/v1/ops/notifications/dead-letters/{`{dead_letter_event_id}`}/replay`。浏览器只打 platform-core，由后端再转发到 worker 内部控制面。
+            </CardDescription>
+          </div>
+          <Badge className={canReplay ? badgeClass("warn") : badgeClass("danger")}>
+            {canReplay ? "高风险动作" : "无执行权限"}
+          </Badge>
+        </div>
+        <form
+          className="mt-5 grid gap-4"
+          onSubmit={replayForm.handleSubmit((values) => replayMutation.mutate(values))}
+        >
+          <div className="grid gap-4 lg:grid-cols-[1fr_180px]">
+            <TextInputField
+              label="dead_letter_event_id"
+              error={replayForm.formState.errors.dead_letter_event_id?.message}
+              {...replayForm.register("dead_letter_event_id")}
+            />
+            <SelectField
+              label="mode"
+              value={replayMode ? "true" : "false"}
+              onChange={(value) =>
+                replayForm.setValue("dry_run", value === "true", { shouldDirty: true })
+              }
+              options={[
+                ["true", "dry_run"],
+                ["false", "replay"],
+              ]}
+            />
+          </div>
+          <TextareaField
+            label="reason"
+            placeholder="说明为何需要 dry-run 或正式 replay"
+            error={replayForm.formState.errors.reason?.message}
+            {...replayForm.register("reason")}
+          />
+          <WriteHeaders form={replayForm} />
+          <SubmitWriteButton
+            disabled={!canReplay}
+            pending={replayMutation.isPending}
+            label={replayMode ? "提交 dry-run replay" : "提交正式 replay"}
+          />
+        </form>
+        {replayMutation.isError ? <ErrorState error={replayMutation.error} compact /> : null}
+        {replayResult ? <ResultBlock title="通知 replay 结果" value={replayResult} /> : null}
       </Card>
     </ConsoleRouteScaffold>
   );
@@ -1767,6 +2142,26 @@ function ResultBlock({ title, value }: { title: string; value: unknown }) {
           </pre>
         </div>
       </div>
+    </Card>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number | string;
+  hint: string;
+}) {
+  return (
+    <Card className="gap-2 border-black/10 bg-white/80">
+      <div className="text-xs uppercase tracking-[0.14em] text-[var(--ink-subtle)]">
+        {label}
+      </div>
+      <div className="text-3xl font-semibold text-[var(--ink-strong)]">{value}</div>
+      <CardDescription>{hint}</CardDescription>
     </Card>
   );
 }
