@@ -56,6 +56,20 @@ KAFKA_BROKERS=127.0.0.1:9094 cargo run -p search-indexer
 ## 手工 smoke
 
 1. 准备一个具备 `platform_admin` 角色的 bearer token，对应 `core.user_account.user_id=<operator_user_id>`。
+   本地默认可直接使用 `local-platform-admin / LocalPlatformAdmin123!`：
+
+```bash
+ACCESS_TOKEN="$(
+  curl -sS -X POST \
+    'http://127.0.0.1:8081/realms/platform-local/protocol/openid-connect/token' \
+    -H 'content-type: application/x-www-form-urlencoded' \
+    --data-urlencode 'grant_type=password' \
+    --data-urlencode 'client_id=portal-web' \
+    --data-urlencode 'username=local-platform-admin' \
+    --data-urlencode 'password=LocalPlatformAdmin123!' \
+  | jq -r '.access_token'
+)"
+```
 
 2. 准备一个已验证 step-up challenge。示例：
 
@@ -89,7 +103,7 @@ RETURNING step_up_challenge_id::text;
 ```bash
 curl -sS -X POST http://127.0.0.1:18080/api/v1/ops/search/reindex \
   -H 'content-type: application/json' \
-  -H 'Authorization: Bearer <access_token>' \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H 'X-Request-Id: req-search-reindex-local' \
   -H 'X-Idempotency-Key: idem-search-reindex-local' \
   -H 'X-Step-Up-Token: <verified_step_up_challenge_id>' \
@@ -105,7 +119,7 @@ curl -sS -X POST http://127.0.0.1:18080/api/v1/ops/search/reindex \
 
 ```bash
 curl -sS "http://127.0.0.1:18080/api/v1/ops/search/sync?entity_scope=product&sync_status=queued&limit=20" \
-  -H 'Authorization: Bearer <access_token>' \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H 'X-Request-Id: req-search-sync-local'
 ```
 

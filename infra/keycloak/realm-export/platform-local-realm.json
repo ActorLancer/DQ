@@ -9,10 +9,18 @@
   "duplicateEmailsAllowed": false,
   "roles": {
     "realm": [
-      { "name": "platform-admin", "description": "Platform administrator role" },
-      { "name": "seller", "description": "Seller role for data provider" },
-      { "name": "buyer", "description": "Buyer role for data consumer" },
-      { "name": "reviewer", "description": "Catalog/compliance reviewer role" }
+      { "name": "platform_admin", "description": "Platform administrator role" },
+      { "name": "platform_audit_security", "description": "Platform audit and security role" },
+      { "name": "platform_reviewer", "description": "Platform reviewer role" },
+      { "name": "platform_risk_settlement", "description": "Platform risk and settlement role" },
+      { "name": "tenant_admin", "description": "Tenant administrator role" },
+      { "name": "tenant_developer", "description": "Tenant developer role" },
+      { "name": "seller_operator", "description": "Seller operator role" },
+      { "name": "buyer_operator", "description": "Buyer operator role" },
+      { "name": "tenant_audit_readonly", "description": "Tenant audit readonly role" },
+      { "name": "regulator_readonly", "description": "Regulator readonly role" },
+      { "name": "tenant_app_identity", "description": "Tenant application identity role" },
+      { "name": "platform_service_identity", "description": "Platform service identity role" }
     ]
   },
   "clients": [
@@ -42,58 +50,159 @@
         "http://127.0.0.1:3001/*"
       ],
       "webOrigins": ["*"],
-      "defaultClientScopes": ["profile", "email", "roles"]
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "protocolMappers": [
+        {
+          "name": "user_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "user_id",
+            "claim.name": "user_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "org_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "org_id",
+            "claim.name": "org_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
     {
-      "username": "local-admin",
+      "username": "local-platform-admin",
       "enabled": true,
       "emailVerified": true,
       "firstName": "Local",
-      "lastName": "Admin",
-      "email": "local-admin@datab.local",
-      "credentials": [{ "type": "password", "value": "LocalAdmin123!", "temporary": false }],
-      "realmRoles": ["platform-admin"]
+      "lastName": "Platform Admin",
+      "email": "local-platform-admin@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000353"],
+        "org_id": ["10000000-0000-0000-0000-000000000103"],
+        "role_key": ["platform_admin"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalPlatformAdmin123!", "temporary": false }],
+      "realmRoles": ["platform_admin"]
     },
     {
-      "username": "local-seller",
+      "username": "local-audit-security",
       "enabled": true,
       "emailVerified": true,
       "firstName": "Local",
-      "lastName": "Seller",
-      "email": "local-seller@datab.local",
-      "credentials": [{ "type": "password", "value": "LocalSeller123!", "temporary": false }],
-      "realmRoles": ["seller"]
+      "lastName": "Audit Security",
+      "email": "local-audit-security@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000354"],
+        "org_id": ["10000000-0000-0000-0000-000000000103"],
+        "role_key": ["platform_audit_security"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalAuditSecurity123!", "temporary": false }],
+      "realmRoles": ["platform_audit_security"]
     },
     {
-      "username": "local-buyer",
+      "username": "local-platform-reviewer",
       "enabled": true,
       "emailVerified": true,
       "firstName": "Local",
-      "lastName": "Buyer",
-      "email": "local-buyer@datab.local",
-      "credentials": [{ "type": "password", "value": "LocalBuyer123!", "temporary": false }],
-      "realmRoles": ["buyer"]
+      "lastName": "Platform Reviewer",
+      "email": "local-platform-reviewer@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000358"],
+        "org_id": ["10000000-0000-0000-0000-000000000103"],
+        "role_key": ["platform_reviewer"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalPlatformReviewer123!", "temporary": false }],
+      "realmRoles": ["platform_reviewer"]
     },
     {
-      "username": "local-reviewer",
+      "username": "local-risk-settlement",
       "enabled": true,
       "emailVerified": true,
       "firstName": "Local",
-      "lastName": "Reviewer",
-      "email": "local-reviewer@datab.local",
-      "credentials": [{ "type": "password", "value": "LocalReviewer123!", "temporary": false }],
-      "realmRoles": ["reviewer"]
-    }
-  ],
-  "requiredActions": [
+      "lastName": "Risk Settlement",
+      "email": "local-risk-settlement@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000359"],
+        "org_id": ["10000000-0000-0000-0000-000000000103"],
+        "role_key": ["platform_risk_settlement"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalRiskSettlement123!", "temporary": false }],
+      "realmRoles": ["platform_risk_settlement"]
+    },
     {
-      "alias": "CONFIGURE_TOTP",
-      "name": "Configure OTP",
+      "username": "local-tenant-admin",
       "enabled": true,
-      "defaultAction": false,
-      "priority": 10
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Tenant Admin",
+      "email": "local-tenant-admin@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000352"],
+        "org_id": ["10000000-0000-0000-0000-000000000102"],
+        "role_key": ["tenant_admin"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalTenantAdmin123!", "temporary": false }],
+      "realmRoles": ["tenant_admin"]
+    },
+    {
+      "username": "local-tenant-developer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Tenant Developer",
+      "email": "local-tenant-developer@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000355"],
+        "org_id": ["10000000-0000-0000-0000-000000000102"],
+        "role_key": ["tenant_developer"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalTenantDeveloper123!", "temporary": false }],
+      "realmRoles": ["tenant_developer"]
+    },
+    {
+      "username": "local-buyer-operator",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Buyer Operator",
+      "email": "local-buyer-operator@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000356"],
+        "org_id": ["10000000-0000-0000-0000-000000000102"],
+        "role_key": ["buyer_operator"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalBuyerOperator123!", "temporary": false }],
+      "realmRoles": ["buyer_operator"]
+    },
+    {
+      "username": "local-seller-operator",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Seller Operator",
+      "email": "local-seller-operator@datab.local",
+      "attributes": {
+        "user_id": ["10000000-0000-0000-0000-000000000357"],
+        "org_id": ["10000000-0000-0000-0000-000000000101"],
+        "role_key": ["seller_operator"]
+      },
+      "credentials": [{ "type": "password", "value": "LocalSellerOperator123!", "temporary": false }],
+      "realmRoles": ["seller_operator"]
     }
   ]
 }

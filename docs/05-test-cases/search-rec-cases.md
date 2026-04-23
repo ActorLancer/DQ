@@ -16,6 +16,7 @@
   - worker 侧副作用、重复投递去重和 `POST /api/v1/ops/dead-letters/{id}/reprocess` 的 `dry_run` 预演都已有真实 smoke
   - 验收时不允许继续用“手工 seed OpenSearch”“只断言 outbox 行存在”冒充 worker 可靠性验证
 - 本文件中的请求与验收语义统一以 `Authorization: Bearer <access_token>`、正式权限点、必要 `X-Step-Up-Token`、审计留痕与正式错误码为准，禁止继续使用 `x-role` 占位语义。
+- Bearer 验收前必须先通过 `./scripts/check-keycloak-realm.sh`，证明本地 `portal-web` password grant、正式核心角色 claim、`user_id/org_id` claims 都真实可用；`.well-known` 可访问不再构成 IAM 基线通过证据。
 
 ## SEARCHREC-017 验收矩阵
 

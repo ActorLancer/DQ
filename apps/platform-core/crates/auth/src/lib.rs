@@ -51,9 +51,9 @@ impl JwtParser for KeycloakClaimsJwtParser {
         let claims: serde_json::Value = serde_json::from_slice(&payload_bytes)
             .map_err(|err| AppError::Config(format!("jwt claims parse failed: {err}")))?;
         let user_id = claims
-            .get("sub")
+            .get("user_id")
             .and_then(|v| v.as_str())
-            .or_else(|| claims.get("user_id").and_then(|v| v.as_str()))
+            .or_else(|| claims.get("sub").and_then(|v| v.as_str()))
             .ok_or_else(|| AppError::Config("jwt claims missing subject".to_string()))?
             .to_string();
         let tenant_id = claims
@@ -89,6 +89,7 @@ impl JwtParser for KeycloakClaimsJwtParser {
         if roles.is_empty() {
             roles.push("tenant_admin".to_string());
         }
+        roles = normalize_role_keys(roles);
         Ok(SessionSubject {
             user_id,
             tenant_id,
@@ -207,6 +208,52 @@ fn parse_bearer_header(value: &HeaderValue) -> Option<String> {
     Some(token.to_string())
 }
 
+pub fn normalize_role_key(role: &str) -> String {
+    let normalized = role.trim().replace('-', "_");
+    match normalized.as_str() {
+        "platform_admin" => "platform_admin".to_string(),
+        "platform_audit_security" => "platform_audit_security".to_string(),
+        "platform_reviewer" => "platform_reviewer".to_string(),
+        "platform_risk_settlement" => "platform_risk_settlement".to_string(),
+        "tenant_admin" => "tenant_admin".to_string(),
+        "tenant_developer" => "tenant_developer".to_string(),
+        "tenant_audit_readonly" => "tenant_audit_readonly".to_string(),
+        "buyer_operator" => "buyer_operator".to_string(),
+        "seller_operator" => "seller_operator".to_string(),
+        "regulator_readonly" => "regulator_readonly".to_string(),
+        "platform_auditor" | "audit_admin" | "consistency_operator" | "node_ops_admin" => {
+            "platform_audit_security".to_string()
+        }
+        "subject_reviewer" | "product_reviewer" | "compliance_reviewer" => {
+            "platform_reviewer".to_string()
+        }
+        "risk_operator" => "platform_risk_settlement".to_string(),
+        "developer_admin" => "tenant_developer".to_string(),
+        "data_custody_admin" => "platform_admin".to_string(),
+        "seller" => "seller_operator".to_string(),
+        "buyer" => "buyer_operator".to_string(),
+        "reviewer" => "platform_reviewer".to_string(),
+        _ => normalized,
+    }
+}
+
+pub fn normalize_role_keys<I>(roles: I) -> Vec<String>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut normalized = Vec::new();
+    for role in roles {
+        let normalized_role = normalize_role_key(&role);
+        if !normalized
+            .iter()
+            .any(|existing| existing == &normalized_role)
+        {
+            normalized.push(normalized_role);
+        }
+    }
+    normalized
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +338,30 @@ mod tests {
         assert_eq!(subject.user_id, "u-123");
         assert_eq!(subject.tenant_id, "t-123");
         assert!(subject.roles.iter().any(|r| r == "tenant_admin"));
+    }
+
+    #[test]
+    fn keycloak_claims_parser_prefers_explicit_user_id_and_normalizes_legacy_roles() {
+        let parser = KeycloakClaimsJwtParser;
+        let payload = serde_json::json!({
+            "sub": "11111111-1111-1111-1111-111111111111",
+            "user_id": "22222222-2222-2222-2222-222222222222",
+            "org_id": "33333333-3333-3333-3333-333333333333",
+            "realm_access": {"roles": ["platform-admin", "audit_admin", "buyer"]}
+        });
+        let payload_enc =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.to_string().as_bytes());
+        let token = format!("aaa.{payload_enc}.bbb");
+        let subject = parser.parse_subject(&token).expect("subject parsed");
+        assert_eq!(subject.user_id, "22222222-2222-2222-2222-222222222222");
+        assert_eq!(subject.tenant_id, "33333333-3333-3333-3333-333333333333");
+        assert_eq!(
+            subject.roles,
+            vec![
+                "platform_admin".to_string(),
+                "platform_audit_security".to_string(),
+                "buyer_operator".to_string(),
+            ]
+        );
     }
 }

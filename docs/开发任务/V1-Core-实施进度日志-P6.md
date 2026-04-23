@@ -70,6 +70,67 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-275（计划中）
+- 任务：`SEARCHREC-007` 逐任务复核与正式重验（搜索同步作业表与异常记录表）
+- 状态：计划中
+- 说明：按 `SEARCHREC-007` 的冻结口径，重新核对 `search.index_sync_task`、`search.index_sync_exception`、worker 成功/失败回写、dead letter 关联字段以及 `GET /api/v1/ops/search/sync` 的联查视图是否仍保持统一 authority；重点确认搜索同步失败会真实留下异常记录、对账状态和 DLQ 线索，成功重试会关闭异常并更新 `reconcile_status`，同时 ops 查询返回的 alias / projection / exception 摘要与数据库状态一致，不退回到仅凭普通日志判断。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-007`，不提前进入 `SEARCHREC-008`。
+
+### BATCH-275（待审批）
+- 任务：`SEARCHREC-007` 逐任务复核与正式重验（搜索同步作业表与异常记录表）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-007`
+- 前置依赖核对结果：`SEARCHREC-001` 至 `SEARCHREC-006` 已按顺序重验完成；`search.index_sync_task`、`search.index_sync_exception`、`workers/search-indexer`、`GET /api/v1/ops/search/sync`、Redis 搜索缓存、OpenSearch alias/index 与审计链基线已存在且可运行。本批新增修复聚焦在 SEARCHREC Bearer/IAM authority，不改变前序搜索同步主链与异常表 schema 事实源。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：定位 `SEARCHREC-007` 的作业表/异常记录表/ops 联查 DoD，并确认本 task 需要真实 Bearer/IAM 运行态验收。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`、`docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`：确认搜索同步状态、异常记录、对账状态、DLQ 线索与 `GET /api/v1/ops/search/sync` 返回字段 authority。
+  - `docs/数据库设计/V1/upgrade/060_seed_authz_v1.sql`、`070_seed_role_permissions_v1.sql`、`docs/权限设计/角色权限矩阵正式版.md`、`docs/权限设计/接口权限校验清单.md`：确认正式核心角色 authority 为下划线角色键，不能让 Keycloak realm 的历史连字符角色反向定义平台权限模型。
+  - `docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/keycloak-local.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/troubleshooting.md`：确认 SEARCHREC ops Bearer 联调、Keycloak 本地初始化/重置、排障与 runbook 证据路径。
+  - `infra/keycloak/realm-export/platform-local-realm.json`、`scripts/check-keycloak-realm.sh`、`scripts/smoke-local.sh`、`scripts/seed-local-iam-test-identities.sh`：确认本地 IAM 原实现只验证 `.well-known` 且 realm 角色仍是旧连字符口径，需要修正为可重复导入、可真实发 token、可带正式角色执行 Bearer 验证。
+  - `apps/platform-core/crates/auth/src/lib.rs`、`apps/platform-core/src/modules/search/api/handlers.rs`、`apps/platform-core/src/modules/search/tests/search_api_db.rs`、`workers/search-indexer/src/main.rs`：确认应用内部正式权限判断使用下划线角色键，`SEARCHREC-007` 读链与 worker 主链本身已经闭环，缺口在 Keycloak/IAM 运行态与角色口径漂移。
+- 完成情况：
+  - `infra/keycloak/realm-export/platform-local-realm.json`：将本地 realm/export 统一到正式下划线核心角色体系，补齐 `platform_admin`、`platform_audit_security`、`platform_reviewer`、`platform_risk_settlement`、`tenant_admin`、`tenant_developer`、`seller_operator`、`buyer_operator`、`tenant_audit_readonly`、`regulator_readonly` 等角色，并为 `portal-web` 增加 `user_id` / `org_id` mapper；本地联调用户改为 `local-platform-admin`、`local-audit-security`、`local-tenant-admin`、`local-tenant-developer`、`local-buyer-operator`、`local-seller-operator` 等正式主体。
+  - `apps/platform-core/crates/auth/src/lib.rs`：`KeycloakClaimsJwtParser` 改为优先读取显式 `user_id` claim，并新增角色归一化层；正式 authority 仍是下划线角色键，兼容层仅短期吸收旧 token/旧别名/旧连字符输入，如 `platform-admin -> platform_admin`、`seller -> seller_operator`、`buyer -> buyer_operator`，避免历史本地 token 立刻失效，但不再把兼容映射当成正式角色来源。
+  - `scripts/check-keycloak-realm.sh`：从“只查 `.well-known`”升级为“真实 password grant + JWT payload 校验”，要求 `portal-web` 可发 `access_token`，并断言 token 中存在 UUID 形态 `user_id` / `org_id` 及正式角色；`scripts/smoke-local.sh` 同步把 Keycloak 探针改为 password grant 级验收。
+  - `scripts/reset-keycloak-local.sh`、`Makefile`：新增可重复的本地 Keycloak 独立数据库重置/重导入流程与 `make keycloak-reset-local` 入口，解决独立 `keycloak` 数据库残留污染导致 realm required action 异常的问题。
+  - `scripts/seed-local-iam-test-identities.sh`：补齐 `buyer_operator`、`seller_operator`、`platform_reviewer`、`platform_risk_settlement` 等本地联调 identity 与 `authz.subject_role_binding`，让本地数据库与 Keycloak realm 能对齐到同一正式角色体系。
+  - `docs/04-runbooks/keycloak-local.md`、`search-reindex.md`、`local-startup.md`、`troubleshooting.md`、`docs/05-test-cases/search-rec-cases.md`、`scripts/README.md`：同步更新正式本地用户/角色/密码、token 获取方式、realm reset 步骤和 Bearer 验收前置，不再传播旧连字符角色口径。
+  - `SEARCHREC-007` 业务主链保持不变：`search.index_sync_task`、`search.index_sync_exception`、worker 成功/失败回写、DLQ 关联字段与 `GET /api/v1/ops/search/sync` 统一 authority 均复核通过，未发现 schema/读链实现与冻结文档漂移。
+- 验证：
+  - `cargo fmt --all`
+  - `cargo test -p auth -- --nocapture`
+  - `./scripts/check-keycloak-realm.sh`
+  - `COMPOSE_FILE=infra/docker/docker-compose.local.yml COMPOSE_ENV_FILE=infra/docker/.env.local ./scripts/reset-keycloak-local.sh`
+  - `cargo check -p platform-core`
+  - `cargo check -p search-indexer`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+  - 手工服务级验证：
+    - `APP_MODE=staging APP_PORT=18080 IAM_JWT_PARSER=keycloak_claims ... target/debug/platform-core-bin`
+    - `Authorization: Bearer <access_token>` 访问 `GET /api/v1/ops/search/sync?entity_scope=product&limit=5`
+    - 使用 `psql` 回查 `search.index_sync_task`、`audit.access_audit`、`ops.system_log`
+- 验证结果：
+  - `cargo test -p auth` 通过，新增 `keycloak_claims_parser_prefers_explicit_user_id_and_normalizes_legacy_roles` 验证了正式 `user_id` claim 和兼容角色归一化逻辑。
+  - `./scripts/check-keycloak-realm.sh` 通过，真实证明 `platform-local` realm 已可发 `portal-web` password grant token，且 JWT payload 中携带正式 `platform_admin` 角色与 UUID `user_id/org_id`。
+  - `./scripts/reset-keycloak-local.sh` 通过，证明 Keycloak 独立数据库清理、realm 重导入与 token 验证现在是可重复流程，不再停留在“issuer 存在”的弱检查。
+  - `search_api_and_ops_db_smoke` 与 `search_indexer_db_smoke` 通过，证明 `search.index_sync_task` / `search.index_sync_exception` / `workers/search-indexer` / `GET /api/v1/ops/search/sync` 在 Keycloak 收口后仍保持当前正式行为。
+  - `cargo test -p platform-core` 全量通过，结果为 `355 passed; 0 failed; 1 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本批未引入新的查询漂移。
+  - 手工真实 Bearer 验证通过：请求 `request_id=req-searchrec007-live-1776904220` 命中 `GET /api/v1/ops/search/sync` 成功返回 `count=5`，首条作业 `index_sync_task_id=072e3306-54c0-4160-8272-195ea630ed96`，字段为 `entity_scope=product`、`sync_status=completed`、`reconcile_status=pending_check`、`active_index_name=product_search_v1_bootstrap`、`open_exception_count=0`、`projection_document_version=3`、`projection_index_sync_status=indexed`；数据库回查 `search.index_sync_task` 命中同一作业并显示 `target_backend=opensearch`、`target_index=product_search_v1_aud022_1776847634929`，`audit.access_audit` 命中 `platform_admin|search_sync_query|null`，`ops.system_log` 命中 `search ops lookup executed: GET /api/v1/ops/search/sync|ops.search_sync.read|search|GET /api/v1/ops/search/sync`。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-007`
+  - `商品搜索、排序与索引同步设计.md`：搜索同步状态、异常记录、ops 联查与正式 Bearer 权限边界
+  - `商品搜索、排序与索引同步接口协议正式版.md`：`GET /api/v1/ops/search/sync` 返回字段与 authority
+  - `060_seed_authz_v1.sql`、`070_seed_role_permissions_v1.sql`、`角色权限矩阵正式版.md`、`接口权限校验清单.md`：正式核心角色 authority 仍以下划线角色键为准
+  - `search-reindex.md`、`keycloak-local.md`、`local-startup.md`、`troubleshooting.md`、`search-rec-cases.md`：Keycloak 本地基线、Bearer 验收、ops 联调与回查路径
+- 覆盖的任务清单条目：`SEARCHREC-007`
+- 未覆盖项：
+  - 无。当前批次已同时完成 `SEARCHREC-007` 的作业/异常 authority 复核与真实 Bearer/IAM 运行态验收，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-257（计划中）
 - 任务：`SEARCHREC-011` 实现推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`
 - 状态：计划中

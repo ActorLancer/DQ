@@ -101,7 +101,7 @@ smoke_minio_buckets() {
 
 smoke_keycloak_realm() {
   ./scripts/check-keycloak-realm.sh >/dev/null
-  ok "keycloak realm imported"
+  ok "keycloak realm and password grant probe passed"
 }
 
 smoke_kafka_topics() {

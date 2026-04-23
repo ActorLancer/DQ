@@ -55,7 +55,11 @@ INSERT INTO core.user_account (
   ('10000000-0000-0000-0000-000000000352'::uuid, '10000000-0000-0000-0000-000000000102'::uuid, '10000000-0000-0000-0000-000000000202'::uuid, 'buyer.admin.v2@luna.local', 'Buyer Admin V2', 'human', 'active', 'enabled', 'buyer.admin.v2@luna.local', '13800000102', '{"seed":"iam018","persona":"buyer_admin"}'::jsonb),
   ('10000000-0000-0000-0000-000000000353'::uuid, '10000000-0000-0000-0000-000000000103'::uuid, '10000000-0000-0000-0000-000000000203'::uuid, 'ops.admin@luna.local', 'Ops Admin', 'human', 'active', 'enabled', 'ops.admin@luna.local', '13800000103', '{"seed":"iam018","persona":"ops_admin"}'::jsonb),
   ('10000000-0000-0000-0000-000000000354'::uuid, '10000000-0000-0000-0000-000000000103'::uuid, '10000000-0000-0000-0000-000000000203'::uuid, 'auditor.admin@luna.local', 'Auditor Admin', 'human', 'active', 'enabled', 'auditor.admin@luna.local', '13800000104', '{"seed":"iam018","persona":"auditor_admin"}'::jsonb),
-  ('10000000-0000-0000-0000-000000000355'::uuid, '10000000-0000-0000-0000-000000000102'::uuid, '10000000-0000-0000-0000-000000000202'::uuid, 'developer.admin@luna.local', 'Developer Admin', 'human', 'active', 'enabled', 'developer.admin@luna.local', '13800000105', '{"seed":"iam018","persona":"developer_admin"}'::jsonb)
+  ('10000000-0000-0000-0000-000000000355'::uuid, '10000000-0000-0000-0000-000000000102'::uuid, '10000000-0000-0000-0000-000000000202'::uuid, 'developer.admin@luna.local', 'Developer Admin', 'human', 'active', 'enabled', 'developer.admin@luna.local', '13800000105', '{"seed":"iam018","persona":"developer_admin"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000356'::uuid, '10000000-0000-0000-0000-000000000102'::uuid, '10000000-0000-0000-0000-000000000202'::uuid, 'iam018.buyer.operator@luna.local', 'Buyer Operator', 'human', 'active', 'enabled', 'iam018.buyer.operator@luna.local', '13800000106', '{"seed":"iam018","persona":"buyer_operator"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000357'::uuid, '10000000-0000-0000-0000-000000000101'::uuid, '10000000-0000-0000-0000-000000000201'::uuid, 'iam018.seller.operator@luna.local', 'Seller Operator', 'human', 'active', 'enabled', 'iam018.seller.operator@luna.local', '13800000107', '{"seed":"iam018","persona":"seller_operator"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000358'::uuid, '10000000-0000-0000-0000-000000000103'::uuid, '10000000-0000-0000-0000-000000000203'::uuid, 'iam018.platform.reviewer@luna.local', 'Platform Reviewer', 'human', 'active', 'enabled', 'iam018.platform.reviewer@luna.local', '13800000108', '{"seed":"iam018","persona":"platform_reviewer"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000359'::uuid, '10000000-0000-0000-0000-000000000103'::uuid, '10000000-0000-0000-0000-000000000203'::uuid, 'iam018.risk.settlement@luna.local', 'Risk Settlement', 'human', 'active', 'enabled', 'iam018.risk.settlement@luna.local', '13800000109', '{"seed":"iam018","persona":"platform_risk_settlement"}'::jsonb)
 ON CONFLICT (user_id) DO UPDATE
 SET
   org_id = EXCLUDED.org_id,
@@ -76,7 +80,11 @@ INSERT INTO authz.subject_role_binding (
   ('10000000-0000-0000-0000-000000000552'::uuid, 'user', '10000000-0000-0000-0000-000000000352'::uuid, 'tenant_admin', 'org', '10000000-0000-0000-0000-000000000102'::uuid, 'active', '{"seed":"iam018"}'::jsonb),
   ('10000000-0000-0000-0000-000000000553'::uuid, 'user', '10000000-0000-0000-0000-000000000353'::uuid, 'platform_admin', 'org', '10000000-0000-0000-0000-000000000103'::uuid, 'active', '{"seed":"iam018"}'::jsonb),
   ('10000000-0000-0000-0000-000000000554'::uuid, 'user', '10000000-0000-0000-0000-000000000354'::uuid, 'platform_audit_security', 'org', '10000000-0000-0000-0000-000000000103'::uuid, 'active', '{"seed":"iam018"}'::jsonb),
-  ('10000000-0000-0000-0000-000000000555'::uuid, 'user', '10000000-0000-0000-0000-000000000355'::uuid, 'tenant_developer', 'org', '10000000-0000-0000-0000-000000000102'::uuid, 'active', '{"seed":"iam018"}'::jsonb)
+  ('10000000-0000-0000-0000-000000000555'::uuid, 'user', '10000000-0000-0000-0000-000000000355'::uuid, 'tenant_developer', 'org', '10000000-0000-0000-0000-000000000102'::uuid, 'active', '{"seed":"iam018"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000556'::uuid, 'user', '10000000-0000-0000-0000-000000000356'::uuid, 'buyer_operator', 'org', '10000000-0000-0000-0000-000000000102'::uuid, 'active', '{"seed":"iam018"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000557'::uuid, 'user', '10000000-0000-0000-0000-000000000357'::uuid, 'seller_operator', 'org', '10000000-0000-0000-0000-000000000101'::uuid, 'active', '{"seed":"iam018"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000558'::uuid, 'user', '10000000-0000-0000-0000-000000000358'::uuid, 'platform_reviewer', 'org', '10000000-0000-0000-0000-000000000103'::uuid, 'active', '{"seed":"iam018"}'::jsonb),
+  ('10000000-0000-0000-0000-000000000559'::uuid, 'user', '10000000-0000-0000-0000-000000000359'::uuid, 'platform_risk_settlement', 'org', '10000000-0000-0000-0000-000000000103'::uuid, 'active', '{"seed":"iam018"}'::jsonb)
 ON CONFLICT (subject_role_binding_id) DO UPDATE
 SET
   role_key = EXCLUDED.role_key,
@@ -92,7 +100,11 @@ WHERE user_id IN (
   '10000000-0000-0000-0000-000000000352'::uuid,
   '10000000-0000-0000-0000-000000000353'::uuid,
   '10000000-0000-0000-0000-000000000354'::uuid,
-  '10000000-0000-0000-0000-000000000355'::uuid
+  '10000000-0000-0000-0000-000000000355'::uuid,
+  '10000000-0000-0000-0000-000000000356'::uuid,
+  '10000000-0000-0000-0000-000000000357'::uuid,
+  '10000000-0000-0000-0000-000000000358'::uuid,
+  '10000000-0000-0000-0000-000000000359'::uuid
 )
 ORDER BY login_id;
 SQL

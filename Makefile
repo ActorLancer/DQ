@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up-local down-local up-core up-observability up-mocks up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel fabric-adapter-bootstrap fabric-adapter-test fabric-adapter-run fabric-event-listener-bootstrap fabric-event-listener-test fabric-event-listener-run fabric-ca-admin-bootstrap fabric-ca-admin-test fabric-ca-admin-run
+.PHONY: up-local down-local up-core up-observability up-mocks up-fabric up-demo logs migrate-up migrate-down seed-local test lint query-compile-check openapi-check xtask core-verify fabric-up fabric-down fabric-reset fabric-channel fabric-adapter-bootstrap fabric-adapter-test fabric-adapter-run fabric-event-listener-bootstrap fabric-event-listener-test fabric-event-listener-run fabric-ca-admin-bootstrap fabric-ca-admin-test fabric-ca-admin-run keycloak-reset-local
 COMPOSE_FILE ?= infra/docker/docker-compose.local.yml
 COMPOSE_ENV_FILE ?= infra/docker/.env.local
 
@@ -96,3 +96,6 @@ fabric-ca-admin-test:
 
 fabric-ca-admin-run:
 	./scripts/fabric-ca-admin-run.sh
+
+keycloak-reset-local:
+	COMPOSE_FILE="$(COMPOSE_FILE)" COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" ./scripts/reset-keycloak-local.sh

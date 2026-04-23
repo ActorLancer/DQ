@@ -66,7 +66,8 @@
 
 ## 阶段 5：回执模拟
 
-25. 验证 Keycloak realm：`./scripts/check-keycloak-realm.sh`
+25. 验证 Keycloak realm 与 password grant：`./scripts/check-keycloak-realm.sh`
+   - 若 realm 被旧独立数据库污染，可执行：`make keycloak-reset-local`
 26. 启动 Fabric 本地链（按需）：`make fabric-up`
 27. 生成本地通道并部署真实 Go 链码：`make fabric-channel`
 28. Fabric 自检：`./scripts/check-fabric-local.sh`
