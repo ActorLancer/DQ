@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { SearchOpsShell } from "@/components/console/ops-workbench-shell";
 
 export default function SearchOpsPage() {
-  return <ConsoleRoutePage routeKey="search_ops" />;
+  return <SearchOpsShell />;
 }

@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { OutboxDeadLetterShell } from "@/components/console/ops-workbench-shell";
 
 export default function OutboxDeadLetterPage() {
-  return <ConsoleRoutePage routeKey="outbox_dead_letter" />;
+  return <OutboxDeadLetterShell />;
 }

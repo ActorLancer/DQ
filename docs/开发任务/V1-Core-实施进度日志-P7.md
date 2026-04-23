@@ -478,6 +478,59 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-288` 无新增项。
 
+### BATCH-289（计划中）
+- 任务：`WEB-015` 实现 ops 页面：outbox、dead letter、一致性联查、搜索同步、推荐重建、观测总览入口
+- 状态：计划中
+- 说明：本批将控制台 `/ops/consistency`、`/ops/consistency/outbox` 与 `/ops/search` 从路由脚手架升级为正式 ops 工作台。页面必须真实读取当前主体与权限上下文，通过 `packages/sdk-ts` 调用 `platform-core` 的 `GET /api/v1/ops/consistency/{refType}/{refId}`、`POST /api/v1/ops/consistency/reconcile`、`GET /api/v1/ops/outbox`、`GET /api/v1/ops/dead-letters`、`POST /api/v1/ops/dead-letters/{id}/reprocess`、`GET /api/v1/ops/observability/overview`、搜索运维接口与推荐运维接口；写动作由前端生成并透传 `X-Idempotency-Key`，高风险动作展示并透传 step-up token / challenge。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-014` 已完成并作为本批基线。实现继续保持 `console-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-015` 只实现 ops 页面，不合并开发者页面、通知联查或全量可观测性子页；DoD 要求页面可访问、空态/错态/权限态可用、接口契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认状态联查页按关键主键联查订单、链事件、账单、交付和审计；搜索运维页覆盖索引同步任务、文档版本、Reindex、Alias、Redis 缓存失效、排序配置与权重快照；后续章节补充 Outbox / Dead Letter 与可观测性总览字段。
+  - `docs/原始PRD/日志、可观测性与告警设计.md`：确认审计权威为 `audit.*`，运行观测权威为 `ops.* + Loki/Tempo/Prometheus`，日志/观测访问也必须审计；V1 观测栈采用 OpenTelemetry、Prometheus、Alertmanager、Grafana、Loki、Tempo。
+  - 通用边界文档、OpenAPI 冻结表、统一错误码字典、测试矩阵、本地环境、配置项、技术选型、总体架构与全集成基线：确认前端只调用 `platform-core` 正式 API；`Kafka / PostgreSQL / OpenSearch / Redis / Fabric` 均不得前端直连；搜索与推荐必须回 PostgreSQL 最终校验，Kafka/outbox 只是同步与隔离边界。
+  - `docs/权限设计/按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`、`菜单树与路由表正式版.md`：确认 `ops.consistency.read/reconcile`、`ops.outbox.read`、`ops.dead_letter.read/reprocess`、`ops.search_sync.read`、`ops.search_reindex.execute`、`ops.search_alias.manage`、`ops.search_cache.invalidate`、`ops.search_ranking.read/manage`、`ops.recommendation.read/manage`、`ops.recommend_rebuild.execute` 与 `ops.observability.read` 的页面和按钮边界。
+  - `docs/05-test-cases/search-rec-cases.md`、`audit-consistency-cases.md`、`notification-cases.md`、`docs/04-runbooks/search-reindex.md`、`recommendation-runtime.md`、`opensearch-local.md` 与 `infra/docker/docker-compose.local.yml`：确认搜索运维、推荐重建、consumer 幂等、双层 DLQ、dead letter dry-run 重处理、观测后端与本地 OpenSearch / Redis / Kafka 运行口径。
+  - `packages/openapi/ops.yaml`、`search.yaml`、`recommendation.yaml`、`iam.yaml` 与对应 `docs/02-openapi/*.yaml`：确认本批使用的 ops / search / recommendation / iam 契约；两份 OpenAPI 副本当前同步。`ops` 的 dead-letter / consistency dry-run 后端要求 step-up，本批前端仍会额外透传幂等键以满足写页面幂等提交要求。
+  - `apps/platform-core/src/modules/audit/**`、`search/**`、`recommendation/**`、`iam/**`、`packages/sdk-ts/**`、`apps/console-web/**`：确认后端已有正式路由、权限、审计和 step-up 逻辑；`sdk-ts` 当前缺少多个 ops/search/recommendation domain 封装，控制台三个路由仍为 `ConsoleRoutePage` 脚手架。
+- 当前完成标准理解：
+  - `/ops/consistency` 必须支持正式 `refType/refId` 联查，展示业务主状态、证明状态、外部事实、recent outbox、recent dead letter、recent audit trace、链状态与投影状态；dry-run 修复表单必须显示幂等键、step-up 和审计强留痕提示。
+  - `/ops/consistency/outbox` 必须支持 outbox 与 dead letter 筛选、分页或虚拟滚动、发布尝试与 consumer 幂等摘要、dead letter dry-run 重处理表单、权限态/空态/错态/加载态。
+  - `/ops/search` 必须真实读取搜索同步任务、排序配置、推荐 placements / ranking profiles，并提供 reindex、alias switch、cache invalidate、search ranking patch 与 recommendation rebuild 的正式入口；写操作必须使用 React Hook Form + Zod 校验、透传 `X-Idempotency-Key`，高风险动作透传 step-up。
+  - 观测总览入口必须真实读取 `GET /api/v1/ops/observability/overview`，展示后端探针、告警、incident、SLO 与关键服务摘要，不把 Grafana/Loki/Tempo 链接当作前端直连数据源。
+  - 页面必须展示当前主体、角色、租户、作用域，错误码按后端统一错误响应回显，浏览器请求只能落 `/api/platform/**`。
+- 实施计划：
+  1. 扩展 `packages/sdk-ts` 的 `ops / search / recommendation` domain，补齐本批读取和写入方法、幂等/step-up header options 与 Vitest 单测。
+  2. 新增控制台 ops 视图模型、Zod/RHF schema、权限判断、错误格式化、幂等键生成、列表归一化和单元测试。
+  3. 替换 `/ops/consistency`、`/ops/consistency/outbox`、`/ops/search` 为正式业务组件，接入 TanStack Query/Table/Virtual、权限态、空态、错态、加载态、高风险 step-up 与审计提示。
+  4. 更新控制台路由元数据、Playwright smoke 和 TODO/预留清单，执行前端、SDK、后端、OpenAPI、真实 curl、浏览器 smoke 和数据库回查验证。
+
+### BATCH-289（待审批）
+- 任务：`WEB-015` 实现 ops 页面：outbox、dead letter、一致性联查、搜索同步、推荐重建、观测总览入口
+- 状态：待审批
+- 当前任务编号：`WEB-015`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-014` 已完成并作为本批基线。本批继续保持 `console-web -> /api/platform -> platform-core` 边界，没有新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 完成情况：
+  - 扩展 `packages/sdk-ts` 的 `ops / search / recommendation` domain：新增 outbox / dead-letter / consistency dry-run、search sync / reindex / alias / cache / ranking、recommendation placement / ranking / rebuild 等正式方法，写方法统一支持 `X-Idempotency-Key` 与必要 step-up header，并补齐 Vitest 覆盖。
+  - 新增 `apps/console-web/src/lib/ops-workbench.ts` 与单测，集中落地 `WEB-015` 的表单 Zod schema、权限判断、正式 payload / query 生成、幂等键生成、错误格式化和状态色映射。
+  - 将 `/ops/consistency` 升级为正式一致性联查页，真实展示当前主体、角色、租户/作用域、业务主状态、链证明、外部事实、投影差异、recent outbox、recent dead letter 与审计 trace；dry-run 修复表单展示并透传幂等键、step-up 和审计留痕提示。
+  - 将 `/ops/consistency/outbox` 升级为 Outbox / Dead Letter / 观测总览工作台，接入 `GET /api/v1/ops/outbox`、`GET /api/v1/ops/dead-letters`、`POST /api/v1/ops/dead-letters/{id}/reprocess`、`GET /api/v1/ops/observability/overview`，列表使用 TanStack Table + Virtual，覆盖筛选、排序、空态、错态、加载态、权限态和 dry-run 重处理。
+  - 将 `/ops/search` 升级为搜索同步与推荐重建运维页，接入搜索同步任务、搜索排序配置、推荐位、推荐排序配置、Reindex、Alias、缓存失效、推荐重建入口；写操作统一使用 React Hook Form + Zod、重复提交防护、幂等键和高风险 step-up 提示。
+  - 更新控制台路由 API 绑定与 Playwright smoke，使 `WEB-015` 页面纳入控制台 E2E；补充 eslint ignore，避免 Playwright 产物目录污染 lint。
+- 验证与证据：
+  1. `pnpm install` 通过，lockfile 无漂移。
+  2. `pnpm --filter @datab/sdk-ts typecheck`、`pnpm --filter @datab/sdk-ts test` 通过（10 个测试文件、32 个测试）。
+  3. `pnpm --filter @datab/console-web lint`、`typecheck`、`test:unit`、`test:e2e`、`build` 通过；根级 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过。
+  4. `./scripts/verify-local-stack.sh core` 通过；`./scripts/seed-local-iam-test-identities.sh` 完成本地 IAM 主体准备。
+  5. 真实运行 `platform-core` 后，`curl` 验证 `GET /api/v1/auth/me`、`GET /api/v1/ops/consistency/order/0b0c5dce-3fca-420e-b416-2433a1552e3e`、`GET /api/v1/ops/outbox`、`GET /api/v1/ops/dead-letters`、`GET /api/v1/ops/observability/overview` 均返回正式数据；缺 step-up 的 consistency / dead-letter 写入口返回 `AUD_EVIDENCE_INVALID`。
+  6. 真实 Keycloak password grant 获取 `local-platform-admin / platform_admin` Bearer，验证 `GET /api/v1/ops/search/sync`、`GET /api/v1/ops/search/ranking-profiles`、`GET /api/v1/ops/recommendation/placements`、`GET /api/v1/ops/recommendation/ranking-profiles` 均返回正式数据；缺 step-up 的 reindex / rebuild 分别返回 `SEARCH_QUERY_INVALID` 与 `RECOMMENDATION_REBUILD_INVALID`。
+  7. 插入最小 verified step-up 后，真实执行 `POST /api/v1/ops/consistency/reconcile` dry-run、`POST /api/v1/ops/dead-letters/{id}/reprocess` dry-run、`POST /api/v1/ops/search/cache/invalidate`、`POST /api/v1/ops/search/reindex` 与 `POST /api/v1/ops/recommendation/rebuild`；数据库回查命中 `audit.audit_event`、`audit.access_audit`、`ops.system_log`，搜索 reindex 临时 `search.index_sync_task` 已按 target_index 清理，审计记录按 append-only 保留。
+  8. 浏览器 smoke 通过：桌面与窄屏访问 `/ops/consistency`、`/ops/consistency/outbox`、`/ops/search`，捕获到 12 次 `/api/platform/**` 代理调用，`directForbidden=[]`，确认前端没有直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`。
+  9. 后端通用验证通过：`cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`（358 passed）、`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-openapi-schema.sh`。
+- 遗留与后续：
+  - 无。`WEB-015` 要求的 ops 页面、outbox / dead-letter / consistency / search / recommendation / observability 正式接入、权限态/空态/错态/加载态、SDK 契约绑定、幂等键、step-up、审计留痕、真实 API、E2E / 浏览器 smoke、数据库回查和受限系统边界验证均已完成；开发者页面完整业务细节、通知联查继续由后续 WEB task 承接。
+- TODO / 预留同步：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-289` 无新增项。
+
 ### BATCH-281（计划中）
 - 任务：`WEB-007` 实现卖方上架中心：商品草稿、SKU 编辑、元信息、质量报告、模板绑定、提交审核
 - 状态：计划中

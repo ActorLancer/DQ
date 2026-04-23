@@ -32,4 +32,16 @@ test("console home and scaffold pages are reachable", async ({ page }) => {
   await expect(
     page.getByText("GET /api/v1/products?status=pending_review"),
   ).toBeVisible();
+
+  await page.goto("/ops/consistency");
+  await expect(page.getByText("双层权威一致性联查")).toBeVisible();
+  await expect(page.getByText("dry-run 一致性修复预演")).toBeVisible();
+
+  await page.goto("/ops/consistency/outbox");
+  await expect(page.getByText("Outbox / Dead Letter 控制台")).toBeVisible();
+  await expect(page.getByText("Dead Letter dry-run 重处理")).toBeVisible();
+
+  await page.goto("/ops/search");
+  await expect(page.getByText("搜索同步与推荐重建运维")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "推荐重建", exact: true })).toBeVisible();
 });

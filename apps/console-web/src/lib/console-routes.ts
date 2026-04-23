@@ -136,8 +136,9 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     primaryPermissions: ["ops.consistency.reconcile"],
     description: "数据库主状态、链状态和外部事实一致性联查入口。",
     apiBindings: [
-      "/api/v1/ops/consistency/{refType}/{refId}",
-      "/api/v1/ops/consistency/reconcile",
+      "GET /api/v1/auth/me",
+      "GET /api/v1/ops/consistency/{refType}/{refId}",
+      "POST /api/v1/ops/consistency/reconcile",
     ],
   },
   {
@@ -148,7 +149,13 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     viewPermission: "ops.outbox.read / ops.dead_letter.read",
     primaryPermissions: ["ops.dead_letter.reprocess"],
     description: "outbox、发布尝试、死信与重处理入口。",
-    apiBindings: ["/api/v1/ops/outbox", "/api/v1/ops/dead-letters"],
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "GET /api/v1/ops/outbox",
+      "GET /api/v1/ops/dead-letters",
+      "POST /api/v1/ops/dead-letters/{id}/reprocess",
+      "GET /api/v1/ops/observability/overview",
+    ],
   },
   {
     key: "search_ops",
@@ -164,9 +171,16 @@ export const consoleRouteList: ConsoleRouteMeta[] = [
     ],
     description: "搜索同步、别名、缓存和排序配置入口。",
     apiBindings: [
-      "/api/v1/ops/search/sync",
-      "/api/v1/ops/search/reindex",
-      "/api/v1/ops/search/aliases",
+      "GET /api/v1/auth/me",
+      "GET /api/v1/ops/search/sync",
+      "POST /api/v1/ops/search/reindex",
+      "POST /api/v1/ops/search/aliases/switch",
+      "POST /api/v1/ops/search/cache/invalidate",
+      "GET /api/v1/ops/search/ranking-profiles",
+      "PATCH /api/v1/ops/search/ranking-profiles/{id}",
+      "GET /api/v1/ops/recommendation/placements",
+      "GET /api/v1/ops/recommendation/ranking-profiles",
+      "POST /api/v1/ops/recommendation/rebuild",
     ],
   },
   {

@@ -1,5 +1,5 @@
-import { ConsoleRoutePage } from "@/components/console/route-page";
+import { ConsistencyOpsShell } from "@/components/console/ops-workbench-shell";
 
 export default function ConsistencyTracePage() {
-  return <ConsoleRoutePage routeKey="consistency_trace" />;
+  return <ConsistencyOpsShell />;
 }

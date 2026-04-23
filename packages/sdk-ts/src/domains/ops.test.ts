@@ -71,4 +71,80 @@ describe("ops domain client", () => {
       expect.objectContaining({ method: "GET" }),
     );
   });
+
+  it("submits dry-run consistency reconcile with idempotency and step-up headers", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(JSON.stringify({ success: true, data: { status: "dry_run_ready" } }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const sdk = createOpsClient(
+      new PlatformClient({ baseUrl: "http://platform.test", fetch: fetchMock }),
+    );
+
+    await sdk.reconcileConsistency(
+      {
+        ref_type: "order",
+        ref_id: "10000000-0000-0000-0000-000000000001",
+        mode: "full",
+        dry_run: true,
+        reason: "preview consistency repair",
+      },
+      {
+        idempotencyKey: "idem-consistency-1",
+        stepUpChallengeId: "20000000-0000-0000-0000-000000000001",
+      },
+    );
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://platform.test/api/v1/ops/consistency/reconcile",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(headers.get("x-idempotency-key")).toBe("idem-consistency-1");
+    expect(headers.get("x-step-up-challenge-id")).toBe(
+      "20000000-0000-0000-0000-000000000001",
+    );
+  });
+
+  it("queries and dry-run reprocesses dead letters through ops contract paths", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(JSON.stringify({ success: true, data: { items: [] } }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const sdk = createOpsClient(
+      new PlatformClient({ baseUrl: "http://platform.test", fetch: fetchMock }),
+    );
+
+    await sdk.listDeadLetters({
+      reprocess_status: "not_reprocessed",
+      page: 1,
+      page_size: 20,
+    });
+    await sdk.reprocessDeadLetter(
+      { id: "30000000-0000-0000-0000-000000000001" },
+      {
+        reason: "preview search-indexer reprocess",
+        dry_run: true,
+        metadata: { source: "web-015" },
+      },
+      {
+        idempotencyKey: "idem-dead-letter-1",
+        stepUpToken: "40000000-0000-0000-0000-000000000001",
+      },
+    );
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "http://platform.test/api/v1/ops/dead-letters?reprocess_status=not_reprocessed&page=1&page_size=20",
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "http://platform.test/api/v1/ops/dead-letters/30000000-0000-0000-0000-000000000001/reprocess",
+    );
+    const headers = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
+    expect(headers.get("x-idempotency-key")).toBe("idem-dead-letter-1");
+    expect(headers.get("x-step-up-token")).toBe(
+      "40000000-0000-0000-0000-000000000001",
+    );
+  });
 });
