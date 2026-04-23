@@ -434,6 +434,49 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-285（计划中）
+- 任务：`SEARCHREC-020` 逐任务复核与正式重验（SEARCHREC consumer 幂等、双层 DLQ 与 reprocess 闭环）
+- 状态：计划中
+- 说明：按 `SEARCHREC-020` 的冻结口径，重新核对 `search-indexer` 与 `recommendation-aggregator` 是否仍统一基于 envelope `event_id` 写 `ops.consumer_idempotency_record`，并在失败路径同时进入 `ops.dead_letter_event + dtp.dead-letter`，且只有在成功处理或失败已安全隔离后才提交 offset；重点确认这条闭环不只是旧批次日志结论，而是当前代码、runbook、worker smoke 和 `AUD-010` reprocess smoke 仍能真实证明的运行事实。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-020`，不提前进入 `SEARCHREC-015` 的综合一致性测试矩阵。
+### BATCH-285（待审批）
+- 任务：`SEARCHREC-020` 逐任务复核与正式重验（SEARCHREC consumer 幂等、双层 DLQ 与 reprocess 闭环）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-020`
+- 前置依赖核对结果：`AUD-008`、`AUD-010`、`SEARCHREC-001`、`SEARCHREC-010` 已在前序阶段完成；当前仓库仍具备 canonical outbox、`search-indexer` 正式搜索同步链路、`recommendation-aggregator` 正式行为回流链路与 dead-letter reprocess 控制面，本批只重验 SEARCHREC consumer 可靠性，不提前进入 `SEARCHREC-015`。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。`workers/search-indexer/src/main.rs` 与 `workers/recommendation-aggregator/src/main.rs` 仍统一以 envelope `event_id` 为幂等键写入 `ops.consumer_idempotency_record`，重复投递只返回 `duplicate`，不会重复执行 worker 副作用。
+  - 两个 worker 的失败路径仍先写 `ops.dead_letter_event`，再向 Kafka `dtp.dead-letter` 发布隔离消息，并把幂等记录更新为 `dead_lettered`；只有在 `processed` 或 `dead_lettered` 这两类“已安全隔离”的结果码下，主循环才调用 `commit_message` 提交 offset，未恢复到“失败直接提交”的旧风险口径。
+  - `docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md` 与 `A15` 当前仍与代码一致，明确 SEARCHREC consumer 的正式可靠性闭环由 `AUD-026 + SEARCHREC-020` 共同承接，`AUD-010` 的 `POST /api/v1/ops/dead-letters/{id}/reprocess` 仍可对相关失败记录执行 `dry_run + step-up` 预演。
+- 验证：
+  - `cargo fmt --all --check`
+  - `cargo check -p search-indexer`
+  - `cargo check -p recommendation-aggregator`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `search_indexer_db_smoke` 通过，继续证明 `search-indexer` 成功路径会写搜索投影副作用和 `processed` 幂等记录，失败路径会写 `ops.dead_letter_event + dtp.dead-letter`，并把关联 `search.index_sync_task` 回写为失败/隔离状态。
+  - `recommendation_aggregator_db_smoke` 通过，继续证明 `recommendation-aggregator` 成功路径会消费 `dtp.recommend.behavior` 并写推荐行为副作用，失败路径会进入双层 DLQ，幂等记录结果码为 `dead_lettered`。
+  - `audit_dead_letter_reprocess_db_smoke` 通过，继续证明 `AUD-010` 的 reprocess 控制面仍能对 SEARCHREC worker 失败记录做 `dry_run` 预演，不存在“有 DLQ 但无法统一重处理”的断层。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 均通过；全量回归结果保持 `355 passed; 0 failed; 0 ignored`。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-020`
+  - `双层权威模型与链上链下一致性设计.md`：consumer / DLQ / replay 正式语义
+  - `056_dual_authority_consistency.sql`：`ops.consumer_idempotency_record`
+  - `一致性与事件接口协议正式版.md`：dead letter 查询与重处理
+  - `事件模型与Topic清单正式版.md`：统一 `dtp.dead-letter`
+  - `A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`
+- 覆盖的任务清单条目：`SEARCHREC-020`
+- 未覆盖项：
+  - 无。当前批次已重新验证 SEARCHREC consumer 的 `event_id` 幂等、双层 DLQ、offset 提交纪律与 reprocess 对接，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
