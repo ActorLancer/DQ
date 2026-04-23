@@ -32,7 +32,9 @@
 14. 初始化 OpenSearch 索引：`./infra/opensearch/init-opensearch.sh`
     - `staging` 正式搜索链路必需；仅验证 `local / demo` 的 PostgreSQL 搜索投影 fallback 时可跳过
 15. 执行本地 seed：`make seed-local`
-16. 准备五条标准链路演示数据：`fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json`
+16. 准备五条标准链路演示数据：
+    - `fixtures/demo/manifest.json` 是 `TEST-001` 之后的正式 demo 数据包入口，供后续 `seed-demo.sh`、E2E 与验收矩阵复用
+    - `fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json` 继续保留为 `ENV-041` 本地 bootstrap 样例
     - `db/seeds/033_searchrec_recommendation_samples.sql` 会同步把五条官方场景商品写入 `catalog.*` 并固化到 `recommend.placement_definition(metadata.fixed_samples)`，使首页 `home_featured` 在演示环境中可直接作为五场景闭环入口
 
 补充说明：

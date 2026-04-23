@@ -1,0 +1,238 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-demo",
+  "delivery_blueprints": [
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000001",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000001",
+      "scenario_code": "S1",
+      "sku_type": "API_SUB",
+      "delivery_object_kind": "api_access",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s1_api_sub/api-enable-request.example.json",
+      "expected_audit_action": "delivery.api.enable",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "app_name": "test001-s1-api-app",
+        "quota_json": {
+          "billing_mode": "subscription",
+          "period": "monthly",
+          "included_calls": 1000
+        },
+        "rate_limit_json": {
+          "requests_per_minute": 60,
+          "burst": 10,
+          "concurrency": 3
+        },
+        "upstream_mode": "platform_proxy"
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000002",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000101",
+      "scenario_code": "S1",
+      "sku_type": "API_PPU",
+      "delivery_object_kind": "api_metered_access",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s1_api_sub/api-enable-request.example.json",
+      "expected_audit_action": "delivery.api.enable",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "app_name": "test001-s1-api-ppu-app",
+        "quota_json": {
+          "billing_mode": "metered",
+          "prepaid_calls": 1000
+        },
+        "rate_limit_json": {
+          "requests_per_minute": 30,
+          "burst": 5,
+          "concurrency": 2
+        },
+        "upstream_mode": "platform_proxy"
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000003",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000002",
+      "scenario_code": "S2",
+      "sku_type": "FILE_STD",
+      "delivery_object_kind": "encrypted_file_package",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s2_file_std/file-delivery-request.example.json",
+      "expected_audit_action": "delivery.file.commit",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "object_uri": "s3://delivery-objects/test001/s2/payload.enc",
+        "content_type": "application/octet-stream",
+        "size_bytes": 2048,
+        "content_hash": "sha256:test001:s2:file",
+        "download_limit": 3
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000004",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000102",
+      "scenario_code": "S2",
+      "sku_type": "FILE_SUB",
+      "delivery_object_kind": "revision_subscription",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s2_file_std/revision-subscription-request.example.json",
+      "expected_audit_action": "delivery.subscription.manage",
+      "expected_outbox_event": null,
+      "payload_snapshot": {
+        "revision_window": {
+          "from_version": 1,
+          "to_version": 12
+        },
+        "cadence": "monthly",
+        "delivery_channel": "file_package"
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000005",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000003",
+      "scenario_code": "S3",
+      "sku_type": "SBX_STD",
+      "delivery_object_kind": "sandbox_workspace",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s3_sbx_std/sandbox-workspace-request.example.json",
+      "expected_audit_action": "delivery.sandbox.enable",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "workspace_name": "test001-s3-workspace",
+        "clean_room_mode": "lite",
+        "data_residency_mode": "seller_self_hosted",
+        "export_policy_json": {
+          "allow_export": false,
+          "allowed_formats": ["json"],
+          "max_exports": 0,
+          "network_access": "deny"
+        }
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000006",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000103",
+      "scenario_code": "S3",
+      "sku_type": "SHARE_RO",
+      "delivery_object_kind": "share_grant",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s3_sbx_std/share-grant-request.example.json",
+      "expected_audit_action": "delivery.share.manage",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "operation": "grant",
+        "recipient_ref": "warehouse://buyer/test001/s3",
+        "share_protocol": "share_grant",
+        "access_locator": "share://seller/test001/s3/dataset",
+        "scope_json": {
+          "schema": "analytics",
+          "tables": ["orders", "inventory"]
+        }
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000007",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000004",
+      "scenario_code": "S4",
+      "sku_type": "API_SUB",
+      "delivery_object_kind": "api_access",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s1_api_sub/api-enable-request.example.json",
+      "expected_audit_action": "delivery.api.enable",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "app_name": "test001-s4-api-app",
+        "quota_json": {
+          "billing_mode": "subscription",
+          "period": "monthly",
+          "included_calls": 5000
+        },
+        "rate_limit_json": {
+          "requests_per_minute": 90,
+          "burst": 20,
+          "concurrency": 5
+        },
+        "upstream_mode": "platform_proxy"
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000008",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000104",
+      "scenario_code": "S4",
+      "sku_type": "RPT_STD",
+      "delivery_object_kind": "report_artifact",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s4_api_report/report-delivery-request.example.json",
+      "expected_audit_action": "delivery.report.commit",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "object_uri": "s3://report-results/test001/s4/monthly-report.pdf",
+        "content_type": "application/pdf",
+        "size_bytes": 4096,
+        "report_type": "pdf_report",
+        "metadata": {
+          "title": "TEST-001 retail report",
+          "template_code": "REPORT_V1"
+        }
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000009",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000005",
+      "scenario_code": "S5",
+      "sku_type": "QRY_LITE",
+      "delivery_object_kind": "template_query_grant",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s5_qry_lite/template-grant-request.example.json",
+      "expected_audit_action": "delivery.template_query.enable",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "allowed_template_ids": ["tpl_demo_s5_location_score_v1"],
+        "run_quota_json": {
+          "max_runs": 5,
+          "daily_limit": 2,
+          "monthly_limit": 8
+        },
+        "output_boundary_json": {
+          "allowed_formats": ["json"],
+          "max_rows": 5,
+          "max_cells": 15
+        }
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000010",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000005",
+      "scenario_code": "S5",
+      "sku_type": "QRY_LITE",
+      "delivery_object_kind": "query_result_artifact",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s5_qry_lite/template-run-request.example.json",
+      "expected_audit_action": "delivery.template_query.use",
+      "expected_outbox_event": null,
+      "payload_snapshot": {
+        "query_template_id": "tpl_demo_s5_location_score_v1",
+        "request_payload_json": {
+          "city": "Shanghai",
+          "radius_km": 3,
+          "limit": 2
+        },
+        "output_boundary_json": {
+          "selected_format": "json",
+          "max_rows": 2,
+          "max_cells": 6
+        }
+      }
+    },
+    {
+      "delivery_blueprint_id": "41000000-0000-0000-0000-000000000011",
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000105",
+      "scenario_code": "S5",
+      "sku_type": "RPT_STD",
+      "delivery_object_kind": "report_artifact",
+      "source_fixture": "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/s4_api_report/report-delivery-request.example.json",
+      "expected_audit_action": "delivery.report.commit",
+      "expected_outbox_event": "delivery.committed",
+      "payload_snapshot": {
+        "object_uri": "s3://report-results/test001/s5/location-score-report.pdf",
+        "content_type": "application/pdf",
+        "size_bytes": 3072,
+        "report_type": "pdf_report",
+        "metadata": {
+          "title": "TEST-001 location score report",
+          "template_code": "REPORT_V1"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-demo",
+  "scenarios": [
+    {
+      "scenario_code": "S1",
+      "scenario_name": "工业设备运行指标 API 订阅",
+      "industry_code": "industrial_manufacturing",
+      "participants": {
+        "seller_org_id": "10000000-0000-0000-0000-000000000101",
+        "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+        "ops_org_id": "10000000-0000-0000-0000-000000000103",
+        "buyer_primary_user_id": "10000000-0000-0000-0000-000000000305"
+      },
+      "official_display_product_id": "20000000-0000-0000-0000-000000000309",
+      "official_display_sku_ids": [
+        "20000000-0000-0000-0000-000000000409",
+        "20000000-0000-0000-0000-000000000410"
+      ],
+      "primary_order_blueprint_id": "34000000-0000-0000-0000-000000000001",
+      "supplementary_order_blueprint_ids": ["34000000-0000-0000-0000-000000000101"],
+      "billing_sample_ids": [
+        "42000000-0000-0000-0000-000000000001",
+        "42000000-0000-0000-0000-000000000002"
+      ],
+      "audit_suite_id": "44000000-0000-0000-0000-000000000001",
+      "home_featured_order": 0
+    },
+    {
+      "scenario_code": "S2",
+      "scenario_name": "工业质量与产线日报文件包交付",
+      "industry_code": "industrial_manufacturing",
+      "participants": {
+        "seller_org_id": "10000000-0000-0000-0000-000000000101",
+        "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+        "ops_org_id": "10000000-0000-0000-0000-000000000103",
+        "buyer_primary_user_id": "10000000-0000-0000-0000-000000000302"
+      },
+      "official_display_product_id": "20000000-0000-0000-0000-000000000310",
+      "official_display_sku_ids": [
+        "20000000-0000-0000-0000-000000000411",
+        "20000000-0000-0000-0000-000000000412"
+      ],
+      "primary_order_blueprint_id": "34000000-0000-0000-0000-000000000002",
+      "supplementary_order_blueprint_ids": ["34000000-0000-0000-0000-000000000102"],
+      "billing_sample_ids": [
+        "42000000-0000-0000-0000-000000000003",
+        "42000000-0000-0000-0000-000000000004"
+      ],
+      "audit_suite_id": "44000000-0000-0000-0000-000000000002",
+      "home_featured_order": 1
+    },
+    {
+      "scenario_code": "S3",
+      "scenario_name": "供应链协同查询沙箱",
+      "industry_code": "industrial_manufacturing",
+      "participants": {
+        "seller_org_id": "10000000-0000-0000-0000-000000000101",
+        "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+        "ops_org_id": "10000000-0000-0000-0000-000000000103",
+        "buyer_primary_user_id": "10000000-0000-0000-0000-000000000306"
+      },
+      "official_display_product_id": "20000000-0000-0000-0000-000000000311",
+      "official_display_sku_ids": [
+        "20000000-0000-0000-0000-000000000413",
+        "20000000-0000-0000-0000-000000000414"
+      ],
+      "primary_order_blueprint_id": "34000000-0000-0000-0000-000000000003",
+      "supplementary_order_blueprint_ids": ["34000000-0000-0000-0000-000000000103"],
+      "billing_sample_ids": [
+        "42000000-0000-0000-0000-000000000005",
+        "42000000-0000-0000-0000-000000000006"
+      ],
+      "audit_suite_id": "44000000-0000-0000-0000-000000000003",
+      "home_featured_order": 2
+    },
+    {
+      "scenario_code": "S4",
+      "scenario_name": "零售门店经营分析 API / 报告订阅",
+      "industry_code": "retail",
+      "participants": {
+        "seller_org_id": "10000000-0000-0000-0000-000000000104",
+        "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+        "ops_org_id": "10000000-0000-0000-0000-000000000103",
+        "buyer_primary_user_id": "10000000-0000-0000-0000-000000000305"
+      },
+      "official_display_product_id": "20000000-0000-0000-0000-000000000312",
+      "official_display_sku_ids": [
+        "20000000-0000-0000-0000-000000000415",
+        "20000000-0000-0000-0000-000000000416"
+      ],
+      "primary_order_blueprint_id": "34000000-0000-0000-0000-000000000004",
+      "supplementary_order_blueprint_ids": ["34000000-0000-0000-0000-000000000104"],
+      "billing_sample_ids": [
+        "42000000-0000-0000-0000-000000000007",
+        "42000000-0000-0000-0000-000000000008"
+      ],
+      "audit_suite_id": "44000000-0000-0000-0000-000000000004",
+      "home_featured_order": 3
+    },
+    {
+      "scenario_code": "S5",
+      "scenario_name": "商圈/门店选址查询服务",
+      "industry_code": "retail",
+      "participants": {
+        "seller_org_id": "10000000-0000-0000-0000-000000000104",
+        "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+        "ops_org_id": "10000000-0000-0000-0000-000000000103",
+        "buyer_primary_user_id": "10000000-0000-0000-0000-000000000302"
+      },
+      "official_display_product_id": "20000000-0000-0000-0000-000000000313",
+      "official_display_sku_ids": [
+        "20000000-0000-0000-0000-000000000417",
+        "20000000-0000-0000-0000-000000000418"
+      ],
+      "primary_order_blueprint_id": "34000000-0000-0000-0000-000000000005",
+      "supplementary_order_blueprint_ids": ["34000000-0000-0000-0000-000000000105"],
+      "billing_sample_ids": [
+        "42000000-0000-0000-0000-000000000009",
+        "42000000-0000-0000-0000-000000000010"
+      ],
+      "audit_suite_id": "44000000-0000-0000-0000-000000000005",
+      "home_featured_order": 4
+    }
+  ]
+}

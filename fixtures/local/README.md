@@ -9,6 +9,11 @@
 - `standard-scenarios-sample.json`
 - `local-smoke-suite-manifest.json`
 
+说明：
+
+- `fixtures/local/` 仍服务于 `ENV-*` 本地 bootstrap、smoke、配置快照与轻量样例。
+- `TEST-001` 起，五条标准链路的正式 demo 数据包迁移到 `fixtures/demo/`，后续 `seed-demo.sh`、E2E 与验收矩阵应优先消费 `fixtures/demo/`。
+
 ## ENV-041 补充说明
 
 - `standard-scenarios-manifest.json` 对齐首批五条标准链路（S1~S5）与主 SKU。

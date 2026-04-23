@@ -1,0 +1,57 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-demo",
+  "generated_for_task": "TEST-001",
+  "version": "1.0.0",
+  "official_scenario_order": ["S1", "S2", "S3", "S4", "S5"],
+  "coverage": {
+    "standard_skus": [
+      "FILE_STD",
+      "FILE_SUB",
+      "SHARE_RO",
+      "API_SUB",
+      "API_PPU",
+      "QRY_LITE",
+      "SBX_STD",
+      "RPT_STD"
+    ],
+    "required_sections": [
+      "subjects",
+      "catalog",
+      "orders",
+      "delivery",
+      "billing",
+      "audit",
+      "scenarios"
+    ],
+    "home_featured_placement_code": "home_featured"
+  },
+  "files": {
+    "subjects": "fixtures/demo/subjects.json",
+    "catalog": "fixtures/demo/catalog.json",
+    "orders": "fixtures/demo/orders.json",
+    "delivery": "fixtures/demo/delivery.json",
+    "billing": "fixtures/demo/billing.json",
+    "audit": "fixtures/demo/audit.json",
+    "scenarios": "fixtures/demo/scenarios.json"
+  },
+  "validation": {
+    "script": "scripts/check-demo-fixtures.sh",
+    "checks": [
+      "five_scenarios_present_and_ordered",
+      "eight_standard_skus_covered",
+      "scenario_templates_match_catalog_and_orders",
+      "home_featured_fixed_samples_match_official_products",
+      "delivery_billing_audit_refs_complete",
+      "upstream_truth_sources_exist_and_are_referenced"
+    ]
+  },
+  "sources": [
+    "docs/全集成文档/数据交易平台-全集成基线-V1.md",
+    "apps/platform-core/src/modules/catalog/standard_scenarios.rs",
+    "db/seeds/010_test_tenants.sql",
+    "db/seeds/031_sku_trigger_matrix.sql",
+    "db/seeds/033_searchrec_recommendation_samples.sql",
+    "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/manifest.json",
+    "fixtures/local/standard-scenarios-manifest.json"
+  ]
+}

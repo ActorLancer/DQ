@@ -20,6 +20,7 @@
   - `make up-mocks`：`core + mock-payment-provider`
   - `make up-demo`：全量演示组合
 - `check-local-stack.sh`：本地依赖健康检查。
+- `check-demo-fixtures.sh`：校验 `fixtures/demo/` 五条标准链路正式数据包的场景顺序、SKU 覆盖、商品/订单/交付/账单/审计引用和上游真值源一致性。
 - `check-keycloak-realm.sh`：校验 Keycloak realm 导入、`portal-web` password grant、正式角色 claim 与 `user_id/org_id` 自定义 claims。
 - `reset-keycloak-local.sh`：重建本地独立 Keycloak 数据库并重新导入 `platform-local` realm，修复旧 realm 残留或导入污染。
 - `prune-local.sh`：安全清理当前仓库本地卷、网络、Fabric 状态（默认 `--dry-run`）。

@@ -1,0 +1,338 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-demo",
+  "order_blueprints": [
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000001",
+      "scenario_code": "S1",
+      "scenario_role": "primary",
+      "product_id": "20000000-0000-0000-0000-000000000309",
+      "sku_id": "20000000-0000-0000-0000-000000000409",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000305",
+      "request_id": "req_test001_s1_api_sub_001",
+      "idempotency_key": "test001-s1-api-sub-001",
+      "current_state": "active",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "pending_cycle",
+      "dispute_status": "none",
+      "order_amount": "5999.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S1",
+        "primary_sku": "API_SUB",
+        "supplementary_skus": ["API_PPU"],
+        "selected_sku_role": "primary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_API_SUB_V1",
+        "acceptance_template": "ACCEPT_API_SUB_V1",
+        "refund_template": "REFUND_API_SUB_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000001"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000001"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000101",
+      "scenario_code": "S1",
+      "scenario_role": "supplementary",
+      "product_id": "20000000-0000-0000-0000-000000000309",
+      "sku_id": "20000000-0000-0000-0000-000000000410",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000305",
+      "request_id": "req_test001_s1_api_ppu_001",
+      "idempotency_key": "test001-s1-api-ppu-001",
+      "current_state": "active",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "metering_open",
+      "dispute_status": "none",
+      "order_amount": "800.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S1",
+        "primary_sku": "API_SUB",
+        "supplementary_skus": ["API_PPU"],
+        "selected_sku_role": "supplementary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_API_SUB_V1",
+        "acceptance_template": "ACCEPT_API_SUB_V1",
+        "refund_template": "REFUND_API_SUB_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000002"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000002"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000002",
+      "scenario_code": "S2",
+      "scenario_role": "primary",
+      "product_id": "20000000-0000-0000-0000-000000000310",
+      "sku_id": "20000000-0000-0000-0000-000000000411",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000302",
+      "request_id": "req_test001_s2_file_std_001",
+      "idempotency_key": "test001-s2-file-std-001",
+      "current_state": "accepted",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "ready_for_settlement",
+      "dispute_status": "none",
+      "order_amount": "2399.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S2",
+        "primary_sku": "FILE_STD",
+        "supplementary_skus": ["FILE_SUB"],
+        "selected_sku_role": "primary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_FILE_V1",
+        "acceptance_template": "ACCEPT_FILE_V1",
+        "refund_template": "REFUND_FILE_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000003"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000003"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000102",
+      "scenario_code": "S2",
+      "scenario_role": "supplementary",
+      "product_id": "20000000-0000-0000-0000-000000000310",
+      "sku_id": "20000000-0000-0000-0000-000000000412",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000306",
+      "request_id": "req_test001_s2_file_sub_001",
+      "idempotency_key": "test001-s2-file-sub-001",
+      "current_state": "active",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "cycle_open",
+      "dispute_status": "none",
+      "order_amount": "3999.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S2",
+        "primary_sku": "FILE_STD",
+        "supplementary_skus": ["FILE_SUB"],
+        "selected_sku_role": "supplementary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_FILE_V1",
+        "acceptance_template": "ACCEPT_FILE_V1",
+        "refund_template": "REFUND_FILE_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000004"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000004"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000003",
+      "scenario_code": "S3",
+      "scenario_role": "primary",
+      "product_id": "20000000-0000-0000-0000-000000000311",
+      "sku_id": "20000000-0000-0000-0000-000000000413",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000306",
+      "request_id": "req_test001_s3_sbx_std_001",
+      "idempotency_key": "test001-s3-sbx-std-001",
+      "current_state": "active",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "pending",
+      "dispute_status": "none",
+      "order_amount": "6999.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S3",
+        "primary_sku": "SBX_STD",
+        "supplementary_skus": ["SHARE_RO"],
+        "selected_sku_role": "primary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_SANDBOX_V1",
+        "acceptance_template": "ACCEPT_SANDBOX_V1",
+        "refund_template": "REFUND_SANDBOX_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000005"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000005"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000103",
+      "scenario_code": "S3",
+      "scenario_role": "supplementary",
+      "product_id": "20000000-0000-0000-0000-000000000311",
+      "sku_id": "20000000-0000-0000-0000-000000000414",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000306",
+      "request_id": "req_test001_s3_share_ro_001",
+      "idempotency_key": "test001-s3-share-ro-001",
+      "current_state": "active",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "pending",
+      "dispute_status": "none",
+      "order_amount": "1999.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S3",
+        "primary_sku": "SBX_STD",
+        "supplementary_skus": ["SHARE_RO"],
+        "selected_sku_role": "supplementary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_SANDBOX_V1",
+        "acceptance_template": "ACCEPT_SANDBOX_V1",
+        "refund_template": "REFUND_SANDBOX_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000006"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000006"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000004",
+      "scenario_code": "S4",
+      "scenario_role": "primary",
+      "product_id": "20000000-0000-0000-0000-000000000312",
+      "sku_id": "20000000-0000-0000-0000-000000000415",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000104",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000305",
+      "request_id": "req_test001_s4_api_sub_001",
+      "idempotency_key": "test001-s4-api-sub-001",
+      "current_state": "active",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "pending_cycle",
+      "dispute_status": "none",
+      "order_amount": "4599.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S4",
+        "primary_sku": "API_SUB",
+        "supplementary_skus": ["RPT_STD"],
+        "selected_sku_role": "primary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_API_SUB_V1",
+        "acceptance_template": "ACCEPT_API_SUB_V1",
+        "refund_template": "REFUND_API_SUB_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000007"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000007"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000104",
+      "scenario_code": "S4",
+      "scenario_role": "supplementary",
+      "product_id": "20000000-0000-0000-0000-000000000312",
+      "sku_id": "20000000-0000-0000-0000-000000000416",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000104",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000302",
+      "request_id": "req_test001_s4_rpt_std_001",
+      "idempotency_key": "test001-s4-rpt-std-001",
+      "current_state": "accepted",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "ready_for_settlement",
+      "dispute_status": "none",
+      "order_amount": "1499.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S4",
+        "primary_sku": "API_SUB",
+        "supplementary_skus": ["RPT_STD"],
+        "selected_sku_role": "supplementary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_API_SUB_V1",
+        "acceptance_template": "ACCEPT_API_SUB_V1",
+        "refund_template": "REFUND_API_SUB_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000008"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000008"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000005",
+      "scenario_code": "S5",
+      "scenario_role": "primary",
+      "product_id": "20000000-0000-0000-0000-000000000313",
+      "sku_id": "20000000-0000-0000-0000-000000000417",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000104",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000302",
+      "request_id": "req_test001_s5_qry_lite_001",
+      "idempotency_key": "test001-s5-qry-lite-001",
+      "current_state": "accepted",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "accepted",
+      "settlement_status": "ready_for_settlement",
+      "dispute_status": "none",
+      "order_amount": "1699.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S5",
+        "primary_sku": "QRY_LITE",
+        "supplementary_skus": ["RPT_STD"],
+        "selected_sku_role": "primary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_QUERY_LITE_V1",
+        "acceptance_template": "ACCEPT_QUERY_LITE_V1",
+        "refund_template": "REFUND_QUERY_LITE_V1"
+      },
+      "delivery_blueprint_ids": [
+        "41000000-0000-0000-0000-000000000009",
+        "41000000-0000-0000-0000-000000000010"
+      ],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000009"]
+    },
+    {
+      "order_blueprint_id": "34000000-0000-0000-0000-000000000105",
+      "scenario_code": "S5",
+      "scenario_role": "supplementary",
+      "product_id": "20000000-0000-0000-0000-000000000313",
+      "sku_id": "20000000-0000-0000-0000-000000000418",
+      "buyer_org_id": "10000000-0000-0000-0000-000000000102",
+      "seller_org_id": "10000000-0000-0000-0000-000000000104",
+      "created_by_user_id": "10000000-0000-0000-0000-000000000302",
+      "request_id": "req_test001_s5_rpt_std_001",
+      "idempotency_key": "test001-s5-rpt-std-001",
+      "current_state": "delivered",
+      "payment_status": "paid",
+      "delivery_status": "completed",
+      "acceptance_status": "pending",
+      "settlement_status": "pending_acceptance",
+      "dispute_status": "none",
+      "order_amount": "1899.00",
+      "currency_code": "CNY",
+      "scenario_snapshot": {
+        "scenario_code": "S5",
+        "primary_sku": "QRY_LITE",
+        "supplementary_skus": ["RPT_STD"],
+        "selected_sku_role": "supplementary"
+      },
+      "template_codes": {
+        "contract_template": "CONTRACT_QUERY_LITE_V1",
+        "acceptance_template": "ACCEPT_QUERY_LITE_V1",
+        "refund_template": "REFUND_QUERY_LITE_V1"
+      },
+      "delivery_blueprint_ids": ["41000000-0000-0000-0000-000000000011"],
+      "billing_sample_ids": ["42000000-0000-0000-0000-000000000010"]
+    }
+  ]
+}

@@ -1,0 +1,433 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-demo",
+  "scenario_templates": [
+    {
+      "scenario_code": "S1",
+      "scenario_name": "工业设备运行指标 API 订阅",
+      "primary_sku": "API_SUB",
+      "supplementary_skus": ["API_PPU"],
+      "contract_template": "CONTRACT_API_SUB_V1",
+      "acceptance_template": "ACCEPT_API_SUB_V1",
+      "refund_template": "REFUND_API_SUB_V1",
+      "product_template": {
+        "product_type": "service_product",
+        "delivery_type": "api_subscription",
+        "category": "industry_iot"
+      },
+      "metadata_template": {
+        "industry": "industrial_manufacturing",
+        "use_cases": ["设备稼动率", "能耗监控"],
+        "data_classification": "P1"
+      },
+      "source": {
+        "code_file": "apps/platform-core/src/modules/catalog/standard_scenarios.rs",
+        "openapi": "packages/openapi/catalog.yaml#/components/schemas/StandardScenarioTemplate"
+      }
+    },
+    {
+      "scenario_code": "S2",
+      "scenario_name": "工业质量与产线日报文件包交付",
+      "primary_sku": "FILE_STD",
+      "supplementary_skus": ["FILE_SUB"],
+      "contract_template": "CONTRACT_FILE_V1",
+      "acceptance_template": "ACCEPT_FILE_V1",
+      "refund_template": "REFUND_FILE_V1",
+      "product_template": {
+        "product_type": "data_product",
+        "delivery_type": "file_download",
+        "category": "industrial_quality"
+      },
+      "metadata_template": {
+        "industry": "industrial_manufacturing",
+        "use_cases": ["质量日报", "产线巡检"],
+        "data_classification": "P1"
+      },
+      "source": {
+        "code_file": "apps/platform-core/src/modules/catalog/standard_scenarios.rs",
+        "openapi": "packages/openapi/catalog.yaml#/components/schemas/StandardScenarioTemplate"
+      }
+    },
+    {
+      "scenario_code": "S3",
+      "scenario_name": "供应链协同查询沙箱",
+      "primary_sku": "SBX_STD",
+      "supplementary_skus": ["SHARE_RO"],
+      "contract_template": "CONTRACT_SANDBOX_V1",
+      "acceptance_template": "ACCEPT_SANDBOX_V1",
+      "refund_template": "REFUND_SANDBOX_V1",
+      "product_template": {
+        "product_type": "service_product",
+        "delivery_type": "sandbox",
+        "category": "supply_chain"
+      },
+      "metadata_template": {
+        "industry": "industrial_manufacturing",
+        "use_cases": ["履约分析", "库存协同"],
+        "data_classification": "P2"
+      },
+      "source": {
+        "code_file": "apps/platform-core/src/modules/catalog/standard_scenarios.rs",
+        "openapi": "packages/openapi/catalog.yaml#/components/schemas/StandardScenarioTemplate"
+      }
+    },
+    {
+      "scenario_code": "S4",
+      "scenario_name": "零售门店经营分析 API / 报告订阅",
+      "primary_sku": "API_SUB",
+      "supplementary_skus": ["RPT_STD"],
+      "contract_template": "CONTRACT_API_SUB_V1",
+      "acceptance_template": "ACCEPT_API_SUB_V1",
+      "refund_template": "REFUND_API_SUB_V1",
+      "product_template": {
+        "product_type": "service_product",
+        "delivery_type": "api_subscription",
+        "category": "retail_ops"
+      },
+      "metadata_template": {
+        "industry": "retail",
+        "use_cases": ["客流分析", "销售结构"],
+        "data_classification": "P1"
+      },
+      "source": {
+        "code_file": "apps/platform-core/src/modules/catalog/standard_scenarios.rs",
+        "openapi": "packages/openapi/catalog.yaml#/components/schemas/StandardScenarioTemplate"
+      }
+    },
+    {
+      "scenario_code": "S5",
+      "scenario_name": "商圈/门店选址查询服务",
+      "primary_sku": "QRY_LITE",
+      "supplementary_skus": ["RPT_STD"],
+      "contract_template": "CONTRACT_QUERY_LITE_V1",
+      "acceptance_template": "ACCEPT_QUERY_LITE_V1",
+      "refund_template": "REFUND_QUERY_LITE_V1",
+      "product_template": {
+        "product_type": "service_product",
+        "delivery_type": "query_template",
+        "category": "retail_location"
+      },
+      "metadata_template": {
+        "industry": "retail",
+        "use_cases": ["选址评分", "商圈画像"],
+        "data_classification": "P1"
+      },
+      "source": {
+        "code_file": "apps/platform-core/src/modules/catalog/standard_scenarios.rs",
+        "openapi": "packages/openapi/catalog.yaml#/components/schemas/StandardScenarioTemplate"
+      }
+    }
+  ],
+  "official_display_products": [
+    {
+      "scenario_code": "S1",
+      "product_id": "20000000-0000-0000-0000-000000000309",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "title": "工业设备运行指标 API 订阅",
+      "product_type": "service",
+      "delivery_type": "api_subscription",
+      "price_mode": "subscription",
+      "price": "5999.00",
+      "currency_code": "CNY",
+      "primary_sku_id": "20000000-0000-0000-0000-000000000409",
+      "supplementary_sku_ids": ["20000000-0000-0000-0000-000000000410"],
+      "recommended_placement_code": "home_featured",
+      "source": {
+        "seed_sql": "db/seeds/033_searchrec_recommendation_samples.sql",
+        "table": "catalog.product"
+      }
+    },
+    {
+      "scenario_code": "S2",
+      "product_id": "20000000-0000-0000-0000-000000000310",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "title": "工业质量与产线日报文件包交付",
+      "product_type": "data_product",
+      "delivery_type": "file_download",
+      "price_mode": "one_time",
+      "price": "2399.00",
+      "currency_code": "CNY",
+      "primary_sku_id": "20000000-0000-0000-0000-000000000411",
+      "supplementary_sku_ids": ["20000000-0000-0000-0000-000000000412"],
+      "recommended_placement_code": "home_featured",
+      "source": {
+        "seed_sql": "db/seeds/033_searchrec_recommendation_samples.sql",
+        "table": "catalog.product"
+      }
+    },
+    {
+      "scenario_code": "S3",
+      "product_id": "20000000-0000-0000-0000-000000000311",
+      "seller_org_id": "10000000-0000-0000-0000-000000000101",
+      "title": "供应链协同查询沙箱",
+      "product_type": "service",
+      "delivery_type": "sandbox",
+      "price_mode": "one_time",
+      "price": "6999.00",
+      "currency_code": "CNY",
+      "primary_sku_id": "20000000-0000-0000-0000-000000000413",
+      "supplementary_sku_ids": ["20000000-0000-0000-0000-000000000414"],
+      "recommended_placement_code": "home_featured",
+      "source": {
+        "seed_sql": "db/seeds/033_searchrec_recommendation_samples.sql",
+        "table": "catalog.product"
+      }
+    },
+    {
+      "scenario_code": "S4",
+      "product_id": "20000000-0000-0000-0000-000000000312",
+      "seller_org_id": "10000000-0000-0000-0000-000000000104",
+      "title": "零售门店经营分析 API / 报告订阅",
+      "product_type": "service",
+      "delivery_type": "api_subscription",
+      "price_mode": "subscription",
+      "price": "4599.00",
+      "currency_code": "CNY",
+      "primary_sku_id": "20000000-0000-0000-0000-000000000415",
+      "supplementary_sku_ids": ["20000000-0000-0000-0000-000000000416"],
+      "recommended_placement_code": "home_featured",
+      "source": {
+        "seed_sql": "db/seeds/033_searchrec_recommendation_samples.sql",
+        "table": "catalog.product"
+      }
+    },
+    {
+      "scenario_code": "S5",
+      "product_id": "20000000-0000-0000-0000-000000000313",
+      "seller_org_id": "10000000-0000-0000-0000-000000000104",
+      "title": "商圈/门店选址查询服务",
+      "product_type": "service",
+      "delivery_type": "query_template",
+      "price_mode": "one_time",
+      "price": "1699.00",
+      "currency_code": "CNY",
+      "primary_sku_id": "20000000-0000-0000-0000-000000000417",
+      "supplementary_sku_ids": ["20000000-0000-0000-0000-000000000418"],
+      "recommended_placement_code": "home_featured",
+      "source": {
+        "seed_sql": "db/seeds/033_searchrec_recommendation_samples.sql",
+        "table": "catalog.product"
+      }
+    }
+  ],
+  "official_display_skus": [
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000409",
+      "product_id": "20000000-0000-0000-0000-000000000309",
+      "scenario_code": "S1",
+      "sku_type": "API_SUB",
+      "role": "primary",
+      "billing_mode": "subscription",
+      "acceptance_mode": "auto",
+      "refund_mode": "partial",
+      "result_form": "api"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000410",
+      "product_id": "20000000-0000-0000-0000-000000000309",
+      "scenario_code": "S1",
+      "sku_type": "API_PPU",
+      "role": "supplementary",
+      "billing_mode": "metered",
+      "acceptance_mode": "auto",
+      "refund_mode": "partial",
+      "result_form": "api"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000411",
+      "product_id": "20000000-0000-0000-0000-000000000310",
+      "scenario_code": "S2",
+      "sku_type": "FILE_STD",
+      "role": "primary",
+      "billing_mode": "one_time",
+      "acceptance_mode": "manual",
+      "refund_mode": "full",
+      "result_form": "file"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000412",
+      "product_id": "20000000-0000-0000-0000-000000000310",
+      "scenario_code": "S2",
+      "sku_type": "FILE_SUB",
+      "role": "supplementary",
+      "billing_mode": "subscription",
+      "acceptance_mode": "manual",
+      "refund_mode": "partial",
+      "result_form": "file"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000413",
+      "product_id": "20000000-0000-0000-0000-000000000311",
+      "scenario_code": "S3",
+      "sku_type": "SBX_STD",
+      "role": "primary",
+      "billing_mode": "one_time",
+      "acceptance_mode": "manual",
+      "refund_mode": "none",
+      "result_form": "sandbox_output"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000414",
+      "product_id": "20000000-0000-0000-0000-000000000311",
+      "scenario_code": "S3",
+      "sku_type": "SHARE_RO",
+      "role": "supplementary",
+      "billing_mode": "one_time",
+      "acceptance_mode": "auto",
+      "refund_mode": "none",
+      "result_form": "share"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000415",
+      "product_id": "20000000-0000-0000-0000-000000000312",
+      "scenario_code": "S4",
+      "sku_type": "API_SUB",
+      "role": "primary",
+      "billing_mode": "subscription",
+      "acceptance_mode": "auto",
+      "refund_mode": "partial",
+      "result_form": "api"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000416",
+      "product_id": "20000000-0000-0000-0000-000000000312",
+      "scenario_code": "S4",
+      "sku_type": "RPT_STD",
+      "role": "supplementary",
+      "billing_mode": "one_time",
+      "acceptance_mode": "manual",
+      "refund_mode": "full",
+      "result_form": "report"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000417",
+      "product_id": "20000000-0000-0000-0000-000000000313",
+      "scenario_code": "S5",
+      "sku_type": "QRY_LITE",
+      "role": "primary",
+      "billing_mode": "one_time",
+      "acceptance_mode": "manual",
+      "refund_mode": "none",
+      "result_form": "query_result"
+    },
+    {
+      "sku_id": "20000000-0000-0000-0000-000000000418",
+      "product_id": "20000000-0000-0000-0000-000000000313",
+      "scenario_code": "S5",
+      "sku_type": "RPT_STD",
+      "role": "supplementary",
+      "billing_mode": "one_time",
+      "acceptance_mode": "manual",
+      "refund_mode": "full",
+      "result_form": "report"
+    }
+  ],
+  "seed_template_records": [
+    {
+      "template_id": "20000000-0000-0000-0000-000000000501",
+      "template_type": "contract",
+      "template_name": "V1 Standard Contract Template",
+      "applicable_sku_types": [
+        "FILE_STD",
+        "FILE_SUB",
+        "SHARE_RO",
+        "API_SUB",
+        "API_PPU",
+        "QRY_LITE",
+        "SBX_STD",
+        "RPT_STD"
+      ],
+      "logical_template_codes": [
+        "CONTRACT_API_SUB_V1",
+        "CONTRACT_FILE_V1",
+        "CONTRACT_SANDBOX_V1",
+        "CONTRACT_QUERY_LITE_V1"
+      ],
+      "source": {
+        "seed_sql": "db/seeds/020_test_products.sql",
+        "table": "contract.template_definition"
+      }
+    },
+    {
+      "template_id": "20000000-0000-0000-0000-000000000502",
+      "template_type": "acceptance",
+      "template_name": "V1 Standard Acceptance Template",
+      "applicable_sku_types": [
+        "FILE_STD",
+        "FILE_SUB",
+        "SHARE_RO",
+        "API_SUB",
+        "API_PPU",
+        "QRY_LITE",
+        "SBX_STD",
+        "RPT_STD"
+      ],
+      "logical_template_codes": [
+        "ACCEPT_API_SUB_V1",
+        "ACCEPT_FILE_V1",
+        "ACCEPT_SANDBOX_V1",
+        "ACCEPT_QUERY_LITE_V1"
+      ],
+      "source": {
+        "seed_sql": "db/seeds/020_test_products.sql",
+        "table": "contract.template_definition"
+      }
+    },
+    {
+      "template_id": "20000000-0000-0000-0000-000000000503",
+      "template_type": "refund",
+      "template_name": "V1 Standard Refund Template",
+      "applicable_sku_types": [
+        "FILE_STD",
+        "FILE_SUB",
+        "SHARE_RO",
+        "API_SUB",
+        "API_PPU",
+        "QRY_LITE",
+        "SBX_STD",
+        "RPT_STD"
+      ],
+      "logical_template_codes": [
+        "REFUND_API_SUB_V1",
+        "REFUND_FILE_V1",
+        "REFUND_SANDBOX_V1",
+        "REFUND_QUERY_LITE_V1"
+      ],
+      "source": {
+        "seed_sql": "db/seeds/020_test_products.sql",
+        "table": "contract.template_definition"
+      }
+    }
+  ],
+  "home_featured_fixed_samples": [
+    {
+      "sample_order": 0,
+      "scenario_code": "S1",
+      "scenario_name": "工业设备运行指标 API 订阅",
+      "product_id": "20000000-0000-0000-0000-000000000309"
+    },
+    {
+      "sample_order": 1,
+      "scenario_code": "S2",
+      "scenario_name": "工业质量与产线日报文件包交付",
+      "product_id": "20000000-0000-0000-0000-000000000310"
+    },
+    {
+      "sample_order": 2,
+      "scenario_code": "S3",
+      "scenario_name": "供应链协同查询沙箱",
+      "product_id": "20000000-0000-0000-0000-000000000311"
+    },
+    {
+      "sample_order": 3,
+      "scenario_code": "S4",
+      "scenario_name": "零售门店经营分析 API / 报告订阅",
+      "product_id": "20000000-0000-0000-0000-000000000312"
+    },
+    {
+      "sample_order": 4,
+      "scenario_code": "S5",
+      "scenario_name": "商圈/门店选址查询服务",
+      "product_id": "20000000-0000-0000-0000-000000000313"
+    }
+  ]
+}

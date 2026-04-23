@@ -1,0 +1,134 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-demo",
+  "audit_suites": [
+    {
+      "audit_suite_id": "44000000-0000-0000-0000-000000000001",
+      "scenario_code": "S1",
+      "order_blueprint_ids": [
+        "34000000-0000-0000-0000-000000000001",
+        "34000000-0000-0000-0000-000000000101"
+      ],
+      "must_record_actions": [
+        "catalog.standard.scenarios.read",
+        "trade.order.create",
+        "delivery.api.enable",
+        "billing.event.recorded",
+        "acceptance.passed",
+        "audit.package.export"
+      ],
+      "step_up_required_actions": ["audit.package.export"],
+      "denied_without_step_up_actions": ["audit.package.export"],
+      "lookup_targets": [
+        "audit.audit_event",
+        "audit.evidence_package",
+        "ops.system_log"
+      ],
+      "append_only_retention": true
+    },
+    {
+      "audit_suite_id": "44000000-0000-0000-0000-000000000002",
+      "scenario_code": "S2",
+      "order_blueprint_ids": [
+        "34000000-0000-0000-0000-000000000002",
+        "34000000-0000-0000-0000-000000000102"
+      ],
+      "must_record_actions": [
+        "catalog.standard.scenarios.read",
+        "trade.order.create",
+        "delivery.file.commit",
+        "delivery.subscription.manage",
+        "billing.event.recorded",
+        "acceptance.passed",
+        "audit.package.export"
+      ],
+      "step_up_required_actions": ["audit.package.export"],
+      "denied_without_step_up_actions": ["audit.package.export"],
+      "lookup_targets": [
+        "audit.audit_event",
+        "audit.evidence_package",
+        "ops.system_log"
+      ],
+      "append_only_retention": true
+    },
+    {
+      "audit_suite_id": "44000000-0000-0000-0000-000000000003",
+      "scenario_code": "S3",
+      "order_blueprint_ids": [
+        "34000000-0000-0000-0000-000000000003",
+        "34000000-0000-0000-0000-000000000103"
+      ],
+      "must_record_actions": [
+        "catalog.standard.scenarios.read",
+        "trade.order.create",
+        "delivery.sandbox.enable",
+        "delivery.share.manage",
+        "billing.event.recorded",
+        "acceptance.passed",
+        "audit.package.export"
+      ],
+      "step_up_required_actions": ["audit.package.export"],
+      "denied_without_step_up_actions": ["audit.package.export"],
+      "lookup_targets": [
+        "audit.audit_event",
+        "audit.evidence_package",
+        "ops.system_log"
+      ],
+      "append_only_retention": true
+    },
+    {
+      "audit_suite_id": "44000000-0000-0000-0000-000000000004",
+      "scenario_code": "S4",
+      "order_blueprint_ids": [
+        "34000000-0000-0000-0000-000000000004",
+        "34000000-0000-0000-0000-000000000104"
+      ],
+      "must_record_actions": [
+        "catalog.standard.scenarios.read",
+        "trade.order.create",
+        "delivery.api.enable",
+        "delivery.report.commit",
+        "billing.event.recorded",
+        "acceptance.passed",
+        "audit.package.export"
+      ],
+      "step_up_required_actions": ["audit.package.export"],
+      "denied_without_step_up_actions": ["audit.package.export"],
+      "lookup_targets": [
+        "audit.audit_event",
+        "audit.evidence_package",
+        "ops.system_log"
+      ],
+      "append_only_retention": true
+    },
+    {
+      "audit_suite_id": "44000000-0000-0000-0000-000000000005",
+      "scenario_code": "S5",
+      "order_blueprint_ids": [
+        "34000000-0000-0000-0000-000000000005",
+        "34000000-0000-0000-0000-000000000105"
+      ],
+      "must_record_actions": [
+        "catalog.standard.scenarios.read",
+        "trade.order.create",
+        "delivery.template_query.enable",
+        "delivery.template_query.use",
+        "delivery.report.commit",
+        "billing.event.recorded",
+        "acceptance.passed",
+        "audit.package.export"
+      ],
+      "step_up_required_actions": ["audit.package.export"],
+      "denied_without_step_up_actions": ["audit.package.export"],
+      "lookup_targets": [
+        "audit.audit_event",
+        "audit.evidence_package",
+        "ops.system_log"
+      ],
+      "append_only_retention": true
+    }
+  ],
+  "source": {
+    "test_cases": "docs/05-test-cases/audit-consistency-cases.md",
+    "handlers": "apps/platform-core/src/modules/audit/api/handlers.rs"
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "dataset_id": "v1-core-standard-scenarios-demo",
+  "organizations": [
+    {
+      "org_id": "10000000-0000-0000-0000-000000000101",
+      "org_name": "Luna Seller Org",
+      "org_type": "tenant",
+      "partner_type": "seller",
+      "industry_tags": ["industry_manufacturing", "industry_finance"],
+      "used_by_scenarios": ["S1", "S2", "S3"],
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.organization"
+      }
+    },
+    {
+      "org_id": "10000000-0000-0000-0000-000000000102",
+      "org_name": "Luna Buyer Org",
+      "org_type": "tenant",
+      "partner_type": "buyer",
+      "industry_tags": ["industry_retail", "industry_transport"],
+      "used_by_scenarios": ["S1", "S2", "S3", "S4", "S5"],
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.organization"
+      }
+    },
+    {
+      "org_id": "10000000-0000-0000-0000-000000000103",
+      "org_name": "Luna Platform Ops Org",
+      "org_type": "platform",
+      "partner_type": "platform",
+      "industry_tags": ["industry_finance"],
+      "used_by_scenarios": ["S1", "S2", "S3", "S4", "S5"],
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.organization"
+      }
+    },
+    {
+      "org_id": "10000000-0000-0000-0000-000000000104",
+      "org_name": "Luna Retail Seller Org",
+      "org_type": "tenant",
+      "partner_type": "seller",
+      "industry_tags": ["industry_retail", "industry_location_service"],
+      "used_by_scenarios": ["S4", "S5"],
+      "source": {
+        "seed_sql": "db/seeds/033_searchrec_recommendation_samples.sql",
+        "table": "core.organization"
+      }
+    }
+  ],
+  "users": [
+    {
+      "user_id": "10000000-0000-0000-0000-000000000301",
+      "org_id": "10000000-0000-0000-0000-000000000101",
+      "login_id": "seller.operator@luna.local",
+      "display_name": "Seller Operator",
+      "persona": "seller_operator",
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.user_account"
+      }
+    },
+    {
+      "user_id": "10000000-0000-0000-0000-000000000302",
+      "org_id": "10000000-0000-0000-0000-000000000102",
+      "login_id": "buyer.operator@luna.local",
+      "display_name": "Buyer Operator",
+      "persona": "buyer_operator",
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.user_account"
+      }
+    },
+    {
+      "user_id": "10000000-0000-0000-0000-000000000303",
+      "org_id": "10000000-0000-0000-0000-000000000103",
+      "login_id": "platform.ops@luna.local",
+      "display_name": "Platform Ops",
+      "persona": "platform_admin",
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.user_account"
+      }
+    },
+    {
+      "user_id": "10000000-0000-0000-0000-000000000304",
+      "org_id": "10000000-0000-0000-0000-000000000103",
+      "login_id": "platform.audit@luna.local",
+      "display_name": "Platform Auditor",
+      "persona": "platform_audit_security",
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.user_account"
+      }
+    },
+    {
+      "user_id": "10000000-0000-0000-0000-000000000305",
+      "org_id": "10000000-0000-0000-0000-000000000102",
+      "login_id": "buyer.developer@luna.local",
+      "display_name": "Buyer Developer",
+      "persona": "tenant_developer",
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.user_account"
+      }
+    },
+    {
+      "user_id": "10000000-0000-0000-0000-000000000306",
+      "org_id": "10000000-0000-0000-0000-000000000102",
+      "login_id": "buyer.admin@luna.local",
+      "display_name": "Buyer Admin",
+      "persona": "tenant_admin",
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.user_account"
+      }
+    }
+  ],
+  "applications": [
+    {
+      "app_id": "10000000-0000-0000-0000-000000000401",
+      "org_id": "10000000-0000-0000-0000-000000000102",
+      "app_name": "Luna Buyer API App",
+      "client_id": "luna-buyer-api-app",
+      "purpose": "api_delivery_demo",
+      "used_by_scenarios": ["S1", "S4"],
+      "source": {
+        "seed_sql": "db/seeds/010_test_tenants.sql",
+        "table": "core.application"
+      }
+    }
+  ]
+}
