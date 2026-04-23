@@ -6,6 +6,7 @@
    - 正式映射规则：
      - `POSTGRES_*`、`MINIO_ROOT_*`、`KEYCLOAK_ADMIN*` 只负责本地基础设施 bootstrap
      - `DATABASE_URL`、`MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY`、`KEYCLOAK_BASE_URL / KEYCLOAK_REALM` 才是应用与脚本正式运行时入口
+   - Kafka 默认对宿主机暴露 `127.0.0.1:9094`；如需同一局域网其他计算机访问，将 `KAFKA_EXTERNAL_ADVERTISED_HOST` 改成本机局域网 IP/DNS，并确认 `KAFKA_EXTERNAL_BIND_HOST=0.0.0.0`
 2. 环境检查：`./scripts/check-local-env.sh infra/docker/docker-compose.local.yml infra/docker/.env.local infra/docker/.env.local`
 3. 启动基础设施（默认 core）：`make up-local`（或 `make up-core`）
    - 仅支付/回执联调时，追加 `make up-mocks`（`core + mock-payment-provider`）
@@ -85,6 +86,23 @@
 34. 导出当前本地配置快照：`./scripts/export-local-config.sh`
 35. 运行本地 smoke 套件（建议在 `make up-demo` 后执行；若不用 `demo`，至少需要 `core + observability + mocks` 组合）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
     - 该 smoke 会按 `infra/kafka/topics.v1.json` 检查 canonical topics 是否真实存在，防止 auto-create 掩盖 topic 漂移。
+
+## Kafka 局域网访问验证
+
+如果已把 `KAFKA_EXTERNAL_ADVERTISED_HOST` 设置为本机局域网 IP/DNS，例如 `192.168.1.20`，重启后在本机验证端口监听：
+
+```bash
+docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml port kafka 9094
+docker exec datab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
+
+在另一台同局域网机器上验证：
+
+```bash
+kcat -b 192.168.1.20:9094 -L
+```
+
+如果远端 `kcat -L` 返回的 broker 地址仍是 `localhost:9094`，说明 `KAFKA_EXTERNAL_ADVERTISED_HOST` 没有改成局域网可达地址，需修改后重启 Kafka。
 
 ## 迁移兼容说明（ENV-001 / ENV-057）
 

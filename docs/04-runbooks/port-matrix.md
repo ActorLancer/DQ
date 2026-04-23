@@ -12,7 +12,7 @@
 | --- | --- | --- | --- | --- |
 | PostgreSQL | `5432` | `postgresql://127.0.0.1:5432/datab` | `datab` | `datab_local_pass` |
 | Redis | `6379` | `redis://127.0.0.1:6379` | `N/A` | `datab_redis_pass` |
-| Kafka (external) | `9094` | `127.0.0.1:9094` | `N/A` | `N/A` |
+| Kafka (external) | `9094` | `127.0.0.1:9094`；局域网访问使用 `${KAFKA_EXTERNAL_ADVERTISED_HOST}:9094` | `N/A` | `N/A` |
 | MinIO API | `9000` | `http://127.0.0.1:9000` | `datab` | `datab_local_pass` |
 | MinIO Console | `9001` | `http://127.0.0.1:9001` | `datab` | `datab_local_pass` |
 | OpenSearch | `9200` | `http://127.0.0.1:9200` | `N/A` | `Admin123!Admin123!`（admin init password） |

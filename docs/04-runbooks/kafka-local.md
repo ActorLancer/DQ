@@ -6,6 +6,24 @@
 - 参考片段：`infra/kafka/docker-compose.kafka.local.yml`。
 - 容器内 listener：`kafka:9092`
 - 宿主机 external listener：`127.0.0.1:9094`
+- 局域网 external listener：`${KAFKA_EXTERNAL_ADVERTISED_HOST}:9094`
+
+## 局域网访问
+
+若需要让同一局域网内的其他计算机访问本机 Kafka，必须同时满足：
+
+1. `infra/docker/.env.local` 中保持 `KAFKA_EXTERNAL_BIND_HOST=0.0.0.0`。
+2. 将 `KAFKA_EXTERNAL_ADVERTISED_HOST` 改成本机局域网 IP 或可被其他计算机解析的主机名，例如 `192.168.1.20`。
+3. 本机防火墙允许 TCP `9094` 入站。
+4. 修改 advertised host 后需要重启 Kafka：`make down-local && make up-local`。
+
+远端客户端应连接：
+
+```bash
+<本机局域网 IP 或 DNS>:9094
+```
+
+不要让远端客户端连接 `127.0.0.1:9094`，也不要使用 `kafka:9092`；前者只指向远端机器自己，后者只在 compose 网络内部有效。
 
 ## Topic 初始化
 

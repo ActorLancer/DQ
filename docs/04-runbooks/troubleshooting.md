@@ -26,14 +26,16 @@
 
 ## Kafka 启动失败
 
-- 常见症状：9092/9094 不可达、topic 初始化报 `connection refused`。
+- 常见症状：9092/9094 不可达、topic 初始化报 `connection refused`、远端机器能连端口但 Kafka metadata 返回 `localhost:9094`。
 - 诊断步骤：
   1. 查看 broker 日志：`docker logs datab-kafka --tail 300`
-  2. 检查 listener 配置：`KAFKA_ADVERTISED_LISTENERS` 与 `KAFKA_EXTERNAL_PORT` 是否一致
+  2. 检查 listener 配置：`KAFKA_ADVERTISED_LISTENERS`、`KAFKA_EXTERNAL_PORT` 与 `KAFKA_EXTERNAL_ADVERTISED_HOST` 是否一致
   3. 容器内探测：`docker exec datab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list`
   4. 重新初始化 topic：`./infra/kafka/init-topics.sh`
 - 修复建议：
   - 避免本机已有 Kafka 占用 9094
+  - 若要给局域网其他机器访问，确认 `KAFKA_EXTERNAL_BIND_HOST=0.0.0.0`，并把 `KAFKA_EXTERNAL_ADVERTISED_HOST` 设置为本机局域网 IP/DNS，而不是 `127.0.0.1` 或 `localhost`
+  - 确认本机防火墙允许 TCP `9094` 入站
   - 若 broker 元数据异常，先 `make down-local` 后 `make up-local`
 
 ## Keycloak 启动失败
