@@ -1,14 +1,23 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { SellerProductWorkspaceShell } from "@/components/portal/seller-product-workspace-shell";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
 export default async function SellerTemplatePage({
   params,
 }: {
   params: Promise<{ productId: string }>;
 }) {
+  const [resolvedParams, session] = await Promise.all([
+    params,
+    readPortalSession(),
+  ]);
+  const sessionPreview = readPortalSessionPreview(session);
+
   return (
-    <PortalRoutePage
-      routeKey="seller_template_bind"
-      params={await params}
+    <SellerProductWorkspaceShell
+      initialSection="templates"
+      productId={resolvedParams.productId}
+      sessionMode={session.mode}
+      initialSubject={sessionPreview}
     />
   );
 }

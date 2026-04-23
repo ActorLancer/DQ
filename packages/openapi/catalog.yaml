@@ -19,9 +19,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiResponseStandardScenarioTemplateList"
   /api/v1/products:
+    get:
+      summary: List seller product drafts and listings
+      operationId: listProducts
+      parameters:
+        - name: seller_org_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [draft, pending_review, listed, delisted, frozen]
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Product list found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponseProductList"
     post:
       summary: Create product draft
       operationId: createProductDraft
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -34,7 +81,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DataProduct"
+                $ref: "#/components/schemas/ApiResponseDataProduct"
   /api/v1/products/{id}:
     get:
       summary: Get product detail
@@ -63,6 +110,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -75,7 +128,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DataProduct"
+                $ref: "#/components/schemas/ApiResponseDataProduct"
   /api/v1/sellers/{orgId}/profile:
     get:
       summary: Get seller profile
@@ -105,6 +158,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -117,7 +176,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductSubmit"
+                $ref: "#/components/schemas/ApiResponseProductSubmit"
   /api/v1/products/{id}/bind-template:
     post:
       summary: Bind default template to product and existing skus
@@ -129,6 +188,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -141,7 +206,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TemplateBinding"
+                $ref: "#/components/schemas/ApiResponseTemplateBinding"
   /api/v1/products/{id}/suspend:
     post:
       summary: Suspend product by delist or freeze
@@ -153,6 +218,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
         - name: x-step-up-challenge-id
           in: header
           required: false
@@ -191,6 +262,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -203,7 +280,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductMetadataProfile"
+                $ref: "#/components/schemas/ApiResponseProductMetadataProfile"
   /api/v1/products/{id}/skus:
     post:
       summary: Create SKU for draft product
@@ -215,6 +292,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -227,7 +310,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductSku"
+                $ref: "#/components/schemas/ApiResponseProductSku"
   /api/v1/review/subjects/{id}:
     post:
       summary: Subject review decision
@@ -239,6 +322,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -263,6 +352,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -311,6 +406,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -323,7 +424,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductSku"
+                $ref: "#/components/schemas/ApiResponseProductSku"
   /api/v1/skus/{id}/bind-template:
     post:
       summary: Bind template for sku
@@ -335,6 +436,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -347,7 +454,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TemplateBinding"
+                $ref: "#/components/schemas/ApiResponseTemplateBinding"
   /api/v1/policies/{id}:
     patch:
       summary: Patch usage policy
@@ -527,6 +634,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -551,6 +664,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -623,6 +742,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required by WEB write pages for duplicate-submit protection.
       requestBody:
         required: true
         content:
@@ -635,7 +760,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssetQualityReport"
+                $ref: "#/components/schemas/ApiResponseAssetQualityReport"
   /api/v1/assets/{versionId}/processing-jobs:
     post:
       summary: Create processing job for asset version
@@ -717,6 +842,9 @@ components:
         quality_score:
           type: string
           nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
       required:
         - asset_id
         - asset_version_id
@@ -2259,6 +2387,43 @@ components:
         - delivery_type
         - created_at
         - updated_at
+    ProductStatusCount:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+          format: int64
+      required:
+        - status
+        - count
+    ProductList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataProduct"
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
+        page_size:
+          type: integer
+          format: int64
+        status_counts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductStatusCount"
+      required:
+        - items
+        - total
+        - page
+        - page_size
+        - status_counts
     ProductDetail:
       type: object
       properties:
@@ -2521,6 +2686,26 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/ProductDetail"
+    ApiResponseProductList:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ProductList"
+    ApiResponseDataProduct:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/DataProduct"
     ApiResponseSellerProfile:
       type: object
       required:
@@ -2531,6 +2716,56 @@ components:
           type: boolean
         data:
           $ref: "#/components/schemas/SellerProfile"
+    ApiResponseProductSku:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ProductSku"
+    ApiResponseTemplateBinding:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/TemplateBinding"
+    ApiResponseProductMetadataProfile:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ProductMetadataProfile"
+    ApiResponseAssetQualityReport:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AssetQualityReport"
+    ApiResponseProductSubmit:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ProductSubmit"
     ProductSubmit:
       type: object
       properties:

@@ -21,7 +21,7 @@ pub(in crate::modules::catalog) use handlers::product_and_review::{
     review_product, review_subject, submit_product, suspend_product,
 };
 pub(in crate::modules::catalog) use handlers::product_read::{
-    get_product_detail, get_seller_profile,
+    get_product_detail, get_seller_profile, list_products,
 };
 pub(in crate::modules::catalog) use handlers::sku_contract::{
     create_data_contract, create_product_sku, get_data_contract, patch_product_sku,

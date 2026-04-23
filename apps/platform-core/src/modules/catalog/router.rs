@@ -7,7 +7,10 @@ use super::api;
 /// Catalog HTTP routes (assembly only).
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/products", post(api::create_product_draft))
+        .route(
+            "/api/v1/products",
+            get(api::list_products).post(api::create_product_draft),
+        )
         .route(
             "/api/v1/catalog/standard-scenarios",
             get(api::get_standard_scenario_templates),

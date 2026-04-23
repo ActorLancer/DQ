@@ -149,6 +149,15 @@ pub struct PatchDataProductRequest {
     pub status: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListProductsQuery {
+    pub seller_org_id: Option<String>,
+    pub status: Option<String>,
+    pub q: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct DataProductView {
     pub product_id: String,
@@ -165,6 +174,21 @@ pub struct DataProductView {
     pub delivery_type: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProductStatusCountView {
+    pub status: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProductListView {
+    pub items: Vec<DataProductView>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub status_counts: Vec<ProductStatusCountView>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

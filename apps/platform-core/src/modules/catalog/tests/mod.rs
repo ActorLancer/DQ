@@ -100,6 +100,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_list_products_without_permission() {
+        let app = crate::with_stub_test_state(router());
+        let req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/products")
+            .header("x-role", "buyer_operator")
+            .body(Body::empty())
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn rejects_list_products_with_invalid_status_filter() {
+        let app = crate::with_stub_test_state(router());
+        let req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/products?status=reviewing")
+            .header("x-role", "seller_operator")
+            .body(Body::empty())
+            .expect("request");
+        let resp = app.oneshot(req).await.expect("response");
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
     async fn api_router_wrapper_matches_catalog_router() {
         let app_from_api = crate::with_stub_test_state(router());
         let app_from_catalog_router = crate::with_stub_test_state(catalog_router::router());

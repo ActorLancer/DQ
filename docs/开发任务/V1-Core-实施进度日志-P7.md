@@ -100,7 +100,7 @@
     - `GET /api/v1/auth/me` 返回 `mode=local_test_user`、真实 `user_id/org_id/login_id/display_name/roles/auth_context_level`
     - `GET /api/v1/catalog/standard-scenarios` 返回 `5` 条标准场景，并覆盖 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD` 八个标准 SKU
     - 经门户 `/api/platform/**` 代理的同一路径返回与直连 `platform-core` 一致
-  - 浏览器 smoke 通过：门户首页在桌面端正确显示 `主体 WEB001 Portal User ... / 角色 tenant_operator / 作用域 aal1`、`platform-core readiness = ok`、标准场景卡片；移动视口下首页和主体条可正常加载。
+  - 浏览器 smoke 通过：门户首页在桌面端正确显示 `主体 WEB001 Portal User ... / 角色 旧本地租户占位角色 / 作用域 aal1`、`platform-core readiness = ok`、标准场景卡片；移动视口下首页和主体条可正常加载。该旧占位角色已在后续批次按正式 V1 角色集合收敛。
   - 临时测试数据已清理，`core.user_account` 与 `core.organization` 对应记录回查均为 `0`；本批未引入新的 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 - 覆盖的冻结文档条目：
   - `v1-core-开发任务清单.csv / .md`：`WEB-001`
@@ -111,6 +111,97 @@
 - 覆盖的任务清单条目：`WEB-001`
 - 未覆盖项：
   - 无。`WEB-001` 要求的门户工程初始化、workspace、基础布局、登录态占位、SDK、受控 API 代理、最小自动化与真实联调闭环均已完成；更完整业务页面能力留在后续 `WEB-002+` 逐任务继续推进。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-281（计划中）
+- 任务：`WEB-007` 实现卖方上架中心：商品草稿、SKU 编辑、元信息、质量报告、模板绑定、提交审核
+- 状态：计划中
+- 说明：本批将 `/seller/products` 与相关卖方商品配置入口从脚手架升级为正式上架中心。页面必须展示商品草稿/状态列表、商品编辑表单、SKU 真值配置、元信息十大域、质量报告摘要、模板绑定和提交审核动作；所有写操作必须携带 `X-Idempotency-Key`，展示主体/角色/租户/作用域与审计留痕提示，并只通过 `portal-web -> /api/platform -> platform-core` 调用正式 API。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-006` 已本地提交，门户会话、受控 `/api/platform/**` 代理、SDK、商品详情与卖方主页可复用。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-007` 只实现卖方上架中心，不提前合并审核工作台或下单页；DoD 要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认上架中心需覆盖商品列表、状态筛选、统计、新建商品、审核状态跟踪；产品编辑页需覆盖基本信息、原始接入摘要、样本、Hash、标签分类、十大元信息域、字段结构、质量报告、数据契约、交付方式、合规字段、保存草稿与提交审核；SKU 配置页必须显式支持 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD` 八个标准 SKU。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认商品创建流程为资产/版本 -> 标准 SKU 真值 -> 模板绑定 -> 元信息档案 -> 字段结构与质量报告 -> 数据契约草稿 -> 保存草稿 -> 提交审核 -> 合规/风控 -> 上架与链摘要。
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md`：确认 `product` 是目录/审核/search/detail 聚合事实源，`sku` 是下单/合同/授权/交付/验收/账单/结算事实源；`sku_type` 仅允许八个标准 SKU，`sku_code` 只表示商品内商业套餐编码，`trade_mode` 不得替代 `sku_type`。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`、`后端鉴权中间件规则说明.md`：确认路由 `/seller/products`、`/seller/products/:productId/edit`、`/skus`、`/templates` 的权限点分别为 `catalog.product.list/create/read/update/submit`、`catalog.metadata.edit`、`catalog.quality_report.manage`、`catalog.sku.create/update`、`template.contract.bind`；中风险动作需显式审计提示。
+  - 通用边界文档与全集成基线：确认前端不得直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`，商品主状态由 `platform-core + PostgreSQL` 承担，搜索/推荐只作为读模型和候选召回，所有写操作必须经正式 API 并保留幂等与审计线索。
+  - `packages/openapi/catalog.yaml` 与 `docs/02-openapi/catalog.yaml`：确认创建、编辑、SKU、元信息、质量报告、模板绑定、提交审核接口已存在；同时发现当前缺少 `GET /api/v1/products` 上架中心列表契约，且 catalog 写接口 OpenAPI 响应仍有部分直接声明业务对象而后端实际返回 `ApiResponse<T>`，需要本批同步收敛。
+  - `apps/platform-core/src/modules/catalog/**`：确认后端已有创建/编辑/SKU/元信息/质量报告/模板绑定/提交审核处理器与审计/outbox 写入；缺少卖方上架中心列表路由，需要补 `catalog.product.list` 读取面。
+  - `apps/portal-web/**`、`apps/console-web/**`、`packages/sdk-ts/**`：确认卖方商品中心、编辑、SKU、模板、元信息路由仍为 `PortalRoutePage` 脚手架；`sdk-ts` 目前 catalog domain 只封装了标准场景、商品详情和卖方主页读取，需要补正式写操作封装。
+- 当前完成标准理解：
+  - 上架中心必须真实读取卖方商品列表，能创建草稿、编辑草稿、创建/更新 SKU、保存元信息、保存质量报告、绑定模板、提交审核。
+  - 页面必须显式展示 8 个标准 SKU，并校验 `sku_type` 与 `trade_mode / billing_mode / acceptance_mode / refund_mode` 的组合，不得把 `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 并回大类。
+  - 所有写操作必须自动生成并展示 `X-Idempotency-Key`，重复点击期间禁用提交，错误回显以后端统一错误码为准。
+  - 敏感供方页面必须展示当前主体、角色、租户/组织、作用域和审计留痕提示。
+  - 页面可使用当前 `preview=loading/empty/error/forbidden` 预演状态，但正式 ready 态必须调用真实 `platform-core` API，不得用 mock 当完成证据。
+- 实施计划：
+  1. 补齐 `GET /api/v1/products` 后端列表路由、OpenAPI/归档、SDK 生成物和 `sdk-ts` catalog domain 写操作封装，并增加最小防漂移校验。
+  2. 新增上架中心视图模型、Zod/RHF 表单 schema、SKU 真值映射与单元测试，统一生成幂等键和错误文案。
+  3. 替换 `/seller/products`、`/seller/products/:productId/edit`、`/skus`、`/templates`、`/metadata-contracts` 脚手架为正式上架中心/工作区组件，接入列表、详情、创建、编辑、SKU、元信息、质量报告、模板绑定和提交审核。
+  4. 更新 E2E、路由 API 绑定、OpenAPI checker，执行前端、后端、SDK、真实 API、浏览器 smoke、数据库回查与受限系统边界验证。
+
+### BATCH-281（待审批）
+- 任务：`WEB-007` 实现卖方上架中心：商品草稿、SKU 编辑、元信息、质量报告、模板绑定、提交审核
+- 状态：待审批
+- 当前任务编号：`WEB-007`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-006` 已本地提交并提供门户会话、受控代理、SDK、商品详情和卖方主页基线。本批继续保持 `portal-web -> /api/platform -> platform-core` 边界，没有新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+- 完成情况：
+  - 后端补齐 `GET /api/v1/products` 上架中心列表路由、`ProductListView / ProductStatusCountView`、卖方/平台范围过滤、状态/关键词/分页、状态统计与 `catalog.product.list` 审计；修复 live smoke 暴露的全量平台列表审计 `ref_id="all"` 非 UUID 问题，改用合法 nil UUID。
+  - 收敛提交审核前模板完整性检查：正式模板种子使用 `20000000-...` 演示 UUID，原正则误要求 UUID version `1-5` 导致已绑定模板被判无效；本批放宽为 PostgreSQL 可接受 UUID 字面量，保证 `V1 Standard Contract Template` 可用于正式提交。
+  - `packages/openapi/catalog.yaml` 与 `docs/02-openapi/catalog.yaml` 同步新增 `listProducts`、`ApiResponseProductList`、`ProductSubmit` 等包装 schema，并把上架中心写接口统一声明 `X-Idempotency-Key`；`scripts/check-openapi-schema.sh` 增加 catalog 上架中心防漂移校验。
+  - `packages/sdk-ts` 新增 catalog domain 写操作：创建/编辑商品、SKU 创建/编辑、元信息保存、质量报告创建、产品/ SKU 模板绑定、提交审核；所有 mutation 通过 SDK 透传 `X-Idempotency-Key`，并新增回归测试验证请求头。
+  - 将 `/seller/products`、`/seller/products/:productId/edit`、`/skus`、`/templates`、`/metadata-contracts` 从脚手架替换为正式 `SellerProductWorkspaceShell`：列表、状态筛选、关键词、真实商品详情联动、创建草稿、保存草稿、SKU 真值配置、十大元信息域、质量报告、模板绑定和提交审核都走正式 API。
+  - 页面显式展示当前主体、角色、租户/组织、作用域、审计留痕提示和写操作幂等键；显式列出 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD` 八个标准 SKU，未把 `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 并回大类。
+  - 补齐权限态、空态、错态、加载态与移动端响应式；live 浏览器 smoke 首次发现移动横向溢出后，将商品列表表格在移动端降级为卡片式行布局，重跑桌面/移动 smoke 通过。
+- 验证：
+  - 前端 / SDK：
+    - `pnpm install`
+    - `pnpm --filter @datab/sdk-ts openapi:generate`
+    - `pnpm --filter @datab/sdk-ts typecheck`
+    - `pnpm --filter @datab/sdk-ts test`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm --filter @datab/portal-web build`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+  - 后端 / 契约：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+    - `./scripts/check-openapi-schema.sh`
+  - 真实 API / DB / 浏览器 smoke：
+    - 启动 `platform-core`：`APP_MODE=local PROVIDER_MODE=mock APP_HOST=127.0.0.1 APP_PORT=8094 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo run -p platform-core-bin`
+    - `curl GET /healthz`
+    - `curl GET /api/v1/products?page=1&page_size=3` 验证列表与状态统计
+    - `curl GET /api/v1/products?status=not_a_status` 验证统一错误码 `CAT_VALIDATION_FAILED`
+    - 真实写链路：`POST /api/v1/products`、`PATCH /api/v1/products/{id}`、`POST /api/v1/products/{id}/skus`、`PUT /api/v1/products/{id}/metadata-profile`、`POST /api/v1/assets/{versionId}/quality-reports`、`POST /api/v1/skus/{id}/bind-template`、`POST /api/v1/products/{id}/submit`，全部携带 `X-Idempotency-Key`
+    - 数据库回查：`catalog.product / product_sku / product_metadata_profile / asset_quality_report / contract.template_binding / review.review_task / ops.outbox_event / audit.audit_event`
+    - 启动 `portal-web` dev server，注入 Bearer claims Cookie，桌面 `1440x1100` 与移动 `390x844` 打开 `/seller/products`，校验主体/角色/租户/作用域、8 SKU、`X-Idempotency-Key`、真实商品、无直连 `127.0.0.1:8094`
+    - 清理两组临时业务测试商品、SKU、模板绑定、质量报告、review task 与 outbox；审计事件按 append-only 保留
+- 验证结果：
+  - 前端、SDK、workspace lint/typecheck/test/build 全部通过；`pnpm test` 中 portal / console 的 Playwright WebServer 在未启动 `platform-core` 时仍会打印 `ECONNREFUSED 127.0.0.1:8094` 的受控代理噪音，但测试断言通过，live smoke 已单独覆盖真实联调。
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 与 `./scripts/check-openapi-schema.sh` 全部通过；`cargo check/test/sqlx` 仍有既存 unused warning，不影响本批结果。
+  - live API 创建并提交商品 `WEB-007-SMOKE-XIDEM-*` 后回查得到：`product.status=pending_review`、SKU=1、元信息=1、模板绑定=1、review_task=1、质量报告=1；outbox 中 `search.product.changed / catalog.product.submitted` 均记录了对应 `X-Idempotency-Key`；审计事件覆盖 `catalog.product.create / patch / sku.create / product_metadata_profile.upsert / asset_quality_report.create / template.sku.bind / catalog.product.submit / catalog.product.list`。
+  - 浏览器 smoke 通过：桌面和移动均可加载 `/seller/products`，显示 `WEB-007 Seller Operator / seller_operator / {seller_org_id} / aal1`、八个标准 SKU、`X-Idempotency-Key` 与真实商品；捕获浏览器请求 `platformProxyRequestCount=1`、`directPlatformCoreRequestCount=0`，桌面/移动均无横向溢出。
+  - 静态边界检查通过：`apps/portal-web`、`apps/console-web`、`packages/sdk-ts` 未发现 `pg / postgres / kafkajs / opensearch / redis / fabric-network` 等前端直连受限系统依赖或调用。
+  - 业务测试数据清理回查：`web007_products=0`、`web007_quality=0`、`web007_outbox=0`；`web007_audit=16` 按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-007`
+  - `页面说明书-V1-完整版.md`：卖方上架中心、产品编辑页、SKU 配置页、元信息与质量报告展示、提交审核动作
+  - `目录与商品接口协议正式版.md`：商品、SKU、元信息、质量报告、模板绑定、提交审核与 `X-Idempotency-Key`
+  - `业务流程图-V1-完整版.md`：资产/版本 -> 商品草稿 -> SKU -> 模板 -> 元信息/质量 -> 提交审核
+  - `菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`
+  - `packages/openapi/catalog.yaml`、`docs/02-openapi/catalog.yaml`、`packages/sdk-ts/**`
+- 覆盖的任务清单条目：`WEB-007`
+- 未覆盖项：
+  - 无。`WEB-007` 要求的卖方上架中心读取、写入、幂等、权限态、状态态、八个标准 SKU、SDK/OpenAPI 契约、真实 API 联调、浏览器 smoke、数据库回查与清理均已完成；审核工作台完整处理流由后续 `WEB-008` 展开。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
@@ -240,7 +331,7 @@
   - 敏感页面上下文在页内显式展示主体、角色、租户/组织与作用域；`guest / local / claims 缺失` 显示权限态，加载态、空态、错误态和权限态均可通过 `preview` 参数与 E2E 覆盖。
   - `ProductDetail.metadata` 展示时会脱敏对象路径类字段；浏览器端只发起 `/api/platform/api/v1/products/**`、`/api/platform/api/v1/sellers/**`、`/api/platform/api/v1/recommendations`，没有直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`。
   - 修正 catalog OpenAPI 漂移：`GET /api/v1/products/{id}` 与 `GET /api/v1/sellers/{orgId}/profile` 的 200 响应从裸对象同步为 `ApiResponseProductDetail / ApiResponseSellerProfile`，并重新生成 `packages/sdk-ts`。
-  - 收敛 catalog 角色口径：目录读、卖方 profile、商品写、审核与冻结权限矩阵改用正式 V1 角色集合；测试与 `070_seed_role_permissions_v1.sql` 同步补齐正式角色授权，避免旧 `tenant_operator / developer` 口径继续传播。
+  - 收敛 catalog 角色口径：目录读、卖方 profile、商品写、审核与冻结权限矩阵改用正式 V1 角色集合；测试与 `070_seed_role_permissions_v1.sql` 同步补齐正式角色授权，避免旧租户运营占位角色 / `developer` 口径继续传播。
   - 修正种子 SKU 真值：`db028` 与 `searchrec014` 的 `sku_type` 与 `sku_code` 统一为八个标准 SKU，`FILE_SUB / API_PPU / SBX_STD` 的 `trade_mode` 同步为正式值，校验脚本增加 `sku_code = sku_type` 断言。
   - `get_product_detail` 后端查询将 `asset_version` 的 `schema_hash / sample_hash / full_hash / origin_region / allowed_region / release_mode / processing_stage / standardization_status / query_surface_type / status / version_no` 合并进返回 metadata，支持页面样例预览和下单门禁。
 - 验证：
@@ -307,7 +398,7 @@
   - `packages/openapi/search.yaml`、`docs/02-openapi/search.yaml`、`packages/sdk-ts/src/domains/search.ts`、`packages/sdk-ts/src/generated/search.ts`：确认当前实现期权威契约未返回 facet 聚合，也未提供卖方主体类型、敏感等级、价格模式、供方筛选参数；页面必须以已生成 SDK 类型为准。
   - `apps/platform-core/src/modules/search/**`、`docs/05-test-cases/search-rec-cases.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/opensearch-local.md`：确认搜索读取权限、审计写入、backend 标识、fallback 与测试验证方式。
   - `docs/权限设计/菜单权限映射表.md`、`docs/权限设计/按钮级权限说明.md`、`docs/权限设计/接口权限校验清单.md`：确认搜索读取权限 `portal.search.read`，搜索执行权限 `portal.search.use`，购买入口需受后续下单权限和商品状态约束。
-  - `packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`、`apps/platform-core/src/modules/iam/**`：按复审结论同步收敛 `GET /api/v1/auth/me` 示例角色到正式 V1 角色集合，避免 `tenant_operator` 继续传播到 WEB 登录态占位。
+  - `packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`、`apps/platform-core/src/modules/iam/**`：按复审结论同步收敛 `GET /api/v1/auth/me` 示例角色到正式 V1 角色集合，避免旧租户运营占位角色继续传播到 WEB 登录态占位。
 - 当前完成标准理解：
   - 搜索页必须只通过 `portal-web -> /api/platform -> platform-core` 调用正式 API，不直连 PostgreSQL / Kafka / OpenSearch / Redis / Fabric。
   - Bearer 会话下真实调用 `sdk.search.searchCatalog()`；guest / local header 占位不得把需要 Bearer 的正式搜索误判为完成，必须显示明确权限态。
@@ -331,7 +422,7 @@
   - Bearer 会话下真实调用 `sdk.search.searchCatalog()`；`guest / local / claims 缺失` 显示明确搜索权限态，不把本地 Header 占位当成正式搜索登录态。
   - 结果卡片展示 `entity_scope / status / index_sync_status / document_version / score / quality / reputation / hotness / price / seller / tags / industry_tags / delivery_modes`；仅 `product && status=listed` 展示下单入口，卖方结果与不可购买状态显示刷新/进入卖方主页提示。
   - 页面明确展示契约边界：Facet 聚合、卖方主体类型、敏感等级、价格模式、供方筛选当前未在 `packages/openapi/search.yaml` / 后端 `SearchQuery` 中提供，本批不以前端 mock 或新状态名伪造。
-  - 按复审结论修正 IAM 角色漂移：`packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml` 的 `auth/me` 示例改为 `jwt_mirror=["tenant_developer"]`、`local_test_user=["tenant_admin"]`；门户登录态占位移除 `tenant_operator`；IAM 静态角色矩阵和测试同步为正式 V1 角色名，并在 `070_seed_role_permissions_v1.sql` 补齐 `tenant_developer -> iam.session.read`，确保示例 200 响应可验证。
+  - 按复审结论修正 IAM 角色漂移：`packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml` 的 `auth/me` 示例改为 `jwt_mirror=["tenant_developer"]`、`local_test_user=["tenant_admin"]`；门户登录态占位移除旧租户运营占位角色；IAM 静态角色矩阵和测试同步为正式 V1 角色名，并在 `070_seed_role_permissions_v1.sql` 补齐 `tenant_developer -> iam.session.read`，确保示例 200 响应可验证。
   - `apps/portal-web/e2e/smoke.spec.ts` 已更新为搜索页正式权限态、空态和错误态断言，不再依赖旧脚手架“空态预演”。
 - 验证：
   - 前端 / 工作区：

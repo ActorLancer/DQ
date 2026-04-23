@@ -1,5 +1,15 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { SellerProductWorkspaceShell } from "@/components/portal/seller-product-workspace-shell";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
-export default function SellerProductsPage() {
-  return <PortalRoutePage routeKey="seller_product_center" />;
+export default async function SellerProductsPage() {
+  const session = await readPortalSession();
+  const sessionPreview = readPortalSessionPreview(session);
+
+  return (
+    <SellerProductWorkspaceShell
+      initialSection="center"
+      sessionMode={session.mode}
+      initialSubject={sessionPreview}
+    />
+  );
 }

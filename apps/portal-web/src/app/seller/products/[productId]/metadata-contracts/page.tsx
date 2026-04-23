@@ -1,14 +1,23 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { SellerProductWorkspaceShell } from "@/components/portal/seller-product-workspace-shell";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
 export default async function MetadataContractsPage({
   params,
 }: {
   params: Promise<{ productId: string }>;
 }) {
+  const [resolvedParams, session] = await Promise.all([
+    params,
+    readPortalSession(),
+  ]);
+  const sessionPreview = readPortalSessionPreview(session);
+
   return (
-    <PortalRoutePage
-      routeKey="seller_metadata_contract"
-      params={await params}
+    <SellerProductWorkspaceShell
+      initialSection="metadata"
+      productId={resolvedParams.productId}
+      sessionMode={session.mode}
+      initialSubject={sessionPreview}
     />
   );
 }

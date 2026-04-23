@@ -8,7 +8,7 @@ use crate::modules::catalog::domain::{
     CreateRawIngestBatchRequest, CreateRawObjectManifestRequest, DataContractView, DataProductView,
     DataResourceView, ExtractionJobView, FormatDetectionResultView, PatchAssetReleasePolicyRequest,
     PatchDataProductRequest, PatchProductSkuRequest, PatchUsagePolicyRequest, PreviewArtifactView,
-    ProductDetailView, ProductMetadataProfileView, ProductSkuView,
+    ProductDetailView, ProductMetadataProfileView, ProductSkuView, ProductStatusCountView,
     PutProductMetadataProfileRequest, RawIngestBatchView, RawObjectManifestView,
     ReviewDecisionView, SellerProfileView, TemplateBindingView, UsagePolicyView,
 };
@@ -514,6 +514,93 @@ impl PostgresCatalogRepository {
         Ok(row.map(|row| parse_data_product_row(&row)))
     }
 
+    pub async fn list_data_products(
+        client: &impl GenericClient,
+        seller_org_id: Option<&str>,
+        status: Option<&str>,
+        q: Option<&str>,
+        page: i64,
+        page_size: i64,
+    ) -> Result<(Vec<DataProductView>, i64, Vec<ProductStatusCountView>), Error> {
+        let offset = (page - 1) * page_size;
+        let rows = client
+            .query(
+                "SELECT
+                   product_id::text,
+                   asset_id::text,
+                   asset_version_id::text,
+                   seller_org_id::text,
+                   title,
+                   category,
+                   product_type,
+                   status,
+                   price_mode,
+                   price::text,
+                   currency_code,
+                   delivery_type,
+                   to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
+                   to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
+                 FROM catalog.product
+                 WHERE ($1::text IS NULL OR seller_org_id = $1::text::uuid)
+                   AND ($2::text IS NULL OR status = $2)
+                   AND (
+                     $3::text IS NULL
+                     OR title ILIKE '%' || $3 || '%'
+                     OR category ILIKE '%' || $3 || '%'
+                     OR product_type ILIKE '%' || $3 || '%'
+                   )
+                 ORDER BY updated_at DESC, product_id DESC
+                 LIMIT $4 OFFSET $5",
+                &[&seller_org_id, &status, &q, &page_size, &offset],
+            )
+            .await?;
+
+        let total_row = client
+            .query_one(
+                "SELECT count(*)::bigint
+                 FROM catalog.product
+                 WHERE ($1::text IS NULL OR seller_org_id = $1::text::uuid)
+                   AND ($2::text IS NULL OR status = $2)
+                   AND (
+                     $3::text IS NULL
+                     OR title ILIKE '%' || $3 || '%'
+                     OR category ILIKE '%' || $3 || '%'
+                     OR product_type ILIKE '%' || $3 || '%'
+                   )",
+                &[&seller_org_id, &status, &q],
+            )
+            .await?;
+
+        let status_rows = client
+            .query(
+                "SELECT status, count(*)::bigint
+                 FROM catalog.product
+                 WHERE ($1::text IS NULL OR seller_org_id = $1::text::uuid)
+                   AND (
+                     $2::text IS NULL
+                     OR title ILIKE '%' || $2 || '%'
+                     OR category ILIKE '%' || $2 || '%'
+                     OR product_type ILIKE '%' || $2 || '%'
+                   )
+                 GROUP BY status
+                 ORDER BY status",
+                &[&seller_org_id, &q],
+            )
+            .await?;
+
+        Ok((
+            rows.iter().map(parse_data_product_row).collect(),
+            total_row.get(0),
+            status_rows
+                .iter()
+                .map(|row| ProductStatusCountView {
+                    status: row.get(0),
+                    count: row.get(1),
+                })
+                .collect(),
+        ))
+    }
+
     pub async fn get_product_detail(
         client: &impl GenericClient,
         id: &str,
@@ -734,7 +821,7 @@ impl PostgresCatalogRepository {
                      AND (
                        coalesce(nullif(sku.metadata->>'draft_template_id', ''), '') = ''
                        OR NOT (
-                         (sku.metadata->>'draft_template_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                         (sku.metadata->>'draft_template_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
                          AND EXISTS (
                            SELECT 1
                            FROM contract.template_definition t

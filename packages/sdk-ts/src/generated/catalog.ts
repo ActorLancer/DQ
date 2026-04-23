@@ -31,7 +31,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List seller product drafts and listings */
+        get: operations["listProducts"];
         put?: never;
         /** Create product draft */
         post: operations["createProductDraft"];
@@ -493,6 +494,9 @@ export interface components {
             use_cases?: string[];
             data_classification?: string | null;
             quality_score?: string | null;
+            metadata?: {
+                [key: string]: unknown;
+            };
         };
         PatchDataProductRequest: {
             title?: string | null;
@@ -1242,6 +1246,21 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        ProductStatusCount: {
+            status: string;
+            /** Format: int64 */
+            count: number;
+        };
+        ProductList: {
+            items: components["schemas"]["DataProduct"][];
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            page_size: number;
+            status_counts: components["schemas"]["ProductStatusCount"][];
+        };
         ProductDetail: {
             /** Format: uuid */
             product_id: string;
@@ -1343,9 +1362,37 @@ export interface components {
             success: boolean;
             data: components["schemas"]["ProductDetail"];
         };
+        ApiResponseProductList: {
+            success: boolean;
+            data: components["schemas"]["ProductList"];
+        };
+        ApiResponseDataProduct: {
+            success: boolean;
+            data: components["schemas"]["DataProduct"];
+        };
         ApiResponseSellerProfile: {
             success: boolean;
             data: components["schemas"]["SellerProfile"];
+        };
+        ApiResponseProductSku: {
+            success: boolean;
+            data: components["schemas"]["ProductSku"];
+        };
+        ApiResponseTemplateBinding: {
+            success: boolean;
+            data: components["schemas"]["TemplateBinding"];
+        };
+        ApiResponseProductMetadataProfile: {
+            success: boolean;
+            data: components["schemas"]["ProductMetadataProfile"];
+        };
+        ApiResponseAssetQualityReport: {
+            success: boolean;
+            data: components["schemas"]["AssetQualityReport"];
+        };
+        ApiResponseProductSubmit: {
+            success: boolean;
+            data: components["schemas"]["ProductSubmit"];
         };
         ProductSubmit: {
             /** Format: uuid */
@@ -1522,10 +1569,39 @@ export interface operations {
             };
         };
     };
+    listProducts: {
+        parameters: {
+            query?: {
+                seller_org_id?: string;
+                status?: "draft" | "pending_review" | "listed" | "delisted" | "frozen";
+                q?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Product list found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponseProductList"];
+                };
+            };
+        };
+    };
     createProductDraft: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1541,7 +1617,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DataProduct"];
+                    "application/json": components["schemas"]["ApiResponseDataProduct"];
                 };
             };
         };
@@ -1571,7 +1647,10 @@ export interface operations {
     patchProductDraft: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1589,7 +1668,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DataProduct"];
+                    "application/json": components["schemas"]["ApiResponseDataProduct"];
                 };
             };
         };
@@ -1619,7 +1698,10 @@ export interface operations {
     submitProduct: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1637,7 +1719,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductSubmit"];
+                    "application/json": components["schemas"]["ApiResponseProductSubmit"];
                 };
             };
         };
@@ -1645,7 +1727,10 @@ export interface operations {
     bindProductTemplate: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1663,7 +1748,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TemplateBinding"];
+                    "application/json": components["schemas"]["ApiResponseTemplateBinding"];
                 };
             };
         };
@@ -1671,7 +1756,9 @@ export interface operations {
     suspendProduct: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
                 /** @description Required when `suspend_mode=freeze`. */
                 "x-step-up-challenge-id"?: string;
                 /** @description Required when `suspend_mode=freeze`. */
@@ -1702,7 +1789,10 @@ export interface operations {
     putProductMetadataProfile: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1720,7 +1810,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductMetadataProfile"];
+                    "application/json": components["schemas"]["ApiResponseProductMetadataProfile"];
                 };
             };
         };
@@ -1728,7 +1818,10 @@ export interface operations {
     createProductSku: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1746,7 +1839,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductSku"];
+                    "application/json": components["schemas"]["ApiResponseProductSku"];
                 };
             };
         };
@@ -1754,7 +1847,10 @@ export interface operations {
     reviewSubject: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1780,7 +1876,10 @@ export interface operations {
     reviewProduct: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1832,7 +1931,10 @@ export interface operations {
     patchProductSku: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1850,7 +1952,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductSku"];
+                    "application/json": components["schemas"]["ApiResponseProductSku"];
                 };
             };
         };
@@ -1858,7 +1960,10 @@ export interface operations {
     bindSkuTemplate: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1876,7 +1981,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TemplateBinding"];
+                    "application/json": components["schemas"]["ApiResponseTemplateBinding"];
                 };
             };
         };
@@ -2063,7 +2168,10 @@ export interface operations {
     createPreviewArtifact: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 versionId: string;
             };
@@ -2089,7 +2197,10 @@ export interface operations {
     createAssetObject: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 versionId: string;
             };
@@ -2167,7 +2278,10 @@ export interface operations {
     createAssetQualityReport: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB write pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 versionId: string;
             };
@@ -2185,7 +2299,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssetQualityReport"];
+                    "application/json": components["schemas"]["ApiResponseAssetQualityReport"];
                 };
             };
         };

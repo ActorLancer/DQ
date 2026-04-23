@@ -102,7 +102,11 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "catalog.product.list",
     primaryPermissions: ["catalog.product.create"],
     description: "卖方商品草稿、状态与上架入口。",
-    apiBindings: ["/api/v1/products"],
+    apiBindings: [
+      "GET /api/v1/products",
+      "POST /api/v1/products",
+      "GET /api/v1/products/{id}",
+    ],
   },
   {
     key: "seller_product_edit",
@@ -112,7 +116,10 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "catalog.product.read",
     primaryPermissions: ["catalog.product.update"],
     description: "产品基础信息、元字段与状态编辑入口。",
-    apiBindings: ["/api/v1/products/{id}"],
+    apiBindings: [
+      "GET /api/v1/products/{id}",
+      "PATCH /api/v1/products/{id}",
+    ],
   },
   {
     key: "asset_raw_ingest_center",
@@ -145,6 +152,7 @@ export const portalRouteList: PortalRouteMeta[] = [
     ],
     description: "元信息、质量报告、数据契约与加工配置入口。",
     apiBindings: [
+      "GET /api/v1/products/{id}",
       "/api/v1/products/{id}/metadata-profile",
       "/api/v1/assets/{versionId}/quality-reports",
       "/api/v1/skus/{id}/data-contracts",
@@ -158,7 +166,11 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "catalog.sku.read",
     primaryPermissions: ["catalog.sku.create", "catalog.sku.update"],
     description: "标准 SKU 与交付路径配置。",
-    apiBindings: ["/api/v1/products/{id}/skus", "/api/v1/skus/{id}"],
+    apiBindings: [
+      "GET /api/v1/products/{id}",
+      "POST /api/v1/products/{id}/skus",
+      "PATCH /api/v1/skus/{id}",
+    ],
   },
   {
     key: "seller_template_bind",
@@ -169,8 +181,9 @@ export const portalRouteList: PortalRouteMeta[] = [
     primaryPermissions: ["template.contract.bind", "template.policy.bind"],
     description: "合同模板、验收模板与策略模板绑定。",
     apiBindings: [
-      "/api/v1/products/{id}/bind-template",
-      "/api/v1/skus/{id}/bind-template",
+      "GET /api/v1/products/{id}",
+      "POST /api/v1/products/{id}/bind-template",
+      "POST /api/v1/skus/{id}/bind-template",
       "/api/v1/policies/{id}",
     ],
   },

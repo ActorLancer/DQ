@@ -80,6 +80,7 @@
 ## 批次更新记录
 
 - `BATCH-280`（`WEB-006`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；卖方主页已真实接入 `GET /api/v1/sellers/{orgId}/profile` 与 `seller_profile_featured` 推荐位，补齐 `SellerProfile` 的认证标签、在售商品与信誉摘要契约，覆盖权限态、空态、错态、桌面/移动浏览器 smoke、审计回查与前端不直连受限系统验证。
+- `BATCH-281`（`WEB-007`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；卖方上架中心已真实接入商品列表、草稿创建/编辑、SKU 创建、元信息、质量报告、模板绑定与提交审核 API，写操作通过 `X-Idempotency-Key` 留痕，覆盖 8 个标准 SKU、权限/空态/错态/加载态、桌面/移动浏览器 smoke、数据库回查与业务测试数据清理。
 - `BATCH-279`（`WEB-005`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；本批将商品详情页正式接入 `GET /api/v1/products/{id}`、`GET /api/v1/sellers/{orgId}/profile` 与 `product_detail_bundle` 推荐位，并同步收敛 catalog OpenAPI 响应包装、SDK 生成物、正式 V1 角色口径、种子 SKU 真值与商品详情样本哈希回填。
 - `BATCH-220`（`AUD-007`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；已把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 更新到包含 anchor batch 查看 / retry、对应 runbook 与验收矩阵的最新状态。
 - `BATCH-221`（`AUD-008`）：无新增 `V1-gap / V2-reserved / V3-reserved / tech-debt` 项；已把 `TODO-AUD-OPENAPI-001` 与 `TODO-AUD-TEST-001` 更新到包含 `GET /api/v1/ops/outbox`、`GET /api/v1/ops/dead-letters`、`audit-ops-outbox-dead-letters.md` 与 `AUD-008` 验收矩阵的最新状态。

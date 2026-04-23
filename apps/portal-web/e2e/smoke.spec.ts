@@ -46,6 +46,26 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/sellers/10000000-0000-0000-0000-000000000101?preview=error");
   await expect(page.getByText("CAT_VALIDATION_FAILED")).toBeVisible();
 
+  await page.goto("/seller/products?preview=forbidden");
+  await expect(page.getByText("上架中心权限态")).toBeVisible();
+  await expect(
+    page.getByText("需要权限：catalog.product.list", { exact: false }),
+  ).toBeVisible();
+
+  await page.goto("/seller/products?preview=empty");
+  await expect(page.getByText("没有商品草稿")).toBeVisible();
+  await expect(page.getByText("POST /api/v1/products", { exact: false })).toBeVisible();
+
+  await page.goto("/seller/products?preview=error");
+  await expect(page.getByText("上架中心错误态")).toBeVisible();
+  await expect(page.getByText("CAT_VALIDATION_FAILED", { exact: false })).toBeVisible();
+
+  await page.goto("/seller/products/20000000-0000-0000-0000-000000000309/skus?preview=forbidden");
+  await expect(page.getByText("上架中心权限态")).toBeVisible();
+  await expect(
+    page.getByText("catalog.sku.create", { exact: false }).last(),
+  ).toBeVisible();
+
   await page.goto("/trade/orders/new?preview=forbidden");
   await expect(page.getByText("权限态预演")).toBeVisible();
 });

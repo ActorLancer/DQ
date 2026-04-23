@@ -3,6 +3,7 @@ use crate::modules::catalog::domain::{is_supported_trade_mode, is_trade_mode_com
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatalogPermission {
     ProductDraftWrite,
+    ProductList,
     ProductRead,
     SellerProfileRead,
     TemplateBind,
@@ -17,6 +18,9 @@ pub enum CatalogPermission {
 pub fn is_allowed(role: &str, permission: CatalogPermission) -> bool {
     match permission {
         CatalogPermission::ProductDraftWrite => {
+            matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
+        }
+        CatalogPermission::ProductList => {
             matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
         }
         CatalogPermission::ProductRead => {
@@ -109,6 +113,16 @@ mod tests {
         assert!(!is_allowed(
             "tenant_developer",
             CatalogPermission::ProductDraftWrite
+        ));
+        assert!(is_allowed("platform_admin", CatalogPermission::ProductList));
+        assert!(is_allowed("tenant_admin", CatalogPermission::ProductList));
+        assert!(is_allowed(
+            "seller_operator",
+            CatalogPermission::ProductList
+        ));
+        assert!(!is_allowed(
+            "buyer_operator",
+            CatalogPermission::ProductList
         ));
     }
 

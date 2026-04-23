@@ -263,7 +263,11 @@ assert_synced_copy "$recommendation_file" "$docs_recommendation_file"
 catalog_file="$OPENAPI_DIR/catalog.yaml"
 for path in \
   "/api/v1/catalog/standard-scenarios" \
+  "/api/v1/products" \
   "/api/v1/products/{id}" \
+  "/api/v1/products/{id}/skus" \
+  "/api/v1/products/{id}/metadata-profile" \
+  "/api/v1/products/{id}/submit" \
   "/api/v1/sellers/{orgId}/profile"; do
   grep -q "$path" "$catalog_file" || {
     echo "[error] $catalog_file missing path: $path" >&2
@@ -274,6 +278,12 @@ done
 for token in \
   "getStandardScenarioTemplates" \
   "ApiResponseStandardScenarioTemplateList" \
+  "listProducts" \
+  "ApiResponseProductList" \
+  "ApiResponseDataProduct" \
+  "ApiResponseProductSku" \
+  "ApiResponseProductSubmit" \
+  "X-Idempotency-Key" \
   "getProductDetail" \
   "ApiResponseProductDetail" \
   "ProductDetail" \

@@ -30,6 +30,18 @@ describe("portal route registry", () => {
         "/api/v1/recommendations?placement_code=seller_profile_featured",
       ]),
     );
+    expect(portalRouteMap.seller_product_center.apiBindings).toEqual(
+      expect.arrayContaining([
+        "GET /api/v1/products",
+        "POST /api/v1/products",
+      ]),
+    );
+    expect(portalRouteMap.seller_sku_config.apiBindings).toEqual(
+      expect.arrayContaining([
+        "POST /api/v1/products/{id}/skus",
+        "PATCH /api/v1/skus/{id}",
+      ]),
+    );
     expect(portalRouteMap.order_create.primaryPermissions).toContain(
       "trade.order.create",
     );
