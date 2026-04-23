@@ -57,5 +57,22 @@ describe("portal route registry", () => {
         "POST /api/v1/orders/{id}/cancel",
       ]),
     );
+    expect(portalRouteMap.delivery_file.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/auth/me",
+        "GET /api/v1/orders/{id}",
+        "POST /api/v1/orders/{id}/deliver",
+        "GET /api/v1/orders/{id}/download-ticket",
+      ]),
+    );
+    expect(portalRouteMap.delivery_template_query.apiBindings).toEqual(
+      expect.arrayContaining([
+        "POST /api/v1/orders/{id}/template-grants",
+        "GET /api/v1/orders/{id}/template-runs",
+      ]),
+    );
+    expect(portalRouteMap.delivery_sandbox.apiBindings).toContain(
+      "POST /api/v1/orders/{id}/sandbox-workspaces",
+    );
   });
 });

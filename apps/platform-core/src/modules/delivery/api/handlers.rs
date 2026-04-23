@@ -640,6 +640,7 @@ pub async fn manage_revision_subscription_api(
     let tenant_id = header(&headers, "x-tenant-id");
     let request_id = header(&headers, "x-request-id");
     let trace_id = header(&headers, "x-trace-id");
+    let idempotency_key = header(&headers, "x-idempotency-key");
 
     let mut client = state.db.client().map_err(map_db_connect)?;
     let subscription = manage_revision_subscription(
@@ -650,6 +651,7 @@ pub async fn manage_revision_subscription_api(
         &actor_role,
         request_id.as_deref(),
         trace_id.as_deref(),
+        idempotency_key.as_deref(),
     )
     .await?;
 

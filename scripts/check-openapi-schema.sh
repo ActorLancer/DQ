@@ -378,4 +378,38 @@ done
 docs_trade_file="docs/02-openapi/trade.yaml"
 assert_synced_copy "$trade_file" "$docs_trade_file"
 
+delivery_file="$OPENAPI_DIR/delivery.yaml"
+for path in \
+  "/api/v1/orders/{id}/deliver" \
+  "/api/v1/orders/{id}/download-ticket" \
+  "/api/v1/orders/{id}/subscriptions" \
+  "/api/v1/orders/{id}/share-grants" \
+  "/api/v1/orders/{id}/template-grants" \
+  "/api/v1/orders/{id}/sandbox-workspaces" \
+  "/api/v1/orders/{id}/usage-log"; do
+  grep -q "$path" "$delivery_file" || {
+    echo "[error] $delivery_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+for token in \
+  "CommitOrderDeliveryRequest" \
+  "CommitOrderDeliveryResponseEnvelope" \
+  "DownloadTicketResponseEnvelope" \
+  "ManageRevisionSubscriptionRequest" \
+  "ManageShareGrantRequest" \
+  "ManageTemplateGrantRequest" \
+  "ManageSandboxWorkspaceRequest" \
+  "ApiUsageLogResponseEnvelope" \
+  "X-Idempotency-Key" \
+  "delivery.file.commit" \
+  "delivery.report.commit" \
+  "delivery.api.enable"; do
+  assert_file_contains "$delivery_file" "$token" "delivery center contract token"
+done
+
+docs_delivery_file="docs/02-openapi/delivery.yaml"
+assert_synced_copy "$delivery_file" "$docs_delivery_file"
+
 echo "[ok] openapi schema skeleton check passed"

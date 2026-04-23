@@ -270,6 +270,80 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 无需新增条目。
 
+### BATCH-284（计划中）
+- 任务：`WEB-010` 实现交付中心页面：文件交付、API 开通、共享开通、模板授权、沙箱开通、报告交付入口
+- 状态：计划中
+- 说明：本批将 `/delivery/orders/:orderId/file|api|share|subscription|template-query|sandbox|report` 从脚手架升级为正式交付中心工作区。页面必须真实读取订单、生命周期与当前主体，按 SKU 显示正确交付入口，并对文件/报告交付、API 开通、共享开通、版本订阅、模板授权、沙箱开通提供表单、状态、权限、幂等键、审计提示、空态/错态/加载态和最小 E2E。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-009` 已本地提交并提供门户工程、会话、受控代理、SDK、商品详情、下单与订单详情基线。本批继续保持 `portal-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-010` 只实现交付中心入口，不提前合并验收页、账单页、争议页或审计联查页；DoD 要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认文件交付页需展示对象、密钥信封、下载票据、回执与 Hash 校验；API 开通页需展示应用绑定、API Key、额度、限流与调用日志；只读共享页需展示授权协议、接收方、共享对象、授权范围、有效期和撤权记录；模板查询、沙箱和报告交付入口需展示授权、工作区、结果包与边界说明。
+  - `docs/业务流程/业务流程图-V1-完整版.md`、`docs/05-test-cases/delivery-cases.md`：确认 FILE/REPORT/API/SHARE/QRY_LITE/SBX_STD 各交付分支、票据过期、重复开通幂等、授权撤销、下载不得暴露真实对象路径、审计与链路摘要要求。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`：确认交付页查看权限为 `trade.order.read`，主按钮权限包括 `delivery.file.commit/download`、`delivery.api.enable`、`delivery.share.enable/read`、`delivery.subscription.manage/read`、`delivery.template_query.enable`、`delivery.sandbox.enable`、`delivery.report.commit`。
+  - 通用边界文档、OpenAPI 冻结表、统一错误码字典、测试矩阵、本地环境与配置项文档、技术选型、总体架构与全集成基线：确认前端只调用 `platform-core` 正式 API；写接口必须携带 `X-Idempotency-Key`；敏感页面必须展示主体、角色、租户/组织、作用域；不得发明 SKU、状态或错误码语义。
+  - `packages/openapi/delivery.yaml` 与 `docs/02-openapi/delivery.yaml`：确认交付分支接口、下载票据、订阅、共享、模板授权、沙箱、查询运行与 API usage log schema；同时发现 `deliver/share-grants/template-grants/sandbox-workspaces` 后端已读取 `x-idempotency-key`，OpenAPI 尚未声明，需要本批同步补齐并加防漂移校验。
+  - `apps/platform-core/src/modules/delivery/**`、`apps/platform-core/src/modules/order/**`、`packages/sdk-ts/**`、`apps/portal-web/**`：确认后端已有交付分支处理器、订单详情与生命周期 API；`sdk-ts` 尚无 delivery domain；门户交付路由仍为 `PortalRoutePage` 脚手架。
+- 当前完成标准理解：
+  - 交付中心必须按真实订单 SKU 展示官方交付入口，并显式支持 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD` 八个标准 SKU，不得把 `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 并回大类。
+  - 页面必须读取 `auth/me`、订单详情、生命周期快照以及分支 API，并展示主体/角色/租户/作用域、状态、request_id / tx_hash / 链状态 / 投影状态承接、审计留痕与受控对象路径说明。
+  - 写操作必须通过 SDK 透传 `X-Idempotency-Key`，重复点击期间禁用提交，前端 Zod/RHF 校验与后端错误码回显必须可用。
+  - 下载类页面不得展示真实对象路径；下载票据只显示 ticket、状态、有效期、下载次数和 Hash 校验摘要。
+- 实施计划：
+  1. 补齐 delivery OpenAPI 幂等头声明、防漂移校验和 `packages/sdk-ts` delivery domain，并重新生成类型。
+  2. 新增交付中心视图模型、Zod/RHF schema、SKU 到交付入口映射、错误格式化与单元测试。
+  3. 替换文件、API、共享、订阅、模板查询、沙箱和报告交付路由为正式 `DeliveryWorkflowShell`，接入真实 API、权限态、状态态、幂等键和审计提示。
+  4. 更新路由 API 绑定、E2E 与 smoke 覆盖，执行前端、SDK、后端、OpenAPI、真实 API、浏览器和数据库回查验证。
+
+### BATCH-284（待审批）
+- 任务：`WEB-010` 实现交付中心页面：文件交付、API 开通、共享开通、模板授权、沙箱开通、报告交付入口
+- 状态：待审批
+- 当前任务编号：`WEB-010`
+- 完成情况：
+  - 已补齐 `packages/openapi/delivery.yaml` 与 `docs/02-openapi/delivery.yaml` 的交付写接口幂等头声明，覆盖 `deliver / subscriptions / share-grants / template-grants / sandbox-workspaces`，并在 `scripts/check-openapi-schema.sh` 增加 Delivery 契约与归档同步防漂移校验。
+  - 已重新生成 `packages/sdk-ts/src/generated/delivery.ts`，新增 `packages/sdk-ts/src/domains/delivery.ts` 与单测，正式封装文件/报告/API 提交、下载票据、版本订阅、共享授权、模板授权、沙箱开通、查询运行和 API 用量读取；所有写方法必传并透传 `X-Idempotency-Key`。
+  - 已新增 `apps/portal-web/src/lib/delivery-workflow.ts` 与单测，冻结 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD` 到交付入口的正式映射，补齐 Zod/RHF 表单 schema、幂等键、权限判断、响应解包、敏感字段遮蔽和统一错误文案。
+  - 已将 `/delivery/orders/:orderId/file|api|share|subscription|template-query|sandbox|report` 从脚手架升级为正式交付中心页，真实读取 `auth/me`、订单详情、生命周期快照和分支 API，展示主体/角色/租户/作用域、订单状态、SKU 真值、标准 SKU 入口、request_id / tx_hash / 链状态 / 投影状态承接、审计提示、加载态、空态、错态和权限态。
+  - 文件与报告交付页不暴露真实对象路径；下载票据只显示受控 ticket、有效期、下载次数和 Hash 摘要；API Key、共享 locator、对象 URI 等敏感字段在结果区遮蔽展示。
+  - 已更新门户路由 API 绑定、Playwright smoke 覆盖和 ESLint 输出目录忽略；同时修复 `home-shell` 在 Next build 中对 recommendation 生成类型的推导问题，避免 `RecommendationsResponse` 漂移导致构建失败。
+- 验证记录：
+  1. `pnpm install`
+  2. `pnpm --filter @datab/sdk-ts openapi:generate`
+  3. `pnpm --filter @datab/sdk-ts typecheck`
+  4. `pnpm --filter @datab/sdk-ts test`
+  5. `pnpm --filter @datab/sdk-ts build`
+  6. `pnpm --filter @datab/portal-web typecheck`
+  7. `pnpm --filter @datab/portal-web lint`
+  8. `pnpm --filter @datab/portal-web test:unit`
+  9. `pnpm --filter @datab/portal-web test:e2e`
+  10. `pnpm --filter @datab/portal-web build`
+  11. `pnpm lint`
+  12. `pnpm typecheck`
+  13. `pnpm test`
+  14. `pnpm build`
+  15. `cargo fmt --all`
+  16. `cargo check -p platform-core`
+  17. `cargo test -p platform-core`
+  18. `cargo sqlx prepare --workspace`
+  19. `./scripts/check-query-compile.sh`
+  20. `./scripts/check-openapi-schema.sh`
+  21. `docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml ps`：PostgreSQL、Kafka、Redis、OpenSearch、Keycloak、MinIO 等本地依赖可用；前端未直连这些系统。
+  22. 真实 API 联调：`platform-core APP_MODE=local APP_PORT=8094`，`curl /api/v1/auth/me`、`GET /api/v1/orders/{id}`、`GET /api/v1/orders/{id}/lifecycle-snapshots`、`POST /api/v1/orders/{id}/subscriptions`、`GET /api/v1/orders/{id}/subscriptions` 均通过。
+  23. 数据库回查：`delivery.revision_subscription` 记录 `last_idempotency_key`，`audit.audit_event` 记录 `delivery.subscription.manage` 与幂等键；清理临时业务数据后 `trade.order_main / delivery.revision_subscription / catalog.product / core.organization` 回查为 `0`，审计记录按 append-only 保留 `3` 条。
+  24. 浏览器 smoke：桌面 `1440x960` 与移动 `390x844` 均加载交付订阅页；浏览器仅访问 `/api/platform/**`，`auth/me`、订单详情与订阅 POST 均被捕获，POST 带 `X-Idempotency-Key`，直连 `5432/6379/9092/9094/9200/7051/8094` 次数为 `0`。
+  25. 边界检查：`rg` 未发现前端或 SDK 引入受限系统客户端；命中项仅为文档/生成契约描述中的边界说明。`git diff --check` 通过。
+  26. 最终补丁后复验：`pnpm --filter @datab/portal-web typecheck`、`pnpm --filter @datab/portal-web lint`、`./scripts/check-openapi-schema.sh` 均通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-010`
+  - `页面说明书-V1-完整版.md`：文件交付、API 开通、共享开通、版本订阅、模板查询、沙箱开通和报告交付入口
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`：`trade.order.read` 与交付分支主按钮权限
+  - `业务流程图-V1-完整版.md`、`delivery-cases.md`：交付分支、票据、授权、幂等、审计与撤权/空态/错态要求
+  - `packages/openapi/delivery.yaml`、`docs/02-openapi/delivery.yaml`、`packages/sdk-ts/**`、`apps/platform-core/src/modules/delivery/**`
+- 覆盖的任务清单条目：`WEB-010`
+- 未覆盖项：
+  - 无。验收页、账单页、争议页、审计联查页和通知联查页按后续 WEB task 顺序推进；本批未合并或提前完成后续任务。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-284` 无新增项。
+
 ### BATCH-283（计划中）
 - 任务：`WEB-009` 实现订单创建与订单详情页，显式支持 8 个标准 SKU 与五条标准链路官方下单入口
 - 状态：计划中

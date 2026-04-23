@@ -282,8 +282,11 @@ export const portalRouteList: PortalRouteMeta[] = [
     primaryPermissions: ["delivery.file.commit", "delivery.file.download"],
     description: "文件交付、下载票据与回执入口。",
     apiBindings: [
-      "/api/v1/orders/{id}/deliver",
-      "/api/v1/orders/{id}/download-ticket",
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/deliver",
+      "GET /api/v1/orders/{id}/download-ticket",
     ],
   },
   {
@@ -294,7 +297,13 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "trade.order.read",
     primaryPermissions: ["delivery.share.enable", "delivery.share.read"],
     description: "只读共享开通与撤权入口。",
-    apiBindings: ["/api/v1/orders/{id}/share-grants"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/share-grants",
+      "GET /api/v1/orders/{id}/share-grants",
+    ],
   },
   {
     key: "delivery_subscription",
@@ -307,7 +316,13 @@ export const portalRouteList: PortalRouteMeta[] = [
       "delivery.subscription.read",
     ],
     description: "订阅版本、周期交付与更新轨迹入口。",
-    apiBindings: ["/api/v1/orders/{id}/subscriptions"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/subscriptions",
+      "GET /api/v1/orders/{id}/subscriptions",
+    ],
   },
   {
     key: "delivery_api",
@@ -317,7 +332,13 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "trade.order.read",
     primaryPermissions: ["delivery.api.enable", "delivery.app.bind"],
     description: "API 凭证、应用绑定和调用入口。",
-    apiBindings: ["/api/v1/orders/{id}/deliver"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/deliver",
+      "GET /api/v1/orders/{id}/usage-log",
+    ],
   },
   {
     key: "delivery_template_query",
@@ -328,8 +349,11 @@ export const portalRouteList: PortalRouteMeta[] = [
     primaryPermissions: ["delivery.template_query.enable"],
     description: "模板授权与执行入口。",
     apiBindings: [
-      "/api/v1/orders/{id}/template-grants",
-      "/api/v1/orders/{id}/template-runs",
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/template-grants",
+      "GET /api/v1/orders/{id}/template-runs",
     ],
   },
   {
@@ -340,7 +364,12 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "trade.order.read",
     primaryPermissions: ["delivery.sandbox.enable"],
     description: "沙箱工作区、席位和生命周期入口。",
-    apiBindings: ["/api/v1/orders/{id}/sandbox-workspaces"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/sandbox-workspaces",
+    ],
   },
   {
     key: "delivery_query_runs",
@@ -360,7 +389,12 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "trade.order.read",
     primaryPermissions: ["delivery.report.commit"],
     description: "结果产品与报告包交付入口。",
-    apiBindings: ["/api/v1/orders/{id}/deliver"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/deliver",
+    ],
   },
   {
     key: "delivery_acceptance",

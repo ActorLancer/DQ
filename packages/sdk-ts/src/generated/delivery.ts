@@ -15,12 +15,15 @@ export interface paths {
         put?: never;
         /**
          * Commit file/report delivery or enable API access for a deliverable order
-         * @description Uses the prepared delivery task auto-created when the order entered pending_delivery and emits both `delivery.committed` and `billing.trigger.bridge` outbox events on success.
+         * @description Uses the prepared delivery task auto-created when the order entered pending_delivery and emits both `delivery.committed` and `billing.trigger.bridge` outbox events on success. Required branch permissions are `delivery.file.commit`, `delivery.report.commit`, and `delivery.api.enable`.
          */
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description Required idempotency key for delivery write actions. */
+                    "X-Idempotency-Key": string;
+                };
                 path: {
                     id: string;
                 };
@@ -393,7 +396,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description Required idempotency key for FILE_SUB subscription writes. */
+                    "X-Idempotency-Key": string;
+                };
                 path: {
                     id: string;
                 };
@@ -502,7 +508,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description Required idempotency key for SHARE_RO grant writes. */
+                    "X-Idempotency-Key": string;
+                };
                 path: {
                     id: string;
                 };
@@ -572,7 +581,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description Required idempotency key for QRY_LITE template grant writes. */
+                    "X-Idempotency-Key": string;
+                };
                 path: {
                     id: string;
                 };
@@ -645,7 +657,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description Required idempotency key for SBX_STD sandbox workspace writes. */
+                    "X-Idempotency-Key": string;
+                };
                 path: {
                     id: string;
                 };

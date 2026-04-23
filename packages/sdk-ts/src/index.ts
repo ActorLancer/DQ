@@ -1,6 +1,7 @@
 import { PlatformClient, PlatformApiError } from "./core/http";
 import { createAuditClient } from "./domains/audit";
 import { createCatalogClient } from "./domains/catalog";
+import { createDeliveryClient } from "./domains/delivery";
 import { createIamClient } from "./domains/iam";
 import { createOpsClient } from "./domains/ops";
 import { createRecommendationClient } from "./domains/recommendation";
@@ -17,6 +18,7 @@ export type {
 } from "./core/openapi";
 export * from "./domains/audit";
 export * from "./domains/catalog";
+export * from "./domains/delivery";
 export * from "./domains/iam";
 export * from "./domains/ops";
 export * from "./domains/recommendation";
@@ -32,6 +34,7 @@ export function createDatabSdk(config: ConstructorParameters<typeof PlatformClie
     iam: createIamClient(client),
     ops: createOpsClient(client),
     catalog: createCatalogClient(client),
+    delivery: createDeliveryClient(client),
     search: createSearchClient(client),
     recommendation: createRecommendationClient(client),
     trade: createTradeClient(client),

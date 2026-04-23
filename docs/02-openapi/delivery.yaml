@@ -40,7 +40,7 @@ paths:
   /api/v1/orders/{id}/deliver:
     post:
       summary: Commit file/report delivery or enable API access for a deliverable order
-      description: Uses the prepared delivery task auto-created when the order entered pending_delivery and emits both `delivery.committed` and `billing.trigger.bridge` outbox events on success.
+      description: Uses the prepared delivery task auto-created when the order entered pending_delivery and emits both `delivery.committed` and `billing.trigger.bridge` outbox events on success. Required branch permissions are `delivery.file.commit`, `delivery.report.commit`, and `delivery.api.enable`.
       tags: [delivery]
       parameters:
         - name: id
@@ -49,6 +49,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key for delivery write actions.
       requestBody:
         required: true
         content:
@@ -201,6 +207,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key for FILE_SUB subscription writes.
       requestBody:
         required: true
         content:
@@ -255,6 +267,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key for SHARE_RO grant writes.
       requestBody:
         required: true
         content:
@@ -308,6 +326,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key for QRY_LITE template grant writes.
       requestBody:
         required: true
         content:
@@ -341,6 +365,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Required idempotency key for SBX_STD sandbox workspace writes.
       requestBody:
         required: true
         content:

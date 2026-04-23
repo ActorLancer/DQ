@@ -20,6 +20,7 @@ pub async fn manage_revision_subscription(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<RevisionSubscriptionResponseData, (StatusCode, Json<ErrorResponse>)> {
     let tx = client.transaction().await.map_err(map_db_error)?;
     let context = load_subscription_context(&tx, order_id, request_id).await?;
@@ -102,6 +103,7 @@ pub async fn manage_revision_subscription(
         actor_role,
         operation,
         request_id,
+        idempotency_key,
     );
 
     let row = if let Some(existing_id) = context.existing_subscription_id.as_deref() {
@@ -238,6 +240,7 @@ pub async fn manage_revision_subscription(
             "delivery_channel": delivery_channel,
             "start_version_no": start_version_no,
             "subscription_status": subscription_status,
+            "idempotency_key": idempotency_key,
         }),
     )
     .await?;
@@ -651,6 +654,7 @@ fn merged_metadata(
     actor_role: &str,
     operation: &str,
     request_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Value {
     let mut metadata = existing.cloned().unwrap_or_else(|| json!({}));
     if let Some(incoming) = incoming {
@@ -662,6 +666,7 @@ fn merged_metadata(
             "managed_by": actor_role,
             "last_operation": operation,
             "last_request_id": request_id,
+            "last_idempotency_key": idempotency_key,
         }),
     );
     metadata

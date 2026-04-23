@@ -1,14 +1,21 @@
-import { PortalRoutePage } from "@/components/portal/route-page";
+import { DeliveryWorkflowShell } from "@/components/portal/delivery-workflow-shell";
+import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
 
 export default async function DeliverySubscriptionPage({
   params,
 }: {
   params: Promise<{ orderId: string }>;
 }) {
+  const [resolvedParams, session] = await Promise.all([
+    params,
+    readPortalSession(),
+  ]);
   return (
-    <PortalRoutePage
-      routeKey="delivery_subscription"
-      params={await params}
+    <DeliveryWorkflowShell
+      kind="subscription"
+      orderId={resolvedParams.orderId}
+      sessionMode={session.mode}
+      initialSubject={readPortalSessionPreview(session)}
     />
   );
 }

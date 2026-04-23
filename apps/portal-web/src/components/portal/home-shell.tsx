@@ -2,7 +2,6 @@
 
 import type {
   RecommendationsQuery,
-  RecommendationsResponse,
   SearchCatalogResponse,
   StandardScenariosResponse,
 } from "@datab/sdk-ts";
@@ -187,7 +186,10 @@ type HomeShellProps = {
 };
 type SessionSubject = PortalSessionPreview;
 type ScenarioTemplate = StandardScenariosResponse["data"][number];
-type HomeRecommendationItem = RecommendationsResponse["data"]["items"][number];
+type HomeRecommendationsResponse = Awaited<
+  ReturnType<typeof sdk.recommendation.getRecommendations>
+>;
+type HomeRecommendationItem = HomeRecommendationsResponse["data"]["items"][number];
 type SearchPreviewItem = SearchCatalogResponse["data"]["items"][number];
 type IndustryGroup = {
   key: keyof typeof INDUSTRY_META;
@@ -224,7 +226,7 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
   const skuCoverage = collectSkuCoverage(scenarios);
   const searchPresets = buildSearchPresets(scenarios);
 
-  const recommendationQuery = useQuery<RecommendationsResponse>({
+  const recommendationQuery = useQuery({
     queryKey: [
       "portal",
       "recommendations",
