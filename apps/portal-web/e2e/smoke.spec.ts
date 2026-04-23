@@ -21,6 +21,17 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/search?preview=error");
   await expect(page.getByText("SEARCH_BACKEND_UNAVAILABLE")).toBeVisible();
 
+  await page.goto("/products/20000000-0000-0000-0000-000000000309?preview=forbidden");
+  await expect(page.getByText("商品详情权限态")).toBeVisible();
+  await expect(
+    page.getByText("需要权限：`catalog.product.read`；主动作权限：`trade.order.create`", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await page.goto("/products/20000000-0000-0000-0000-000000000309?preview=empty");
+  await expect(page.getByText("没有可展示的商品详情")).toBeVisible();
+
   await page.goto("/trade/orders/new?preview=forbidden");
   await expect(page.getByText("权限态预演")).toBeVisible();
 });

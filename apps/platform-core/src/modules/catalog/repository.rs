@@ -536,12 +536,25 @@ impl PostgresCatalogRepository {
                    p.delivery_type,
                    p.allowed_usage::text[],
                    p.searchable_text,
-                   p.metadata,
+                   p.metadata || jsonb_strip_nulls(jsonb_build_object(
+                     'schema_hash', av.schema_hash,
+                     'sample_hash', av.sample_hash,
+                     'full_hash', av.full_hash,
+                     'origin_region', av.origin_region,
+                     'allowed_region', av.allowed_region,
+                     'release_mode', av.release_mode,
+                     'processing_stage', av.processing_stage,
+                     'standardization_status', av.standardization_status,
+                     'query_surface_type', av.query_surface_type,
+                     'asset_version_status', av.status,
+                     'asset_version_no', av.version_no
+                   )),
                    COALESCE(spd.document_version, 0)::int,
                    COALESCE(spd.index_sync_status, 'pending'),
                    to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'),
                    to_char(p.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')
                  FROM catalog.product p
+                 LEFT JOIN catalog.asset_version av ON av.asset_version_id = p.asset_version_id
                  LEFT JOIN search.product_search_document spd ON spd.product_id = p.product_id
                  WHERE p.product_id = $1::text::uuid",
                 &[&id],

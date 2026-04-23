@@ -1318,6 +1318,14 @@ export interface components {
             success: boolean;
             data: components["schemas"]["StandardScenarioTemplate"][];
         };
+        ApiResponseProductDetail: {
+            success: boolean;
+            data: components["schemas"]["ProductDetail"];
+        };
+        ApiResponseSellerProfile: {
+            success: boolean;
+            data: components["schemas"]["SellerProfile"];
+        };
         ProductSubmit: {
             /** Format: uuid */
             product_id: string;
@@ -1534,7 +1542,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductDetail"];
+                    "application/json": components["schemas"]["ApiResponseProductDetail"];
                 };
             };
         };
@@ -1582,7 +1590,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SellerProfile"];
+                    "application/json": components["schemas"]["ApiResponseSellerProfile"];
                 };
             };
         };

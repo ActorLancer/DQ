@@ -52,7 +52,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductDetail"
+                $ref: "#/components/schemas/ApiResponseProductDetail"
     patch:
       summary: Patch product draft
       operationId: patchProductDraft
@@ -93,7 +93,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SellerProfile"
+                $ref: "#/components/schemas/ApiResponseSellerProfile"
   /api/v1/products/{id}/submit:
     post:
       summary: Submit product for review
@@ -2455,6 +2455,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StandardScenarioTemplate"
+    ApiResponseProductDetail:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ProductDetail"
+    ApiResponseSellerProfile:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/SellerProfile"
     ProductSubmit:
       type: object
       properties:

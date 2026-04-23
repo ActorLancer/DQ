@@ -55,7 +55,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/products")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "asset_id":"00000000-0000-0000-0000-000000000001",
@@ -79,7 +79,7 @@ mod tests {
             .method("PATCH")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(r#"{"title":"updated"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -92,7 +92,7 @@ mod tests {
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
-            .header("x-role", "developer")
+            .header("x-role", "tenant_app_identity")
             .body(Body::empty())
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -107,7 +107,7 @@ mod tests {
         let req1 = Request::builder()
             .method("GET")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
-            .header("x-role", "developer")
+            .header("x-role", "tenant_app_identity")
             .body(Body::empty())
             .expect("request");
         let resp1 = app_from_api.oneshot(req1).await.expect("response");
@@ -115,7 +115,7 @@ mod tests {
         let req2 = Request::builder()
             .method("GET")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100")
-            .header("x-role", "developer")
+            .header("x-role", "tenant_app_identity")
             .body(Body::empty())
             .expect("request");
         let resp2 = app_from_catalog_router
@@ -132,7 +132,7 @@ mod tests {
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/catalog/standard-scenarios")
-            .header("x-role", "tenant_admin")
+            .header("x-role", "buyer_operator")
             .body(Body::empty())
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -145,7 +145,7 @@ mod tests {
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/sellers/00000000-0000-0000-0000-000000000100/profile")
-            .header("x-role", "developer")
+            .header("x-role", "tenant_developer")
             .body(Body::empty())
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -159,7 +159,7 @@ mod tests {
             .method("PUT")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000100/metadata-profile")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "business_description_json": {"product_name":"demo"},
@@ -186,7 +186,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/skus")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "sku_code":"SKU-001",
@@ -208,7 +208,7 @@ mod tests {
             .method("PATCH")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(r#"{"trade_mode":"snapshot_sale"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -222,7 +222,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/bind-template")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{"template_id":"00000000-0000-0000-0000-000000000010"}"#,
             ))
@@ -238,7 +238,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/bind-template")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{"template_id":"00000000-0000-0000-0000-000000000010"}"#,
             ))
@@ -254,7 +254,7 @@ mod tests {
             .method("PATCH")
             .uri("/api/v1/policies/00000000-0000-0000-0000-000000000001")
             .header("content-type", "application/json")
-            .header("x-role", "tenant_operator")
+            .header("x-role", "seller_operator")
             .body(Body::from(r#"{"status":"active"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -268,7 +268,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/raw-ingest-batches")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "owner_org_id":"00000000-0000-0000-0000-000000000003",
@@ -287,7 +287,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/raw-ingest-batches/00000000-0000-0000-0000-000000000001/manifests")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "object_name":"manifest-1.csv",
@@ -306,7 +306,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/raw-object-manifests/00000000-0000-0000-0000-000000000001/detect-format")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "detected_object_family":"tabular",
@@ -327,7 +327,7 @@ mod tests {
                 "/api/v1/raw-object-manifests/00000000-0000-0000-0000-000000000001/extraction-jobs",
             )
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "job_type":"schema_extract",
@@ -346,7 +346,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/preview-artifacts")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "preview_type":"schema_preview",
@@ -366,7 +366,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/field-definitions")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "field_name":"amount",
@@ -386,7 +386,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/quality-reports")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "report_no":1,
@@ -407,7 +407,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/processing-jobs")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "processing_mode":"platform_managed",
@@ -429,7 +429,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/data-contracts")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "contract_name":"Contract CAT013",
@@ -447,7 +447,7 @@ mod tests {
         let req = Request::builder()
             .method("GET")
             .uri("/api/v1/skus/00000000-0000-0000-0000-000000000001/data-contracts/00000000-0000-0000-0000-000000000002")
-            .header("x-role", "developer")
+            .header("x-role", "tenant_app_identity")
             .body(Body::empty())
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -461,7 +461,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/objects")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "object_kind":"delivery_object",
@@ -481,7 +481,7 @@ mod tests {
             .method("PATCH")
             .uri("/api/v1/assets/00000000-0000-0000-0000-000000000001/release-policy")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(
                 r#"{
                   "release_mode":"revision",
@@ -501,7 +501,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/submit")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(r#"{"submission_note":"ready"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -515,7 +515,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/review/products/00000000-0000-0000-0000-000000000001")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "tenant_admin")
             .body(Body::from(r#"{"action_name":"approve"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");
@@ -529,7 +529,7 @@ mod tests {
             .method("POST")
             .uri("/api/v1/products/00000000-0000-0000-0000-000000000001/suspend")
             .header("content-type", "application/json")
-            .header("x-role", "developer")
+            .header("x-role", "buyer_operator")
             .body(Body::from(r#"{"suspend_mode":"freeze"}"#))
             .expect("request");
         let resp = app.oneshot(req).await.expect("response");

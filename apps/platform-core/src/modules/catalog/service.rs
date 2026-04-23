@@ -17,31 +17,48 @@ pub enum CatalogPermission {
 pub fn is_allowed(role: &str, permission: CatalogPermission) -> bool {
     match permission {
         CatalogPermission::ProductDraftWrite => {
-            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+            matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
         }
         CatalogPermission::ProductRead => {
-            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+            matches!(
+                role,
+                "platform_admin"
+                    | "platform_reviewer"
+                    | "tenant_admin"
+                    | "seller_operator"
+                    | "buyer_operator"
+                    | "tenant_developer"
+            )
         }
         CatalogPermission::SellerProfileRead => {
-            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+            matches!(
+                role,
+                "platform_admin"
+                    | "tenant_admin"
+                    | "seller_operator"
+                    | "buyer_operator"
+                    | "tenant_audit_readonly"
+            )
         }
         CatalogPermission::TemplateBind => {
-            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+            matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
         }
         CatalogPermission::PolicyUpdate => {
             matches!(role, "platform_admin" | "tenant_admin")
         }
         CatalogPermission::RawIngestWrite => {
-            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+            matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
         }
         CatalogPermission::ProductSubmit => {
-            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+            matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
         }
-        CatalogPermission::ReviewWrite => matches!(role, "platform_admin" | "tenant_admin"),
+        CatalogPermission::ReviewWrite => matches!(role, "platform_admin" | "platform_reviewer"),
         CatalogPermission::ProductSuspend => {
-            matches!(role, "platform_admin" | "tenant_admin" | "tenant_operator")
+            matches!(role, "platform_admin" | "tenant_admin" | "seller_operator")
         }
-        CatalogPermission::RiskProductFreeze => matches!(role, "platform_admin"),
+        CatalogPermission::RiskProductFreeze => {
+            matches!(role, "platform_admin" | "platform_risk_settlement")
+        }
     }
 }
 
@@ -86,11 +103,11 @@ mod tests {
             CatalogPermission::ProductDraftWrite
         ));
         assert!(is_allowed(
-            "tenant_operator",
+            "seller_operator",
             CatalogPermission::ProductDraftWrite
         ));
         assert!(!is_allowed(
-            "developer",
+            "tenant_developer",
             CatalogPermission::ProductDraftWrite
         ));
     }
@@ -114,21 +131,36 @@ mod tests {
             CatalogPermission::RawIngestWrite
         ));
         assert!(is_allowed(
-            "tenant_operator",
+            "seller_operator",
             CatalogPermission::RawIngestWrite
         ));
-        assert!(!is_allowed("developer", CatalogPermission::RawIngestWrite));
+        assert!(!is_allowed(
+            "tenant_developer",
+            CatalogPermission::RawIngestWrite
+        ));
     }
 
     #[test]
     fn read_role_matrix() {
         assert!(is_allowed("platform_admin", CatalogPermission::ProductRead));
-        assert!(is_allowed("tenant_admin", CatalogPermission::ProductRead));
         assert!(is_allowed(
-            "tenant_operator",
+            "platform_reviewer",
             CatalogPermission::ProductRead
         ));
-        assert!(!is_allowed("developer", CatalogPermission::ProductRead));
+        assert!(is_allowed("tenant_admin", CatalogPermission::ProductRead));
+        assert!(is_allowed("buyer_operator", CatalogPermission::ProductRead));
+        assert!(is_allowed(
+            "seller_operator",
+            CatalogPermission::ProductRead
+        ));
+        assert!(is_allowed(
+            "tenant_developer",
+            CatalogPermission::ProductRead
+        ));
+        assert!(!is_allowed(
+            "tenant_app_identity",
+            CatalogPermission::ProductRead
+        ));
         assert!(is_allowed(
             "platform_admin",
             CatalogPermission::SellerProfileRead
@@ -138,11 +170,19 @@ mod tests {
             CatalogPermission::SellerProfileRead
         ));
         assert!(is_allowed(
-            "tenant_operator",
+            "buyer_operator",
+            CatalogPermission::SellerProfileRead
+        ));
+        assert!(is_allowed(
+            "seller_operator",
+            CatalogPermission::SellerProfileRead
+        ));
+        assert!(is_allowed(
+            "tenant_audit_readonly",
             CatalogPermission::SellerProfileRead
         ));
         assert!(!is_allowed(
-            "developer",
+            "tenant_developer",
             CatalogPermission::SellerProfileRead
         ));
         assert!(is_allowed(
@@ -151,17 +191,20 @@ mod tests {
         ));
         assert!(is_allowed("tenant_admin", CatalogPermission::TemplateBind));
         assert!(is_allowed(
-            "tenant_operator",
+            "seller_operator",
             CatalogPermission::TemplateBind
         ));
-        assert!(!is_allowed("developer", CatalogPermission::TemplateBind));
+        assert!(!is_allowed(
+            "buyer_operator",
+            CatalogPermission::TemplateBind
+        ));
         assert!(is_allowed(
             "platform_admin",
             CatalogPermission::PolicyUpdate
         ));
         assert!(is_allowed("tenant_admin", CatalogPermission::PolicyUpdate));
         assert!(!is_allowed(
-            "tenant_operator",
+            "seller_operator",
             CatalogPermission::PolicyUpdate
         ));
     }

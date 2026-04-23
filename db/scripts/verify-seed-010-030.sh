@@ -41,7 +41,7 @@ check_count_ge "SELECT COUNT(*) FROM core.user_account WHERE user_id BETWEEN '10
 check_count_ge "SELECT COUNT(*) FROM authz.subject_role_binding WHERE subject_role_binding_id BETWEEN '10000000-0000-0000-0000-000000000501' AND '10000000-0000-0000-0000-000000000599';" 6 "authz.subject_role_binding demo bindings"
 
 for sku in FILE_STD FILE_SUB SHARE_RO API_SUB API_PPU QRY_LITE SBX_STD RPT_STD; do
-  check_exists "SELECT COUNT(*) FROM catalog.product_sku WHERE sku_code='${sku}' AND sku_id::text LIKE '20000000-0000-0000-0000-0000000004%';" "catalog.product_sku.${sku}"
+  check_exists "SELECT COUNT(*) FROM catalog.product_sku WHERE sku_code='${sku}' AND sku_type='${sku}' AND sku_id::text LIKE '20000000-0000-0000-0000-0000000004%';" "catalog.product_sku.${sku}"
 done
 
 check_count_ge "SELECT COUNT(*) FROM contract.template_binding WHERE template_binding_id::text LIKE '20000000-0000-0000-0000-0000000006%';" 12 "contract.template_binding demo entries"

@@ -114,6 +114,95 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-279（计划中）
+- 任务：`WEB-005` 实现商品详情页：元信息、卖方信息、SKU、价格、样例预览、下单入口、审核状态徽标
+- 状态：计划中
+- 说明：在 `WEB-004` 搜索结果已经能跳转 `/products/{productId}` 的基础上，本批将产品详情页从路由脚手架升级为正式商品详情闭环。页面必须真实读取 `GET /api/v1/products/{id}`，并基于返回的 `seller_org_id` 继续读取 `GET /api/v1/sellers/{orgId}/profile`，展示商品基本信息、元数据、SKU、价格、卖方信息、样例/质量/契约摘要、下单入口、审核/上架状态和空态/错态/权限态。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-004` 已提交 `da4e3c8`，搜索页结果卡片会跳转到 `/products/{productId}`，可复用门户会话、受控代理、SDK 与搜索 smoke 环境。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-005` 聚焦商品详情页，不跳到卖方主页或下单页完整实现；DoD 要求页面可访问、状态可用、接口契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认产品详情页需展示基本信息、样本摘要、元数据详情、字段结构摘要、质量报告摘要、数据契约摘要、权利边界、合同/验收/退款/计费摘要、供方信息、合规限制、审计/存证摘要与下单入口。
+  - `docs/数据库设计/接口协议/目录与商品接口协议正式版.md`：确认 V1 商品详情接口为 `GET /api/v1/products/{id}`；`product_type` 不得替代 `sku_type`，`delivery_mode` 只作为默认交付路径或聚合展示值，SKU 真值必须来自 SKU 记录。
+  - `docs/权限设计/按钮级权限说明.md`：确认产品详情页按钮权限：`立即下单 -> trade.order.create && 商品 listed`，`收藏 -> portal.search.use`，`查看公开验证 -> catalog.public_verify.read`。
+  - `packages/openapi/catalog.yaml`、`docs/02-openapi/catalog.yaml`、`packages/sdk-ts/src/domains/catalog.ts`、`packages/sdk-ts/src/generated/catalog.ts`：确认当前实现期权威契约提供 `ProductDetail` 与 `SellerProfile`，商品详情 schema 包含 `product_id / asset_id / asset_version_id / seller_org_id / title / status / price_mode / price / currency_code / delivery_type / allowed_usage / metadata / skus / search_document_version / index_sync_status`。
+  - `apps/platform-core/src/modules/catalog/**`：确认 `get_product_detail` 会对非 `listed` 商品执行卖方 scope 校验，`listed` 商品可按 `catalog.product.read` 读取，并写入 `catalog.product.read` 审计事件。
+  - `apps/portal-web/**`、`packages/sdk-ts/**`：确认现有 `/products/[productId]` 仍为脚手架，需要在本批替换为正式业务组件。
+- 当前完成标准理解：
+  - 商品详情页必须只通过受控 `/api/platform/**` 调用 `platform-core` 正式 API，不直连底层系统。
+  - Bearer 会话下真实读取商品详情和卖方信息；guest/local 必须展示明确权限态，不把本地 Header 占位当成正式可售详情完成。
+  - 详情页必须展示敏感页面主体、角色、租户、作用域；布局内已有全局身份条，本页也需要在详情上下文中展示当前访问主体。
+  - 下单入口只在商品 `status=listed` 时展示；非 listed / suspended / retired 必须禁用并说明原因，不发明新状态语义。
+- 实施计划：
+  1. 新增 `ProductDetailShell` 客户端组件，替换 `/products/[productId]` 脚手架。
+  2. 通过 SDK 读取商品详情与卖方资料，补齐空态、错态、权限态、加载态和状态预演。
+  3. 展示 SKU、价格、元数据、权利边界、质量/样本/契约摘要、审计与下单入口约束。
+  4. 更新 E2E / 单测，执行完整前后端联调、浏览器 smoke、数据库审计回查后提交。
+
+### BATCH-279（待审批）
+- 任务：`WEB-005` 实现商品详情页：元信息、卖方信息、SKU、价格、样例预览、下单入口、审核状态徽标
+- 状态：待审批
+- 当前任务编号：`WEB-005`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001 ~ WEB-004` 基线继续生效；搜索页结果卡片已能跳转 `/products/{productId}`，本页仍只经 `portal-web -> /api/platform -> platform-core` 访问正式 API。
+- 完成情况：
+  - `/products/[productId]` 已从脚手架替换为正式 `ProductDetailShell`，Bearer 会话下真实读取 `GET /api/v1/products/{id}`，并基于 `seller_org_id` 继续读取 `GET /api/v1/sellers/{orgId}/profile`。
+  - 页面展示商品状态、索引投影状态、价格、SKU 矩阵、元数据、样本哈希、全量哈希、字段/质量/加工/契约摘要、权利边界、审计提示、卖方 profile、相似推荐和下单入口；下单入口严格要求商品 `status=listed` 且存在样本摘要或样本哈希。
+  - 敏感页面上下文在页内显式展示主体、角色、租户/组织与作用域；`guest / local / claims 缺失` 显示权限态，加载态、空态、错误态和权限态均可通过 `preview` 参数与 E2E 覆盖。
+  - `ProductDetail.metadata` 展示时会脱敏对象路径类字段；浏览器端只发起 `/api/platform/api/v1/products/**`、`/api/platform/api/v1/sellers/**`、`/api/platform/api/v1/recommendations`，没有直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`。
+  - 修正 catalog OpenAPI 漂移：`GET /api/v1/products/{id}` 与 `GET /api/v1/sellers/{orgId}/profile` 的 200 响应从裸对象同步为 `ApiResponseProductDetail / ApiResponseSellerProfile`，并重新生成 `packages/sdk-ts`。
+  - 收敛 catalog 角色口径：目录读、卖方 profile、商品写、审核与冻结权限矩阵改用正式 V1 角色集合；测试与 `070_seed_role_permissions_v1.sql` 同步补齐正式角色授权，避免旧 `tenant_operator / developer` 口径继续传播。
+  - 修正种子 SKU 真值：`db028` 与 `searchrec014` 的 `sku_type` 与 `sku_code` 统一为八个标准 SKU，`FILE_SUB / API_PPU / SBX_STD` 的 `trade_mode` 同步为正式值，校验脚本增加 `sku_code = sku_type` 断言。
+  - `get_product_detail` 后端查询将 `asset_version` 的 `schema_hash / sample_hash / full_hash / origin_region / allowed_region / release_mode / processing_stage / standardization_status / query_surface_type / status / version_no` 合并进返回 metadata，支持页面样例预览和下单门禁。
+- 验证：
+  - 前端 / 契约：
+    - `pnpm install --frozen-lockfile`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm --filter @datab/portal-web build`
+    - `pnpm --filter @datab/sdk-ts typecheck`
+    - `./scripts/check-openapi-schema.sh`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo test -p platform-core catalog::tests::cat020_read_db -- --nocapture`
+    - `cargo test -p platform-core catalog::tests::tests --lib`
+    - `cargo test -p platform-core modules::catalog::tests::listing_submit_review --lib`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 真实联调 / smoke：
+    - `./scripts/check-keycloak-realm.sh`
+    - `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/verify-seed-010-030.sh`
+    - `DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=datab DB_USER=datab DB_PASSWORD=datab_local_pass ./db/scripts/verify-seed-033.sh`
+    - 启动当前代码临时 `platform-core`：`DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 MINIO_ENDPOINT=http://127.0.0.1:9000 APP_HOST=127.0.0.1 APP_PORT=18080 cargo run -p platform-core`
+    - 真实 Keycloak password grant 获取 `local-platform-admin / platform_admin` Bearer 后，`curl` 验证商品详情、卖方 profile 与 `product_detail_bundle` 推荐接口。
+    - 启动 `portal-web` production server：`PLATFORM_CORE_BASE_URL=http://127.0.0.1:18080 pnpm --filter @datab/portal-web exec next start --hostname 127.0.0.1 --port 3102`
+    - Playwright 桌面 `1440x1000` 与移动 `Pixel 5` smoke：校验商品标题、`API_SUB / API_PPU`、`Luna Seller Org`、`searchrec014-s1-sample`、`进入下单页`、主体/角色/租户/作用域可见，并确认浏览器没有直连 `http://127.0.0.1:18080`。
+    - 数据库回查 `audit.audit_event`、`catalog.product_sku` 与 `catalog.asset_version`。
+- 验证结果：
+  - 前端全量 `pnpm install / lint / typecheck / test / build` 全部通过；`portal-web` 单体 lint / typecheck / unit / e2e / build 全部通过；`pnpm test` 中 `console-web / portal-web` Playwright WebServer 仍打印既有 `ECONNREFUSED 127.0.0.1:8094` 代理失败日志，但测试断言通过。
+  - 后端 `cargo check -p platform-core`、全量 `cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过。全量测试曾暴露两个 listing review 校验用例仍使用 `tenant_admin` 触发 403，已改为正式 `platform_reviewer` 后重跑通过。
+  - 真实商品详情 `curl` 返回 `success=true`、标题 `工业设备运行指标 API 订阅`、`status=listed`、`sku_types=[API_SUB, API_PPU]`、`sample_hash=searchrec014-s1-sample`、`full_hash=searchrec014-s1-full`、`origin_region=cn-sh`、`asset_version_status=published`；卖方 profile 返回 `Luna Seller Org`、`status=active`；推荐接口返回 `4` 条真实推荐项。
+  - 浏览器 smoke 通过：桌面和移动视口均真实渲染商品详情、卖方、SKU、样本哈希与下单入口；捕获请求仅包含 `/api/platform/api/v1/products/{id}`、`/api/platform/api/v1/sellers/{orgId}/profile`、`/api/platform/api/v1/recommendations`，`directPlatformCoreRequestCount=0`。
+  - 数据库回查通过：`audit.audit_event` 出现 `catalog.product.read` 与 `catalog.seller.profile.read` 成功记录；`catalog.product_sku` 中 `db028 / searchrec014` 样例的 `sku_code` 与 `sku_type` 已全部对齐标准 SKU；商品 `20000000-0000-0000-0000-000000000309` 的 `asset_version.sample_hash/full_hash` 与页面展示一致。
+  - 受限系统扫描通过：`apps/portal-web/src` 与 `apps/portal-web/e2e` 未发现直连 Kafka / PostgreSQL / OpenSearch / Redis / Fabric 的实现；唯一命中是搜索错误态文案，明确由 `platform-core` 处理 OpenSearch 到 PostgreSQL fallback。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-005`
+  - `页面说明书-V1-完整版.md`：产品详情页章节、敏感页面主体/角色/租户/作用域展示要求
+  - `目录与商品接口协议正式版.md`：商品详情、卖方 profile、`sku_type` 真值与 `delivery_mode` 边界
+  - `按钮级权限说明.md`：产品详情下单、收藏、公开验证按钮权限
+  - `packages/openapi/catalog.yaml`、`docs/02-openapi/catalog.yaml`、`packages/sdk-ts/**`：商品详情与卖方 profile 契约
+- 覆盖的任务清单条目：`WEB-005`
+- 未覆盖项：
+  - 无。卖方主页完整页面由下一任务 `WEB-006` 继续展开；下单页完整创建流程由后续 `WEB-009` 展开。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-278（计划中）
 - 任务：`WEB-004` 实现商品搜索页：关键词、筛选、排序、结果卡片、空状态与错误状态
 - 状态：计划中

@@ -39,6 +39,7 @@ check_exists() {
 check_exists "SELECT COUNT(*) FROM core.organization WHERE org_id = '10000000-0000-0000-0000-000000000104';" "retail seller org"
 check_count_ge "SELECT COUNT(*) FROM catalog.product WHERE metadata->>'seed'='searchrec014' AND metadata->>'recommended_placement_code'='home_featured';" 5 "SEARCHREC-014 scenario products"
 check_count_ge "SELECT COUNT(*) FROM catalog.product_sku WHERE metadata->>'seed'='searchrec014';" 10 "SEARCHREC-014 scenario skus"
+check_count_ge "SELECT COUNT(*) FROM catalog.product_sku WHERE metadata->>'seed'='searchrec014' AND sku_code = sku_type;" 10 "SEARCHREC-014 standard sku_type truth"
 check_count_ge "SELECT COUNT(*) FROM contract.template_binding WHERE template_binding_id::text BETWEEN '20000000-0000-0000-0000-000000000613' AND '20000000-0000-0000-0000-000000000642';" 30 "SEARCHREC-014 template bindings"
 
 check_exists "SELECT COUNT(*) FROM catalog.product WHERE title='工业设备运行指标 API 订阅' AND metadata->>'standard_scenario_code'='S1';" "S1 product"

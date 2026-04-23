@@ -86,14 +86,14 @@ SET
 INSERT INTO catalog.product_sku (
   sku_id, product_id, sku_code, sku_type, unit_name, billing_mode, acceptance_mode, refund_mode, status, trade_mode, delivery_object_kind, subscription_cadence, share_protocol, result_form, metadata
 ) VALUES
-  ('20000000-0000-0000-0000-000000000401'::uuid, '20000000-0000-0000-0000-000000000301'::uuid, 'FILE_STD', 'file', 'dataset', 'one_time', 'manual', 'full', 'active', 'snapshot_sale', 'file', NULL, NULL, 'file', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000402'::uuid, '20000000-0000-0000-0000-000000000302'::uuid, 'FILE_SUB', 'file_subscription', 'dataset', 'subscription', 'manual', 'partial', 'active', 'subscription_sale', 'file', 'monthly', NULL, 'file', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000403'::uuid, '20000000-0000-0000-0000-000000000303'::uuid, 'SHARE_RO', 'share', 'dataset', 'one_time', 'auto', 'none', 'active', 'share_grant', 'table', NULL, 'db_link', 'share', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000404'::uuid, '20000000-0000-0000-0000-000000000304'::uuid, 'API_SUB', 'api_subscription', 'request', 'subscription', 'auto', 'partial', 'active', 'api_subscription', 'api', 'monthly', 'https', 'api', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000405'::uuid, '20000000-0000-0000-0000-000000000305'::uuid, 'API_PPU', 'api_ppu', 'request', 'metered', 'auto', 'partial', 'active', 'api_ppu', 'api', NULL, 'https', 'api', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000406'::uuid, '20000000-0000-0000-0000-000000000306'::uuid, 'QRY_LITE', 'query_template', 'query_run', 'one_time', 'manual', 'none', 'active', 'template_query', 'query_template', NULL, NULL, 'query_result', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000407'::uuid, '20000000-0000-0000-0000-000000000307'::uuid, 'SBX_STD', 'sandbox', 'workspace', 'one_time', 'manual', 'none', 'active', 'sandbox_access', 'sandbox', NULL, NULL, 'sandbox_output', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000408'::uuid, '20000000-0000-0000-0000-000000000308'::uuid, 'RPT_STD', 'report', 'report', 'one_time', 'manual', 'full', 'active', 'report_delivery', 'report', NULL, NULL, 'report', '{"seed":"db028"}'::jsonb)
+  ('20000000-0000-0000-0000-000000000401'::uuid, '20000000-0000-0000-0000-000000000301'::uuid, 'FILE_STD', 'FILE_STD', 'dataset', 'one_time', 'manual', 'full', 'active', 'snapshot_sale', 'file', NULL, NULL, 'file', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000402'::uuid, '20000000-0000-0000-0000-000000000302'::uuid, 'FILE_SUB', 'FILE_SUB', 'dataset', 'subscription', 'manual', 'partial', 'active', 'revision_subscription', 'file', 'monthly', NULL, 'file', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000403'::uuid, '20000000-0000-0000-0000-000000000303'::uuid, 'SHARE_RO', 'SHARE_RO', 'dataset', 'one_time', 'auto', 'none', 'active', 'share_grant', 'table', NULL, 'db_link', 'share', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000404'::uuid, '20000000-0000-0000-0000-000000000304'::uuid, 'API_SUB', 'API_SUB', 'request', 'subscription', 'auto', 'partial', 'active', 'api_subscription', 'api', 'monthly', 'https', 'api', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000405'::uuid, '20000000-0000-0000-0000-000000000305'::uuid, 'API_PPU', 'API_PPU', 'request', 'metered', 'auto', 'partial', 'active', 'api_pay_per_use', 'api', NULL, 'https', 'api', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000406'::uuid, '20000000-0000-0000-0000-000000000306'::uuid, 'QRY_LITE', 'QRY_LITE', 'query_run', 'one_time', 'manual', 'none', 'active', 'template_query', 'query_template', NULL, NULL, 'query_result', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000407'::uuid, '20000000-0000-0000-0000-000000000307'::uuid, 'SBX_STD', 'SBX_STD', 'workspace', 'one_time', 'manual', 'none', 'active', 'sandbox_workspace', 'sandbox', NULL, NULL, 'sandbox_output', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000408'::uuid, '20000000-0000-0000-0000-000000000308'::uuid, 'RPT_STD', 'RPT_STD', 'report', 'one_time', 'manual', 'full', 'active', 'report_delivery', 'report', NULL, NULL, 'report', '{"seed":"db028"}'::jsonb)
 ON CONFLICT (sku_id) DO UPDATE
 SET
   product_id = EXCLUDED.product_id,
@@ -115,9 +115,9 @@ SET
 INSERT INTO contract.template_definition (
   template_id, template_type, template_name, version_no, applicable_sku_types, configurable_fields, locked_fields, content_digest, status, metadata
 ) VALUES
-  ('20000000-0000-0000-0000-000000000501'::uuid, 'contract', 'V1 Standard Contract Template', 1, ARRAY['file','file_subscription','share','api_subscription','api_ppu','query_template','sandbox','report'], '["term_days","license_scope"]'::jsonb, '["platform_clauses"]'::jsonb, 'digest-contract-v1', 'active', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000502'::uuid, 'acceptance', 'V1 Standard Acceptance Template', 1, ARRAY['file','file_subscription','share','api_subscription','api_ppu','query_template','sandbox','report'], '["accept_window_hours"]'::jsonb, '["default_accept_rules"]'::jsonb, 'digest-acceptance-v1', 'active', '{"seed":"db028"}'::jsonb),
-  ('20000000-0000-0000-0000-000000000503'::uuid, 'refund', 'V1 Standard Refund Template', 1, ARRAY['file','file_subscription','share','api_subscription','api_ppu','query_template','sandbox','report'], '["refund_window_hours"]'::jsonb, '["base_refund_policy"]'::jsonb, 'digest-refund-v1', 'active', '{"seed":"db028"}'::jsonb)
+  ('20000000-0000-0000-0000-000000000501'::uuid, 'contract', 'V1 Standard Contract Template', 1, ARRAY['FILE_STD','FILE_SUB','SHARE_RO','API_SUB','API_PPU','QRY_LITE','SBX_STD','RPT_STD'], '["term_days","license_scope"]'::jsonb, '["platform_clauses"]'::jsonb, 'digest-contract-v1', 'active', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000502'::uuid, 'acceptance', 'V1 Standard Acceptance Template', 1, ARRAY['FILE_STD','FILE_SUB','SHARE_RO','API_SUB','API_PPU','QRY_LITE','SBX_STD','RPT_STD'], '["accept_window_hours"]'::jsonb, '["default_accept_rules"]'::jsonb, 'digest-acceptance-v1', 'active', '{"seed":"db028"}'::jsonb),
+  ('20000000-0000-0000-0000-000000000503'::uuid, 'refund', 'V1 Standard Refund Template', 1, ARRAY['FILE_STD','FILE_SUB','SHARE_RO','API_SUB','API_PPU','QRY_LITE','SBX_STD','RPT_STD'], '["refund_window_hours"]'::jsonb, '["base_refund_policy"]'::jsonb, 'digest-refund-v1', 'active', '{"seed":"db028"}'::jsonb)
 ON CONFLICT (template_id) DO UPDATE
 SET
   template_type = EXCLUDED.template_type,

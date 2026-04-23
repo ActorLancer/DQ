@@ -24,7 +24,7 @@ async fn rejects_review_subject_with_invalid_action_name() {
         .method("POST")
         .uri("/api/v1/review/subjects/00000000-0000-0000-0000-000000000001")
         .header("content-type", "application/json")
-        .header("x-role", "tenant_admin")
+        .header("x-role", "platform_reviewer")
         .body(Body::from(r#"{"action_name":"pass"}"#))
         .expect("request");
     let resp = app.oneshot(req).await.expect("response");
@@ -38,7 +38,7 @@ async fn rejects_review_compliance_with_empty_reason() {
         .method("POST")
         .uri("/api/v1/review/compliance/00000000-0000-0000-0000-000000000001")
         .header("content-type", "application/json")
-        .header("x-role", "tenant_admin")
+        .header("x-role", "platform_reviewer")
         .body(Body::from(
             r#"{"action_name":"approve","action_reason":"  "}"#,
         ))
