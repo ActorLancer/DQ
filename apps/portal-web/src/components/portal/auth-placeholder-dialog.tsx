@@ -77,10 +77,14 @@ export function AuthPlaceholderDialog() {
               <div className="inline-flex rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
                 Keycloak / IAM placeholder
               </div>
-              <CardTitle>门户登录态占位</CardTitle>
-              <CardDescription>
-                当前阶段不在前端实现正式登录页，而是通过已获取的 Bearer Token 或本地测试身份注入 HttpOnly Cookie。
-              </CardDescription>
+              <Dialog.Title asChild>
+                <CardTitle>门户登录态占位</CardTitle>
+              </Dialog.Title>
+              <Dialog.Description asChild>
+                <CardDescription>
+                  当前阶段不在前端实现正式登录页，而是通过已获取的 Bearer Token 或本地测试身份注入 HttpOnly Cookie。
+                </CardDescription>
+              </Dialog.Description>
             </div>
             <Dialog.Close asChild>
               <Button variant="ghost" size="sm">
@@ -109,7 +113,7 @@ export function AuthPlaceholderDialog() {
               onClick={() =>
                 form.reset({
                   mode: "local",
-                  loginId: "iam018.buyer.operator@luna.local",
+                  loginId: "buyer.operator@luna.local",
                   role: "buyer_operator",
                   tenantId: "10000000-0000-0000-0000-000000000102",
                 })
@@ -153,7 +157,7 @@ export function AuthPlaceholderDialog() {
                   <span className="text-sm font-medium text-[var(--ink-strong)]">login_id</span>
                   <Input
                     {...form.register("loginId")}
-                    placeholder="iam018.buyer.operator@luna.local"
+                    placeholder="buyer.operator@luna.local"
                   />
                   <FormError message={form.getFieldState("loginId").error?.message} />
                 </label>

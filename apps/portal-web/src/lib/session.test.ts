@@ -11,7 +11,7 @@ describe("portal session helpers", () => {
   it("injects formal tenant scope for local buyer operator sessions", () => {
     const session: PortalSession = {
       mode: "local",
-      loginId: "iam018.buyer.operator@luna.local",
+      loginId: "buyer.operator@luna.local",
       role: "buyer_operator",
     };
 
@@ -19,7 +19,7 @@ describe("portal session helpers", () => {
       "10000000-0000-0000-0000-000000000102",
     );
     expect(buildSessionHeaders(session)).toMatchObject({
-      "x-login-id": "iam018.buyer.operator@luna.local",
+      "x-login-id": "buyer.operator@luna.local",
       "x-role": "buyer_operator",
       "x-tenant-id": "10000000-0000-0000-0000-000000000102",
     });

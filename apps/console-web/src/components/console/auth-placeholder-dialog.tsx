@@ -102,8 +102,8 @@ export function AuthPlaceholderDialog() {
               onClick={() =>
                 form.reset({
                   mode: "local",
-                  loginId: "platform.console.demo",
-                  role: "platform_reviewer",
+                  loginId: "platform.ops@luna.local",
+                  role: "platform_admin",
                 })
               }
             >
@@ -163,12 +163,12 @@ export function AuthPlaceholderDialog() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block space-y-2">
                     <span className="text-sm font-medium text-[var(--ink-strong)]">login_id</span>
-                    <Input {...form.register("loginId")} placeholder="platform.console.demo" />
+                    <Input {...form.register("loginId")} placeholder="platform.ops@luna.local" />
                     <FormError message={form.getFieldState("loginId").error?.message} />
                   </label>
                   <label className="block space-y-2">
                     <span className="text-sm font-medium text-[var(--ink-strong)]">role</span>
-                    <Input {...form.register("role")} placeholder="platform_reviewer" />
+                    <Input {...form.register("role")} placeholder="platform_admin" />
                     <FormError message={form.getFieldState("role").error?.message} />
                   </label>
                 </div>

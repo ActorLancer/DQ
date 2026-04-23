@@ -114,6 +114,86 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-292（计划中）
+- 任务：`WEB-018` 为 portal/console 编写最小 E2E 测试：登录、搜索、商品查看、下单、交付、验收、联查
+- 状态：计划中
+- 当前任务编号：`WEB-018`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-017` 已完成并作为本批基线。本批只补齐 portal / console 最小 E2E 闭环，不实现 `WEB-019+` 的错误码映射或通知联查。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-018` 交付范围是登录、搜索、商品查看、下单、交付、验收、联查的 portal / console 最小 E2E，不得跳到下一任务；DoD 仍要求页面可访问、空态 / 错态 / 权限态可用、接口契约对齐并通过 Playwright / smoke。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认测试策略必须覆盖单元、接口、端到端和阶段验收，WEB 当前批至少要提供可回归的最小用户态、控制台态和前后台联查链路。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认页面覆盖校验要求首页、搜索、商品详情、下单、订单详情、交付、验收、账单、争议、审计、ops、开发者页面具备权限态、空态、错态、加载态和主体 / 角色 / 租户 / 作用域显示。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认首批五条标准链路与八个标准 SKU 是 E2E 中搜索、详情和下单参数的真值源，不能把 `SHARE_RO / QRY_LITE / RPT_STD` 错并回大类。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`、`统一错误码字典正式版.md`、`测试用例矩阵正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 WEB 前端只能通过受控 `/api/platform/**` 调用 `platform-core` 正式 API；写操作必须携带 `X-Idempotency-Key`；浏览器不得直连 PostgreSQL / Kafka / OpenSearch / Redis / Fabric。
+  - `docs/权限设计/按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`、`docs/业务流程/业务流程图-V1-完整版.md`：确认 E2E 需要覆盖买方用户链路、控制台审计 / ops / 开发者联查链路和高风险动作的权限 / 审计提示，不伪造 step-up 或权限状态。
+  - `docs/05-test-cases/README.md`、`search-rec-cases.md`、`delivery-cases.md`、`payment-billing-cases.md`、`notification-cases.md`，以及 `docs/04-runbooks/search-reindex.md`、`recommendation-runtime.md`、`opensearch-local.md`、`infra/docker/docker-compose.local.yml`：确认最小 E2E 要复用现有本地栈、Keycloak、搜索 / 推荐、交付 / 验收、账单 / 通知的 smoke 口径，并在真实联调后回查页面态、审计态和业务测试数据清理情况。
+  - `packages/openapi/catalog.yaml`、`trade.yaml`、`delivery.yaml`、`billing.yaml`、`audit.yaml`、`ops.yaml`、`search.yaml`、`recommendation.yaml`、`iam.yaml` 与 `docs/02-openapi/*.yaml`：确认当前 E2E 依赖 `auth/me`、搜索、商品详情、订单创建 / 详情 / 生命周期、交付、验收、审计 trace、developer trace、ops 联查等正式契约。
+  - `apps/portal-web/**`、`apps/console-web/**`、`packages/sdk-ts/**`、`apps/platform-core/src/modules/{catalog,order,delivery,billing,audit,search,recommendation,iam}/**`、`infra/**`、`scripts/**`：确认现有页面与 SDK 已具备业务实现，本批重点是把普通 Playwright smoke、可选真实联调 E2E、默认本地登录身份和受控边界断言收敛到正式链路。
+- 当前完成标准理解：
+  - portal 必须有可回归的用户态最小链路：登录入口、搜索、商品详情、下单、订单详情、交付、验收、审计 / 开发者联查入口，并覆盖空态、错态、权限态和幂等提示。
+  - console 必须有可回归的控制台态最小链路：登录入口、审计联查、ops 联查、开发者 trace 联查，并继续显示当前主体、角色、租户、作用域。
+  - 自动化必须验证浏览器端只请求同源页面和 `/api/platform/**`，不直连 `platform-core` 端口或 PostgreSQL / Kafka / OpenSearch / Redis / Fabric；真实联调则单独验证 API、数据库回查和测试数据清理。
+- 实施计划：
+  1. 修正 portal / console 本地登录默认身份为当前种子中存在的正式 V1 角色，避免 E2E 传播旧角色名或不存在主体。
+  2. 补齐普通 Playwright 最小链路用例，覆盖 portal 用户态链路、console 控制台态链路和前后台联查入口，同时断言受控 API 边界与主要空态 / 错态 / 权限态。
+  3. 增加 `WEB_E2E_LIVE=1` 控制的真实联调 Playwright 用例和脚本，使用本地 Keycloak Bearer Token 访问真实 `platform-core`，覆盖登录、搜索、商品详情、下单、订单详情、交付、验收、审计 / developer / ops 联查。
+  4. 执行前端、后端、OpenAPI、Playwright、真实 API、数据库回查、浏览器 smoke 与受限系统扫描；清理本批业务测试数据，更新 TODO / 待审批日志并本地提交。
+
+### BATCH-292（待审批）
+- 任务：`WEB-018` 为 portal/console 编写最小 E2E 测试：登录、搜索、商品查看、下单、交付、验收、联查
+- 状态：待审批
+- 当前任务编号：`WEB-018`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001 ~ WEB-017` 基线继续生效；本批只补齐 portal / console 最小 E2E 与真实联调闭环，没有合并 `WEB-019+` 的错误码映射或通知联查任务。
+- 完成情况：
+  - `portal-web` 与 `console-web` 的登录态占位默认本地身份已收敛到正式 V1 角色集合：门户使用 `buyer.operator@luna.local / buyer_operator`，控制台使用 `platform.ops@luna.local / platform_admin`；同时为 Radix Dialog 补齐可访问标题和描述，消除登录弹窗无障碍告警。
+  - `apps/portal-web/e2e/smoke.spec.ts` 新增 `WEB-018` 用户态最小链路：登录入口、正式角色/租户/作用域展示、搜索页、商品详情页、下单页、订单详情页、交付页、验收页、争议入口、开发者 trace 预览和空态页面；覆盖幂等提示、八个标准 SKU、五条标准链路、权限态 / 空态 / 错态 / 加载态入口。
+  - `apps/console-web/e2e/smoke.spec.ts` 新增 `WEB-018` 控制台态最小链路：登录入口、审计联查、开发者 trace、ops 一致性联查、搜索运维与 step-up 提示；覆盖 `request_id / tx_hash / 链状态 / 投影状态` 和当前主体 / 角色 / 租户 / 作用域展示。
+  - portal / console 普通 E2E 和 live E2E 均增加浏览器请求监听，断言浏览器端不直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric` 相关端口或主机；页面只访问同源页面与受控 `/api/platform/**` 代理。
+  - 新增 `apps/portal-web/e2e/web018-live.spec.ts` 与 `apps/console-web/e2e/web018-live.spec.ts`，并在两个应用中增加 `test:e2e:live` 脚本；live 模式通过本地 Keycloak password grant 获取 Bearer Token，再经 `platform-core` 正式 API 验证 `auth/me`、搜索、商品详情、真实下单、订单详情、交付、验收、审计联查、ops 联查和开发者联查。
+  - portal live 链路真实调用 `POST /api/v1/orders` 并透传 `X-Idempotency-Key`；随后使用创建返回的订单 ID 继续进入订单详情、API 交付页、验收页与开发者 trace，避免依赖缺字段的旧种子订单快照。
+  - `packages/sdk-ts` 未手写漂移字段；`pnpm build` 重新生成 SDK 类型后无差异，`check-openapi-schema.sh` 继续覆盖 `auth/me / SessionContextView` 最小防漂移。
+- 验证：
+  - 前端 / 契约：
+    - `pnpm install`
+    - `./scripts/check-openapi-schema.sh`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 WEB_E2E_LIVE=1 pnpm --filter @datab/portal-web test:e2e:live`
+    - `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 WEB_E2E_LIVE=1 pnpm --filter @datab/console-web test:e2e:live`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 真实 API / DB / 边界：
+    - `curl` 获取本地 Keycloak `local-platform-admin` Bearer，并用兼容 claims 头调用 `GET http://127.0.0.1:8080/api/v1/auth/me`
+    - `curl` 调用 `GET http://127.0.0.1:8080/api/v1/catalog/search?q=工业设备运行指标`
+    - `psql` 回查 `trade.order_main` 中 `web-018-e2e-order-%` 临时订单、`ops.outbox_event` 与 `audit.audit_event`
+    - 受限系统扫描：`rg` 检查 portal / console / sdk-ts 中 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric` 相关端口、主机和客户端依赖；另以 import / client 构造模式确认无 `pg / kafkajs / redis / opensearch / fabric` 直连客户端。
+- 验证结果：
+  - `pnpm install`、OpenAPI 防漂移、lint、typecheck、test、build 全部通过；`pnpm test` 的普通 E2E 中 live spec 按默认 skip，portal 3 passed / 1 skipped，console 2 passed / 1 skipped。
+  - portal live E2E 通过：Keycloak 登录、`auth/me` 身份条、搜索、商品详情、真实下单、订单详情、API 交付页、验收页和开发者 trace 均在同一条真实订单链路内完成。
+  - console live E2E 通过：Keycloak 登录、控制台身份条、审计 trace、开发者 trace、ops 一致性联查和搜索运维页均真实访问 `platform-core`。
+  - `curl /api/v1/auth/me` 返回 `mode=jwt_mirror`、`user_id=10000000-0000-0000-0000-000000000353`、`tenant_id=10000000-0000-0000-0000-000000000103`、`roles=[platform_admin]`、`auth_context_level=aal1`；`curl /api/v1/catalog/search?q=工业设备运行指标` 返回 `result_count=2`。
+  - `cargo fmt --all` 无变更；`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；后端仅输出既有 unused warnings。
+  - 数据库回查确认 live E2E 生成 `3` 条临时订单、`3` 条 `ops.outbox_event` 与 `13` 条审计事件；已删除临时订单和 outbox 业务测试数据，`trade.order_main where idempotency_key like 'web-018-e2e-order-%'` 回查为 `0`，审计记录按 append-only 保留。
+  - 受限系统扫描未发现前端直连客户端或连接串；命中的 `kafka / opensearch / redis / fabric` 均来自 SDK 生成契约文档、ops 页面展示语义或本批新增的“不得直连”测试断言。
+  - `TODO` 扫描未发现本批新增无任务号 TODO；现有 `packages/sdk-ts/src/generated/ops.ts` 的 `later SEARCHREC` 文档注释来自生成契约，非本批新增代码 TODO。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-018`
+  - `页面说明书-V1-完整版.md`：登录、搜索、商品详情、下单、订单详情、交付、验收、审计、ops、开发者联查页面
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`：用户态 / 控制台态页面查看权限、主按钮权限、step-up 提示和主体上下文展示
+  - `测试用例矩阵正式版.md`、`search-rec-cases.md`、`delivery-cases.md`、`payment-billing-cases.md`、`notification-cases.md`：最小 E2E、错误态、空态、权限态、真实联调与数据清理要求
+  - `packages/openapi/catalog.yaml`、`trade.yaml`、`delivery.yaml`、`audit.yaml`、`ops.yaml`、`search.yaml`、`recommendation.yaml`、`iam.yaml` 与 `docs/02-openapi/*.yaml`
+- 覆盖的任务清单条目：`WEB-018`
+- 未覆盖项：
+  - 无。`WEB-018` 要求的 portal / console 最小 E2E、真实 Keycloak / platform-core 联调、受控 API 边界、数据库回查、业务测试数据清理与实施留痕均已完成；通知联查、统一错误码文案映射和后续综合回归按 `WEB-019+` 继续逐任务推进。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-290（计划中）
 - 任务：`WEB-016` 实现开发者页面：应用管理、API Key、调用日志、trace 联查、Mock 支付操作入口
 - 状态：计划中

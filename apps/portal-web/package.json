@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:live": "WEB_E2E_LIVE=1 playwright test e2e/web018-live.spec.ts",
     "test": "pnpm test:unit && pnpm test:e2e"
   },
   "dependencies": {

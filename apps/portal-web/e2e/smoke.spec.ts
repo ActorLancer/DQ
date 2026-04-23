@@ -1,6 +1,88 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+
+const STANDARD_PRODUCT_ID = "20000000-0000-0000-0000-000000000309";
+const STANDARD_SKU_ID = "20000000-0000-0000-0000-000000000409";
+const SEEDED_ORDER_ID = "30000000-0000-0000-0000-000000000101";
+const restrictedPorts = new Set([
+  "5432",
+  "6379",
+  "7050",
+  "7051",
+  "8080",
+  "8094",
+  "9000",
+  "9092",
+  "9094",
+  "9200",
+  "9300",
+  "18080",
+]);
+const restrictedHostFragments = [
+  "postgres",
+  "kafka",
+  "opensearch",
+  "redis",
+  "fabric",
+];
+
+function watchRestrictedBrowserRequests(page: Page) {
+  const hits: string[] = [];
+  page.on("request", (request) => {
+    try {
+      const url = new URL(request.url());
+      if (
+        restrictedPorts.has(url.port) ||
+        restrictedHostFragments.some((fragment) =>
+          url.hostname.toLowerCase().includes(fragment),
+        )
+      ) {
+        hits.push(request.url());
+      }
+    } catch {
+      hits.push(request.url());
+    }
+  });
+  return hits;
+}
+
+function encodeBase64Url(value: unknown) {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
+function createUnsignedJwt(payload: Record<string, unknown>) {
+  return [
+    encodeBase64Url({ alg: "none", typ: "JWT" }),
+    encodeBase64Url(payload),
+    "web018",
+  ].join(".");
+}
+
+async function installPortalBearerSession(context: BrowserContext) {
+  const token = createUnsignedJwt({
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    name: "WEB018 Buyer Operator",
+    org_id: "10000000-0000-0000-0000-000000000102",
+    preferred_username: "web018-buyer-operator",
+    realm_access: { roles: ["buyer_operator"] },
+    user_id: "10000000-0000-0000-0000-000000000356",
+  });
+  await context.addCookies([
+    {
+      name: "datab_portal_session",
+      value: encodeBase64Url({
+        mode: "bearer",
+        accessToken: token,
+        label: "WEB-018 fake buyer claims",
+      }),
+      url: "http://127.0.0.1:3101",
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+}
 
 test("portal home links directly to five standard demo paths", async ({ page }) => {
+  const restrictedRequests = watchRestrictedBrowserRequests(page);
   const scenarios = [
     ["S1", "工业设备运行指标 API 订阅"],
     ["S2", "工业质量与产线日报文件包交付"],
@@ -27,9 +109,11 @@ test("portal home links directly to five standard demo paths", async ({ page }) 
     ).toBeVisible();
     await expect(page.getByText("Idempotency-Key").first()).toBeVisible();
   }
+  expect(restrictedRequests).toEqual([]);
 });
 
 test("portal home and scaffold pages are reachable", async ({ page }) => {
+  const restrictedRequests = watchRestrictedBrowserRequests(page);
   await page.goto("/");
   await expect(page.getByText("门户首页已接入场景导航、推荐位与受控搜索入口。")).toBeVisible();
   await expect(page.getByRole("heading", { name: "标准链路快捷入口", exact: true })).toBeVisible();
@@ -200,4 +284,68 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/developer/assets");
   await expect(page.getByRole("heading", { name: "Mock 支付操作入口", exact: true })).toBeVisible();
   await expect(page.getByText("developer.mock_payment.simulate").first()).toBeVisible();
+  expect(restrictedRequests).toEqual([]);
+});
+
+test("WEB-018 portal user flow covers login, search, product, order, delivery, acceptance and linkage", async ({
+  context,
+  page,
+}) => {
+  const restrictedRequests = watchRestrictedBrowserRequests(page);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "登录态占位" }).click();
+  await expect(page.getByText("Keycloak / IAM placeholder")).toBeVisible();
+  await page.getByRole("button", { name: "Local Header" }).click();
+  await expect(page.getByPlaceholder("buyer.operator@luna.local")).toHaveValue(
+    "buyer.operator@luna.local",
+  );
+  await expect(page.locator('select[name="role"]')).toHaveValue("buyer_operator");
+  await expect(page.getByPlaceholder("10000000-0000-0000-0000-000000000102")).toHaveValue(
+    "10000000-0000-0000-0000-000000000102",
+  );
+  await page.getByRole("button", { name: "关闭" }).click();
+
+  await installPortalBearerSession(context);
+  await page.goto("/");
+  await expect(page.getByText("主体 WEB018 Buyer Operator")).toBeVisible();
+  await expect(page.getByText("角色 buyer_operator")).toBeVisible();
+  await expect(
+    page.getByText("租户 10000000-0000-0000-0000-000000000102"),
+  ).toBeVisible();
+  await expect(page.getByText("作用域 aal1")).toBeVisible();
+
+  await page.goto("/search?preview=empty&q=工业设备运行指标");
+  await expect(page.getByText("没有匹配的搜索结果")).toBeVisible();
+  await expect(page.getByText("SEARCH_BACKEND_UNAVAILABLE")).toBeHidden();
+
+  await page.goto(`/products/${STANDARD_PRODUCT_ID}?preview=empty`);
+  await expect(page.getByText("没有可展示的商品详情")).toBeVisible();
+  await expect(page.getByText(STANDARD_PRODUCT_ID).first()).toBeVisible();
+
+  await page.goto(
+    `/trade/orders/new?product_id=${STANDARD_PRODUCT_ID}&sku_id=${STANDARD_SKU_ID}&scenario=S1&preview=empty`,
+  );
+  await expect(page.getByText("五条标准链路下单入口")).toBeVisible();
+  await expect(page.getByText("工业设备运行指标 API 订阅").first()).toBeVisible();
+  await expect(page.getByText("API_SUB + API_PPU").first()).toBeVisible();
+
+  await page.goto(`/trade/orders/${SEEDED_ORDER_ID}?preview=empty`);
+  await expect(page.getByText("没有可展示的订单详情")).toBeVisible();
+
+  await page.goto(`/delivery/orders/${SEEDED_ORDER_ID}/file?preview=empty`);
+  await expect(page.getByText("没有可展示的交付数据")).toBeVisible();
+  await expect(page.getByRole("link", { name: "文件 FILE_STD" })).toBeVisible();
+
+  await page.goto(`/delivery/orders/${SEEDED_ORDER_ID}/acceptance?preview=empty`);
+  await expect(page.getByText("没有可展示的验收数据")).toBeVisible();
+
+  await page.goto("/support/cases/new?preview=empty");
+  await expect(page.getByText("请输入 order_id 创建或跟踪争议")).toBeVisible();
+
+  await page.goto(`/developer/trace?order_id=${SEEDED_ORDER_ID}`);
+  await expect(page.getByText("Trace 与调用日志联查")).toBeVisible();
+  await expect(page.getByText("request_id").first()).toBeVisible();
+
+  expect(restrictedRequests).toEqual([]);
 });
