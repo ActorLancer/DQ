@@ -33,7 +33,6 @@ pub enum RoleDomain {
     Tenant,
     Platform,
     Audit,
-    Developer,
 }
 
 #[derive(Debug, Clone)]
@@ -89,17 +88,9 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                 ]),
             },
             RoleSeed {
-                role: "tenant_operator",
+                role: "tenant_developer",
                 domain: RoleDomain::Tenant,
-                permissions: HashSet::from([
-                    IamPermission::OrgRead,
-                    IamPermission::IdentityRead,
-                    IamPermission::SessionRead,
-                    IamPermission::StepUpRead,
-                    IamPermission::MfaRead,
-                    IamPermission::SsoRead,
-                    IamPermission::FabricRead,
-                ]),
+                permissions: HashSet::from([IamPermission::SessionRead, IamPermission::MfaRead]),
             },
             RoleSeed {
                 role: "platform_admin",
@@ -131,12 +122,12 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                 ]),
             },
             RoleSeed {
-                role: "platform_finance_operator",
+                role: "platform_risk_settlement",
                 domain: RoleDomain::Platform,
                 permissions: HashSet::from([IamPermission::OrgRead, IamPermission::IdentityRead]),
             },
             RoleSeed {
-                role: "platform_auditor",
+                role: "platform_audit_security",
                 domain: RoleDomain::Audit,
                 permissions: HashSet::from([
                     IamPermission::OrgRead,
@@ -170,11 +161,6 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                     IamPermission::CertificateRead,
                     IamPermission::CertificateRevoke,
                 ]),
-            },
-            RoleSeed {
-                role: "developer",
-                domain: RoleDomain::Developer,
-                permissions: HashSet::from([IamPermission::SessionRead, IamPermission::MfaRead]),
             },
         ]
     })

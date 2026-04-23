@@ -114,6 +114,97 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-278（计划中）
+- 任务：`WEB-004` 实现商品搜索页：关键词、筛选、排序、结果卡片、空状态与错误状态
+- 状态：计划中
+- 说明：在 `WEB-003` 首页已接入搜索预览的基础上，本批将 `/search` 从路由脚手架升级为正式商品搜索页，真实绑定 `GET /api/v1/catalog/search` 与 `packages/sdk-ts` 当前生成契约，支持关键词、对象范围、行业、标签、交付方式、价格区间、排序、分页、结果卡片、空态、错态、加载态与权限态。按复审确认的 A 方案执行：当前 task 不伪造尚未在 `packages/openapi/search.yaml` / 后端 `SearchQuery` 中落地的 Facet 聚合、卖方主体类型、敏感等级、价格模式、供方筛选，而是在页面上明确展示当前契约边界，避免前端发明字段或 mock 聚合。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001`、`WEB-002`、`WEB-003` 已本地提交，门户工程、身份条、受控 `/api/platform/**` 代理、Keycloak Bearer 会话、SDK 绝对 URL 修复与首页搜索预览可复用。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-004` 仅实现商品搜索页，不跳到商品详情或卖方主页完整实现；DoD 要求页面可访问、空态/错态/权限态可用、与接口契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认搜索页目标为统一搜索、筛选、排序、结果列表和统计；异常需覆盖无结果、OpenSearch fallback、风险商品隐藏购买入口、结果状态校验失败提示刷新。
+  - `docs/数据库设计/接口协议/商品搜索、排序与索引同步接口协议正式版.md`：确认 V1 搜索接口为 `GET /api/v1/catalog/search`，参数包含 `q / entity_scope / industry / tags / delivery_mode / price_min / price_max / sort / page / page_size`。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`：确认 V1 采用 OpenSearch 读模型、Redis 缓存与 PostgreSQL fallback，但前端不得直连这些系统；本地 / demo 可展示 PostgreSQL fallback 后端标识。
+  - `packages/openapi/search.yaml`、`docs/02-openapi/search.yaml`、`packages/sdk-ts/src/domains/search.ts`、`packages/sdk-ts/src/generated/search.ts`：确认当前实现期权威契约未返回 facet 聚合，也未提供卖方主体类型、敏感等级、价格模式、供方筛选参数；页面必须以已生成 SDK 类型为准。
+  - `apps/platform-core/src/modules/search/**`、`docs/05-test-cases/search-rec-cases.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/opensearch-local.md`：确认搜索读取权限、审计写入、backend 标识、fallback 与测试验证方式。
+  - `docs/权限设计/菜单权限映射表.md`、`docs/权限设计/按钮级权限说明.md`、`docs/权限设计/接口权限校验清单.md`：确认搜索读取权限 `portal.search.read`，搜索执行权限 `portal.search.use`，购买入口需受后续下单权限和商品状态约束。
+  - `packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`、`apps/platform-core/src/modules/iam/**`：按复审结论同步收敛 `GET /api/v1/auth/me` 示例角色到正式 V1 角色集合，避免 `tenant_operator` 继续传播到 WEB 登录态占位。
+- 当前完成标准理解：
+  - 搜索页必须只通过 `portal-web -> /api/platform -> platform-core` 调用正式 API，不直连 PostgreSQL / Kafka / OpenSearch / Redis / Fabric。
+  - Bearer 会话下真实调用 `sdk.search.searchCatalog()`；guest / local header 占位不得把需要 Bearer 的正式搜索误判为完成，必须显示明确权限态。
+  - 表单校验必须用 Zod / React Hook Form，查询状态必须有加载 / 空 / 错 / 权限 / 后端 fallback 可视化，结果卡片必须显示状态、索引同步状态、评分、标签、价格和购买入口约束。
+  - 结果项状态异常或非 product 结果不得展示购买入口；商品状态 / 索引同步状态不可购买时给出刷新提示，不发明新的业务状态名。
+- 实施计划：
+  1. 先完成 IAM 角色示例漂移收敛与最小校验，保证 `auth/me` 契约和门户登录占位不继续输出非正式角色。
+  2. 新增正式 `SearchShell` 客户端组件，并替换 `/search` 路由脚手架。
+  3. 更新门户 E2E / 单测覆盖搜索页权限态、空态、错态、表单校验与 URL 状态同步。
+  4. 执行前端、后端、OpenAPI、SDK、真实 API、数据库回查与浏览器 smoke 验证，再写入“待审批”并提交。
+
+### BATCH-278（待审批）
+- 任务：`WEB-004` 实现商品搜索页：关键词、筛选、排序、结果卡片、空状态与错误状态
+- 状态：待审批
+- 当前任务编号：`WEB-004`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001 / WEB-002 / WEB-003` 基线继续生效；本批没有新增浏览器直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric` 的实现，搜索仍只经 `portal-web -> /api/platform -> platform-core`。
+- 完成情况：
+  - `/search` 已从 `PortalRoutePage` 脚手架替换为正式 `SearchShell`，页面承载 Hero、主体上下文、搜索表单、契约边界提示、结果统计、结果卡片、分页、权限态、加载态、空态与错误态。
+  - 新增 `apps/portal-web/src/lib/search-query.ts` 与单测，统一处理 URL 参数、React Hook Form 值、Zod 校验和 `SearchCatalogQuery` 转换；只序列化当前 OpenAPI / SDK 已支持的 `q / entity_scope / industry / tags / delivery_mode / price_min / price_max / sort / page / page_size`。
+  - 搜索表单使用 React Hook Form + Zod 校验，覆盖价格格式、价格区间、分页大小、枚举兜底和标签拆分；表单提交同步 URL，分页链接保持当前筛选条件。
+  - Bearer 会话下真实调用 `sdk.search.searchCatalog()`；`guest / local / claims 缺失` 显示明确搜索权限态，不把本地 Header 占位当成正式搜索登录态。
+  - 结果卡片展示 `entity_scope / status / index_sync_status / document_version / score / quality / reputation / hotness / price / seller / tags / industry_tags / delivery_modes`；仅 `product && status=listed` 展示下单入口，卖方结果与不可购买状态显示刷新/进入卖方主页提示。
+  - 页面明确展示契约边界：Facet 聚合、卖方主体类型、敏感等级、价格模式、供方筛选当前未在 `packages/openapi/search.yaml` / 后端 `SearchQuery` 中提供，本批不以前端 mock 或新状态名伪造。
+  - 按复审结论修正 IAM 角色漂移：`packages/openapi/iam.yaml` 与 `docs/02-openapi/iam.yaml` 的 `auth/me` 示例改为 `jwt_mirror=["tenant_developer"]`、`local_test_user=["tenant_admin"]`；门户登录态占位移除 `tenant_operator`；IAM 静态角色矩阵和测试同步为正式 V1 角色名，并在 `070_seed_role_permissions_v1.sql` 补齐 `tenant_developer -> iam.session.read`，确保示例 200 响应可验证。
+  - `apps/portal-web/e2e/smoke.spec.ts` 已更新为搜索页正式权限态、空态和错误态断言，不再依赖旧脚手架“空态预演”。
+- 验证：
+  - 前端 / 工作区：
+    - `pnpm install --frozen-lockfile`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+    - `pnpm --filter @datab/portal-web build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo test -p platform-core iam::tests --lib`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+    - `./scripts/check-openapi-schema.sh`
+  - 真实联调与 smoke：
+    - `./scripts/check-keycloak-realm.sh`
+    - 真实 password grant 获取 `local-platform-admin / platform_admin` Bearer Token，并验证 token claims 含 `user_id / org_id / realm_access.roles`
+    - 直连 `platform-core`：`GET /api/v1/catalog/search?q=工业设备运行指标&entity_scope=all&page=1&page_size=4`
+    - 门户生产构建启动：`PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm --filter @datab/portal-web exec next start --hostname 127.0.0.1 --port 3101`
+    - 浏览器端 Bearer smoke：
+      - 桌面视口 `1440x1200`：校验主体条、搜索统计、结果卡片、官方样例结果、请求边界与横向适配
+      - 移动视口 `390x844`：校验搜索统计与结果卡片可见、无横向溢出
+    - 数据库回查：`audit.access_audit` 中 `accessor_user_id='10000000-0000-0000-0000-000000000353'` 的 `target_type='search_catalog'` 访问记录。
+- 验证结果：
+  - `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；`portal-web` 单体 lint / typecheck / unit / e2e / build 全部通过；`sdk-ts` 构建时重新生成 OpenAPI 类型，未产生额外契约漂移。
+  - `pnpm test` 期间 `portal-web / console-web` 的 Playwright WebServer 仍会打印既有 `ECONNREFUSED 127.0.0.1:8094` 代理日志，但最终 E2E 断言全部通过；真实联调用 `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080` 已验证正式 API。
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo test -p platform-core iam::tests --lib`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；Rust 仍有既有 warning，本批未引入失败。
+  - `./scripts/check-openapi-schema.sh` 通过，确认 `getAuthMe / SessionContextView / application/json` 防漂移检查仍有效。
+  - `./scripts/check-keycloak-realm.sh` 通过，`local-platform-admin` Bearer Token 的 `user_id=10000000-0000-0000-0000-000000000353`、`org_id=10000000-0000-0000-0000-000000000103`、`role=platform_admin` 可用。
+  - 真实 `curl` 搜索通过：`success=true`、`total=2`、`backend=postgresql`，首条结果为 `工业设备运行指标 API 订阅`，状态 `listed`，`index_sync_status=pending`。
+  - 浏览器端 Bearer smoke 通过：页面 API 响应 `success=true / total=2 / backend=postgresql / first_status=listed / first_index_sync_status=pending`；桌面与移动 `horizontalFit=true`；捕获到的浏览器端搜索请求仅为 `/api/platform/api/v1/catalog/search?...`，`directPlatformCoreRequestCount=0`。
+  - 数据库回查通过：`audit.access_audit` 最近记录包含多条 `target_type=search_catalog`、`accessor_user_id=10000000-0000-0000-0000-000000000353`、带 `request_id` 的访问留痕；审计按 append-only 保留，未清理。
+  - 本批未新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；没有向业务表插入需清理的临时测试数据，搜索访问审计按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-004`
+  - `页面说明书-V1-完整版.md`：4.3 搜索页
+  - `商品搜索、排序与索引同步接口协议正式版.md`：4.1 / 7.1 / 8 / 9
+  - `商品搜索、排序与索引同步设计.md`：5.1 / 5.2 / 6.1 / 6.2
+  - `search-rec-cases.md`：Bearer 搜索、PostgreSQL fallback、审计留痕与本地验证边界
+  - `packages/openapi/search.yaml`、`docs/02-openapi/search.yaml`、`packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`
+- 覆盖的任务清单条目：`WEB-004`
+- 未覆盖项：
+  - 无。`WEB-004` 要求的关键词、筛选、排序、结果卡片、空态与错误态已按当前正式搜索契约完成；OpenAPI / 后端尚未提供的 Facet 聚合与额外筛选字段未在本批伪造，后续如冻结契约新增字段再进入对应任务实现。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-276（计划中）
 - 任务：`WEB-002` 初始化 `apps/console-web/` Next.js 项目，承接运营、审计、开发者、ops 页面
 - 状态：计划中

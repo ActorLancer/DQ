@@ -26,7 +26,7 @@ const formSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("local"),
     loginId: z.string().min(1, "请输入本地测试 login_id"),
-    role: z.enum(["tenant_admin", "tenant_operator", "platform_admin"]),
+    role: z.enum(["tenant_admin", "tenant_developer", "platform_admin"]),
   }),
 ]);
 
@@ -99,7 +99,7 @@ export function AuthPlaceholderDialog() {
                 form.reset({
                   mode: "local",
                   loginId: "buyer.demo",
-                  role: "tenant_operator",
+                  role: "tenant_admin",
                 })
               }
             >
@@ -148,8 +148,8 @@ export function AuthPlaceholderDialog() {
                     className="flex h-11 w-full rounded-2xl border border-black/10 bg-white/90 px-4 text-sm text-[var(--ink-strong)] outline-none transition focus:border-[var(--accent-strong)] focus:ring-2 focus:ring-[var(--accent-soft)]"
                     {...form.register("role")}
                   >
-                    <option value="tenant_operator">tenant_operator</option>
                     <option value="tenant_admin">tenant_admin</option>
+                    <option value="tenant_developer">tenant_developer</option>
                     <option value="platform_admin">platform_admin</option>
                   </select>
                   <FormError message={form.getFieldState("role").error?.message} />

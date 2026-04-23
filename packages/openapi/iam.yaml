@@ -577,7 +577,7 @@ paths:
                       login_id: null
                       display_name: null
                       tenant_id: "tenant-demo"
-                      roles: ["tenant_operator"]
+                      roles: ["tenant_developer"]
                       auth_context_level: "aal1"
                 local_test_user:
                   value:
@@ -589,7 +589,7 @@ paths:
                       login_id: "buyer.demo"
                       display_name: "Buyer Demo"
                       tenant_id: null
-                      roles: ["tenant_operator"]
+                      roles: ["tenant_admin"]
                       auth_context_level: "aal1"
         "401":
           description: Unauthorized

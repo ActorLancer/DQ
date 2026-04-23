@@ -2169,13 +2169,23 @@ fn permission_from_code(
 
 fn validate_scope(role: &str, scope: &str) -> bool {
     match scope {
-        "tenant" => matches!(role, "tenant_admin" | "tenant_operator"),
+        "tenant" => matches!(
+            role,
+            "tenant_admin"
+                | "seller_operator"
+                | "buyer_operator"
+                | "tenant_developer"
+                | "tenant_audit_readonly"
+        ),
         "platform" => matches!(
             role,
-            "platform_admin" | "platform_auditor" | "platform_finance_operator"
+            "platform_admin"
+                | "platform_reviewer"
+                | "platform_risk_settlement"
+                | "platform_audit_security"
         ),
-        "audit" => role == "platform_auditor",
-        "developer" => role == "developer",
+        "audit" => role == "platform_audit_security",
+        "developer" => role == "tenant_developer",
         _ => false,
     }
 }

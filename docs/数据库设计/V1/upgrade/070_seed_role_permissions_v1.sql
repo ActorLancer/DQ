@@ -305,6 +305,7 @@ INSERT INTO authz.role_permission (role_key, permission_code) VALUES
 ('tenant_developer','developer.app.read'),
 ('tenant_developer','developer.app.update'),
 ('tenant_developer','developer.home.read'),
+('tenant_developer','iam.session.read'),
 ('tenant_developer','developer.mock_payment.manage'),
 ('tenant_developer','developer.mock_payment.read'),
 ('tenant_developer','developer.mock_payment.simulate'),

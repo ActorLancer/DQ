@@ -102,8 +102,7 @@ export async function connectPortalSession(
         roles.some(
           (role) =>
             role === "platform_admin" ||
-            role === "tenant_admin" ||
-            role === "tenant_operator",
+            role === "tenant_admin",
         )
       ) {
         await sdk.catalog.getStandardScenarioTemplates();
