@@ -17,10 +17,14 @@
 
 ```bash
 ./scripts/check-demo-fixtures.sh
+./scripts/seed-demo.sh
+./scripts/check-demo-seed.sh
 ```
 
 说明：
 
 - `catalog.json` 的官方展示商品与 SKU 复用 `db/seeds/033_searchrec_recommendation_samples.sql` 的正式首页/搜索样例。
+- `scripts/seed-demo.sh` 会先执行 `db/scripts/seed-up.sh` 的正式 manifest，再按 `orders.json / billing.json / delivery.json` 追加 `TEST-002` 的 demo 订单、支付和交付记录。
+- `billing.json` 的 `payment_provider.provider_key` 与正式支付 provider 口径保持一致，使用 `mock_payment`；`mock-payment-provider` 是本地联调服务名，不是数据库中的 `provider_key`。
 - `orders.json` 及其下游交付、账单、审计对象是 `TEST-001` 新定义的 demo blueprint，供 `TEST-002` 的 `seed-demo.sh` 与后续 E2E/验收矩阵导入使用。
 - 若未来扩展或替换 demo 数据包，必须同时更新 `manifest.json`、校验脚本和本 README。

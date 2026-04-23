@@ -1,7 +1,7 @@
 {
   "dataset_id": "v1-core-standard-scenarios-demo",
   "payment_provider": {
-    "provider_key": "mock-payment-provider",
+    "provider_key": "mock_payment",
     "callback_topic": "dtp.payment.callbacks",
     "recorded_billing_event_type": "billing.event.recorded",
     "source": {

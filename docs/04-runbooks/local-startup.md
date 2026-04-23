@@ -36,6 +36,10 @@
     - `fixtures/demo/manifest.json` 是 `TEST-001` 之后的正式 demo 数据包入口，供后续 `seed-demo.sh`、E2E 与验收矩阵复用
     - `fixtures/local/standard-scenarios-manifest.json` 与 `fixtures/local/standard-scenarios-sample.json` 继续保留为 `ENV-041` 本地 bootstrap 样例
     - `db/seeds/033_searchrec_recommendation_samples.sql` 会同步把五条官方场景商品写入 `catalog.*` 并固化到 `recommend.placement_definition(metadata.fixed_samples)`，使首页 `home_featured` 在演示环境中可直接作为五场景闭环入口
+17. 导入正式 demo 订单、支付与交付对象：`./scripts/seed-demo.sh`
+    - 默认会先执行 `db/scripts/seed-up.sh`，再按 `fixtures/demo/orders.json / billing.json / delivery.json` 写入 10 笔 demo 订单和对应支付 / 交付记录
+    - 若基础 seed 已完成且只想重放 demo 订单链路，可使用：`./scripts/seed-demo.sh --skip-base-seeds`
+    - 导入后执行：`./scripts/check-demo-seed.sh`
 
 补充说明：
 
@@ -45,48 +49,48 @@
 
 ## 阶段 4：应用
 
-17. 启动主应用（platform-core）：
+18. 启动主应用（platform-core）：
    `set -a; source infra/docker/.env.local; set +a; APP_MODE=staging APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p platform-core`
    - 若验证 `local / demo` fallback，可改为 `APP_MODE=local` 或 `APP_MODE=demo`；此时 `platform-core` 不再要求 OpenSearch alias / index 在启动阶段已就绪
    - `platform-core` 和大部分本地脚本应统一从 `DATABASE_URL` 读取数据库入口，而不是直接读取 `POSTGRES_*`
-18. 按需启动 canonical outbox publisher：
+19. 按需启动 canonical outbox publisher：
    `set -a; source infra/docker/.env.local; set +a; APP_PORT=8098 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p outbox-publisher`
    - `outbox-publisher` 轮询 `ops.outbox_event`，写入 `ops.outbox_publish_attempt`，并在重试耗尽时落 `ops.dead_letter_event + dtp.dead-letter`
-19. 应用健康检查：
+20. 应用健康检查：
    `curl -fsS http://127.0.0.1:8094/health/live`
    `curl -fsS http://127.0.0.1:8094/health/ready`
    `curl -fsS http://127.0.0.1:8098/health/ready`
-20. 运行时数据访问职责：
+21. 运行时数据访问职责：
    `SQLx` 负责连接池、事务、核心写路径和复杂 SQL；
    `SeaORM` 负责标准 CRUD、稳定读模型和固定关系加载
-21. 按需叠加观测栈：`make up-observability`
-22. 按需叠加 Fabric：`make up-fabric`
+22. 按需叠加观测栈：`make up-observability`
+23. 按需叠加 Fabric：`make up-fabric`
    - 该命令会先启动 `core` 基础设施，再运行 `infra/fabric/fabric-up.sh`
    - Fabric 不再依赖本地 compose 内 placeholder 容器
-23. 一键演示模式（全量）：`make up-demo`
-24. 支付/回执联调模式（`local` 子场景，非正式新 mode）：`make up-mocks`
+24. 一键演示模式（全量）：`make up-demo`
+25. 支付/回执联调模式（`local` 子场景，非正式新 mode）：`make up-mocks`
    - 启动后可执行：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh mocks`
 
 ## 阶段 5：回执模拟
 
-25. 验证 Keycloak realm 与 password grant：`./scripts/check-keycloak-realm.sh`
+26. 验证 Keycloak realm 与 password grant：`./scripts/check-keycloak-realm.sh`
    - 若 realm 被旧独立数据库污染，可执行：`make keycloak-reset-local`
-26. 启动 Fabric 本地链（按需）：`make fabric-up`
-27. 生成本地通道并部署真实 Go 链码：`make fabric-channel`
-28. Fabric 自检：`./scripts/check-fabric-local.sh`
-29. Fabric adapter 实链 smoke：`./scripts/fabric-adapter-live-smoke.sh`
-30. OTel Collector 自检：`./scripts/check-otel-collector.sh`
-31. 观测栈自检（仅 `make up-observability` 或 `make up-demo` 后执行）：`./scripts/check-observability-stack.sh`
-32. 执行回执模拟（Mock Payment）：
+27. 启动 Fabric 本地链（按需）：`make fabric-up`
+28. 生成本地通道并部署真实 Go 链码：`make fabric-channel`
+29. Fabric 自检：`./scripts/check-fabric-local.sh`
+30. Fabric adapter 实链 smoke：`./scripts/fabric-adapter-live-smoke.sh`
+31. OTel Collector 自检：`./scripts/check-otel-collector.sh`
+32. 观测栈自检（仅 `make up-observability` 或 `make up-demo` 后执行）：`./scripts/check-observability-stack.sh`
+33. 执行回执模拟（Mock Payment）：
    - 前置条件：已执行 `make up-mocks` 或 `make up-demo`
    - 检查命令：`./scripts/check-mock-payment.sh`
-33. 全量健康检查（仅 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
+34. 全量健康检查（仅 `make up-demo` 后执行）：`ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full`
     - 该检查包含端口与 HTTP 存活探测，以及命令级探测：`psql`、`redis-cli`、`kcat`（容器无 `kcat` 时优先临时 `kcat` 容器探测，再回退 `kafka-topics.sh`）、`mc`、`curl`。
 
 ## 阶段 6：配置快照与 Smoke
 
-34. 导出当前本地配置快照：`./scripts/export-local-config.sh`
-35. 运行本地 smoke 套件（建议在 `make up-demo` 后执行；若不用 `demo`，至少需要 `core + observability + mocks` 组合）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+35. 导出当前本地配置快照：`./scripts/export-local-config.sh`
+36. 运行本地 smoke 套件（建议在 `make up-demo` 后执行；若不用 `demo`，至少需要 `core + observability + mocks` 组合）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
     - 该 smoke 会按 `infra/kafka/topics.v1.json` 检查 canonical topics 是否真实存在，防止 auto-create 掩盖 topic 漂移。
 
 ## Kafka 局域网访问验证
