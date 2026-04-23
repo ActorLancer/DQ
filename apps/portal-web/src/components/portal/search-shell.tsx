@@ -516,7 +516,7 @@ function SearchPermissionState({
 }) {
   const message =
     sessionMode === "local"
-      ? "本地 Header 登录占位只能用于身份条和部分本地校验；正式搜索接口要求 Bearer Token 与 portal.search.read。"
+      ? "本地 Header 联调身份只能用于身份条和部分本地校验；正式搜索接口要求 Bearer Token 与 portal.search.read。"
       : sessionMode === "bearer" && !subject
         ? "Bearer Token 缺少可识别主体 claims，无法建立搜索访问上下文。"
         : "请先通过 Keycloak / IAM Bearer 会话登录后再执行正式搜索。";

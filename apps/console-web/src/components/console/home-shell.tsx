@@ -55,20 +55,20 @@ export function HomeShell() {
                   Console / V1 Core
                 </div>
                 <h1 className="text-3xl font-semibold leading-tight">
-                  控制台工程基线已接入正式路由、受控 API 代理和控制面登录态占位。
+                  控制台已接入正式路由、受控 API 代理和控制面认证会话。
                 </h1>
                 <p className="max-w-2xl text-sm leading-7 text-white/80">
-                  `WEB-002` 当前不把审核、审计、ops、开发者页面一次做满，而是先把控制台布局、官方页面键、SDK、代理边界和可验证状态体系建起来，避免后续控制面页面各写各的。
+                  审核、审计、ops 和开发者控制面统一复用同一套路由元数据、SDK 契约、代理边界与状态体系，保证联查路径和权限语义一致。
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Button asChild variant="secondary">
                     <Link href="/ops/audit/trace">
-                      进入审计联查骨架
+                      进入审计联查页
                       <ArrowRight className="size-4" />
                     </Link>
                   </Button>
                   <Button asChild variant="ghost">
-                    <Link href="/developer/trace">查看开发者 trace 骨架</Link>
+                    <Link href="/developer/trace">查看开发者 trace 页</Link>
                   </Button>
                 </div>
               </div>
@@ -76,7 +76,7 @@ export function HomeShell() {
                 <SignalCard
                   icon={<ShieldEllipsis className="size-5" />}
                   title="会话与权限"
-                  description="控制台登录态占位、会话 Cookie、敏感主体条和权限预演已经统一。"
+                  description="控制台认证会话、会话 Cookie、敏感主体条和权限预演已经统一。"
                 />
                 <SignalCard
                   icon={<Radar className="size-5" />}
@@ -207,7 +207,7 @@ export function HomeShell() {
                 ))
               ) : (
                 <div className="rounded-[24px] bg-black/[0.04] p-4 text-sm text-[var(--ink-soft)]">
-                  当前未拿到 `ops.observability.read` 返回值。可以先通过登录态占位注入 Bearer 或本地测试身份，再重新校验。
+                  当前未拿到 `ops.observability.read` 返回值。可以先通过认证会话注入 Bearer 或开发联调身份，再重新校验。
                 </div>
               )}
             </div>

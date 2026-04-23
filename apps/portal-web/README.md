@@ -5,7 +5,7 @@
 ## 当前范围
 
 - `Next.js App Router + TypeScript + Tailwind CSS v4`
-- 根布局、门户导航、身份条、登录态占位弹窗
+- 根布局、门户导航、身份条、认证会话弹窗
 - 受控 API 代理：`/api/platform/* -> platform-core`
 - `@datab/sdk-ts` 契约绑定
 - 冻结页面路由键与权限元数据挂载
@@ -33,12 +33,12 @@ pnpm --filter @datab/portal-web dev
 PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm --filter @datab/portal-web dev
 ```
 
-## 登录态占位
+## 认证会话接入
 
-当前任务只实现受控登录态占位，不替代正式 `Keycloak / IAM`。
+门户通过受控认证会话接入 `Keycloak / IAM`，并统一在服务端写入 HttpOnly Cookie。
 
 - `Bearer` 模式：把已有 access token 写入 HttpOnly Cookie，由服务端代理附加 `Authorization`
-- `Local Header` 模式：本地联调用 `x-login-id / x-role` 头模拟身份
+- `Local Header` 模式：开发联调用 `x-login-id / x-role` 头注入身份
 - `Guest` 模式：显式展示未注入会话状态
 
 ## 约束

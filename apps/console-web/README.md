@@ -26,4 +26,4 @@ PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm --filter @datab/console-web de
 - 浏览器只请求 `console-web -> /api/platform -> platform-core`
 - 通知联查 / dead-letter replay 页面同样只走 `/api/platform/** -> platform-core`，不直连 `notification-worker`
 - 不直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`
-- 登录态占位只用于 `WEB` 阶段本地联调，不替代正式 `Keycloak / IAM`
+- 认证会话统一走 `Keycloak / IAM`，开发联调身份仅用于受控本地验证

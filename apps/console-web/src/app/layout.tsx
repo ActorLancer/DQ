@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
 
-import { AuthPlaceholderDialog } from "@/components/console/auth-placeholder-dialog";
+import { AuthSessionDialog } from "@/components/console/auth-session-dialog";
 import { ConsoleNavigation } from "@/components/console/navigation";
 import { IdentityStrip } from "@/components/console/identity-strip";
 import { AppProviders } from "@/providers/app-providers";
@@ -59,7 +59,7 @@ export default async function RootLayout({
                   <IdentityStrip sessionLabel={sessionLabel} />
                 </div>
                 <div className="flex shrink-0 justify-end">
-                  <AuthPlaceholderDialog />
+                  <AuthSessionDialog />
                 </div>
               </div>
               {children}

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 
-import { AuthPlaceholderDialog } from "@/components/portal/auth-placeholder-dialog";
+import { AuthSessionDialog } from "@/components/portal/auth-session-dialog";
 import { IdentityStrip } from "@/components/portal/identity-strip";
 import { PortalNavigation } from "@/components/portal/navigation";
 import { readPortalSession, readPortalSessionPreview } from "@/lib/session";
@@ -62,7 +62,7 @@ export default async function RootLayout({
                   />
                 </div>
                 <div className="flex shrink-0 justify-end">
-                  <AuthPlaceholderDialog />
+                  <AuthSessionDialog />
                 </div>
               </div>
               {children}

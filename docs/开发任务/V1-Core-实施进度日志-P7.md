@@ -1840,3 +1840,74 @@
   - 无。`WEB-003` 要求的门户首页场景导航、推荐位、搜索入口、标准链路快捷入口、真实 API 接入、E2E / 浏览器 smoke、数据库回查与日志留痕均已完成；更完整的搜索结果页、商品详情页、卖方主页业务细节由 `WEB-004 / WEB-005 / WEB-006` 继续展开。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-297（计划中）
+- 任务：`WEB` 阶段复审整改：清理 `portal-web / console-web` 仍可见的占位展示文案，收口为正式认证会话与正式页面语义
+- 状态：计划中
+- 说明：按最新验收口径，`WEB` 阶段页面不允许继续展示“登录态占位 / placeholder / 页面骨架”类文案。当前批次不降级已实现功能，也不引入 mock 替代；只做正式语义收口、入口组件命名收口、E2E 断言同步和完整回归验证。
+- 前置依赖核对结果：`WEB-001 ~ WEB-022` 已在本地完成并可复用；`portal-web / console-web` 继续保持 `browser -> /api/platform/** -> platform-core` 受控边界。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：复核 `WEB-001/002` 对认证入口与工程基线描述，确认本批属于验收口径收口，不改变任务顺序与边界。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：复核敏感页面必须稳定展示主体/角色/租户/作用域。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：复核前端只能调用 `platform-core` 正式 API，不能扩展直连边界。
+  - `packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`：复核 `GET /api/v1/auth/me` 为正式有响应体契约，认证会话展示必须以该接口语义承接。
+  - `apps/portal-web/**`、`apps/console-web/**`、`apps/*/e2e/**`：定位仍显示“登录态占位 / Keycloak placeholder / 页面骨架”文案与断言。
+- 当前完成标准理解：
+  - 运行中页面与测试断言不再出现“占位展示”语义。
+  - 认证入口保持真实 `auth/me` 会话校验，文案统一为“认证会话”。
+  - 路由容器、首页、导航、README 与 E2E 文案同步，不出现互相矛盾的旧口径。
+- 实施计划：
+  1. 将门户与控制台认证组件从 `AuthPlaceholderDialog` 收口为 `AuthSessionDialog`，并同步布局引用。
+  2. 收敛门户/控制台导航、首页、状态预演、路由容器、账单/搜索/详情提示文案，移除“占位/骨架”展示语义。
+  3. 同步 `portal-web`、`console-web` E2E 断言与 README 描述。
+  4. 执行 `pnpm install/lint/typecheck/test/build` 与 `cargo fmt/check/test/sqlx/query-compile` 全量回归。
+
+### BATCH-297（待审批）
+- 任务：`WEB` 阶段复审整改：清理 `portal-web / console-web` 仍可见的占位展示文案，收口为正式认证会话与正式页面语义
+- 状态：待审批
+- 当前任务编号：`WEB` 复审整改（覆盖 `WEB-001 / WEB-002 / WEB-018 / WEB-022` 相关实现面）
+- 前置依赖核对结果：`WEB-001 ~ WEB-022` 基线继续生效；本批未改变受控边界，浏览器仍仅访问 `/api/platform/**`。
+- 完成情况：
+  - 门户与控制台认证组件已统一收口：
+    - `apps/portal-web/src/components/portal/auth-session-dialog.tsx`
+    - `apps/console-web/src/components/console/auth-session-dialog.tsx`
+    - 根布局已切换为 `AuthSessionDialog`，旧 `auth-placeholder-dialog.tsx` 已移除。
+  - 会话动作错误文案已收口为正式语义：
+    - `apps/portal-web/src/actions/session.ts`
+    - `apps/console-web/src/actions/session.ts`
+  - 页面可见文案收口完成：导航、首页、状态预演、路由容器、商品详情、搜索提示、演示提示、账单摘要标题不再出现“占位/骨架”。
+  - README 收口完成：
+    - `apps/portal-web/README.md`
+    - `apps/console-web/README.md`
+  - Playwright 断言与入口按钮文案同步：
+    - `apps/portal-web/e2e/smoke.spec.ts`
+    - `apps/portal-web/e2e/web018-live.spec.ts`
+    - `apps/console-web/e2e/smoke.spec.ts`
+    - `apps/console-web/e2e/web018-live.spec.ts`
+- 验证：
+  - 前端 / 工作区：
+    - `pnpm install`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `pnpm lint/typecheck/test/build` 全部通过；`pnpm test` 中 portal/console E2E 均通过。
+  - `cargo fmt/check/test/sqlx/query-compile` 全部通过；存在仓库既有 `unused/dead_code` 警告但无新增失败。
+  - `pnpm test` 期间仍有既有 `127.0.0.1:8094` 代理 `ECONNREFUSED` 噪音日志，不影响测试断言和退出码。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-001`、`WEB-002`、`WEB-018`、`WEB-022` 的认证入口与 E2E 相关口径
+  - `页面说明书-V1-完整版.md`：主体/角色/租户/作用域展示要求
+  - `服务清单与服务边界正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`：受控 API 边界
+  - `packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`：`GET /api/v1/auth/me` 正式契约
+- 覆盖的任务清单条目：`WEB-001`、`WEB-002`、`WEB-018`、`WEB-022`（复审整改维度）
+- 未覆盖项：
+  - 无。本批目标是“移除占位展示语义并保持既有功能闭环”，已完成代码、测试、文档与回归收口。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

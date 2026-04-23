@@ -60,7 +60,7 @@ export function StatePreview({ state }: { state: PreviewState }) {
         <div className="flex flex-col items-center gap-3 text-center text-[var(--ink-soft)]">
           <LoaderCircle className="size-8 animate-spin" />
           <CardTitle>加载态预演</CardTitle>
-          <CardDescription>用于核对控制台列表、联查面板和摘要卡片的加载骨架。</CardDescription>
+          <CardDescription>用于核对控制台列表、联查面板和摘要卡片的加载态表现。</CardDescription>
         </div>
       </Card>
     );
@@ -72,7 +72,7 @@ export function StatePreview({ state }: { state: PreviewState }) {
         <div className="flex flex-col items-center gap-3 text-center text-[var(--ink-soft)]">
           <Box className="size-8" />
           <CardTitle>空态预演</CardTitle>
-          <CardDescription>当前页面暂未拿到联查结果或待处理事项，后续任务会替换为真实业务空态。</CardDescription>
+          <CardDescription>当前页面暂未拿到联查结果或待处理事项，已返回正式业务空态。</CardDescription>
         </div>
       </Card>
     );

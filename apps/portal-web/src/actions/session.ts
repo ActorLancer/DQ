@@ -46,7 +46,7 @@ export async function connectPortalSession(
   if (!parsed.success) {
     return {
       ok: false,
-      message: parsed.error.issues[0]?.message ?? "登录态占位校验失败",
+      message: parsed.error.issues[0]?.message ?? "认证会话校验失败",
     };
   }
 
@@ -133,7 +133,7 @@ export async function connectPortalSession(
       ok: false,
       message: formatPlatformErrorForDisplay(error, {
         fallbackCode: "UNAUTHORIZED",
-        fallbackDescription: "无法验证当前登录态占位，请检查 platform-core、Keycloak 和当前会话配置。",
+        fallbackDescription: "无法验证当前认证会话，请检查 platform-core、Keycloak 和当前会话配置。",
       }),
     };
   }

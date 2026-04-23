@@ -518,7 +518,7 @@ function MetadataAndSample({ product }: { product: Product }) {
 
       <Card className="xl:col-span-2">
         <div className="space-y-4">
-          <SectionTitle icon={<ShieldCheck className="size-5" />} title="元信息详情" description="展示 ProductDetail.metadata 顶层字段；对象路径类字段仅显示脱敏占位。" />
+          <SectionTitle icon={<ShieldCheck className="size-5" />} title="元信息详情" description="展示 ProductDetail.metadata 顶层字段；对象路径类字段仅显示脱敏值。" />
           {entries.length ? (
             <div className="grid gap-3 md:grid-cols-2">
               {entries.map((entry) => (
@@ -714,7 +714,7 @@ function ProductPermissionState({
 }) {
   const message =
     sessionMode === "local"
-      ? "本地 Header 登录占位不能作为正式商品详情 Bearer 鉴权。"
+      ? "本地 Header 联调身份不能作为正式商品详情 Bearer 鉴权。"
       : sessionMode === "bearer" && !subject
         ? "Bearer Token 缺少 user_id / org_id / roles claims，无法建立商品详情访问上下文。"
         : "请先通过 Keycloak / IAM Bearer 会话登录后再查看正式商品详情。";

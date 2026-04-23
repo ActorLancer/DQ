@@ -17,9 +17,9 @@ export function PortalNavigation() {
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <Badge>WEB-001</Badge>
-          <CardTitle>Portal Baseline</CardTitle>
+          <CardTitle>Portal Workspace</CardTitle>
           <CardDescription>
-            当前只落门户基线、路由骨架、登录态占位和受控 API 边界。
+            门户已接入正式路由、认证会话与受控 API 边界。
           </CardDescription>
         </div>
         <nav className="grid gap-2">

@@ -20,9 +20,9 @@ export function ConsoleNavigation() {
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <Badge>WEB-002</Badge>
-          <CardTitle>Console Baseline</CardTitle>
+          <CardTitle>Console Workspace</CardTitle>
           <CardDescription>
-            当前只落控制台基线、路由骨架、登录态占位和受控 API 边界。
+            控制台已接入正式路由、认证会话与受控 API 边界。
           </CardDescription>
         </div>
         <nav className="grid gap-4">

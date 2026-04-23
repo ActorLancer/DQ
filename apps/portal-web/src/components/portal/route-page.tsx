@@ -20,7 +20,7 @@ export function PortalRoutePage({
         <Card>
           <CardTitle>当前阶段交付</CardTitle>
           <CardDescription>
-            本路由已经挂入官方菜单路径、权限元数据和状态预演体系；后续任务会逐步接入真实表单、列表、虚拟滚动和业务操作。
+            本路由已经挂入官方菜单路径、权限元数据和状态预演体系；当前页面保持正式受控联查与状态承接结构。
           </CardDescription>
         </Card>
         <Card>

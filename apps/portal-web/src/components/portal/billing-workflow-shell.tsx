@@ -483,7 +483,7 @@ function SettlementPanel({ detail }: { detail: BillingOrderDetail }) {
     <Card className="space-y-5">
       <PanelTitle
         icon={<Banknote className="size-5" />}
-        title="结算结果与保证金占位"
+        title="结算结果与保证金状态"
         description="结算摘要来自后端聚合；保证金明细当前未在 Billing detail 中返回，页面显式标注缺省。"
       />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -567,7 +567,7 @@ function BillingRulePanel({ detail }: { detail: BillingOrderDetail }) {
     <Card className="space-y-5">
       <PanelTitle
         icon={<GitBranch className="size-5" />}
-        title="SKU 计费规则与发票/税务占位"
+        title="SKU 计费规则与发票/税务状态"
         description="显式支持八个标准 SKU，不把 SHARE_RO / QRY_LITE / RPT_STD 并回大类。"
       />
       <div className="flex flex-wrap gap-2">

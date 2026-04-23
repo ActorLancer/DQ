@@ -424,8 +424,8 @@ test("WEB-018 portal user flow covers login, search, product, order, delivery, a
   const restrictedRequests = watchRestrictedBrowserRequests(page);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "登录态占位" }).click();
-  await expect(page.getByText("Keycloak / IAM placeholder")).toBeVisible();
+  await page.getByRole("button", { name: "认证会话" }).click();
+  await expect(page.getByText("Keycloak / IAM Session")).toBeVisible();
   await page.getByRole("button", { name: "Local Header" }).click();
   await expect(page.getByPlaceholder("buyer.operator@luna.local")).toHaveValue(
     "buyer.operator@luna.local",

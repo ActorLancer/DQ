@@ -420,7 +420,7 @@ function LiveBindingCard({
         ) : sessionMode === "local" ? (
           <StateCallout
             title="Local Header 不替代 Bearer"
-            description="本地 header 只用于 auth/me 联调；演示页不会把本地占位伪造成正式 API 读取。"
+            description="本地 header 只用于 auth/me 联调；演示页不会把本地联调身份伪造成正式 API 读取。"
             tone="warning"
           />
         ) : null}

@@ -113,8 +113,8 @@ async function fetchAccessToken(
 
 async function verifyLoginDialog(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "登录态占位" }).click();
-  await expect(page.getByText("Keycloak / IAM placeholder")).toBeVisible();
+  await page.getByRole("button", { name: "认证会话" }).click();
+  await expect(page.getByText("Keycloak / IAM Session")).toBeVisible();
   await expect(page.locator("textarea")).toBeVisible();
   await page.getByRole("button", { name: "关闭" }).click();
 }

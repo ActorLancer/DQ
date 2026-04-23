@@ -126,10 +126,10 @@ async function fetchAccessToken(
 
 async function loginWithBearer(page: Page, token: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: "登录态占位" }).click();
+  await page.getByRole("button", { name: "认证会话" }).click();
   await page.locator("textarea").fill(token);
   await page.getByRole("button", { name: "验证并写入会话" }).click();
-  await expect(page.getByRole("button", { name: "登录态占位" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "认证会话" })).toBeVisible({
     timeout: 20_000,
   });
   await page.reload();

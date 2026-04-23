@@ -49,7 +49,7 @@ test("console home and scaffold pages are reachable", async ({ page }) => {
   const restrictedRequests = watchRestrictedBrowserRequests(page);
   await page.goto("/");
   await expect(
-    page.getByText("控制台工程基线已接入正式路由、受控 API 代理和控制面登录态占位。"),
+    page.getByText("控制台已接入正式路由、受控 API 代理和控制面认证会话。"),
   ).toBeVisible();
   await expect(page.getByText("当前主体 / 角色 / 租户 / 作用域")).toBeVisible();
 
@@ -120,8 +120,8 @@ test("WEB-018 console control-plane flow covers login, audit, ops and developer 
   const restrictedRequests = watchRestrictedBrowserRequests(page);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "登录态占位" }).click();
-  await expect(page.getByText("Keycloak / IAM placeholder")).toBeVisible();
+  await page.getByRole("button", { name: "认证会话" }).click();
+  await expect(page.getByText("Keycloak / IAM Session")).toBeVisible();
   await page.getByRole("button", { name: "Local Header" }).click();
   await expect(page.getByPlaceholder("platform.ops@luna.local")).toHaveValue(
     "platform.ops@luna.local",

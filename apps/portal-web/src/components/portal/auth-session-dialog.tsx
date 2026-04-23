@@ -43,7 +43,7 @@ const formSchema = z.discriminatedUnion("mode", [
 
 type FormValues = z.infer<typeof formSchema>;
 
-export function AuthPlaceholderDialog() {
+export function AuthSessionDialog() {
   const { authDialogOpen, setAuthDialogOpen } = usePortalShellStore();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -66,7 +66,7 @@ export function AuthPlaceholderDialog() {
       <Dialog.Trigger asChild>
         <Button variant="secondary">
           <LogIn className="size-4" />
-          登录态占位
+          认证会话
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
@@ -75,14 +75,14 @@ export function AuthPlaceholderDialog() {
           <div className="flex items-start justify-between gap-6">
             <div className="space-y-2">
               <div className="inline-flex rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
-                Keycloak / IAM placeholder
+                Keycloak / IAM Session
               </div>
               <Dialog.Title asChild>
-                <CardTitle>门户登录态占位</CardTitle>
+                <CardTitle>门户认证会话</CardTitle>
               </Dialog.Title>
               <Dialog.Description asChild>
                 <CardDescription>
-                  当前阶段不在前端实现正式登录页，而是通过已获取的 Bearer Token 或本地测试身份注入 HttpOnly Cookie。
+                  通过已获取的 Bearer Token 或开发联调身份注入 HttpOnly Cookie，并以 `/api/v1/auth/me` 做会话校验。
                 </CardDescription>
               </Dialog.Description>
             </div>
@@ -194,10 +194,10 @@ export function AuthPlaceholderDialog() {
             ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={isPending}>
-                <ShieldCheck className="size-4" />
-                {isPending ? "验证中…" : "验证并写入会话"}
-              </Button>
+                <Button type="submit" disabled={isPending}>
+                  <ShieldCheck className="size-4" />
+                  {isPending ? "验证中…" : "验证并写入会话"}
+                </Button>
               <Button
                 type="button"
                 variant="warning"

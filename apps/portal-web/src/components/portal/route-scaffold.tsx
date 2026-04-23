@@ -100,9 +100,9 @@ export function PortalRouteScaffold({
         >
           {children ?? (
             <Card>
-              <CardTitle>页面骨架已就绪</CardTitle>
+              <CardTitle>页面结构已接入</CardTitle>
               <CardDescription>
-                该路由已纳入正式导航、权限元数据和状态预演体系；后续 `WEB-00X` 任务会替换为真实业务组件。
+                该路由已纳入正式导航、权限元数据和状态预演体系；默认展示统一的受控状态结构。
               </CardDescription>
             </Card>
           )}

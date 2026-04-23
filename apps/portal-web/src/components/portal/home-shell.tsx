@@ -153,7 +153,7 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
                   首页统一通过 `portal-web -&gt; /api/platform -&gt; platform-core`
                   读取标准链路、推荐位与搜索预览。`guest / local / bearer`
                   三种会话能力被显式区分，避免把需要 Bearer 的正式 API
-                  混进本地 header 占位链路。
+                  混进本地 header 联调链路。
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Button asChild variant="secondary">
@@ -226,7 +226,7 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
                       ? scenarioQuery.isPending
                         ? "正在通过 /api/v1/catalog/standard-scenarios 读取首页标准场景；在结果返回前先保留冻结五链路入口。"
                         : "当前未从 platform-core 读取到标准场景模板，首页先展示冻结五链路与官方 SKU 映射。"
-                      : "未登录或处于本地 header 占位时，首页仍保留官方五链路入口，不把标准场景导航整体锁空。"
+                      : "未登录或使用本地联调身份时，首页仍保留官方五链路入口，不把标准场景导航整体锁空。"
                   }
                 />
               ) : null}
@@ -440,7 +440,7 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
                 <StateCallout
                   tone="warning"
                   title="Local Header 不触发正式搜索预览"
-                  description="为避免把本地占位误当成正式鉴权，首页搜索预览只在 Bearer 会话下调用 `GET /api/v1/catalog/search`。"
+                  description="为避免把本地联调身份误当成正式鉴权，首页搜索预览只在 Bearer 会话下调用 `GET /api/v1/catalog/search`。"
                 />
               ) : deferredSearchKeyword.length < 2 ? (
                 <StateCallout
