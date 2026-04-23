@@ -224,7 +224,7 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
   const skuCoverage = collectSkuCoverage(scenarios);
   const searchPresets = buildSearchPresets(scenarios);
 
-  const recommendationQuery = useQuery({
+  const recommendationQuery = useQuery<RecommendationsResponse>({
     queryKey: [
       "portal",
       "recommendations",
@@ -238,6 +238,7 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
         buildHomeFeaturedQuery(subject ?? undefined),
       ),
   });
+  const recommendationPayload = recommendationQuery.data?.data;
   const searchPreviewQuery = useQuery({
     queryKey: ["portal", "search-preview", deferredSearchKeyword],
     enabled: sessionMode === "bearer" && deferredSearchKeyword.length >= 2,
@@ -490,16 +491,16 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
                     />
                   ))}
                 </>
-              ) : recommendationQuery.data.data.items.length ? (
+              ) : recommendationPayload?.items.length ? (
                 <>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {recommendationQuery.data.data.items.map((item) => (
+                    {recommendationPayload.items.map((item) => (
                       <RecommendationCard key={item.recommendation_result_item_id} item={item} />
                     ))}
                   </div>
                   <MetricRow
                     label="recommendation runtime"
-                    value={`${recommendationQuery.data.data.strategy_version} / ${recommendationQuery.data.data.cache_hit ? "cache_hit" : "live_compute"}`}
+                    value={`${recommendationPayload.strategy_version} / ${recommendationPayload.cache_hit ? "cache_hit" : "live_compute"}`}
                   />
                 </>
               ) : (

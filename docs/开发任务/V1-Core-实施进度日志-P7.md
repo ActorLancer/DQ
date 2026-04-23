@@ -270,6 +270,96 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 无需新增条目。
 
+### BATCH-283（计划中）
+- 任务：`WEB-009` 实现订单创建与订单详情页，显式支持 8 个标准 SKU 与五条标准链路官方下单入口
+- 状态：计划中
+- 说明：本批将门户 `/trade/orders/new` 与 `/trade/orders/:orderId` 从路由脚手架升级为正式订单创建与订单详情页。下单页必须真实读取商品详情、标准订单模板和当前会话主体，按五条官方标准链路展示 `场景名 -> 主 SKU / 补充 SKU / 合同 / 验收 / 退款模板` 映射，并在创建订单时通过 SDK 调用 `POST /api/v1/orders`、携带 `X-Idempotency-Key`、回显 `order_id / buyer_deposit / price_snapshot`。订单详情页必须真实读取 `GET /api/v1/orders/{id}` 与 `/lifecycle-snapshots`，展示订单主状态、分层状态、交付/验收/账单/争议摘要、审计联查入口、SKU 场景快照、权限态、空态、错态和加载态。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-008` 已本地提交并提供门户工程、受控 `/api/platform` 代理、会话主体条、商品详情、卖方主页、上架中心、审核工作台与 `sdk-ts` OpenAPI 生成基线。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-009` 只实现订单创建与订单详情页，不提前合并交付中心、账单中心、争议页或审计联查页；DoD 要求页面可访问、空态/错态/权限态可用、契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认询单/下单页需覆盖商品快照、权利与用途确认、数量/期限/订阅配置、价格与保证金估算、风险提示和下单按钮；订单详情页需覆盖基本信息、状态时间线、交付摘要、验收摘要、账单摘要、争议摘要和审计联查入口。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认五条标准链路官方命名和模板映射，必须覆盖 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD`，且 `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 必须按独立 SKU 理解。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认买方搜索、选购与下单流程需要冻结 `price_snapshot`、计算 `buyer_deposit`、记录订单创建审计，并将订单详情作为后续支付锁定、交付准备和验收入口。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`按钮级权限说明.md`、`接口权限校验清单.md`：确认 `/trade/orders/new` 查看权限 `catalog.product.read`、主按钮 `trade.order.create`；订单详情查看权限 `trade.order.read`、主按钮 `trade.order.cancel`；创建订单和取消订单均需审计提示，普通写动作仍必须携带幂等键。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`、`统一错误码字典正式版.md`、`测试用例矩阵正式版.md`：确认前端只能经 `platform-core` 正式 API 接入订单、商品、支付、交付、审计等能力，错误码必须沿用 `ORDER_CREATE_FORBIDDEN / ORDER_STATE_INVALID / TRD_STATE_CONFLICT` 等冻结语义。
+  - `docs/05-test-cases/order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`、`audit-consistency-cases.md`：确认订单详情必须尊重 8 个标准 SKU 的状态机分支，并把交付、验收、账单、争议和审计联查作为后续页面入口，不在本批伪造下游状态。
+  - `packages/openapi/trade.yaml` 与 `docs/02-openapi/trade.yaml`：确认 `listStandardOrderTemplates`、`createOrder`、`getOrderDetail`、`getOrderLifecycleSnapshots`、`cancelOrder` 契约已存在；同时发现订单写接口 OpenAPI 未声明 `X-Idempotency-Key`，本批需要补齐两份 OpenAPI 并重新生成 SDK。
+  - `apps/platform-core/src/modules/order/**`、`catalog/**`、`iam/**`：确认订单创建会冻结 `OrderPriceSnapshot` 与 `ScenarioSkuSnapshot`，`API_SUB / RPT_STD` 等多场景 SKU 需要显式 `scenario_code` 消歧，订单详情和生命周期快照已经提供正式读取接口。
+  - `apps/portal-web/**`、`apps/console-web/**`、`packages/sdk-ts/**`：确认订单创建和详情路由当前仍为 `PortalRoutePage` 脚手架，`sdk-ts` 的 trade domain 只封装了标准模板读取，需要补 create/detail/lifecycle/cancel 方法、幂等头和单测。
+- 当前完成标准理解：
+  - 下单页必须真实绑定 `platform-core` 商品详情、标准订单模板与订单创建 API；无 `productId` 时展示五条官方链路入口，有 `productId` 时按商品 SKU 与场景模板生成可提交订单草案。
+  - 页面必须显式展示 8 个标准 SKU 和 5 条标准链路，不得重新分类、改名或把 `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 并回大类。
+  - 所有写动作必须自动生成、发送并展示 `X-Idempotency-Key`，重复点击期间禁用提交，后端统一错误码和 `request_id` 必须可见。
+  - 敏感交易页面必须展示当前主体、角色、租户/组织、作用域和审计留痕提示；无 `buyer_operator / tenant_admin` 等正式角色时拦截创建订单主按钮。
+  - 订单详情必须使用正式订单详情和生命周期快照字段展示主状态、支付、交付、验收、结算、争议、授权/合同/交付摘要和审计联查入口；链/投影字段未由当前接口返回时必须显式标注未返回，不能伪造 `tx_hash` 或对象路径。
+- 实施计划：
+  1. 补齐 trade OpenAPI 写接口 `X-Idempotency-Key` 声明、归档同步、SDK 生成物、trade domain 方法和单元测试，并扩展 OpenAPI drift checker。
+  2. 新增订单工作流视图模型、五链路/八 SKU 映射、Zod/RHF 表单 schema、响应解包、权限判断、幂等键生成、错误码映射和单元测试。
+  3. 替换 `/trade/orders/new` 与 `/trade/orders/:orderId` 为正式订单创建和详情组件，接入商品详情、标准模板、订单创建、订单详情、生命周期快照、取消动作提示、审计入口和状态预演。
+  4. 更新门户路由 API 绑定和 Playwright 覆盖，执行前端、SDK、后端、OpenAPI、真实 API、数据库回查、桌面/移动浏览器 smoke 与受限系统边界验证。
+
+### BATCH-283（待审批）
+- 任务：`WEB-009` 实现订单创建与订单详情页，显式支持 8 个标准 SKU 与五条标准链路官方下单入口
+- 状态：待审批
+- 当前任务编号：`WEB-009`
+- 完成情况：
+  - 已补齐 `packages/openapi/trade.yaml` 与 `docs/02-openapi/trade.yaml` 的订单写接口幂等头契约：`POST /api/v1/orders` 与 `POST /api/v1/orders/{id}/cancel` 均声明必需 `X-Idempotency-Key`，并扩展 `scripts/check-openapi-schema.sh` 防止 trade OpenAPI 再次漂移。
+  - 已重新生成 `packages/sdk-ts/src/generated/trade.ts`，并扩展 `packages/sdk-ts/src/domains/trade.ts`：新增 `createOrder`、`getOrderDetail`、`getOrderLifecycleSnapshots`、`cancelOrder`、幂等写选项和 SDK 单测。
+  - 已新增 `apps/portal-web/src/lib/order-workflow.ts` 与单测：冻结五条官方标准链路映射，显式覆盖 8 个标准 SKU，保留 `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 独立 SKU 语义，支持多场景 SKU 的 `scenario_code` 消歧、Zod/RHF 表单校验、幂等键生成、响应解包、错误码文案、交付路由和权限判断。
+  - 已将 `/trade/orders/new` 升级为正式下单页：读取 `auth/me`、商品详情、标准订单模板，展示商品快照、五链路入口、8 SKU 覆盖、买方主体上下文、权利/用途确认、数量/期限/订阅配置、价格/保证金估算、幂等键、审计提示、权限态、空态、错态和加载态；三项确认默认未勾选并由 Zod 强制校验；提交时通过 SDK 调用 `POST /api/v1/orders` 并展示 `order_id / buyer_deposit / price_snapshot`。
+  - 已将 `/trade/orders/:orderId` 升级为正式订单详情页：读取订单详情与生命周期快照，展示主状态、支付、交付、验收、结算、争议、合同/授权/交付/账单摘要、场景快照、审计联查入口、链/投影未返回说明、取消动作幂等键提示、权限态、空态、错态和加载态。
+  - 已更新门户路由 API 绑定与 Playwright scaffold 覆盖，确保订单创建、详情、权限态、空态、错误态和受控 `/api/platform` 边界可验证。
+- 验证记录：
+  1. `pnpm install`
+  2. `pnpm --filter @datab/sdk-ts openapi:generate`
+  3. `pnpm --filter @datab/sdk-ts typecheck`
+  4. `pnpm --filter @datab/sdk-ts test`
+  5. `pnpm --filter @datab/sdk-ts build`
+  6. `pnpm --filter @datab/portal-web typecheck`
+  7. `pnpm --filter @datab/portal-web lint`
+  8. `pnpm --filter @datab/portal-web test:unit`
+  9. `pnpm --filter @datab/portal-web test:e2e`
+  10. `pnpm --filter @datab/portal-web build`
+  11. `pnpm lint`
+  12. `pnpm typecheck`
+  13. `pnpm test`
+  14. `pnpm build`
+  15. `cargo fmt --all`
+  16. `cargo check -p platform-core`
+  17. `cargo test -p platform-core`
+  18. `cargo sqlx prepare --workspace`
+  19. `./scripts/check-query-compile.sh`
+  20. `./scripts/check-openapi-schema.sh`
+  21. 启动 `APP_PORT=8099` 的 `platform-core`，插入临时买方/卖方/资产/版本/商品/`FILE_STD` SKU 数据后执行真实 API 联调：
+      - `POST /api/v1/orders` 返回 `order_id=d55f9bfc-3fbd-4fee-8df2-e727aa388613`、`status=created`、`scenario_code=S2`、`selected_sku_role=primary`。
+      - 使用同一 `X-Idempotency-Key=idem-web009-1776944713630633936` 重放订单创建，返回同一 `order_id`，数据库审计记录 `trade.order.create.idempotent_replay`。
+      - `GET /api/v1/orders/{id}` 返回 `created / unpaid / pending_delivery / S2`。
+      - `GET /api/v1/orders/{id}/lifecycle-snapshots` 返回 `created / unpaid / not_started`，当前无交付对象时保持空摘要。
+  22. 数据库回查：
+      - `trade.order_main`：`status=created`、`payment_status=unpaid`、`delivery_status=pending_delivery`、`acceptance_status=not_started`、`scenario_code=S2`、`selected_sku_role=primary`。
+      - `audit.audit_event`：存在 `trade.order.create`、`trade.order.create.idempotent_replay`、`trade.order.read`、`trade.order.lifecycle_snapshots.read`。
+      - `ops.outbox_event`：存在 1 条 `trade.order.created`，包含本次 `request_id` 与 `idempotency_key`。
+  23. 浏览器真实 smoke：
+      - `portal-web` 生产模式连接 `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8099`。
+      - 桌面端访问 `/trade/orders/new?productId=...&scenario=S2`，通过 Bearer claims 展示当前主体、角色、租户/组织、作用域，确认三项复选框默认未勾选，完成三项确认后真实提交订单并跳转订单详情。
+      - 移动端访问同一订单详情，验证详情页、当前主体访问上下文、审计与链路信任边界可见。
+      - 最终 smoke 输出：`WEB009_BROWSER_SMOKE_OK_FINAL order_id=96f99837-81ed-4f07-8401-5c6ec7bb8400 browser_requests=61 direct_core=0`。
+      - 浏览器侧请求数 `61`，直接访问 `127.0.0.1:8099` 的请求数 `0`，确认前端未绕过 `/api/platform` 直连 `platform-core`。
+  24. 受限系统边界检查：`rg` 检查 `apps/portal-web`、`apps/console-web`、`packages/sdk-ts` 中未发现前端直连 PostgreSQL / Kafka / OpenSearch / Redis / Fabric 的运行入口；命中的仅为 SDK 生成类型和 OPS/IAM API 字段说明。
+  25. 业务测试数据清理：首轮 `trade.order_main` 5 条 WEB-009 临时订单与 `ops.outbox_event` 5 条 WEB-009 临时事件已清理；最终 smoke 追加的 `order_id=96f99837-81ed-4f07-8401-5c6ec7bb8400`、对应 `ops.outbox_event`、`catalog.product_sku / catalog.product / catalog.asset_version / catalog.data_asset / core.organization` 临时业务数据均已清理为 `0`；`audit.audit_event` 按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-009`
+  - `页面说明书-V1-完整版.md`：6.1 询单/下单页、6.4 订单详情页、敏感页面身份上下文展示
+  - `数据交易平台-全集成基线-V1.md`：5.3.2A 五条标准场景到 V1 SKU 与模板映射
+  - `业务流程图-V1-完整版.md`：买方选购下单、价格快照冻结、审计记录、后续支付/交付/验收入口
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`：订单创建、订单详情、取消动作、审计提示和权限态
+  - `packages/openapi/trade.yaml`、`docs/02-openapi/trade.yaml`、`packages/sdk-ts`
+- 覆盖的任务清单条目：`WEB-009`
+- 未覆盖项：
+  - 无。交付中心、验收页、账单页、争议页和审计/ops/开发者/通知联查页按后续 WEB task 顺序继续推进；本批只提供正式入口和当前订单详情摘要，不伪造下游状态、链上 `tx_hash` 或对象路径。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 无需新增条目。
+
 ### BATCH-280（计划中）
 - 任务：`WEB-006` 实现卖方主页：主体信息、认证标识、商品列表、联系方式/咨询入口
 - 状态：计划中

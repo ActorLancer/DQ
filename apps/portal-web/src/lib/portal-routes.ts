@@ -227,7 +227,12 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "catalog.product.read",
     primaryPermissions: ["trade.order.create"],
     description: "询单、冻结模板与标准链路下单入口。",
-    apiBindings: ["/api/v1/orders", "/api/v1/orders/standard-templates"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "/api/v1/products/{id}",
+      "/api/v1/orders/standard-templates",
+      "POST /api/v1/orders",
+    ],
   },
   {
     key: "order_contract_confirm",
@@ -262,8 +267,10 @@ export const portalRouteList: PortalRouteMeta[] = [
     primaryPermissions: ["trade.order.cancel"],
     description: "订单主状态、分层状态和生命周期详情。",
     apiBindings: [
+      "/api/v1/auth/me",
       "/api/v1/orders/{id}",
       "/api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/cancel",
     ],
   },
   {

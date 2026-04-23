@@ -1254,7 +1254,10 @@ export interface operations {
     createOrder: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB order-create pages for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1322,7 +1325,10 @@ export interface operations {
     cancelOrder: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required by WEB order-detail actions for duplicate-submit protection. */
+                "X-Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };

@@ -45,5 +45,17 @@ describe("portal route registry", () => {
     expect(portalRouteMap.order_create.primaryPermissions).toContain(
       "trade.order.create",
     );
+    expect(portalRouteMap.order_create.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/orders/standard-templates",
+        "POST /api/v1/orders",
+      ]),
+    );
+    expect(portalRouteMap.order_detail.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/orders/{id}/lifecycle-snapshots",
+        "POST /api/v1/orders/{id}/cancel",
+      ]),
+    );
   });
 });

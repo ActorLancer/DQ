@@ -345,4 +345,37 @@ done
 docs_iam_file="docs/02-openapi/iam.yaml"
 assert_synced_copy "$iam_file" "$docs_iam_file"
 
+trade_file="$OPENAPI_DIR/trade.yaml"
+for path in \
+  "/api/v1/orders/standard-templates" \
+  "/api/v1/orders" \
+  "/api/v1/orders/{id}" \
+  "/api/v1/orders/{id}/lifecycle-snapshots" \
+  "/api/v1/orders/{id}/cancel"; do
+  grep -q "$path" "$trade_file" || {
+    echo "[error] $trade_file missing path: $path" >&2
+    exit 1
+  }
+done
+
+for token in \
+  "listStandardOrderTemplates" \
+  "createOrder" \
+  "getOrderDetail" \
+  "getOrderLifecycleSnapshots" \
+  "cancelOrder" \
+  "X-Idempotency-Key" \
+  "GetOrderTemplatesResponse" \
+  "CreateOrderResponseData" \
+  "GetOrderDetailResponseData" \
+  "GetOrderLifecycleSnapshotsResponseData" \
+  "ScenarioSkuSnapshot" \
+  "per_sku_snapshot_required" \
+  "multi_sku_requires_independent_contract_authorization_settlement"; do
+  assert_file_contains "$trade_file" "$token" "trade order contract token"
+done
+
+docs_trade_file="docs/02-openapi/trade.yaml"
+assert_synced_copy "$trade_file" "$docs_trade_file"
+
 echo "[ok] openapi schema skeleton check passed"

@@ -67,5 +67,24 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
   ).toBeVisible();
 
   await page.goto("/trade/orders/new?preview=forbidden");
-  await expect(page.getByText("权限态预演")).toBeVisible();
+  await expect(page.getByText("下单权限态")).toBeVisible();
+  await expect(page.getByText("五条标准链路下单入口")).toBeVisible();
+
+  await page.goto("/trade/orders/new?preview=empty");
+  await expect(page.getByText("请选择商品后下单")).toBeVisible();
+  await expect(page.getByText("工业设备运行指标 API 订阅").first()).toBeVisible();
+
+  await page.goto("/trade/orders/new?preview=error");
+  await expect(page.getByText("订单创建错误态")).toBeVisible();
+  await expect(page.getByText("ORDER_CREATE_FORBIDDEN", { exact: false })).toBeVisible();
+
+  await page.goto("/trade/orders/30000000-0000-0000-0000-000000000901?preview=forbidden");
+  await expect(page.getByText("订单详情权限态")).toBeVisible();
+
+  await page.goto("/trade/orders/30000000-0000-0000-0000-000000000901?preview=empty");
+  await expect(page.getByText("没有可展示的订单详情")).toBeVisible();
+
+  await page.goto("/trade/orders/30000000-0000-0000-0000-000000000901?preview=error");
+  await expect(page.getByText("订单详情错误态")).toBeVisible();
+  await expect(page.getByText("TRD_STATE_CONFLICT", { exact: false })).toBeVisible();
 });
