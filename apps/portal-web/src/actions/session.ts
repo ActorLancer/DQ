@@ -24,6 +24,7 @@ const connectSessionSchema = z.discriminatedUnion("mode", [
     mode: z.literal("local"),
     loginId: z.string().min(1, "请输入本地测试 login_id"),
     role: z.string().min(1, "请选择本地测试角色"),
+    tenantId: z.string().uuid("请输入本地测试租户 UUID").optional(),
   }),
 ]);
 
@@ -54,6 +55,7 @@ export async function connectPortalSession(
           mode: "local",
           loginId: parsed.data.loginId,
           role: parsed.data.role,
+          tenantId: parsed.data.tenantId,
         };
 
   const preview = readPortalSessionPreview(session);

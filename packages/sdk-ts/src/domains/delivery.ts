@@ -5,6 +5,12 @@ import type { paths as DeliveryPaths } from "../generated/delivery";
 type CommitOrderDeliveryOperation = NonNullable<
   DeliveryPaths["/api/v1/orders/{id}/deliver"]["post"]
 >;
+type AcceptOrderOperation = NonNullable<
+  DeliveryPaths["/api/v1/orders/{id}/accept"]["post"]
+>;
+type RejectOrderOperation = NonNullable<
+  DeliveryPaths["/api/v1/orders/{id}/reject"]["post"]
+>;
 type IssueDownloadTicketOperation = NonNullable<
   DeliveryPaths["/api/v1/orders/{id}/download-ticket"]["get"]
 >;
@@ -37,6 +43,10 @@ export type CommitOrderDeliveryRequest =
   RequestBody<CommitOrderDeliveryOperation>;
 export type CommitOrderDeliveryResponse =
   SuccessBody<CommitOrderDeliveryOperation>;
+export type AcceptOrderRequest = RequestBody<AcceptOrderOperation>;
+export type AcceptOrderResponse = SuccessBody<AcceptOrderOperation>;
+export type RejectOrderRequest = RequestBody<RejectOrderOperation>;
+export type RejectOrderResponse = SuccessBody<RejectOrderOperation>;
 export type DownloadTicketResponse =
   SuccessBody<IssueDownloadTicketOperation>;
 export type ManageRevisionSubscriptionRequest =
@@ -90,6 +100,34 @@ export function createDeliveryClient(client: PlatformClient) {
       return client.getJson<DownloadTicketResponse>(
         "/api/v1/orders/{id}/download-ticket",
         { pathParams },
+      );
+    },
+    acceptOrder(
+      pathParams: PathParams<AcceptOrderOperation>,
+      body: AcceptOrderRequest,
+      options: DeliveryMutationOptions,
+    ) {
+      return client.postJson<AcceptOrderResponse, AcceptOrderRequest>(
+        "/api/v1/orders/{id}/accept",
+        {
+          pathParams,
+          body,
+          headers: mutationHeaders(options),
+        },
+      );
+    },
+    rejectOrder(
+      pathParams: PathParams<RejectOrderOperation>,
+      body: RejectOrderRequest,
+      options: DeliveryMutationOptions,
+    ) {
+      return client.postJson<RejectOrderResponse, RejectOrderRequest>(
+        "/api/v1/orders/{id}/reject",
+        {
+          pathParams,
+          body,
+          headers: mutationHeaders(options),
+        },
       );
     },
     manageRevisionSubscription(

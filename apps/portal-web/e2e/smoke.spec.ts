@@ -114,4 +114,15 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
 
   await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/report?preview=forbidden");
   await expect(page.getByText("delivery.report.commit", { exact: false }).first()).toBeVisible();
+
+  await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/acceptance?preview=forbidden");
+  await expect(page.getByText("验收页权限态")).toBeVisible();
+  await expect(page.getByText("delivery.accept.execute", { exact: false }).first()).toBeVisible();
+
+  await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/acceptance?preview=empty");
+  await expect(page.getByText("没有可展示的验收数据")).toBeVisible();
+
+  await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/acceptance?preview=error");
+  await expect(page.getByText("验收页错误态")).toBeVisible();
+  await expect(page.getByText("TRD_STATE_CONFLICT", { exact: false })).toBeVisible();
 });

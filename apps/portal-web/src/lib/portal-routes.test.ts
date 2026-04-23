@@ -74,5 +74,13 @@ describe("portal route registry", () => {
     expect(portalRouteMap.delivery_sandbox.apiBindings).toContain(
       "POST /api/v1/orders/{id}/sandbox-workspaces",
     );
+    expect(portalRouteMap.delivery_acceptance.apiBindings).toEqual(
+      expect.arrayContaining([
+        "/api/v1/auth/me",
+        "GET /api/v1/orders/{id}/lifecycle-snapshots",
+        "POST /api/v1/orders/{id}/accept",
+        "POST /api/v1/orders/{id}/reject",
+      ]),
+    );
   });
 });

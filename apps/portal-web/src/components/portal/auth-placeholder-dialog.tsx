@@ -26,7 +26,15 @@ const formSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("local"),
     loginId: z.string().min(1, "请输入本地测试 login_id"),
-    role: z.enum(["tenant_admin", "tenant_developer", "platform_admin"]),
+    role: z.enum([
+      "tenant_admin",
+      "tenant_developer",
+      "buyer_operator",
+      "seller_operator",
+      "platform_admin",
+      "platform_risk_settlement",
+    ]),
+    tenantId: z.string().uuid("请输入本地测试租户 UUID"),
   }),
 ]);
 
@@ -98,8 +106,9 @@ export function AuthPlaceholderDialog() {
               onClick={() =>
                 form.reset({
                   mode: "local",
-                  loginId: "buyer.demo",
-                  role: "tenant_admin",
+                  loginId: "iam018.buyer.operator@luna.local",
+                  role: "buyer_operator",
+                  tenantId: "10000000-0000-0000-0000-000000000102",
                 })
               }
             >
@@ -136,10 +145,13 @@ export function AuthPlaceholderDialog() {
                 </label>
               </>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium text-[var(--ink-strong)]">login_id</span>
-                  <Input {...form.register("loginId")} placeholder="buyer.demo" />
+                  <Input
+                    {...form.register("loginId")}
+                    placeholder="iam018.buyer.operator@luna.local"
+                  />
                   <FormError message={form.getFieldState("loginId").error?.message} />
                 </label>
                 <label className="block space-y-2">
@@ -150,9 +162,20 @@ export function AuthPlaceholderDialog() {
                   >
                     <option value="tenant_admin">tenant_admin</option>
                     <option value="tenant_developer">tenant_developer</option>
+                    <option value="buyer_operator">buyer_operator</option>
+                    <option value="seller_operator">seller_operator</option>
                     <option value="platform_admin">platform_admin</option>
+                    <option value="platform_risk_settlement">platform_risk_settlement</option>
                   </select>
                   <FormError message={form.getFieldState("role").error?.message} />
+                </label>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-[var(--ink-strong)]">tenant_id</span>
+                  <Input
+                    {...form.register("tenantId")}
+                    placeholder="10000000-0000-0000-0000-000000000102"
+                  />
+                  <FormError message={form.getFieldState("tenantId").error?.message} />
                 </label>
               </div>
             )}

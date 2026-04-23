@@ -36,7 +36,9 @@ pub async fn accept_order_delivery(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<OrderAcceptanceResponseData, (StatusCode, Json<ErrorResponse>)> {
+    let idempotency_key = validate_idempotency_key(idempotency_key, request_id)?;
     let tx = client.transaction().await.map_err(map_db_error)?;
     let ctx = load_acceptance_context(&tx, order_id, request_id).await?;
     enforce_acceptance_scope(actor_role, tenant_id, &ctx.buyer_org_id, request_id)?;
@@ -72,6 +74,7 @@ pub async fn accept_order_delivery(
                     None,
                     payload.note.as_deref(),
                     payload.verification_summary.as_ref(),
+                    Some(idempotency_key),
                 ),
             )
             .await?;
@@ -111,6 +114,7 @@ pub async fn accept_order_delivery(
         "reason_code": ACCEPT_REASON_CODE,
         "note": payload.note,
         "verification_summary": payload.verification_summary,
+        "idempotency_key": idempotency_key,
     });
     let accepted_row = tx
         .query_one(
@@ -179,6 +183,7 @@ pub async fn accept_order_delivery(
             None,
             payload.note.as_deref(),
             payload.verification_summary.as_ref(),
+            Some(idempotency_key),
         ),
     )
     .await?;
@@ -201,6 +206,7 @@ pub async fn accept_order_delivery(
             "accepted_at": accepted_at,
             "note": payload.note,
             "verification_summary": payload.verification_summary,
+            "idempotency_key": idempotency_key,
         }),
     )
     .await?;
@@ -278,7 +284,9 @@ pub async fn reject_order_delivery(
     actor_role: &str,
     request_id: Option<&str>,
     trace_id: Option<&str>,
+    idempotency_key: Option<&str>,
 ) -> Result<OrderAcceptanceResponseData, (StatusCode, Json<ErrorResponse>)> {
+    let idempotency_key = validate_idempotency_key(idempotency_key, request_id)?;
     validate_reject_request(payload, request_id)?;
 
     let tx = client.transaction().await.map_err(map_db_error)?;
@@ -316,6 +324,7 @@ pub async fn reject_order_delivery(
                     payload.reason_detail.as_deref(),
                     None,
                     payload.verification_summary.as_ref(),
+                    Some(idempotency_key),
                 ),
             )
             .await?;
@@ -355,6 +364,7 @@ pub async fn reject_order_delivery(
         "reason_code": payload.reason_code,
         "reason_detail": payload.reason_detail,
         "verification_summary": payload.verification_summary,
+        "idempotency_key": idempotency_key,
     });
     let processed_at: String = tx
         .query_one(
@@ -436,6 +446,7 @@ pub async fn reject_order_delivery(
             payload.reason_detail.as_deref(),
             None,
             payload.verification_summary.as_ref(),
+            Some(idempotency_key),
         ),
     )
     .await?;
@@ -586,6 +597,28 @@ fn validate_reject_request(
     Ok(())
 }
 
+fn validate_idempotency_key<'a>(
+    idempotency_key: Option<&'a str>,
+    request_id: Option<&str>,
+) -> Result<&'a str, (StatusCode, Json<ErrorResponse>)> {
+    let Some(idempotency_key) = idempotency_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(bad_request(
+            "x-idempotency-key is required for acceptance writes",
+            request_id,
+        ));
+    };
+    if idempotency_key.len() < 12 {
+        return Err(bad_request(
+            "x-idempotency-key must be at least 12 characters",
+            request_id,
+        ));
+    }
+    Ok(idempotency_key)
+}
+
 fn delivery_branch_for_sku(sku_type: &str) -> Option<&'static str> {
     manual_acceptance_delivery_branch(sku_type)
 }
@@ -633,6 +666,7 @@ fn acceptance_audit_metadata(
     reason_detail: Option<&str>,
     note: Option<&str>,
     verification_summary: Option<&Value>,
+    idempotency_key: Option<&str>,
 ) -> Value {
     json!({
         "order_id": order_id,
@@ -644,6 +678,7 @@ fn acceptance_audit_metadata(
         "reason_detail": reason_detail,
         "note": note,
         "verification_summary": verification_summary,
+        "idempotency_key": idempotency_key,
     })
 }
 

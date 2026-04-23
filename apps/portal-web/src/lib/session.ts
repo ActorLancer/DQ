@@ -28,6 +28,7 @@ export type PortalSession =
       mode: "local";
       loginId: string;
       role: string;
+      tenantId?: string;
     };
 
 export async function readPortalSession(): Promise<PortalSession> {
@@ -55,6 +56,7 @@ export async function readPortalSession(): Promise<PortalSession> {
         mode: "local",
         loginId: decoded.loginId,
         role: decoded.role,
+        tenantId: typeof decoded.tenantId === "string" ? decoded.tenantId : undefined,
       };
     }
   } catch {
@@ -87,11 +89,14 @@ export function readPortalSessionPreview(
   session: PortalSession,
 ): PortalSessionPreview | null {
   if (session.mode === "local") {
+    const tenantId = session.tenantId ?? inferLocalSessionTenantId(session.loginId, session.role);
     return {
       source: "local_cookie",
       mode: "local_test_user",
+      org_id: tenantId,
       login_id: session.loginId,
       display_name: session.loginId,
+      tenant_id: tenantId,
       roles: [session.role],
       auth_context_level: "aal1",
     };
@@ -149,13 +154,39 @@ export function buildSessionHeaders(session: PortalSession): HeadersInit {
   }
 
   if (session.mode === "local") {
+    const tenantId = session.tenantId ?? inferLocalSessionTenantId(session.loginId, session.role);
     return {
       "x-login-id": session.loginId,
       "x-role": session.role,
+      ...(tenantId ? { "x-tenant-id": tenantId } : {}),
     };
   }
 
   return {};
+}
+
+export function inferLocalSessionTenantId(loginId: string, role: string): string | undefined {
+  if (
+    loginId.includes("seller") ||
+    role === "seller_operator" ||
+    role === "seller_storage_operator"
+  ) {
+    return "10000000-0000-0000-0000-000000000101";
+  }
+  if (role.startsWith("platform_") || loginId.includes("ops") || loginId.includes("auditor")) {
+    return "10000000-0000-0000-0000-000000000103";
+  }
+  if (
+    loginId.includes("buyer") ||
+    loginId.includes("developer") ||
+    role === "buyer_operator" ||
+    role === "procurement_manager" ||
+    role === "tenant_admin" ||
+    role === "tenant_developer"
+  ) {
+    return "10000000-0000-0000-0000-000000000102";
+  }
+  return undefined;
 }
 
 function decodeBearerPayload(accessToken: string): Record<string, unknown> | null {

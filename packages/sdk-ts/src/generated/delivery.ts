@@ -91,12 +91,15 @@ export interface paths {
         put?: never;
         /**
          * Accept a manually delivered FILE_STD/FILE_SUB/RPT_STD order
-         * @description Persists acceptance evidence and emits a `billing.trigger.bridge` outbox event for the acceptance-passed milestone.
+         * @description Persists acceptance evidence and emits a `billing.trigger.bridge` outbox event for the acceptance-passed milestone. Required permission: `delivery.accept.execute`.
          */
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description Required idempotency key for buyer acceptance writes. */
+                    "X-Idempotency-Key": string;
+                };
                 path: {
                     id: string;
                 };
@@ -155,11 +158,17 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject a manually delivered FILE_STD/FILE_SUB/RPT_STD order */
+        /**
+         * Reject a manually delivered FILE_STD/FILE_SUB/RPT_STD order
+         * @description Persists rejection evidence, blocks settlement, opens the dispute status, and records `delivery.reject.execute`.
+         */
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header: {
+                    /** @description Required idempotency key for buyer rejection writes. */
+                    "X-Idempotency-Key": string;
+                };
                 path: {
                     id: string;
                 };

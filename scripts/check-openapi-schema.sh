@@ -381,6 +381,8 @@ assert_synced_copy "$trade_file" "$docs_trade_file"
 delivery_file="$OPENAPI_DIR/delivery.yaml"
 for path in \
   "/api/v1/orders/{id}/deliver" \
+  "/api/v1/orders/{id}/accept" \
+  "/api/v1/orders/{id}/reject" \
   "/api/v1/orders/{id}/download-ticket" \
   "/api/v1/orders/{id}/subscriptions" \
   "/api/v1/orders/{id}/share-grants" \
@@ -396,6 +398,10 @@ done
 for token in \
   "CommitOrderDeliveryRequest" \
   "CommitOrderDeliveryResponseEnvelope" \
+  "AcceptOrderRequest" \
+  "AcceptOrderResponseEnvelope" \
+  "RejectOrderRequest" \
+  "RejectOrderResponseEnvelope" \
   "DownloadTicketResponseEnvelope" \
   "ManageRevisionSubscriptionRequest" \
   "ManageShareGrantRequest" \
@@ -405,7 +411,9 @@ for token in \
   "X-Idempotency-Key" \
   "delivery.file.commit" \
   "delivery.report.commit" \
-  "delivery.api.enable"; do
+  "delivery.api.enable" \
+  "delivery.accept.execute" \
+  "delivery.reject.execute"; do
   assert_file_contains "$delivery_file" "$token" "delivery center contract token"
 done
 

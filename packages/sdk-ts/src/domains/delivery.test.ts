@@ -109,6 +109,51 @@ describe("delivery domain client", () => {
     ]);
   });
 
+  it("sends Idempotency-Key for acceptance decisions", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(() => Promise.resolve(okResponse()));
+    const client = createDeliveryClient(
+      new PlatformClient({ baseUrl: "http://127.0.0.1:8080", fetch: fetchImpl }),
+    );
+
+    await client.acceptOrder(
+      { id: orderId },
+      {
+        note: "hash verified",
+        verification_summary: { hash_match: true },
+      },
+      { idempotencyKey: "web-011-accept-key" },
+    );
+    await client.rejectOrder(
+      { id: orderId },
+      {
+        reason_code: "hash_mismatch",
+        reason_detail: "receipt hash differs from local verification",
+        verification_summary: { hash_match: false },
+      },
+      { idempotencyKey: "web-011-reject-key" },
+    );
+
+    const calls = fetchImpl.mock.calls.map(([input, init]) => ({
+      input: String(input),
+      method: init?.method,
+      key: new Headers(init?.headers).get("x-idempotency-key"),
+    }));
+    expect(calls).toEqual([
+      {
+        input: `http://127.0.0.1:8080/api/v1/orders/${orderId}/accept`,
+        method: "POST",
+        key: "web-011-accept-key",
+      },
+      {
+        input: `http://127.0.0.1:8080/api/v1/orders/${orderId}/reject`,
+        method: "POST",
+        key: "web-011-reject-key",
+      },
+    ]);
+  });
+
   it("keeps read APIs free of write idempotency headers", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

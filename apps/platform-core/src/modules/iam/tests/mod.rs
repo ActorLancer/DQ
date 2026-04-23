@@ -28,8 +28,14 @@ mod tests {
 
     #[test]
     fn role_matrix_for_session_read() {
+        assert!(is_allowed("buyer_operator", IamPermission::SessionRead));
+        assert!(is_allowed("seller_operator", IamPermission::SessionRead));
         assert!(is_allowed("tenant_developer", IamPermission::SessionRead));
         assert!(is_allowed("platform_reviewer", IamPermission::SessionRead));
+        assert!(is_allowed(
+            "platform_risk_settlement",
+            IamPermission::SessionRead
+        ));
         assert!(!is_allowed("guest", IamPermission::SessionRead));
     }
 

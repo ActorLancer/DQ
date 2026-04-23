@@ -404,7 +404,13 @@ export const portalRouteList: PortalRouteMeta[] = [
     viewPermission: "trade.order.read",
     primaryPermissions: ["delivery.accept.execute", "delivery.reject.execute"],
     description: "通过、拒收与生命周期摘要入口。",
-    apiBindings: ["/api/v1/orders/{id}/accept", "/api/v1/orders/{id}/reject"],
+    apiBindings: [
+      "/api/v1/auth/me",
+      "GET /api/v1/orders/{id}",
+      "GET /api/v1/orders/{id}/lifecycle-snapshots",
+      "POST /api/v1/orders/{id}/accept",
+      "POST /api/v1/orders/{id}/reject",
+    ],
   },
   {
     key: "billing_center",

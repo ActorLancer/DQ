@@ -1392,6 +1392,7 @@ async fn get_auth_me(
         .map(|role| vec![role.to_string()])
         .unwrap_or_else(|| vec!["tenant_admin".to_string()]);
     let user_id: String = row.get(0);
+    let org_id: String = row.get(1);
     write_audit_event(
         &client,
         "session",
@@ -1406,10 +1407,10 @@ async fn get_auth_me(
     Ok(ApiResponse::ok(SessionContextView {
         mode: "local_test_user".to_string(),
         user_id: Some(user_id),
-        org_id: Some(row.get(1)),
+        org_id: Some(org_id.clone()),
         login_id: Some(row.get(2)),
         display_name: Some(row.get(3)),
-        tenant_id: None,
+        tenant_id: Some(org_id),
         roles,
         auth_context_level: "aal1".to_string(),
     }))

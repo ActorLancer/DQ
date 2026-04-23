@@ -114,6 +114,91 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-285（计划中）
+- 任务：`WEB-011` 实现验收页面：通过、拒收、拒收原因、生命周期摘要
+- 状态：计划中
+- 说明：本批将 `/delivery/orders/:orderId/acceptance` 从脚手架升级为正式验收页，围绕人工验收链路展示交付结果摘要、验真结果、合同与模板匹配检查、生命周期摘要、验收通过、拒收和争议入口。页面必须真实读取当前主体、订单详情、生命周期快照，并通过 `packages/sdk-ts` 调用 `POST /api/v1/orders/{id}/accept` / `reject`；所有写动作必须携带 `X-Idempotency-Key`、显示审计留痕提示、回显后端统一错误码与 `request_id`。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-010` 已完成并提交，门户工程、受控 `/api/platform/**` 代理、会话主体条、订单详情、交付中心、`sdk-ts` 与 Delivery 后端基线可复用。本批继续保持 `portal-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-011` 只实现验收页面，不合并账单页、争议页、审计联查或通知联查；DoD 要求页面可访问、空态/错态/权限态可用、接口契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认验收页目标为确认收货、拒收和发起争议动作；核心模块为交付结果摘要、验真结果、合同与模板匹配检查、确认验收按钮、拒收按钮、发起争议按钮；关键状态为 `delivered / accepted / rejected / dispute_opened`。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`接口权限校验清单.md`、`按钮级权限说明.md`：确认路由 `/delivery/orders/:orderId/acceptance`，查看权限 `trade.order.read`，主按钮权限 `delivery.accept.execute / delivery.reject.execute`，确认验收和拒收仅在订单 `delivered` 时可执行，争议入口权限为 `dispute.case.create`。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认文件类交付后买方需下载、解密、重算 Hash，Hash 一致后 accept，不一致则 reject 或 open_case；版本订阅、共享、API、沙箱、模板查询的自动验收分支不得在本批前端伪造成手工验收。
+  - `docs/05-test-cases/delivery-cases.md`、`payment-billing-cases.md`、`notification-cases.md`：确认重复验收返回 `already_accepted`，拒收需阻断结算并打开争议，验收通过 / 拒收会触发通知 outbox；审计按 append-only 保留。
+  - 通用边界文档、OpenAPI 冻结表、统一错误码字典、测试矩阵、本地环境与配置项文档、技术选型、总体架构与全集成基线：确认前端只调用 `platform-core` 正式 API；写接口必须携带 `X-Idempotency-Key`；敏感页面必须展示主体、角色、租户/组织、作用域；不得发明 SKU、状态或错误码语义。
+  - `packages/openapi/delivery.yaml` 与 `docs/02-openapi/delivery.yaml`：确认 `accept/reject` schema 已存在，但当前两个写接口尚未声明 `X-Idempotency-Key`；本批需要补齐两份 OpenAPI、重新生成 SDK，并增加防漂移校验。
+  - `apps/platform-core/src/modules/delivery/**`、`apps/platform-core/src/modules/order/**`、`packages/sdk-ts/**`、`apps/portal-web/**`：确认后端已有验收/拒收状态机、审计、通知、billing bridge 与拒收冻结逻辑；当前门户验收路由仍为 `PortalRoutePage` 脚手架，SDK delivery domain 尚未封装 accept/reject。
+- 当前完成标准理解：
+  - 验收页必须读取 `auth/me`、订单详情和生命周期快照，显示主体/角色/租户或组织/作用域、订单/SKU、交付摘要、生命周期状态、request_id / tx_hash / 链状态 / 投影状态承接，未返回字段必须显式标注“未返回”。
+  - 验收通过与拒收表单必须使用 React Hook Form + Zod 校验，提交时通过 SDK 透传 `X-Idempotency-Key`，重复点击期间禁用主按钮，后端错误码与 `request_id` 要回显。
+  - 仅 `FILE_STD / FILE_SUB / RPT_STD` 等人工验收分支在 `delivered` 状态展示可执行主按钮；其他 SKU 或非 `delivered` 状态展示状态说明，不伪造手工验收能力。
+  - 拒收必须要求拒收原因，结果区展示 `settlement_status=blocked`、`dispute_status=open` 等正式返回字段；争议页完整创建由 `WEB-013` 承接，本批只提供正式入口。
+- 实施计划：
+  1. 补齐 delivery OpenAPI 中 accept/reject 的 `X-Idempotency-Key` 声明、防漂移校验和后端审计 metadata 透传，并重新生成 `packages/sdk-ts`。
+  2. 扩展 delivery SDK domain 与单测，新增 `acceptOrder` / `rejectOrder` 写方法并强制传入幂等键。
+  3. 新增验收页视图模型、Zod/RHF schema、权限判断、响应解包、错误格式化和单元测试。
+  4. 替换 `/delivery/orders/:orderId/acceptance` 为正式 `AcceptanceWorkflowShell`，接入真实 API、权限态、空态、错态、加载态、幂等键、审计提示和生命周期摘要。
+  5. 更新路由 API 绑定、Playwright 覆盖，执行前端、SDK、后端、OpenAPI、真实 API、浏览器和数据库回查验证。
+
+### BATCH-285（待审批）
+- 任务：`WEB-011` 实现验收页面：通过、拒收、拒收原因、生命周期摘要
+- 状态：待审批
+- 当前任务编号：`WEB-011`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001 ~ WEB-010` 基线继续生效；本批继续保持 `portal-web -> /api/platform -> platform-core` 边界，没有新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+- 完成情况：
+  - `packages/openapi/delivery.yaml` 与 `docs/02-openapi/delivery.yaml` 同步补齐 `POST /api/v1/orders/{id}/accept`、`/reject` 的必填 `X-Idempotency-Key` header、权限说明和最小防漂移校验；`packages/sdk-ts` 已重新生成并新增 `delivery.acceptOrder / rejectOrder` domain 封装，写操作必须显式传入幂等键。
+  - 后端验收 / 拒收处理器读取并校验 `x-idempotency-key`，将幂等键写入验收 snapshot、审计 metadata 与 billing bridge payload；缺失或过短时返回统一错误响应，不再允许无幂等键写入。
+  - IAM 本地会话链路补齐正式 V1 角色口径：`buyer_operator / seller_operator / platform_risk_settlement` 可读取 `auth/me`，门户本地会话支持显式或推断 `tenant_id`，页面主体条稳定显示主体、角色、租户/组织、作用域。
+  - `/delivery/orders/:orderId/acceptance` 已替换为正式验收页，真实读取 `auth/me`、订单详情与 lifecycle 快照，展示交付结果摘要、验真结果、合同与模板匹配检查、生命周期摘要、八个标准 SKU、人工验收 SKU 边界、争议入口、权限态、空态、错态、加载态。
+  - 确认验收与拒收表单使用 React Hook Form + Zod，要求 Hash / 合同 / 模板核验确认、审计确认、作用域确认和拒收原因；按钮可执行角色已按冻结矩阵收紧到 `buyer_operator`，拒收成功结果展示 `settlement_status=blocked`、`dispute_status=open` 等正式返回字段。
+- 验证：
+  - 前端 / SDK：
+    - `pnpm install`
+    - `pnpm --filter @datab/sdk-ts openapi:generate`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - 权限收紧后补跑：`pnpm --filter @datab/portal-web test:unit`
+    - 权限收紧后补跑：`pnpm --filter @datab/portal-web typecheck`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `TRADE_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo test -p platform-core dlv018_acceptance_db_smoke -- --nocapture`
+    - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+    - `./scripts/check-openapi-schema.sh`
+    - `cmp packages/openapi/delivery.yaml docs/02-openapi/delivery.yaml`
+  - 真实联调与 smoke：
+    - `./scripts/seed-local-iam-test-identities.sh`
+    - 宿主机方式启动 `platform-core`，使用 `buyer_operator` 本地身份验证 `GET /api/v1/auth/me`、`GET /api/v1/orders/{id}`、`GET /api/v1/orders/{id}/lifecycle-snapshots`
+    - `POST /api/v1/orders/{id}/accept` 携带 `X-Idempotency-Key` 验证验收通过与重复验收 `already_accepted`
+    - `POST /api/v1/orders/{id}/reject` 携带 `X-Idempotency-Key` 验证拒收、结算阻断与争议打开
+    - 缺失 `X-Idempotency-Key` 的 accept 请求返回 `400`，错误消息为 `x-idempotency-key is required for acceptance writes`
+    - 门户浏览器 smoke：桌面与移动视口打开 `/delivery/orders/{orderId}/acceptance`，校验主体/角色/租户/作用域、SKU、request_id / tx_hash / 链状态 / 投影状态承接、验收表单、幂等键 header 与浏览器端仅访问 `/api/platform/**`
+    - 数据库回查：验收订单状态、拒收订单状态、`delivery.delivery_record` 验收 snapshot、`audit.audit_event` 中 `delivery.accept / delivery.reject` metadata、`ops.outbox_event` 中 `billing.trigger.bridge / acceptance.passed / acceptance.rejected`、通知 outbox 均与页面动作一致；临时业务测试数据已清理，审计 / outbox 证据按 append-only 保留。
+- 验证结果：
+  - `pnpm install`、OpenAPI 生成、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；权限角色收紧后 `portal-web` 单元测试 `36` 个通过、`tsc --noEmit` 通过。
+  - `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`dlv018_acceptance_db_smoke`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh`、`./scripts/check-openapi-schema.sh` 全部通过；Rust 仍有既有 warning，本批未引入失败。
+  - 两份 delivery OpenAPI 逐字同步；`accept/reject` SDK 类型不再漂移，幂等键 header 单测通过。
+  - 真实 `curl` 验证通过：`auth/me` 返回 `local_test_user / buyer_operator / tenant_id=10000000-0000-0000-0000-000000000102`；accept 成功后订单进入 `accepted`，重复验收返回 `already_accepted`；reject 成功后订单进入 `rejected`，`settlement_status=blocked`、`dispute_status=open`。
+  - 浏览器 smoke 通过：桌面端与移动端页面均可加载和交互，提交验收时捕获到 `/api/platform/api/v1/orders/{id}/accept` 且 `X-Idempotency-Key` 前缀为 `web-011-acceptance-accept-`；浏览器请求审计未发现直连 `platform-core` 或受限系统。
+  - 数据库回查通过：验收 / 拒收订单、交付 snapshot、审计 metadata、billing bridge outbox 与通知 outbox 均与动作结果一致；本批插入的临时订单、SKU、商品、资产、交付记录已清理，业务临时数据残留为 `0`。
+  - 本批未新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；已在 `docs/开发任务/V1-Core-TODO与预留清单.md` 补记 `BATCH-285` 无新增项。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-011`
+  - `页面说明书-V1-完整版.md`：7.9 验收页
+  - `按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`、`菜单树与路由表正式版.md`：验收页查看权限、主按钮权限与买方运营员动作边界
+  - `业务流程图-V1-完整版.md`：文件/报告人工验收与拒收分支
+  - `delivery-cases.md`、`payment-billing-cases.md`、`notification-cases.md`：重复验收、拒收阻断结算、通知 outbox 与审计保留
+  - `packages/openapi/delivery.yaml`、`docs/02-openapi/delivery.yaml`、`packages/openapi/iam.yaml`、`docs/02-openapi/iam.yaml`
+- 覆盖的任务清单条目：`WEB-011`
+- 未覆盖项：
+  - 无。`WEB-011` 要求的验收页面、通过/拒收动作、拒收原因、生命周期摘要、权限态/空态/错态/加载态、SDK/OpenAPI 绑定、真实 API、E2E / 浏览器 smoke、数据库回查与日志留痕均已完成；完整争议创建页由后续 `WEB-013` 继续展开。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-281（计划中）
 - 任务：`WEB-007` 实现卖方上架中心：商品草稿、SKU 编辑、元信息、质量报告、模板绑定、提交审核
 - 状态：计划中

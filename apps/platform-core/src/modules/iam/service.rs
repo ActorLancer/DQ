@@ -93,6 +93,16 @@ pub fn role_seeds() -> &'static [RoleSeed] {
                 permissions: HashSet::from([IamPermission::SessionRead, IamPermission::MfaRead]),
             },
             RoleSeed {
+                role: "seller_operator",
+                domain: RoleDomain::Tenant,
+                permissions: HashSet::from([IamPermission::SessionRead]),
+            },
+            RoleSeed {
+                role: "buyer_operator",
+                domain: RoleDomain::Tenant,
+                permissions: HashSet::from([IamPermission::SessionRead]),
+            },
+            RoleSeed {
                 role: "platform_admin",
                 domain: RoleDomain::Platform,
                 permissions: HashSet::from([
@@ -135,7 +145,11 @@ pub fn role_seeds() -> &'static [RoleSeed] {
             RoleSeed {
                 role: "platform_risk_settlement",
                 domain: RoleDomain::Platform,
-                permissions: HashSet::from([IamPermission::OrgRead, IamPermission::IdentityRead]),
+                permissions: HashSet::from([
+                    IamPermission::OrgRead,
+                    IamPermission::IdentityRead,
+                    IamPermission::SessionRead,
+                ]),
             },
             RoleSeed {
                 role: "platform_audit_security",

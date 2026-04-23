@@ -79,7 +79,9 @@ paths:
   /api/v1/orders/{id}/accept:
     post:
       summary: Accept a manually delivered FILE_STD/FILE_SUB/RPT_STD order
-      description: Persists acceptance evidence and emits a `billing.trigger.bridge` outbox event for the acceptance-passed milestone.
+      description: >-
+        Persists acceptance evidence and emits a `billing.trigger.bridge` outbox event
+        for the acceptance-passed milestone. Required permission: `delivery.accept.execute`.
       tags: [delivery]
       parameters:
         - name: id
@@ -88,6 +90,13 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 12
+          description: Required idempotency key for buyer acceptance writes.
       requestBody:
         required: true
         content:
@@ -110,6 +119,7 @@ paths:
   /api/v1/orders/{id}/reject:
     post:
       summary: Reject a manually delivered FILE_STD/FILE_SUB/RPT_STD order
+      description: Persists rejection evidence, blocks settlement, opens the dispute status, and records `delivery.reject.execute`.
       tags: [delivery]
       parameters:
         - name: id
@@ -118,6 +128,13 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 12
+          description: Required idempotency key for buyer rejection writes.
       requestBody:
         required: true
         content:

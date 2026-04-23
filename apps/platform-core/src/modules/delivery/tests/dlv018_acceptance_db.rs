@@ -69,6 +69,7 @@ mod tests {
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", &file_seed.buyer_org_id)
                     .header("x-request-id", &accept_request_id)
+                    .header("x-idempotency-key", format!("idem-dlv018-accept-{suffix}"))
                     .body(Body::from(
                         json!({
                             "note": "hash verified and contract matched",
@@ -118,6 +119,10 @@ mod tests {
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", &file_seed.buyer_org_id)
                     .header("x-request-id", format!("{accept_request_id}-replay"))
+                    .header(
+                        "x-idempotency-key",
+                        format!("idem-dlv018-accept-replay-{suffix}"),
+                    )
                     .body(Body::from("{}".to_string()))
                     .expect("accept replay request"),
             )
@@ -150,6 +155,7 @@ mod tests {
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", &report_seed.buyer_org_id)
                     .header("x-request-id", &reject_request_id)
+                    .header("x-idempotency-key", format!("idem-dlv018-reject-{suffix}"))
                     .body(Body::from(
                         json!({
                             "reason_code": "report_quality_failed",
