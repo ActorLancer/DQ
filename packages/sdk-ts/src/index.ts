@@ -1,4 +1,5 @@
 import { PlatformClient, PlatformApiError } from "./core/http";
+import { createAuditClient } from "./domains/audit";
 import { createCatalogClient } from "./domains/catalog";
 import { createIamClient } from "./domains/iam";
 import { createOpsClient } from "./domains/ops";
@@ -14,6 +15,7 @@ export type {
   RequestBody,
   SuccessBody,
 } from "./core/openapi";
+export * from "./domains/audit";
 export * from "./domains/catalog";
 export * from "./domains/iam";
 export * from "./domains/ops";
@@ -26,6 +28,7 @@ export function createDatabSdk(config: ConstructorParameters<typeof PlatformClie
 
   return {
     client,
+    audit: createAuditClient(client),
     iam: createIamClient(client),
     ops: createOpsClient(client),
     catalog: createCatalogClient(client),

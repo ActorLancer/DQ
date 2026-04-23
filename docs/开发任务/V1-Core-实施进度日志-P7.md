@@ -113,3 +113,104 @@
   - 无。`WEB-001` 要求的门户工程初始化、workspace、基础布局、登录态占位、SDK、受控 API 代理、最小自动化与真实联调闭环均已完成；更完整业务页面能力留在后续 `WEB-002+` 逐任务继续推进。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-276（计划中）
+- 任务：`WEB-002` 初始化 `apps/console-web/` Next.js 项目，承接运营、审计、开发者、ops 页面
+- 状态：计划中
+- 说明：在 `WEB-001` 门户工程基线已提交（`e2c85e6`）的前提下，继续按 `WEB-002` 冻结口径建立 `console-web`。当前 `apps/console-web/` 仅有 README 占位，不能视为完成；本批将复用已建立的 workspace / `sdk-ts` / 受控代理模式，初始化控制台工程、控制台布局、登录态占位、运营/审计/开发者/ops 路由骨架和最小真实联调首页，不提前把 `WEB-008 / WEB-014 / WEB-015 / WEB-016` 的完整业务页面一次做满。
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001` 已完成并提交，可复用 `pnpm workspace`、`packages/sdk-ts`、受控 `/api/platform` 代理模式和会话占位方案。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-002` 交付物是 `apps/console-web/`，DoD 仍是“页面可访问、空态/错态/权限态可用、契约对齐、最小 E2E / 手工 smoke 通过”。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：复核页面域总览、`10.1 审计联查页`、`11.1-11.5 开发者首页 / 测试应用 / 状态联查 / 测试资产 / 搜索运维页`、页面间路由关系和控制台域页面目标。
+  - `docs/开发准备/服务清单与服务边界正式版.md`：确认 `console-web` 负责运营后台、审计后台、风控后台、开发态运维与联调页面、可观测性联查入口，不负责供需方主交易门户。
+  - `docs/权限设计/菜单树与路由表正式版.md`、`菜单权限映射表.md`、`按钮级权限说明.md`、`接口权限校验清单.md`：确认控制台 V1 路由、`page_key`、查看权限与关键操作权限，包括 `/ops/review/*`、`/ops/risk`、`/ops/audit/trace`、`/ops/consistency`、`/ops/search`、`/developer/*`。
+  - `packages/openapi/ops.yaml`、`packages/openapi/audit.yaml`、`packages/openapi/iam.yaml` 与 `apps/platform-core/src/modules/audit/**`、`iam/**`：确认控制台基线可优先接入 `ops.observability.overview`、`ops.outbox`、`audit.traces`、`iam apps` 等稳定读取接口，继续沿 `platform-core` 正式 API 边界实现。
+- 当前完成标准理解：
+  - 需要形成可运行的控制台工程基座，而不是只创建目录或 README。
+  - 至少应具备：控制台布局、路由元数据、会话占位、受控 `platform-core` API 代理、运营/审计/开发者/ops 正式入口页骨架、最小自动化与手工 / 浏览器 smoke。
+  - `WEB-002` 不提前实现审核、审计联查、ops 和开发者页面的完整业务细节，但必须把这些页面的正式路由、权限、基础状态和控制台视觉语言先固定下来，并完成至少一组真实 API 摘要读取验证。
+- 实施计划：
+  1. 初始化 `apps/console-web` 工程文件、依赖、Next.js 配置和控制台主题基座。
+  2. 复用 `sdk-ts` 与受控代理方案，扩展控制台首页真正要用到的 `ops / audit / iam` 读取 SDK。
+  3. 落控制台导航、主体条、登录态占位、路由注册和运营/审计/开发者/ops 页面骨架。
+  4. 用真实 `platform-core` API 完成控制台首页的最小摘要联调，并补最小 Vitest / Playwright / 浏览器 smoke。
+  5. 执行完整验证、写“待审批”日志、本地提交后继续进入 `WEB-003`。
+
+### BATCH-276（待审批）
+- 任务：`WEB-002` 初始化 `apps/console-web/` Next.js 项目，承接运营、审计、开发者、ops 页面
+- 状态：待审批
+- 当前任务编号：`WEB-002`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001` 基线继续生效；`console-web` 仍只通过 `platform-core` 正式 API / 受控 `/api/platform/**` 代理访问后端，没有新增浏览器直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric` 的实现。
+- 完成情况：
+  - 初始化 `apps/console-web/**` 的 `Next.js App Router + TypeScript + Tailwind v4` 工程，接入 `TanStack Query`、`React Hook Form`、`Zod`、`Vitest`、`Playwright`，并形成区别于门户的控制台视觉主题、侧边导航、主体条、登录态占位与统一状态预演组件。
+  - 复用 `WEB-001` 的 workspace / SDK / 受控代理模式，为控制台补齐 `packages/sdk-ts/src/domains/audit.ts`，并扩展 `packages/sdk-ts/src/domains/ops.ts` 与 `index.ts`，正式暴露首页要用到的 `ops.observability.overview`、`ops.outbox`、`audit.traces`、`developer.trace` 等读取能力，不再依赖草稿 fetch 或手写漂移字段。
+  - 落地 `apps/console-web/src/lib/console-routes.ts` 与配套测试，把 `控制台首页`、`主体审核台`、`产品审核台`、`合规审核台`、`风控工作台`、`审计联查页`、`证据包导出页`、`一致性联查页`、`出站事件 / Dead Letter 页`、`搜索运维页`、`开发者首页`、`测试应用页`、`状态联查页`、`测试资产页` 这些 `WEB-002` 要求的控制台正式入口全部按冻结 `page_key / 路径 / 权限` 注册。
+  - `apps/console-web/src/app/api/platform/[...path]/route.ts`、`src/lib/session.ts`、`src/actions/session.ts` 实现控制台 HttpOnly 会话 Cookie 与受控代理边界；浏览器只访问 `/api/platform/**`，由 Next Route Handler 注入 `x-login-id / x-role` 或 Bearer，并统一补 `x-request-id=console-*`。
+  - `apps/console-web/src/components/console/home-shell.tsx` 把控制台首页真实绑定到 `platform-core` 的 `GET /healthz`、`GET /api/v1/ops/observability/overview`、`GET /api/v1/ops/outbox`、`GET /api/v1/audit/traces`，显式展示 readiness、可观测后端快照、outbox 摘要、审计 trace 摘要、空态/错态/权限态，而不是只放静态说明。
+  - `apps/console-web/src/components/console/auth-placeholder-dialog.tsx` 修正了本地联调预置角色：最初的 `platform_admin` / `audit_admin` 预置不能同时满足首页所需的 `iam.session.read` 与 `ops.observability.read`；本批按后端正式权限矩阵把推荐本地 Header 角色切到 `platform_auditor`，保证首页主体条与 ops 摘要能在同一正式身份链路下同时联通。
+  - `apps/console-web/e2e/smoke.spec.ts`、`src/lib/console-routes.test.ts` 提供最小自动化覆盖；README、工程脚本与生产端口口径同步补齐。
+- 验证：
+  - 前端 / 契约：
+    - `pnpm install`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `pnpm --filter @datab/console-web lint`
+    - `pnpm --filter @datab/console-web test`
+    - `pnpm --filter @datab/console-web build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 真实联调与 smoke：
+    - 宿主机方式启动 `platform-core`：`set -a && source infra/docker/.env.local && set +a && export KAFKA_BROKERS=127.0.0.1:${KAFKA_EXTERNAL_PORT:-9094} APP_MODE=local PROVIDER_MODE=mock APP_HOST=127.0.0.1 && cargo run -p platform-core-bin`
+    - 直接 `curl`：
+      - `GET http://127.0.0.1:8080/healthz`
+      - `GET http://127.0.0.1:8080/api/v1/auth/me`
+      - `GET http://127.0.0.1:8080/api/v1/ops/observability/overview`
+      - `GET http://127.0.0.1:8080/api/v1/ops/outbox?page=1&page_size=3`
+      - `GET http://127.0.0.1:8080/api/v1/audit/traces?page=1&page_size=3`
+    - 数据库回查：
+      - `select count(*) from ops.observability_backend where enabled = true`
+      - `select count(*) from ops.outbox_event`
+      - `select count(*) from audit.audit_event`
+    - 控制台代理 `curl`：
+      - `GET http://127.0.0.1:3102/api/platform/healthz`
+      - `GET http://127.0.0.1:3102/api/platform/api/v1/auth/me`
+      - `GET http://127.0.0.1:3102/api/platform/api/v1/ops/observability/overview`
+      - `GET http://127.0.0.1:3102/api/platform/api/v1/ops/outbox?page=1&page_size=3`
+      - `GET http://127.0.0.1:3102/api/platform/api/v1/audit/traces?page=1&page_size=3`
+    - 浏览器 smoke：
+      - 生产构建方式启动 `console-web`：`PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 pnpm exec next start --hostname 127.0.0.1 --port 3102`
+      - 使用 Playwright + `datab_console_session` HttpOnly Cookie 在桌面与移动视口打开首页，确认主体条、ops 摘要、outbox 摘要、审计摘要和响应式加载。
+- 验证结果：
+  - `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；`console-web` 单体的 lint / test / build 也通过。
+  - `pnpm test` 期间 `portal-web` 与 `console-web` 的开发服务器仍会打印 `ECONNREFUSED 127.0.0.1:8094`，这是默认 `PLATFORM_CORE_BASE_URL` 缺省时的预期受控降级噪音，不影响 Playwright 断言结果；门户与控制台 E2E 均实际通过。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；本批未引入新的 Rust / SQLx 回归。
+  - 真实 `curl` 验证通过：
+    - `GET /healthz` 返回 `{"success":true,"data":"ok"}`
+    - `GET /api/v1/auth/me` 在本地测试主体 `search-ops-user-1776909499493` 下返回真实 `user_id / org_id / login_id / display_name / roles / auth_context_level`
+    - `GET /api/v1/ops/outbox?page=1&page_size=3` 返回 `total=67`
+    - `GET /api/v1/audit/traces?page=1&page_size=3` 返回真实审计条目，含 `audit_id / request_id / action_name`
+    - `GET /api/v1/ops/observability/overview` 在 `platform_admin` 下被正式拒绝 `403 ops.observability.read`，切换到 `audit_admin` / `platform_auditor` 后按正式权限矩阵返回 `backend_statuses`、`alert_summary`、`slo_summary` 与 `recent_incidents`
+    - 经控制台 `/api/platform/**` 代理访问的同一路径返回与直连 `platform-core` 一致
+  - 数据库回查与 API 结果对齐：
+    - `ops.observability_backend enabled = 6`
+    - `ops.outbox_event = 67`
+    - `audit.audit_event` 在本批 live 验证期间从 `827` 增长到 `832`，增长量来自 `auth/me` 与控制台联调读取产生的 append-only 审计事件，符合预期
+  - 浏览器 smoke 通过：使用 `platform_auditor` 本地会话 Cookie 后，桌面与移动视口首页都正确显示 `Search Ops User 1776909499493 / platform_auditor / 8f7a8003-1ba2-44bd-b120-43206bcebf3c / aal1`，同时渲染 `alertmanager_main`、`recommend.behavior_recorded`、`iam.session.context.read` 等真实摘要；抓到的浏览器请求只有 `5` 个 `/api/platform/**` 调用，`directPlatformCoreRequestCount = 0`。
+  - 本批未新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；也未创建需要清理的业务测试数据，审计事件按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-002`
+  - `页面说明书-V1-完整版.md`：控制台域页面总览、审计联查页、开发者首页 / 测试应用 / 状态联查 / 测试资产 / 搜索运维页
+  - `菜单树与路由表正式版.md`、`菜单权限映射表.md`、`按钮级权限说明.md`、`接口权限校验清单.md`：控制台 `page_key`、路径、查看权限与操作权限
+  - `服务清单与服务边界正式版.md`：控制台只经 `platform-core` 正式 API 接入 ops / audit / developer 控制面
+  - `packages/openapi/ops.yaml`、`audit.yaml`、`iam.yaml`：控制台首页读取的真实契约边界
+- 覆盖的任务清单条目：`WEB-002`
+- 未覆盖项：
+  - 无。`WEB-002` 要求的控制台工程初始化、布局、登录态占位、正式路由挂载、SDK / 代理绑定、最小自动化与真实联调闭环均已完成；更完整的审核、审计、ops、开发者业务细节由 `WEB-008 / WEB-014 / WEB-015 / WEB-016` 等后续任务继续展开。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

@@ -1,0 +1,15 @@
+import { expect, test } from "@playwright/test";
+
+test("console home and scaffold pages are reachable", async ({ page }) => {
+  await page.goto("/");
+  await expect(
+    page.getByText("控制台工程基线已接入正式路由、受控 API 代理和控制面登录态占位。"),
+  ).toBeVisible();
+  await expect(page.getByText("当前主体 / 角色 / 租户 / 作用域")).toBeVisible();
+
+  await page.goto("/ops/audit/trace?preview=empty");
+  await expect(page.getByText("空态预演")).toBeVisible();
+
+  await page.goto("/developer/apps?preview=forbidden");
+  await expect(page.getByText("权限态预演")).toBeVisible();
+});
