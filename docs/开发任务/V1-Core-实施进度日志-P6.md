@@ -94,6 +94,65 @@
 - 说明：按 `SEARCHREC-010` 的冻结口径，重新核对 `POST /api/v1/recommendations/track/exposure`、`/click` 是否仍然满足“正式 Bearer 鉴权 + 非空 `X-Idempotency-Key` + `portal.recommendation.read` + `recommend.behavior_recorded -> dtp.recommend.behavior` canonical outbox + recommendation-aggregator 消费副作用 + 审计/系统日志”这一整条行为链；重点确认重复曝光/点击不会再次写行为事件，也不会偏离 `dtp.recommend.behavior` / `cg-recommendation-aggregator` 的正式契约。
 - 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-010`，不提前进入 `SEARCHREC-011`。
 
+### BATCH-279（计划中）
+- 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
+- 状态：计划中
+- 说明：按 `SEARCHREC-011` 的冻结口径，重新核对推荐位配置接口是否仍然满足“正式 Bearer 鉴权 + `ops.recommendation.read/manage` + `PATCH` 侧 `X-Idempotency-Key + X-Step-Up-Token` + PostgreSQL 权威更新 + Redis 推荐缓存失效 + 审计/系统日志”这一整条推荐运营链；重点确认接口不会退化为只改表不失效缓存，也不会用普通日志替代正式审计或绕过 step-up。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-011`，不提前进入 `SEARCHREC-012`。
+
+### BATCH-279（待审批）
+- 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-011`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 已作为前序完成基线存在；`SEARCHREC-001` 至 `SEARCHREC-010` 已重验搜索/推荐主链、推荐行为回流和 Keycloak 本地运行态，本批只在该基线上重验推荐位配置读写链，不提前合并 `SEARCHREC-012` 的推荐重建动作。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `SEARCHREC-011` 只覆盖推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`，要求 DTO、权限、审计和最小测试齐备。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`、`docs/数据库设计/接口协议/商品推荐与个性化发现接口协议正式版.md`：确认推荐运营读取权限为 `ops.recommendation.read`，写权限为 `ops.recommendation.manage`，配置修改属于高风险动作并建议 step-up。
+  - `docs/04-runbooks/recommendation-runtime.md`、`docs/05-test-cases/search-rec-cases.md`：确认 placement patch 成功后必须真实更新 `recommend.placement_definition`、失效 `datab:v1:recommend:*` 与 `datab:v1:recommend:seen:*:{placement_code}`，并写入 `audit.audit_event + audit.access_audit + ops.system_log`。
+  - `apps/platform-core/src/modules/recommendation/api/handlers.rs`、`service.rs`、`repo/mod.rs`、`tests/recommendation_api_db.rs`、`packages/openapi/recommendation.yaml`：复核当前 handler 仍使用正式 Bearer 鉴权门面、`ops.recommendation.read/manage` 权限点、`X-Idempotency-Key`、`X-Step-Up-Token` 和 Redis 缓存失效。
+- 复核结论：
+  - 当前实现满足冻结口径，无需修改业务代码。`GET /api/v1/ops/recommendation/placements` 继续要求 `ops.recommendation.read`，成功后写 `audit.access_audit(target_type='recommendation_placement') + ops.system_log`。
+  - `PATCH /api/v1/ops/recommendation/placements/{placement_code}` 继续要求 `ops.recommendation.manage + X-Idempotency-Key + X-Step-Up-Token`，并通过 `iam.step_up_challenge(target_action='recommendation.placement.patch', target_ref_type='recommendation_placement')` 进行正式 step-up 绑定校验。
+  - placement patch 成功后，`repo::invalidate_placement_runtime_cache` 继续按正式口径删除 `datab:v1:recommend:*` 与 `datab:v1:recommend:seen:*:{placement_code}`；这批 live 验证直接用真实 Redis key 回查到了失效结果，不存在“只更新 PostgreSQL 不清缓存”的漂移。
+  - 运行态恢复策略确认：为避免给 `home_featured` 留下无意义配置漂移，本批 live patch 只用当前默认 `default_ranking_profile_key` 作为同值 patch 触发正式写链，然后将 `recommend.placement_definition.metadata/default_ranking_profile_key` 恢复到跑前快照；但绑定进 `audit.audit_event` 的 `iam.step_up_challenge` 作为正式审计链一部分保留，不做删除。
+- 验证：
+  - `./scripts/check-keycloak-realm.sh`
+  - `cargo check -p platform-core`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - 真实运行态 Bearer 联调：
+    - `curl` + Keycloak password grant（`local-platform-admin`）调用 `GET /api/v1/ops/recommendation/placements`
+    - `curl` + Keycloak password grant（`local-buyer-operator`）调用同一路径验证正式 403
+    - 通过 `psql` 插入 `iam.step_up_challenge(challenge_status='verified', target_action='recommendation.placement.patch', target_ref_type='recommendation_placement')`
+    - 使用 `redis-cli -u redis://default:datab_redis_pass@127.0.0.1:6379/1` 预先种入 placement cache key 与 seen key
+    - `curl` + admin Bearer + `X-Idempotency-Key` + `X-Step-Up-Token` 调用 `PATCH /api/v1/ops/recommendation/placements/home_featured`
+    - `psql` / `redis-cli` 回查 `recommend.placement_definition`、`audit.audit_event`、`audit.access_audit`、`ops.system_log` 和 Redis key 失效结果
+    - patch 后立即用 `psql` 将 `home_featured` 恢复到跑前快照，避免临时验证污染推荐位正式配置
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `recommendation_api_full_runtime_db_smoke` 继续通过，证明推荐主链、placement/ranking/rebuild 统一 smoke 仍成立，没有因为前序 Keycloak 或 SEARCHREC rerun 调整而回退。
+  - 真实 Bearer 运维联调成功：
+    - `GET /api/v1/ops/recommendation/placements`：`request_id=req-searchrec011-live2-get-1776906358`，`HTTP 200`，返回 7 条 placement，包含 `home_featured`
+    - 无权限读取：`request_id=req-searchrec011-live2-forbidden-1776906358`，`HTTP 403`，返回 `IAM_UNAUTHORIZED`
+    - `PATCH /api/v1/ops/recommendation/placements/home_featured`：`request_id=req-searchrec011-live2-patch-1776906358`，`HTTP 200`，`X-Step-Up-Token=9316fdcd-1a90-48e2-a1b8-361e2ede6e99`，返回 `default_ranking_profile_key=recommend_v1_default`
+  - `psql` / Redis 回查结果：
+    - `audit.access_audit`：placement list 请求 `target_type='recommendation_placement'` 计数为 1；patch 请求同样计数为 1，且 `step_up_challenge_id=9316fdcd-1a90-48e2-a1b8-361e2ede6e99`
+    - `ops.system_log`：placement list 命中 `recommendation ops lookup executed: GET /api/v1/ops/recommendation/placements`；patch 命中 `recommendation ops action executed: PATCH /api/v1/ops/recommendation/placements/{placement_code}`
+    - `audit.audit_event`：patch 最新事件 `result_code='updated'`、`permission_code='ops.recommendation.manage'`、`endpoint='PATCH /api/v1/ops/recommendation/placements/{placement_code}'`、`cache_keys_deleted='2'`
+    - Redis：预先种入的 `datab:v1:recommend:10000000-0000-0000-0000-000000000103:10000000-0000-0000-0000-000000000353:placement-live2-1776906358` 与 `datab:v1:recommend:seen:placement-live2-1776906358:home_featured` 在 patch 后均 `EXISTS=0`
+    - `recommend.placement_definition`：patch 时可回查 `metadata.last_request_id/last_trace_id/last_actor_role` 已写入；随后已恢复为跑前快照，当前 `home_featured` 不再保留 `last_request_id/last_trace_id/last_actor_role`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-011`
+  - `商品推荐与个性化发现设计.md`、`商品推荐与个性化发现接口协议正式版.md`：placement 读写、权限与 step-up 边界
+  - `recommendation-runtime.md`、`search-rec-cases.md`：Redis 缓存失效、placement 审计/系统日志与正式回查要求
+  - `packages/openapi/recommendation.yaml`：placement GET/PATCH 参数、错误码与 Bearer 约束
+- 覆盖的任务清单条目：`SEARCHREC-011`
+- 未覆盖项：
+  - 无。`SEARCHREC-011` 要求的推荐位配置读写、正式权限点、step-up、Redis 失效、审计/系统日志和失败用例均已重新验证。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-278（待审批）
 - 任务：`SEARCHREC-010` 逐任务复核与正式重验（推荐曝光/点击记录接口）
 - 状态：待审批
