@@ -1,5 +1,34 @@
 import { expect, test } from "@playwright/test";
 
+test("portal home links directly to five standard demo paths", async ({ page }) => {
+  const scenarios = [
+    ["S1", "工业设备运行指标 API 订阅"],
+    ["S2", "工业质量与产线日报文件包交付"],
+    ["S3", "供应链协同查询沙箱"],
+    ["S4", "零售门店经营分析 API / 报告订阅"],
+    ["S5", "商圈/门店选址查询服务"],
+  ] as const;
+
+  for (const [scenarioCode, scenarioName] of scenarios) {
+    await page.goto("/");
+    await page
+      .getByRole("link", { name: `查看 ${scenarioCode} 演示路径` })
+      .click();
+    await expect(page).toHaveURL(`/demos/${scenarioCode}`);
+    await expect(
+      page.getByRole("heading", {
+        name: `${scenarioName}演示路径`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("说明卡片", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("GET /api/v1/catalog/standard-scenarios").first(),
+    ).toBeVisible();
+    await expect(page.getByText("Idempotency-Key").first()).toBeVisible();
+  }
+});
+
 test("portal home and scaffold pages are reachable", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("门户首页已接入场景导航、推荐位与受控搜索入口。")).toBeVisible();

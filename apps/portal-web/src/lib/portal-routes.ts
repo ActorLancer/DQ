@@ -1,5 +1,12 @@
+import { standardDemoGuides } from "./standard-demo";
+
 export type PortalRouteKey =
   | "portal_home"
+  | "standard_demo_s1"
+  | "standard_demo_s2"
+  | "standard_demo_s3"
+  | "standard_demo_s4"
+  | "standard_demo_s5"
   | "catalog_search"
   | "seller_profile"
   | "product_detail"
@@ -61,6 +68,22 @@ export const portalRouteList: PortalRouteMeta[] = [
       "/api/v1/orders/standard-templates",
     ],
   },
+  ...standardDemoGuides.map((guide) => ({
+    key: guide.routeKey,
+    group: "门户与目录",
+    title: `${guide.scenarioCode} ${guide.scenarioName}演示路径`,
+    path: guide.path,
+    viewPermission: "portal.home.read",
+    primaryPermissions: [],
+    description: `${guide.scenarioName} 的首页直达演示说明卡片，保持 ${guide.primarySku}${guide.supplementarySkus.length ? ` / ${guide.supplementarySkus.join(" / ")}` : ""} 与冻结模板口径。`,
+    apiBindings: [
+      "GET /api/v1/auth/me",
+      "GET /api/v1/catalog/standard-scenarios",
+      "GET /api/v1/orders/standard-templates",
+      "GET /api/v1/recommendations?placement_code=home_featured",
+      "GET /api/v1/catalog/search",
+    ],
+  })),
   {
     key: "catalog_search",
     group: "门户与目录",

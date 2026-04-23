@@ -27,20 +27,15 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createBrowserSdk } from "@/lib/platform-sdk";
 import type { PortalSessionPreview } from "@/lib/session";
+import {
+  findStandardDemoGuide,
+  frozenStandardScenarios,
+  officialSkuOrder,
+} from "@/lib/standard-demo";
 
 import { PortalRouteScaffold } from "./route-scaffold";
 
 const sdk = createBrowserSdk();
-const OFFICIAL_SKU_ORDER = [
-  "FILE_STD",
-  "FILE_SUB",
-  "SHARE_RO",
-  "API_SUB",
-  "API_PPU",
-  "QRY_LITE",
-  "SBX_STD",
-  "RPT_STD",
-] as const;
 const INDUSTRY_META = {
   industrial_manufacturing: {
     label: "工业制造",
@@ -62,123 +57,6 @@ const FALLBACK_SEARCH_PRESETS = [
   { label: "S4 门店经营", keyword: "门店经营分析" },
   { label: "S5 选址服务", keyword: "商圈选址" },
 ] as const;
-const FALLBACK_STANDARD_SCENARIOS: ScenarioTemplate[] = [
-  {
-    scenario_code: "S1",
-    scenario_name: "工业设备运行指标 API 订阅",
-    primary_sku: "API_SUB",
-    supplementary_skus: ["API_PPU"],
-    product_template: {
-      category: "industry_iot",
-      delivery_type: "api_subscription",
-      product_type: "service_product",
-    },
-    metadata_template: {
-      data_classification: "P1",
-      industry: "industrial_manufacturing",
-      use_cases: ["设备稼动率", "能耗监控"],
-    },
-    contract_template: "CONTRACT_API_SUB_V1",
-    acceptance_template: "ACCEPT_API_SUB_V1",
-    refund_template: "REFUND_API_SUB_V1",
-    review_sample: {
-      action_name: "approve",
-      action_reason: "api_schema_and_sla_verified",
-    },
-  },
-  {
-    scenario_code: "S2",
-    scenario_name: "工业质量与产线日报文件包交付",
-    primary_sku: "FILE_STD",
-    supplementary_skus: ["FILE_SUB"],
-    product_template: {
-      category: "industrial_quality",
-      delivery_type: "file_download",
-      product_type: "data_product",
-    },
-    metadata_template: {
-      data_classification: "P1",
-      industry: "industrial_manufacturing",
-      use_cases: ["质量日报", "产线巡检"],
-    },
-    contract_template: "CONTRACT_FILE_V1",
-    acceptance_template: "ACCEPT_FILE_V1",
-    refund_template: "REFUND_FILE_V1",
-    review_sample: {
-      action_name: "approve",
-      action_reason: "file_hash_and_preview_checked",
-    },
-  },
-  {
-    scenario_code: "S3",
-    scenario_name: "供应链协同查询沙箱",
-    primary_sku: "SBX_STD",
-    supplementary_skus: ["SHARE_RO"],
-    product_template: {
-      category: "supply_chain",
-      delivery_type: "sandbox",
-      product_type: "service_product",
-    },
-    metadata_template: {
-      data_classification: "P2",
-      industry: "industrial_manufacturing",
-      use_cases: ["履约分析", "库存协同"],
-    },
-    contract_template: "CONTRACT_SANDBOX_V1",
-    acceptance_template: "ACCEPT_SANDBOX_V1",
-    refund_template: "REFUND_SANDBOX_V1",
-    review_sample: {
-      action_name: "approve",
-      action_reason: "sandbox_guardrail_verified",
-    },
-  },
-  {
-    scenario_code: "S4",
-    scenario_name: "零售门店经营分析 API / 报告订阅",
-    primary_sku: "API_SUB",
-    supplementary_skus: ["RPT_STD"],
-    product_template: {
-      category: "retail_ops",
-      delivery_type: "api_subscription",
-      product_type: "service_product",
-    },
-    metadata_template: {
-      data_classification: "P1",
-      industry: "retail",
-      use_cases: ["客流分析", "销售结构"],
-    },
-    contract_template: "CONTRACT_API_SUB_V1",
-    acceptance_template: "ACCEPT_API_SUB_V1",
-    refund_template: "REFUND_API_SUB_V1",
-    review_sample: {
-      action_name: "approve",
-      action_reason: "api_report_combo_check_passed",
-    },
-  },
-  {
-    scenario_code: "S5",
-    scenario_name: "商圈/门店选址查询服务",
-    primary_sku: "QRY_LITE",
-    supplementary_skus: ["RPT_STD"],
-    product_template: {
-      category: "retail_location",
-      delivery_type: "query_template",
-      product_type: "service_product",
-    },
-    metadata_template: {
-      data_classification: "P1",
-      industry: "retail",
-      use_cases: ["选址评分", "商圈画像"],
-    },
-    contract_template: "CONTRACT_QUERY_LITE_V1",
-    acceptance_template: "ACCEPT_QUERY_LITE_V1",
-    refund_template: "REFUND_QUERY_LITE_V1",
-    review_sample: {
-      action_name: "approve",
-      action_reason: "template_boundary_validated",
-    },
-  },
-];
 
 type HomeShellProps = {
   sessionMode: "guest" | "bearer" | "local";
@@ -220,7 +98,7 @@ export function HomeShell({ sessionMode, initialSubject }: HomeShellProps) {
   const liveScenarios = scenarioQuery.data?.data ?? [];
   const scenarios = liveScenarios.length
     ? liveScenarios
-    : FALLBACK_STANDARD_SCENARIOS;
+    : frozenStandardScenarios;
   const usingScenarioFallback = liveScenarios.length === 0;
   const industryGroups = buildIndustryGroups(scenarios);
   const skuCoverage = collectSkuCoverage(scenarios);
@@ -641,6 +519,7 @@ function IndustryCard({ group }: { group: IndustryGroup }) {
 function StandardChainCard({ scenario }: { scenario: ScenarioTemplate }) {
   const deliveryType =
     readString(readRecord(scenario.product_template)?.delivery_type) ?? "n/a";
+  const demoGuide = findStandardDemoGuide(scenario.scenario_code);
 
   return (
     <div className="rounded-[24px] bg-black/[0.03] p-4">
@@ -667,6 +546,14 @@ function StandardChainCard({ scenario }: { scenario: ScenarioTemplate }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
+          {demoGuide ? (
+            <Button asChild variant="secondary">
+              <Link href={demoGuide.path as Route}>
+                查看 {scenario.scenario_code} 演示路径
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          ) : null}
           <Button asChild variant="secondary">
             <Link href={buildSearchHref(readScenarioSearchKeyword(scenario))}>
               搜索同类商品
@@ -876,7 +763,7 @@ function collectSkuCoverage(scenarios: ScenarioTemplate[]) {
     }
   }
 
-  return OFFICIAL_SKU_ORDER.filter((sku) => seen.has(sku));
+  return officialSkuOrder.filter((sku) => seen.has(sku));
 }
 
 function buildIndustryGroups(scenarios: ScenarioTemplate[]): IndustryGroup[] {

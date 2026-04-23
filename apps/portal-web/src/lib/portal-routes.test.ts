@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { portalRouteMap } from "./portal-routes";
+import { standardDemoGuides } from "./standard-demo";
 
 describe("portal route registry", () => {
   it("keeps official V1 frozen paths for the first key routes", () => {
@@ -11,6 +12,8 @@ describe("portal route registry", () => {
     expect(portalRouteMap.delivery_acceptance.path).toBe(
       "/delivery/orders/:orderId/acceptance",
     );
+    expect(standardDemoGuides.map((guide) => portalRouteMap[guide.routeKey].path))
+      .toEqual(["/demos/S1", "/demos/S2", "/demos/S3", "/demos/S4", "/demos/S5"]);
   });
 
   it("keeps view permissions and primary action permissions explicit", () => {
@@ -24,6 +27,17 @@ describe("portal route registry", () => {
         "/api/v1/catalog/search",
       ]),
     );
+    for (const guide of standardDemoGuides) {
+      expect(portalRouteMap[guide.routeKey].viewPermission).toBe("portal.home.read");
+      expect(portalRouteMap[guide.routeKey].apiBindings).toEqual(
+        expect.arrayContaining([
+          "GET /api/v1/catalog/standard-scenarios",
+          "GET /api/v1/orders/standard-templates",
+          "GET /api/v1/recommendations?placement_code=home_featured",
+          "GET /api/v1/catalog/search",
+        ]),
+      );
+    }
     expect(portalRouteMap.seller_profile.apiBindings).toEqual(
       expect.arrayContaining([
         "/api/v1/sellers/{orgId}/profile",

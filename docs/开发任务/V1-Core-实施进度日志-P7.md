@@ -219,6 +219,55 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-291（计划中）
+- 任务：`WEB-017` 为五条标准链路各做一个从首页直达的演示路径和说明卡片
+- 状态：计划中
+- 当前任务编号：`WEB-017`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 已满足；`WEB-001 ~ WEB-016` 已完成并作为本批基线。本批继续保持 `portal-web / console-web -> /api/platform -> platform-core` 边界，不新增浏览器直连 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric / MinIO`。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-017` 只实现五条标准链路从首页直达的演示路径与说明卡片，不合并 `WEB-018` 的全链路 E2E 收口；DoD 要求页面可访问、空态 / 错态 / 权限态可用、接口契约对齐并通过最小 E2E / smoke。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认 4.1 首页必须提供平台导航、核心价值、行业入口、推荐商品入口和登录入口；12. 页面间路由关系要求 `首页 -> 搜索页 -> 卖方主页 -> 产品详情页 -> 询单/下单页 -> 合同确认页 -> 支付锁定页 -> 订单详情页`；14. 覆盖校验继续要求页面权限、空态、错态和敏感主体条。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认首批五条标准链路官方命名与顺序为 `S1 工业设备运行指标 API 订阅`、`S2 工业质量与产线日报文件包交付`、`S3 供应链协同查询沙箱`、`S4 零售门店经营分析 API / 报告订阅`、`S5 商圈/门店选址查询服务`；八个标准 SKU 必须完整显式覆盖，`SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 不得并回大类。
+  - `docs/权限设计/按钮级权限说明.md`、`接口权限校验清单.md`、`菜单权限映射表.md`：确认首页查看权限为 `portal.home.read`，SKU 真值字段只允许 `FILE_STD / FILE_SUB / SHARE_RO / API_SUB / API_PPU / QRY_LITE / SBX_STD / RPT_STD`，后续下单动作仍要求 `trade.order.create` 与 `X-Idempotency-Key`。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：确认首页主链路必须承接 `首页 -> 搜索 -> 商品详情 -> 下单`，并在上架 / SKU / 模板绑定口径中保持五链路、八 SKU、模板族绑定一致。
+  - `docs/05-test-cases/search-rec-cases.md`、`docs/04-runbooks/recommendation-runtime.md`：确认 `home_featured` 推荐位在演示种子完成后固定返回五条官方样例，顺序 `S1 -> S5`，`items[].explanation_codes` 包含 `placement:fixed_sample` 与 `scenario:S1..S5`。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`、`统一错误码字典正式版.md`、`测试用例矩阵正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`技术选型正式版.md`、`平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 WEB 前端只能调用 `platform-core` 正式 API，不能直连受限系统；敏感页面显示主体 / 角色 / 租户 / 作用域；错误码、权限点、状态名与 SKU 名不得漂移。
+  - `packages/openapi/catalog.yaml`、`trade.yaml`、`recommendation.yaml`、`search.yaml`、`iam.yaml` 与 `docs/02-openapi/*.yaml`：确认本批绑定的正式契约为 `GET /api/v1/catalog/standard-scenarios`、`GET /api/v1/orders/standard-templates`、`GET /api/v1/recommendations?placement_code=home_featured`、`GET /api/v1/catalog/search` 与 `GET /api/v1/auth/me`；两份 OpenAPI 当前保持同步。
+  - `apps/platform-core/src/modules/catalog/**`、`order/**`、`search/**`、`recommendation/**`：确认后端已有标准场景模板、标准订单模板、搜索、推荐位与首页五样例测试实现；前端只通过 SDK / 受控代理读取，不自行直连 OpenSearch / Redis / Kafka。
+  - `apps/portal-web/**`、`apps/console-web/**`、`packages/sdk-ts/**`：确认首页当前已有标准链路卡片、搜索入口和下单入口，但每条链路尚无独立 `/demos/S1..S5` 演示路径；现有代码只能作为基线继续收敛。
+- 当前完成标准理解：
+  - 首页必须给 `S1 -> S5` 各自提供一张可理解的说明卡片，并有唯一可点击的直达演示路径。
+  - 每条演示路径必须展示官方链路名、主 SKU、补充 SKU、合同 / 验收 / 退款模板、路线节点、权限与审计提示，并能回到搜索、下单、交付 / 验收 / 账单等后续页面。
+  - 演示页可在未登录时展示冻结说明，但 Bearer 会话下应通过 `packages/sdk-ts` 读取 `platform-core` 的标准场景与订单模板；加载态、空态、错态、权限态需要可验证。
+  - 不新增写操作，不新增状态名、SKU 大类、场景名或错误码语义；后续真实全链路 E2E 由 `WEB-018` 继续承接。
+- 实施计划：
+  1. 抽取五条标准链路的前端演示路径元数据，保持 `S1 -> S5`、八 SKU、合同 / 验收 / 退款模板与冻结文档一致。
+  2. 在 `portal-web` 新增 `/demos/S1` 到 `/demos/S5` 动态演示页，绑定 `catalog.standard-scenarios` 与 `trade.standard-templates` SDK，补齐说明卡片、权限 / 审计 / 幂等提示和状态预演。
+  3. 改造首页标准链路卡片为直达演示路径，保留搜索与下单入口。
+  4. 补齐 `Vitest` 与 `Playwright` 覆盖，验证首页到五条演示路径、SKU 覆盖和受控 API 边界。
+  5. 执行前端、后端、OpenAPI、真实 API / 浏览器 smoke、数据库回查与受控边界验证，再更新 TODO、写“待审批”日志并本地提交。
+
+### BATCH-291（待审批）
+- 任务：`WEB-017` 为五条标准链路各做一个从首页直达的演示路径和说明卡片
+- 状态：待审批
+- 当前任务编号：`WEB-017`
+- 实现结果：
+  - 新增 `apps/portal-web/src/lib/standard-demo.ts` 作为五条官方演示链路的前端单一元数据源，冻结 `S1 -> S5` 顺序、官方命名、八个标准 SKU、合同 / 验收 / 退款模板、交付链路、审计 / 权限 / 幂等说明，避免首页与演示页重复维护口径。
+  - 新增 `/demos/[scenarioCode]` 动态路由与 `StandardDemoShell`，为 `/demos/S1` 至 `/demos/S5` 各自展示说明卡片、路线步骤、模板与 SKU 映射、主体 / 角色 / 租户 / 作用域、权限态、加载态、空态、错态和受控 API 边界提示；Bearer 会话下通过 `packages/sdk-ts` 读取 `GET /api/v1/catalog/standard-scenarios` 与 `GET /api/v1/orders/standard-templates`，未登录 / local 模式只展示冻结只读说明，不伪造后端成功态。
+  - 改造门户首页标准链路卡片，新增 `查看 S1/S2/S3/S4/S5 演示路径` 直达入口，并保留搜索同类商品、发起下单、推荐位和行业聚合入口。
+  - 扩展 `portal-routes` 元数据，把五条演示路径纳入正式路由清单与 API 绑定清单，继续声明 `portal.home.read` 查看权限，不新增写操作或新状态名 / SKU 大类 / 错误码语义。
+  - 补齐 `Vitest` 覆盖，校验 `/demos/S1..S5` 顺序、八 SKU 覆盖、`SHARE_RO / QRY_LITE / RPT_STD` 不被并回大类、标准订单模板映射与首页冻结场景同源；补齐 `Playwright` 覆盖，校验从首页逐条点击进入五条演示路径。
+- 验证结果：
+  - 前端专项：`pnpm install`、`pnpm --filter @datab/portal-web typecheck`、`pnpm --filter @datab/portal-web lint`、`pnpm --filter @datab/portal-web test:unit`、`pnpm --filter @datab/portal-web test:e2e`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 均通过；root `pnpm test` 覆盖 SDK、portal、console 单测与 Playwright，E2E 中出现的 `platform-core` 未启动代理日志不影响测试结果，真实联调已另行覆盖。
+  - 后端 / 契约：`./scripts/check-openapi-schema.sh`、`cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 均通过；`cargo check/test` 仅保留既有 warning。
+  - 本地栈：`./scripts/verify-local-stack.sh core` 确认 PostgreSQL、Redis、Kafka、MinIO、OpenSearch、Keycloak、OTel 均可达。
+  - 真实 API：本地 `platform-core` 运行于 `127.0.0.1:8094`，`GET /healthz`、`GET /api/v1/auth/me`、`GET /api/v1/catalog/standard-scenarios`、`GET /api/v1/orders/standard-templates` 均通过；门户生产构建运行于 `127.0.0.1:3101`，通过 `/api/platform/**` 代理访问 `auth/me`、标准场景与标准订单模板均返回正式结构。
+  - 浏览器 smoke：使用 Bearer cookie 打开首页和 `/demos/S1..S5`，每页均显示主体 / 角色 / 租户 / 作用域与 `platform-core live` 状态；移动视口打开 `/demos/S5` 正常；请求抓取显示浏览器端只有 `/api/platform/**`，没有直连 `platform-core` 端口或 `PostgreSQL / Kafka / OpenSearch / Redis / Fabric`。
+  - DB 回查：`audit.audit_event` 中 `req-web017-auth-me-ok`、`req-web017-standard-scenarios`、`req-web017-order-templates`、`req-web017-portal-auth-me`、`req-web017-portal-scenarios`、`req-web017-portal-templates` 均存在对应 `iam.session.context.read`、`catalog.standard.scenarios.read`、`trade.order.templates.read` 成功审计；`recommend.recommendation_request` 曾记录 `home_featured` 返回 5 条并带 `scenario:S1..S5` explanation codes。
+  - 测试数据处理：已删除本批产生的临时 `recommend.recommendation_request` 与 `search.seller_search_document` 投影行；`web017-local` 用户与 `WEB017 Demo Org` 组织因 `audit.access_audit` append-only 外键会触发审计记录更新而无法物理删除，已标记为 `inactive` 并在 `attrs/metadata.web017_cleanup` 中注明 `retained_for_append_only_access_audit_fk`；审计记录按 append-only 规则保留。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 已登记 `BATCH-291` 无新增项。
+
 ### BATCH-285（计划中）
 - 任务：`WEB-011` 实现验收页面：通过、拒收、拒收原因、生命周期摘要
 - 状态：计划中
