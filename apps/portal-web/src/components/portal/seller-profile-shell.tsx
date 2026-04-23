@@ -4,7 +4,7 @@ import type {
   RecommendationsResponse,
   SellerProfileResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -741,13 +741,10 @@ function InlineNotice({
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof PlatformApiError) {
-    return `${error.code}: ${error.message}${error.requestId ? ` (request_id=${error.requestId})` : ""}`;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "UNKNOWN: 请求失败";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "INTERNAL_ERROR",
+    fallbackDescription: "请结合错误码和 request_id 回查卖方主体、商品聚合和权限范围。",
+  });
 }
 
 function hasAnyRole(

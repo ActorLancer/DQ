@@ -5,7 +5,7 @@ import type {
   ExecuteRefundRequest,
   ExecuteRefundResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { z } from "zod";
 
 import type { SessionSubject } from "./acceptance-workflow";
@@ -239,19 +239,10 @@ export function readBillingSubjectTenant(subject: SessionSubject | null | undefi
 }
 
 export function formatBillingError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return [
-      error.code || "UNKNOWN",
-      error.message,
-      error.requestId ? `request_id=${error.requestId}` : "",
-    ]
-      .filter(Boolean)
-      .join(" / ");
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "BIL_PROVIDER_FAILED: 账单 API 请求失败";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "BIL_PROVIDER_FAILED",
+    fallbackDescription: "请检查支付通道、账单执行条件和重试策略，并以 request_id 回查后端链路。",
+  });
 }
 
 export function formatMoney(amount: string | undefined, currency: string | undefined) {

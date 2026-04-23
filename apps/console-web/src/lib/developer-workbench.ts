@@ -1,4 +1,4 @@
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import type {
   AuthMeResponse,
   CreateApplicationRequest,
@@ -161,13 +161,10 @@ export function subjectRoles(subject?: SessionSubject) {
 }
 
 export function formatDeveloperError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return `${error.code} · ${error.message}${error.requestId ? ` · request_id=${error.requestId}` : ""}`;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "未知错误";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "INTERNAL_ERROR",
+    fallbackDescription: "请结合错误码和 request_id 回查 developer trace、审计记录与系统日志。",
+  });
 }
 
 export function statusTone(status?: string | null) {

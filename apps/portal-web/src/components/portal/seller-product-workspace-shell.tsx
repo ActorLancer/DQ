@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -1730,14 +1730,10 @@ function toErrorState(error: unknown): ActionState {
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof PlatformApiError) {
-    const request = error.requestId ? ` request_id=${error.requestId}` : "";
-    return `${error.code}: ${error.message}${request}`;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "UNKNOWN: 上架中心请求失败。";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "CAT_VALIDATION_FAILED",
+    fallbackDescription: "请检查商品字段、SKU 枚举、模板绑定和 request_id 对应的后端校验结果。",
+  });
 }
 
 const metadataFields: {

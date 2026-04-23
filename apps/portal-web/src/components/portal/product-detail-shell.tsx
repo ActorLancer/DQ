@@ -5,7 +5,7 @@ import type {
   RecommendationsResponse,
   SellerProfileResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -850,10 +850,8 @@ function Tag({ children }: { children: ReactNode }) {
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof PlatformApiError) {
-    return `${error.code}: ${error.message}${
-      error.requestId ? ` / request_id=${error.requestId}` : ""
-    }`;
-  }
-  return error instanceof Error ? error.message : "未知商品详情错误";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "INTERNAL_ERROR",
+    fallbackDescription: "请结合错误码和 request_id 回查商品详情、推荐结果和卖方主体聚合。",
+  });
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 
 import { createServerSdk } from "@/lib/platform-sdk";
 import {
@@ -91,16 +91,12 @@ export async function connectConsoleSession(
           : `控制台本地测试身份已切换为 ${session.loginId} / ${session.role}。`,
     };
   } catch (error) {
-    if (error instanceof PlatformApiError) {
-      return {
-        ok: false,
-        message: `${error.code}: ${error.message}`,
-      };
-    }
-
     return {
       ok: false,
-      message: "无法验证控制台登录态占位，请检查 platform-core 或 Keycloak 配置。",
+      message: formatPlatformErrorForDisplay(error, {
+        fallbackCode: "UNAUTHORIZED",
+        fallbackDescription: "无法验证控制台登录态占位，请检查 platform-core、Keycloak 和当前会话配置。",
+      }),
     };
   }
 }

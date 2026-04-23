@@ -12,6 +12,16 @@ import { createTradeClient } from "./domains/trade";
 export type { PlatformClientConfig, RequestOptions } from "./core/http";
 export { PlatformApiError, PlatformClient } from "./core/http";
 export type {
+  NormalizePlatformErrorOptions,
+  NormalizedPlatformError,
+  PlatformErrorCopy,
+} from "./core/error-copy";
+export {
+  describePlatformErrorCode,
+  formatPlatformErrorForDisplay,
+  normalizePlatformError,
+} from "./core/error-copy";
+export type {
   HeaderParams,
   MultipartBody,
   PathParams,

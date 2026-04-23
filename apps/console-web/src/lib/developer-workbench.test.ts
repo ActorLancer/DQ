@@ -77,6 +77,7 @@ describe("developer workbench helpers", () => {
     expect(createDeveloperIdempotencyKey("app-create")).toMatch(/^web-016:app-create:/);
     expect(statusTone("active")).toBe("ok");
     expect(statusTone("revoked")).toBe("danger");
-    expect(formatDeveloperError(new Error("boom"))).toBe("boom");
+    expect(formatDeveloperError(new Error("boom"))).toContain("平台内部错误");
+    expect(formatDeveloperError(new Error("boom"))).toContain("INTERNAL_ERROR");
   });
 });

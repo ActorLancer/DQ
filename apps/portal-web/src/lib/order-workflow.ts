@@ -8,7 +8,7 @@ import type {
   ProductDetailResponse,
   StandardOrderTemplatesResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { z } from "zod";
 
 import { standardSkuOptions, type StandardSkuType } from "./seller-products-view";
@@ -371,19 +371,10 @@ export function orderStatusLabel(status: string) {
 }
 
 export function formatTradeError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return [
-      error.code || "UNKNOWN",
-      error.message,
-      error.requestId ? `request_id=${error.requestId}` : "",
-    ]
-      .filter(Boolean)
-      .join(" / ");
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "UNKNOWN: 订单 API 请求失败";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "TRD_STATE_CONFLICT",
+    fallbackDescription: "请刷新订单详情和生命周期快照，再结合错误码与 request_id 排查状态冲突。",
+  });
 }
 
 export function formatMoney(amount: string | undefined, currencyCode: string | undefined) {

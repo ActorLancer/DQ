@@ -18,7 +18,7 @@ import type {
   RevisionSubscriptionResponse,
   ShareGrantListResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { z } from "zod";
 
 import { standardSkuOptions, type StandardSkuType } from "./seller-products-view";
@@ -647,19 +647,10 @@ export function unwrapQueryRuns(response: QueryRunsResponse | undefined) {
 }
 
 export function formatDeliveryError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return [
-      error.code || "UNKNOWN",
-      error.message,
-      error.requestId ? `request_id=${error.requestId}` : "",
-    ]
-      .filter(Boolean)
-      .join(" / ");
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "DLV_STATE_CONFLICT: 交付 API 请求失败";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "DELIVERY_STATUS_INVALID",
+    fallbackDescription: "请刷新订单详情和生命周期状态，再决定是否继续交付或验收。",
+  });
 }
 
 export function maskSecret(value: string | null | undefined) {

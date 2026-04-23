@@ -614,7 +614,7 @@ function CommitDeliveryForm({
       );
       const data = unwrapCommitDelivery(response);
       if (!data) {
-        throw new Error("DLV_STATE_CONFLICT: commitOrderDelivery 未返回交付数据");
+        throw new Error("DELIVERY_STATUS_INVALID: commitOrderDelivery 未返回交付数据");
       }
       return data;
     },
@@ -631,7 +631,7 @@ function CommitDeliveryForm({
       const response = await sdk.delivery.issueDownloadTicket({ id: orderId });
       const data = unwrapDownloadTicket(response);
       if (!data) {
-        throw new Error("DLV_STATE_CONFLICT: download-ticket 未返回票据");
+        throw new Error("DELIVERY_STATUS_INVALID: download-ticket 未返回票据");
       }
       return data;
     },
@@ -766,7 +766,7 @@ function RevisionSubscriptionForm({
       );
       const data = unwrapRevisionSubscriptionMutation(response);
       if (!data) {
-        throw new Error("DLV_STATE_CONFLICT: subscriptions 未返回数据");
+        throw new Error("DELIVERY_STATUS_INVALID: subscriptions 未返回数据");
       }
       return data;
     },
@@ -834,7 +834,7 @@ function ShareGrantForm({ orderId, onChanged }: { orderId: string; onChanged: ()
       );
       const data = unwrapShareGrant(response);
       if (!data) {
-        throw new Error("DLV_STATE_CONFLICT: share-grants 未返回数据");
+        throw new Error("DELIVERY_STATUS_INVALID: share-grants 未返回数据");
       }
       return data;
     },
@@ -910,7 +910,7 @@ function TemplateGrantForm({ orderId, onChanged }: { orderId: string; onChanged:
       );
       const data = unwrapTemplateGrant(response);
       if (!data) {
-        throw new Error("DLV_STATE_CONFLICT: template-grants 未返回数据");
+        throw new Error("DELIVERY_STATUS_INVALID: template-grants 未返回数据");
       }
       return data;
     },
@@ -980,7 +980,7 @@ function SandboxWorkspaceForm({ orderId, onChanged }: { orderId: string; onChang
       );
       const data = unwrapSandboxWorkspace(response);
       if (!data) {
-        throw new Error("DLV_STATE_CONFLICT: sandbox-workspaces 未返回数据");
+        throw new Error("DELIVERY_STATUS_INVALID: sandbox-workspaces 未返回数据");
       }
       return data;
     },
@@ -1390,7 +1390,7 @@ function DeliveryPreviewState({
         <DeliveryHero entry={entry} orderId={orderId} subject={null} sessionMode="preview" preview={preview} />
         <ErrorPanel
           title={`${entry.title}错误态`}
-          message="DLV_STATE_CONFLICT: 页面必须承接 platform-core 统一错误码、request_id 与重试入口。"
+          message="DELIVERY_STATUS_INVALID: 页面必须承接 platform-core 统一错误码、request_id 与重试入口。"
         />
       </div>
     );

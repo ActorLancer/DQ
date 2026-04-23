@@ -213,7 +213,7 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
 
   await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/api?preview=error");
   await expect(page.getByText("API 开通错误态")).toBeVisible();
-  await expect(page.getByText("DLV_STATE_CONFLICT", { exact: false })).toBeVisible();
+  await expect(page.getByText("DELIVERY_STATUS_INVALID", { exact: false })).toBeVisible();
 
   await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/share?preview=forbidden");
   await expect(page.getByText("delivery.share.enable", { exact: false }).first()).toBeVisible();
@@ -237,7 +237,7 @@ test("portal home and scaffold pages are reachable", async ({ page }) => {
 
   await page.goto("/delivery/orders/30000000-0000-0000-0000-000000000901/acceptance?preview=error");
   await expect(page.getByText("验收页错误态")).toBeVisible();
-  await expect(page.getByText("TRD_STATE_CONFLICT", { exact: false })).toBeVisible();
+  await expect(page.getByText("DELIVERY_STATUS_INVALID", { exact: false })).toBeVisible();
 
   await page.goto("/billing?preview=forbidden");
   await expect(page.getByText("账单页面权限态")).toBeVisible();

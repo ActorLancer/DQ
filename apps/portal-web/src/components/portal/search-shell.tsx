@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { SearchCatalogResponse } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -753,12 +753,10 @@ function describeQuery(values: SearchFormValues): string {
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof PlatformApiError) {
-    return `${error.code}: ${error.message}${
-      error.requestId ? ` / request_id=${error.requestId}` : ""
-    }`;
-  }
-  return error instanceof Error ? error.message : "未知搜索错误";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "SEARCH_BACKEND_UNAVAILABLE",
+    fallbackDescription: "请稍后重试；前端只通过 platform-core 受控边界承接搜索结果。",
+  });
 }
 
 function formatScore(value: number): string {

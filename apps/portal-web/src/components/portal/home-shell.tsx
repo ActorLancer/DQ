@@ -5,7 +5,7 @@ import type {
   SearchCatalogResponse,
   StandardScenariosResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -846,10 +846,8 @@ function buildEntityHref(entityScope: string, entityId: string) {
 }
 
 function formatErrorDescription(error: unknown, fallback: string) {
-  if (error instanceof PlatformApiError) {
-    const requestId = error.requestId ? ` / request_id ${error.requestId}` : "";
-    return `${error.code}: ${error.message}${requestId}`;
-  }
-
-  return fallback;
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "SERVICE_UNAVAILABLE",
+    fallbackDescription: fallback,
+  });
 }

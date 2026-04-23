@@ -194,6 +194,75 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-293（计划中）
+- 任务：`WEB-019` 建立前端错误码到文案映射，确保和后端统一错误码字典对齐
+- 状态：计划中
+- 当前任务编号：`WEB-019`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 继续满足；`WEB-001 ~ WEB-018` 已提交，其中 `WEB-018` 提交为 `0015a7b1`，可直接复用现有 portal / console 页面、SDK 和 E2E 基线。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-019` 只做前端错误码映射与页面接入，不提前合并 `WEB-020+` 的文档或 SKU 显式映射任务。
+  - `docs/开发准备/统一错误码字典正式版.md`：确认前端必须优先依赖稳定 `code`，不能依赖 message 文本；通用、身份、目录、订单、支付、交付、争议、审计、搜索、ops 等域的冻结错误码都已列明。
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`：确认敏感读写必须回显 `request_id`、幂等要求与审计上下文，前端错误态不能吞掉这些字段。
+  - `docs/权限设计/按钮级权限说明.md`：确认按钮错误态必须同时承接权限、状态和高风险操作提示，不能只回显裸英文错误。
+  - `docs/数据库设计/接口协议/身份与会话接口协议正式版.md`：确认 `GET /api/v1/auth/me`、登录/登出、step-up 等身份链路需承接 `AUTH_*` 与通用鉴权错误码。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`、`docs/开发准备/测试用例矩阵正式版.md`、`docs/05-test-cases/*.md`：确认页面错误态、权限态、加载态与联调断言都要显示正式错误码与 `request_id`，并纳入 Playwright / smoke。
+  - `packages/sdk-ts/src/core/http.ts`、`apps/portal-web/src/lib/*workflow.ts`、`apps/console-web/src/lib/*workbench.ts`、`apps/portal-web/src/components/portal/home-shell.tsx`、`standard-demo-shell.tsx`：确认现状多数页面仅把 `PlatformApiError.code / message / request_id` 拼成字符串，尚未做统一中文文案映射。
+  - `apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core` 现有 OpenAPI / 仓储 / handler：确认后端当前既有冻结字典中的正式错误码，也存在 `CAT_VALIDATION_FAILED / TRD_STATE_CONFLICT / BIL_PROVIDER_FAILED / DLV_ACCESS_DENIED` 等已在既有实现和历史日志中沿用的兼容口径；前端需要兼容承接，不得把后端 message 当作唯一真相源。
+- 当前完成标准理解：
+  - 需要建立 portal / console 共用的错误码文案映射基座，优先覆盖冻结错误码字典，并兼容当前后端已在用的内核错误码。
+  - 页面错误态必须显示统一中文说明，同时保留 `错误码 / request_id` 以支持联调排障；不能继续直接把裸英文 message 当主文案。
+  - 最小验证要覆盖 SDK 单测、portal / console 单测、Playwright smoke 与现有真实联调链路，确保错误码仍可被断言、页面可见、空态 / 错态 / 权限态不回归。
+- 实施计划：
+  1. 在 `packages/sdk-ts` 建立统一错误码文案映射与格式化 helper，覆盖冻结字典常用代码、已有内核兼容代码及未知代码的后备策略。
+  2. 将 portal / console 现有 `format*Error`、首页错误说明和登录态占位接入共享 helper，统一输出“中文文案 + 错误码 + request_id”。
+  3. 为 SDK 与 portal / console 增补单测，校验正式错误码、兼容错误码和未知错误的展示文案。
+  4. 执行前端 / 后端 / E2E / 构建 / 真实 smoke 验证，更新 TODO 台账与待审批日志后本地提交。
+
+### BATCH-293（待审批）
+- 任务：`WEB-019` 建立前端错误码到文案映射，确保和后端统一错误码字典对齐
+- 状态：待审批
+- 当前任务编号：`WEB-019`
+- 前置依赖核对结果：`BOOT-007`、`CORE-026`、`TRADE-028`、`BIL-020` 与已提交的 `WEB-001 ~ WEB-018` 基线继续生效；本批未改变前端受控边界，`portal-web / console-web` 仍只通过 `/api/platform/** -> platform-core` 调用正式 API。
+- 完成情况：
+  - 在 `packages/sdk-ts/src/core/error-copy.ts` 新增统一错误码文案基座，覆盖 `统一错误码字典正式版.md` 的正式冻结错误码，并兼容当前后端真实返回的 `IAM_UNAUTHORIZED / CAT_VALIDATION_FAILED / TRD_STATE_CONFLICT / DLV_ACCESS_DENIED / BIL_PROVIDER_FAILED / AUD_EVIDENCE_INVALID / OPS_*` 等内核口径；未知错误码按域名和后缀做受控回退，不再把裸英文 message 直接展示给用户。
+  - `packages/sdk-ts/src/index.ts` 对外导出 `describePlatformErrorCode / normalizePlatformError / formatPlatformErrorForDisplay` 与对应类型，portal / console 的工作流格式化函数、首页错误态、登录态读取失败说明全部切换到共享 helper，统一输出“中文说明 + 错误码 + request_id”。
+  - `apps/portal-web` 与 `apps/console-web` 已把订单、交付、验收、账单、争议、审计、ops、开发者和会话错误展示全部收敛到统一 helper，并补齐单测；前端自造的 `DLV_STATE_CONFLICT` 已替换为正式冻结口径 `DELIVERY_STATUS_INVALID`，避免继续传播未冻结状态名。
+  - `apps/portal-web/vitest.config.ts` 与 `apps/console-web/vitest.config.ts` 增加 `@datab/sdk-ts -> packages/sdk-ts/src/index.ts` 源码别名，确保应用测试直接消费当前工作区 SDK 源码，而不是依赖过期 `dist` 导出，避免后续错误码映射新增后单测仍拿旧包产物。
+  - `apps/portal-web/e2e/smoke.spec.ts` 已同步更新错误态断言：订单详情错误态继续校验 `TRD_STATE_CONFLICT`，验收错误态改校验 `DELIVERY_STATUS_INVALID`；SDK、portal、console 三侧新增 / 更新的单测共同覆盖正式错误码、兼容错误码与未知错误码展示。
+- 验证：
+  - 前端 / SDK：
+    - `pnpm --filter @datab/sdk-ts test`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/console-web test:unit`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `pnpm --filter @datab/sdk-ts test`、`pnpm --filter @datab/portal-web test:unit`、`pnpm --filter @datab/console-web test:unit` 均通过；新增错误码文案映射、兼容码回退、源码别名解析和页面格式化逻辑无回归。
+  - `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；`pnpm test` 中 portal / console 的 Playwright smoke 继续通过，能真实看到页面错误态中冻结错误码的展示。运行期间 `/api/platform/**` 代理会打印既有的 `127.0.0.1:8094` `ECONNREFUSED` 噪音日志，但最终断言与退出码均为成功，本批未引入新的前端直连行为。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；本批仅调整前端 / SDK 错误展示基座，没有引入新的 Rust / SQLx 回归。
+  - `cargo check -p platform-core` 与 `cargo test -p platform-core` 仍输出仓库既有 `unused import / dead_code` 警告，但没有新增错误；`WEB-019` 未扩大这些后端历史警告面。
+  - 本批没有新增业务写入、测试订单或临时数据库对象，因此无需做额外业务数据清理；审计记录继续按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-019`
+  - `统一错误码字典正式版.md`：正式冻结错误码标题与域划分
+  - `12-API 设计、事件模型与消息总线.md`：`request_id` 与敏感错误态排障要求
+  - `按钮级权限说明.md`：权限 / 高风险按钮错误态与二次认证提示
+  - `身份与会话接口协议正式版.md`：身份 / 会话链路的 `AUTH_*` 与通用鉴权错误口径
+  - `页面说明书-V1-完整版.md`、`docs/05-test-cases/*.md`：页面错误态、权限态、空态和 E2E 断言口径
+- 覆盖的任务清单条目：`WEB-019`
+- 未覆盖项：
+  - 无。`WEB-019` 要求的前端错误码中文映射、页面接入、正式 / 兼容错误码承接、测试收口与日志留痕均已完成；后续 `WEB-020+` 继续处理文档、显式映射和剩余页面口径。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 已登记本批“无新增”结论。
+
 ### BATCH-290（计划中）
 - 任务：`WEB-016` 实现开发者页面：应用管理、API Key、调用日志、trace 联查、Mock 支付操作入口
 - 状态：计划中

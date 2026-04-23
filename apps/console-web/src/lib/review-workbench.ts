@@ -1,4 +1,4 @@
-import { PlatformApiError } from "@datab/sdk-ts";
+import { normalizePlatformError } from "@datab/sdk-ts";
 import type {
   AuthMeResponse,
   OrganizationListResponse,
@@ -140,24 +140,15 @@ export function deriveComplianceSignals(product?: ProductReviewDetail | null) {
 }
 
 export function formatReviewError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return {
-      title: `${error.code} / HTTP ${error.status}`,
-      message: error.message,
-      requestId: error.requestId ?? "未返回 request_id",
-    };
-  }
-  if (error instanceof Error) {
-    return {
-      title: "WEB_REVIEW_CLIENT_ERROR",
-      message: error.message,
-      requestId: "client",
-    };
-  }
+  const normalized = normalizePlatformError(error, {
+    fallbackCode: "INTERNAL_ERROR",
+    fallbackDescription: "请结合错误码和 request_id 回查审核队列、权限配置和对象当前状态。",
+  });
+
   return {
-    title: "WEB_REVIEW_UNKNOWN_ERROR",
-    message: "未知审核工作台错误",
-    requestId: "client",
+    title: `${normalized.title} · ${normalized.code}`,
+    message: normalized.description,
+    requestId: normalized.requestId ?? "未返回 request_id",
   };
 }
 

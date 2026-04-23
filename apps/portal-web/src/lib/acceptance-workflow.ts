@@ -5,7 +5,7 @@ import type {
   RejectOrderRequest,
   RejectOrderResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { z } from "zod";
 
 import type { OrderDetail, OrderLifecycleSnapshots } from "./order-workflow";
@@ -191,19 +191,10 @@ export function skuDisplayName(skuType: string | undefined) {
 }
 
 export function formatAcceptanceError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return [
-      error.code || "UNKNOWN",
-      error.message,
-      error.requestId ? `request_id=${error.requestId}` : "",
-    ]
-      .filter(Boolean)
-      .join(" / ");
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "TRD_STATE_CONFLICT: 验收 API 请求失败";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "DELIVERY_STATUS_INVALID",
+    fallbackDescription: "请刷新订单详情和交付状态后，再决定是否继续执行验收动作。",
+  });
 }
 
 export function lifecycleRows(

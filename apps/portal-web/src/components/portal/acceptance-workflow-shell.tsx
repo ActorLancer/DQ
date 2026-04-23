@@ -700,7 +700,7 @@ function AcceptancePreviewState({
     return (
       <div className="space-y-6">
         {common}
-        <ErrorPanel title="验收页错误态" message="TRD_STATE_CONFLICT: 页面必须承接统一错误码与 request_id。" />
+        <ErrorPanel title="验收页错误态" message="DELIVERY_STATUS_INVALID: 页面必须承接统一错误码与 request_id。" />
       </div>
     );
   }

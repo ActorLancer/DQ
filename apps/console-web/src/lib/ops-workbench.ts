@@ -1,4 +1,4 @@
-import { PlatformApiError } from "@datab/sdk-ts";
+import { normalizePlatformError } from "@datab/sdk-ts";
 import type {
   AuthMeResponse,
   ConsistencyPath,
@@ -392,24 +392,15 @@ export function buildRecommendationRankingPatchPayload(
 }
 
 export function formatOpsError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return {
-      title: `${error.code} / HTTP ${error.status}`,
-      message: error.message,
-      requestId: error.requestId ?? "未返回",
-    };
-  }
-  if (error instanceof Error) {
-    return {
-      title: "CLIENT_ERROR",
-      message: error.message,
-      requestId: "未生成",
-    };
-  }
+  const normalized = normalizePlatformError(error, {
+    fallbackCode: "OPS_INTERNAL",
+    fallbackDescription: "请结合错误码和 request_id 回查 outbox、dead letter、观测链路与后端日志。",
+  });
+
   return {
-    title: "UNKNOWN_ERROR",
-    message: "未知错误",
-    requestId: "未生成",
+    title: `${normalized.title} · ${normalized.code}`,
+    message: normalized.description,
+    requestId: normalized.requestId ?? "未生成",
   };
 }
 

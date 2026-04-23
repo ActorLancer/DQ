@@ -1,6 +1,6 @@
 "use client";
 
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -567,9 +567,8 @@ function orderHref(guide: StandardDemoGuide) {
 }
 
 function formatError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    const requestId = error.requestId ? ` / request_id ${error.requestId}` : "";
-    return `${error.code}: ${error.message}${requestId}`;
-  }
-  return "API_UNAVAILABLE: 已退回冻结演示说明";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "SERVICE_UNAVAILABLE",
+    fallbackDescription: "演示接口暂不可用，页面已退回冻结演示说明。",
+  });
 }

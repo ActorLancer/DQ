@@ -1,4 +1,4 @@
-import { PlatformApiError } from "@datab/sdk-ts";
+import { normalizePlatformError } from "@datab/sdk-ts";
 import type {
   AuditPackageExportRequest,
   AuditPackageExportResponse,
@@ -361,24 +361,15 @@ export function safePackageExportView(response?: AuditPackageExportResponse) {
 }
 
 export function formatAuditError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return {
-      title: `${error.status} ${error.code}`,
-      message: error.message,
-      requestId: error.requestId ?? "未返回",
-    };
-  }
-  if (error instanceof Error) {
-    return {
-      title: "CLIENT_ERROR",
-      message: error.message,
-      requestId: "未返回",
-    };
-  }
+  const normalized = normalizePlatformError(error, {
+    fallbackCode: "INTERNAL_ERROR",
+    fallbackDescription: "请结合错误码和 request_id 回查审计 trace、evidence package 和 ops 联查结果。",
+  });
+
   return {
-    title: "UNKNOWN",
-    message: "未知错误",
-    requestId: "未返回",
+    title: `${normalized.title} · ${normalized.code}`,
+    message: normalized.description,
+    requestId: normalized.requestId ?? "未返回",
   };
 }
 

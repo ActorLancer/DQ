@@ -5,7 +5,7 @@ import type {
   ResolveDisputeCaseResponse,
   UploadDisputeEvidenceResponse,
 } from "@datab/sdk-ts";
-import { PlatformApiError } from "@datab/sdk-ts";
+import { formatPlatformErrorForDisplay } from "@datab/sdk-ts";
 import { z } from "zod";
 
 import type { OrderDetail, SessionSubject } from "./order-workflow";
@@ -320,19 +320,10 @@ export function selectActiveDisputeCase(
 }
 
 export function formatDisputeError(error: unknown) {
-  if (error instanceof PlatformApiError) {
-    return [
-      error.code || "UNKNOWN",
-      error.message,
-      error.requestId ? `request_id=${error.requestId}` : "",
-    ]
-      .filter(Boolean)
-      .join(" / ");
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "DISPUTE_STATUS_INVALID: 争议 API 请求失败";
+  return formatPlatformErrorForDisplay(error, {
+    fallbackCode: "DISPUTE_STATUS_INVALID",
+    fallbackDescription: "请检查案件状态、证据范围和 step-up 条件，再重新提交争议相关动作。",
+  });
 }
 
 export function hiddenObjectPathNotice(result: DisputeEvidenceResult | null) {
