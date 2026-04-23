@@ -34,6 +34,7 @@ import { type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { StandardScenarioMatrixCard } from "@/components/portal/standard-scenario-matrix-card";
 import { createBrowserSdk } from "@/lib/platform-sdk";
 import { portalRouteMap } from "@/lib/portal-routes";
 import {
@@ -43,6 +44,10 @@ import {
   readMetadataText,
   readMetadataTextArray,
 } from "@/lib/product-detail-view";
+import {
+  matchStandardScenariosForProduct,
+  readStandardScenarioMappings,
+} from "@/lib/standard-scenario-view";
 import type { PortalSessionPreview } from "@/lib/session";
 import { cn, formatList } from "@/lib/utils";
 
@@ -104,6 +109,22 @@ export function ProductDetailShell({
         limit: 4,
       }),
   });
+  const standardScenarioQuery = useQuery({
+    queryKey: ["portal", "product-detail", productId, "standard-scenarios"],
+    enabled: canRead && preview === "ready",
+    queryFn: () => sdk.catalog.getStandardScenarioTemplates(),
+  });
+  const standardScenarios = readStandardScenarioMappings(standardScenarioQuery.data?.data);
+  const standardScenarioCoverage = product
+    ? matchStandardScenariosForProduct(product.skus, standardScenarios)
+    : [];
+  const standardScenarioNote = standardScenarioQuery.isPending
+    ? "正在读取 GET /api/v1/catalog/standard-scenarios；返回前先展示冻结标准链路映射。"
+    : standardScenarioQuery.isError
+      ? `GET /api/v1/catalog/standard-scenarios 读取失败，当前回退冻结标准链路映射：${describeError(standardScenarioQuery.error)}`
+      : !standardScenarioQuery.data?.data?.length
+        ? "当前未返回实时标准场景模板，页面继续展示冻结标准链路映射。"
+        : undefined;
 
   return (
     <div className="space-y-6">
@@ -146,6 +167,13 @@ export function ProductDetailShell({
           recommendationError={recommendationQuery.error}
           recommendationPending={recommendationQuery.isPending}
           canRecommend={canRecommend}
+          standardScenarioCoverage={standardScenarioCoverage}
+          standardScenarioNote={standardScenarioNote}
+          standardScenarioSourceLabel={
+            standardScenarioQuery.data?.data?.length
+              ? "standard-scenarios live"
+              : "standard-scenarios fallback"
+          }
         />
       ) : (
         <ProductEmptyState productId={productId} />
@@ -236,6 +264,9 @@ function ProductContent({
   recommendationError,
   recommendationPending,
   canRecommend,
+  standardScenarioCoverage,
+  standardScenarioNote,
+  standardScenarioSourceLabel,
 }: {
   product: Product;
   seller?: Seller;
@@ -245,12 +276,49 @@ function ProductContent({
   recommendationError: unknown;
   recommendationPending: boolean;
   canRecommend: boolean;
+  standardScenarioCoverage: ReturnType<typeof matchStandardScenariosForProduct>;
+  standardScenarioNote?: string;
+  standardScenarioSourceLabel: string;
 }) {
   return (
     <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_390px]">
       <main className="space-y-4">
         <OverviewCard product={product} />
         <SkuMatrix product={product} />
+        <StandardScenarioMatrixCard
+          title="商品可承接的标准链路"
+          description="只按商品详情返回的 `skus[].sku_type` 匹配官方标准链路；不使用 `product_type` 或 `delivery_type` 发明场景映射。"
+          items={standardScenarioCoverage}
+          summaryBadges={[
+            standardScenarioSourceLabel,
+            ...product.skus.map((sku) => sku.sku_type),
+          ]}
+          note={standardScenarioNote}
+          emptyTitle="当前商品未命中标准链路"
+          emptyDescription="当前详情返回的 SKU 没有命中五条标准链路；页面显式保留空态，不用前端推断补造主 SKU / 补充 SKU 映射。"
+          coverageForItem={(scenario) => scenario}
+          renderMeta={(scenario) => (
+            <div className="rounded-2xl bg-white/75 px-3 py-3 text-xs leading-5 text-[var(--ink-soft)]">
+              {scenario.match_level === "supplementary_only"
+                ? "当前商品只命中补充 SKU，不能用场景名替代主 SKU 事实源。"
+                : scenario.missing_skus.length
+                  ? "当前商品已命中主 SKU，但仍缺少部分补充 SKU；下单时仍以实际 SKU 快照为准。"
+                  : "当前商品已完整命中该标准链路的主 SKU / 补充 SKU，可携带 scenario_code 进入下单。"}
+            </div>
+          )}
+          renderAction={(scenario) => (
+            <Button asChild variant="secondary" size="sm" className="w-full justify-center">
+              <Link
+                href={
+                  `/trade/orders/new?productId=${product.product_id}&scenario=${scenario.scenario_code}` as Route
+                }
+              >
+                按该链路下单
+                <ShoppingCart className="size-3.5" />
+              </Link>
+            </Button>
+          )}
+        />
         <MetadataAndSample product={product} />
         <EvidenceCard product={product} />
         <RecommendationCard

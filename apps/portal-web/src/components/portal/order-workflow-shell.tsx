@@ -30,7 +30,6 @@ import {
   ShieldCheck,
   ShoppingCart,
   Sparkles,
-  Waypoints,
 } from "lucide-react";
 import { motion } from "motion/react";
 import type { Route } from "next";
@@ -42,6 +41,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { StandardScenarioMatrixCard } from "@/components/portal/standard-scenario-matrix-card";
 import { Input } from "@/components/ui/input";
 import { createBrowserSdk } from "@/lib/platform-sdk";
 import { portalRouteMap } from "@/lib/portal-routes";
@@ -527,54 +527,30 @@ function ScenarioMatrix({
 }) {
   const coverage = collectOrderSkuCoverage(templates);
   return (
-    <Card className="space-y-4">
-      <PanelTitle
-        icon={<Waypoints className="size-5" />}
-        title="五条标准链路下单入口"
-        description="官方链路、主 SKU、补充 SKU、合同模板、验收模板与退款模板按冻结表展示。"
-      />
-      <div className="flex flex-wrap gap-2">
-        <Badge className="bg-white/70 text-[var(--ink-strong)]">
-          {live ? "standard-templates live" : "standard-templates fallback"}
-        </Badge>
-        {coverage.map((sku) => (
-          <Badge key={sku} className="bg-[var(--accent-soft)] text-[var(--accent-strong)]">
-            {sku}
-          </Badge>
-        ))}
-      </div>
-      <div className="grid gap-3 lg:grid-cols-5">
-        {templates.map((template) => (
-          <div key={template.scenario_code} className="rounded-[24px] bg-black/[0.035] p-4">
-            <div className="flex items-center justify-between gap-2">
-              <Badge>{template.scenario_code}</Badge>
-              <span className="text-xs text-[var(--ink-subtle)]">{template.industry_code}</span>
-            </div>
-            <div className="mt-3 text-sm font-semibold text-[var(--ink-strong)]">
-              {template.scenario_name}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <ScenarioSkuBadge sku={template.primary_sku} role="主 SKU" />
-              {template.supplementary_skus.map((sku) => (
-                <ScenarioSkuBadge key={sku} sku={sku} role="补充 SKU" />
-              ))}
-            </div>
-            <div className="mt-3 space-y-1 text-xs leading-5 text-[var(--ink-soft)]">
-              <div>合同 {template.contract_template}</div>
-              <div>验收 {template.acceptance_template}</div>
-              <div>退款 {template.refund_template}</div>
-            </div>
-            <Button asChild variant="secondary" size="sm" className="mt-4">
-              <Link
-                href={`/trade/orders/new?scenario=${template.scenario_code}` as Route}
-              >
-                使用该链路 <ArrowRight className="size-3" />
-              </Link>
-            </Button>
-          </div>
-        ))}
-      </div>
-    </Card>
+    <StandardScenarioMatrixCard
+      title="五条标准链路下单入口"
+      description="官方链路、主 SKU、补充 SKU、合同模板、验收模板与退款模板按冻结表展示。"
+      items={templates}
+      summaryBadges={[
+        live ? "standard-templates live" : "standard-templates fallback",
+        ...coverage,
+      ]}
+      renderMeta={(template) => (
+        <div className="space-y-1 text-xs leading-5 text-[var(--ink-soft)]">
+          <div>行业 {template.industry_code}</div>
+          <div>合同 {template.contract_template}</div>
+          <div>验收 {template.acceptance_template}</div>
+          <div>退款 {template.refund_template}</div>
+        </div>
+      )}
+      renderAction={(template) => (
+        <Button asChild variant="secondary" size="sm" className="w-full justify-center">
+          <Link href={`/trade/orders/new?scenario=${template.scenario_code}` as Route}>
+            使用该链路 <ArrowRight className="size-3" />
+          </Link>
+        </Button>
+      )}
+    />
   );
 }
 
@@ -1165,14 +1141,6 @@ function OrderErrorState({
         </Button>
       </div>
     </Card>
-  );
-}
-
-function ScenarioSkuBadge({ sku, role }: { sku: string; role: string }) {
-  return (
-    <span className="rounded-full bg-white/75 px-2.5 py-1 text-[11px] font-semibold text-[var(--ink-soft)]">
-      {role} {sku}
-    </span>
   );
 }
 

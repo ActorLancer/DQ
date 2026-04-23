@@ -330,6 +330,93 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-295（计划中）
+- 任务：`WEB-021` 前端最小页面闭环（portal-web / console-web）
+- 状态：计划中
+- 当前任务编号：`WEB-021`
+- 前置依赖核对结果：`WEB-005`、`WEB-009`、`CTX-021`、`DB-035` 已满足；`WEB-001 ~ WEB-020` 已本地提交，现有首页、商品详情、下单页、标准演示页与 Playwright smoke 可作为本批显式映射整改基线。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `WEB-021` 只处理“订单创建页 / 商品详情页 / 演示入口页”对五条标准链路和 `主 SKU / 补充 SKU` 的显式展示，不得把 `SHARE_RO / QRY_LITE / RPT_STD` 等独立 SKU 并回大类，也不得合并 `WEB-022` 通知联查页。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认五条标准链路 `S1 ~ S5` 与 `主 SKU / 补充 SKU` 的冻结真值源，以及 `SHARE_RO / QRY_LITE / SBX_STD / RPT_STD` 为独立 SKU、前端不得回并大类的约束。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认商品详情页、下单页和首页演示入口页都应成为正式前后端闭环页面，需要展示官方命名、模板/订单入口与交互说明，而不是只给抽象分类标签。
+  - `packages/openapi/catalog.yaml`、`packages/openapi/trade.yaml` 及对应 `docs/02-openapi/*.yaml`：确认 `GET /api/v1/catalog/standard-scenarios`、`GET /api/v1/products/{id}`、`GET /api/v1/orders/standard-templates` 已冻结 `scenario_code / scenario_name / primary_sku / supplementary_skus` 字段。
+  - `apps/platform-core/src/modules/catalog/standard_scenarios.rs`、`apps/portal-web/src/lib/order-workflow.ts`、`apps/portal-web/src/lib/standard-demo.ts`：确认后端 live 数据与前端 fallback 都维护同一套官方标准链路映射；当前主要缺口是商品详情页缺少显式映射卡片，下单页与演示页展示样式也尚未统一。
+  - `apps/portal-web/e2e/smoke.spec.ts`、`apps/portal-web/src/lib/product-detail-view.test.ts`：确认现有自动化尚未显式断言商品详情页的链路-SKU 映射，需要补组件级与 E2E 级验证。
+- 当前完成标准理解：
+  - 商品详情页必须在真实商品 SKU 基础上展示“场景名 -> 主 SKU / 补充 SKU”的正式映射，并明确哪些标准链路可由当前商品承接；若无匹配链路，需要显示正式空态而不是发明映射。
+  - 订单创建页与演示入口页必须延续同一套官方映射展示口径，确保五条标准链路、主 SKU、补充 SKU 的命名、顺序和视觉语义一致。
+  - 自动化测试至少覆盖共享映射逻辑和页面可见断言，防止后续再把独立 SKU 回并到文件/API 大类。
+- 实施计划：
+  1. 新增共享标准链路映射组件/辅助逻辑，统一渲染 `场景名 -> 主 SKU / 补充 SKU`，并支持 live/fallback 来源标识与显式空态。
+  2. 商品详情页接入标准场景查询或 fallback 模板，按商品返回的 SKU 计算可承接链路并展示正式映射卡片。
+  3. 下单页与标准演示页改为复用同一套映射组件，收敛展示样式与文案。
+  4. 补充 Vitest 与 Playwright 断言，覆盖详情页 / 下单页 / 演示入口页的官方映射展示，然后执行仓库级验证、更新 TODO 台账和待审批日志并本地提交。
+
+### BATCH-295（待审批）
+- 任务：`WEB-021` 前端最小页面闭环（portal-web / console-web）
+- 状态：待审批
+- 当前任务编号：`WEB-021`
+- 前置依赖核对结果：`WEB-005`、`WEB-009`、`CTX-021`、`DB-035` 与已提交的 `WEB-001 ~ WEB-020` 基线继续生效；本批只处理“商品详情页 / 下单页 / 演示入口页”的标准链路映射显式化，没有提前合并 `WEB-022` 通知联查页。
+- 完成情况：
+  - 新增 `apps/portal-web/src/components/portal/standard-scenario-matrix-card.tsx` 与 `apps/portal-web/src/lib/standard-scenario-view.ts`，抽出统一的“场景名 -> 主 SKU / 补充 SKU”映射卡片与商品 SKU 命中逻辑，支持 live/fallback 来源标识、补充 SKU 不回并大类、以及商品详情页的主 SKU/补充 SKU命中态说明。
+  - `apps/portal-web/src/components/portal/product-detail-shell.tsx` 已接入 `GET /api/v1/catalog/standard-scenarios`，并以 `skus[].sku_type` 为唯一事实源计算当前商品可承接的标准链路；详情页现在会显式展示命中的场景名、主 SKU、补充 SKU、待补充 SKU，以及“按该链路下单”入口；若没有命中链路则显示正式空态，不再用 `product_type` 或 `delivery_type` 推断映射。
+  - `apps/portal-web/src/components/portal/order-workflow-shell.tsx` 与 `apps/portal-web/src/components/portal/standard-demo-shell.tsx` 已改为复用同一套共享映射卡片；下单页继续展示五条标准链路全量入口和模板信息，演示入口页展示当前场景的官方主 SKU / 补充 SKU 与订单模板，不再维持分散的局部写法。
+  - 新增 `apps/portal-web/src/lib/standard-scenario-view.test.ts`，覆盖 fallback 五条标准链路、主 SKU / 补充 SKU 的命中规则、以及 `SHARE_RO` 等补充 SKU 不回并大类的断言。
+  - `apps/portal-web/e2e/smoke.spec.ts` 已补充三类前端断言：标准演示页明确显示 `场景名 -> 主 SKU / 补充 SKU`；下单页空态仍显式展示官方映射；商品详情页新增通过 `/api/platform/**` 拦截正式契约形状响应的内容态 smoke，验证 `S1` 完整命中和 `S4` 仅主 SKU 命中的双场景展示。
+- 验证：
+  - 前端 / 工作区：
+    - `pnpm install --frozen-lockfile`
+    - `pnpm lint`
+    - `pnpm typecheck`
+    - `pnpm test`
+    - `pnpm build`
+    - `pnpm --filter @datab/portal-web lint`
+    - `pnpm --filter @datab/portal-web typecheck`
+    - `pnpm --filter @datab/portal-web test:unit`
+    - `pnpm --filter @datab/portal-web test:e2e`
+  - 后端 / 通用：
+    - `cargo fmt --all`
+    - `cargo check -p platform-core`
+    - `cargo test -p platform-core`
+    - `cargo sqlx prepare --workspace`
+    - `./scripts/check-query-compile.sh`
+  - 真实联调与 smoke：
+    - `./scripts/check-keycloak-realm.sh`
+    - 真实 password grant 获取 `local-platform-admin / platform_admin` Bearer Token，并解析出 `user_id=10000000-0000-0000-0000-000000000353`、`org_id=10000000-0000-0000-0000-000000000103`、`role=platform_admin`
+    - 直连 `platform-core`：
+      - `GET /api/v1/catalog/standard-scenarios`
+      - `GET /api/v1/orders/standard-templates`
+      - `GET /api/v1/products/20000000-0000-0000-0000-000000000309`
+      - 三个请求均附带 `Authorization: Bearer` + `x-user-id / x-tenant-id / x-role`
+    - 数据库回查：
+      - `select p.product_id, p.title, p.metadata->>'standard_scenario_code' as scenario_code, sku.sku_type, sku.status from catalog.product p join catalog.product_sku sku on sku.product_id = p.product_id where p.product_id = '20000000-0000-0000-0000-000000000309'::uuid order by sku.sku_type;`
+    - 真实前后端 Playwright：
+      - `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 WEB_E2E_LIVE=1 pnpm --filter @datab/portal-web exec playwright test e2e/web018-live.spec.ts`
+      - `PLATFORM_CORE_BASE_URL=http://127.0.0.1:8080 WEB_E2E_LIVE=1 pnpm --filter @datab/console-web exec playwright test e2e/web018-live.spec.ts`
+- 验证结果：
+  - `pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build` 全部通过；portal 单体 `lint / typecheck / test:unit / test:e2e` 也全部通过，新加的 `standard-scenario-view.test.ts` 与商品详情内容态 Playwright 断言稳定通过。
+  - `pnpm test` 期间 portal / console 的 Playwright WebServer 仍会打印既有 `127.0.0.1:8094` 代理 `ECONNREFUSED` 噪音日志，但所有断言与退出码均成功；本批另外补跑了指向 `127.0.0.1:8080` 的 live Playwright，portal 与 console 均通过，证明真实前后端链路可用。
+  - `cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 全部通过；仅保留仓库既有 `unused` / `dead_code` warnings，没有新增 Rust / SQLx 回归。
+  - 真实 API `curl` 通过：
+    - `/api/v1/catalog/standard-scenarios` 返回 `S1 ~ S5` 五条官方场景及 `primary_sku / supplementary_skus`
+    - `/api/v1/orders/standard-templates` 返回五条官方订单模板及对应 `primary_sku / supplementary_skus`
+    - `/api/v1/products/20000000-0000-0000-0000-000000000309` 返回 `工业设备运行指标 API 订阅`，并带 `API_SUB / API_PPU` 两个正式 SKU
+  - 数据库回查与页面行为对齐：
+    - `catalog.product(20000000-0000-0000-0000-000000000309)` 的 `metadata.standard_scenario_code='S1'`
+    - `catalog.product_sku` 中该商品存在 `API_SUB` 与 `API_PPU` 两条 `active` SKU，和详情页命中结果一致
+  - 本批没有新增业务写入或临时测试数据，因此无需额外业务数据清理；审计记录继续按 append-only 保留。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`WEB-021`
+  - `数据交易平台-全集成基线-V1.md`：五条标准链路与 `主 SKU / 补充 SKU` 冻结映射
+  - `页面说明书-V1-完整版.md`：产品详情页、询单/下单页、演示入口页的页面目标与模块要求
+  - `packages/openapi/catalog.yaml`、`packages/openapi/trade.yaml` 与 `docs/02-openapi/*.yaml`
+  - `apps/platform-core/src/modules/catalog/standard_scenarios.rs`
+- 覆盖的任务清单条目：`WEB-021`
+- 未覆盖项：
+  - 无。`WEB-021` 要求的显式场景-SKU 映射展示、商品详情页真实绑定、下单页/演示页统一口径、自动化断言、真实 API 联调与数据库回查均已完成；通知联查页仍按顺序由 `WEB-022` 继续实现。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`；`docs/开发任务/V1-Core-TODO与预留清单.md` 已登记本批“无新增”结论。
+
 ### BATCH-290（计划中）
 - 任务：`WEB-016` 实现开发者页面：应用管理、API Key、调用日志、trace 联查、Mock 支付操作入口
 - 状态：计划中

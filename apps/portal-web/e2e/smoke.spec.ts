@@ -3,6 +3,129 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 const STANDARD_PRODUCT_ID = "20000000-0000-0000-0000-000000000309";
 const STANDARD_SKU_ID = "20000000-0000-0000-0000-000000000409";
 const SEEDED_ORDER_ID = "30000000-0000-0000-0000-000000000101";
+const STANDARD_PRODUCT_DETAIL_RESPONSE = {
+  success: true,
+  data: {
+    product_id: STANDARD_PRODUCT_ID,
+    asset_id: "20000000-0000-0000-0000-000000000301",
+    asset_version_id: "20000000-0000-0000-0000-000000000302",
+    seller_org_id: "10000000-0000-0000-0000-000000000101",
+    title: "工业设备运行指标 API 订阅",
+    category: "industry_iot",
+    product_type: "service_product",
+    status: "listed",
+    description: "设备稼动率、能耗与产线状态以订阅 API 方式提供。",
+    price_mode: "fixed",
+    price: "1999.00000000",
+    currency_code: "CNY",
+    delivery_type: "api_subscription",
+    allowed_usage: ["internal_analysis"],
+    searchable_text: null,
+    subtitle: "S1 对应的正式商品详情夹具",
+    industry: "industrial_manufacturing",
+    use_cases: ["设备稼动率", "能耗监控"],
+    data_classification: "P1",
+    quality_score: "0.93",
+    metadata: {
+      sample_summary: "字段级样本已脱敏",
+      sample_hash: "sha256:portal-web-021",
+      full_hash: "sha256:portal-web-021-full",
+      field_summary: "20 字段，分钟级刷新",
+      field_names: ["device_id", "uptime_ratio", "energy_consumption"],
+      quality_report_id: "report-web-021",
+      processing_chain_summary: "iot_ingest -> normalize -> aggregate",
+      data_contract_id: "contract-web-021",
+    },
+    search_document_version: 1,
+    index_sync_status: "synced",
+    skus: [
+      {
+        sku_id: STANDARD_SKU_ID,
+        sku_code: "SKU-API-SUB-WEB021",
+        sku_type: "API_SUB",
+        billing_mode: "subscription",
+        trade_mode: "api_subscription",
+        acceptance_mode: "api_open",
+        refund_mode: "billing_adjustment",
+        unit_name: "月",
+        status: "active",
+      },
+      {
+        sku_id: "20000000-0000-0000-0000-000000000410",
+        sku_code: "SKU-API-PPU-WEB021",
+        sku_type: "API_PPU",
+        billing_mode: "usage",
+        trade_mode: "api_pay_per_use",
+        acceptance_mode: "api_open",
+        refund_mode: "billing_adjustment",
+        unit_name: "次",
+        status: "active",
+      },
+    ],
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  },
+};
+const STANDARD_SCENARIOS_RESPONSE = {
+  success: true,
+  data: [
+    {
+      scenario_code: "S1",
+      scenario_name: "工业设备运行指标 API 订阅",
+      primary_sku: "API_SUB",
+      supplementary_skus: ["API_PPU"],
+    },
+    {
+      scenario_code: "S2",
+      scenario_name: "工业质量与产线日报文件包交付",
+      primary_sku: "FILE_STD",
+      supplementary_skus: ["FILE_SUB"],
+    },
+    {
+      scenario_code: "S3",
+      scenario_name: "供应链协同查询沙箱",
+      primary_sku: "SBX_STD",
+      supplementary_skus: ["SHARE_RO"],
+    },
+    {
+      scenario_code: "S4",
+      scenario_name: "零售门店经营分析 API / 报告订阅",
+      primary_sku: "API_SUB",
+      supplementary_skus: ["RPT_STD"],
+    },
+    {
+      scenario_code: "S5",
+      scenario_name: "商圈/门店选址查询服务",
+      primary_sku: "QRY_LITE",
+      supplementary_skus: ["RPT_STD"],
+    },
+  ],
+};
+const SELLER_PROFILE_RESPONSE = {
+  success: true,
+  data: {
+    org_id: "10000000-0000-0000-0000-000000000101",
+    org_name: "Luna Industrial Data Lab",
+    description: "工业制造领域供方夹具。",
+    org_type: "enterprise",
+    status: "active",
+    country_code: "CN",
+    region_code: "SH",
+    credit_level: "A",
+    risk_level: "L2",
+    reputation_score: "4.8",
+    listed_product_count: 12,
+    index_sync_status: "synced",
+    search_document_version: 3,
+    industry_tags: ["industrial_manufacturing", "iot"],
+  },
+};
+const EMPTY_RECOMMENDATIONS_RESPONSE = {
+  success: true,
+  data: {
+    items: [],
+  },
+};
 const restrictedPorts = new Set([
   "5432",
   "6379",
@@ -84,14 +207,14 @@ async function installPortalBearerSession(context: BrowserContext) {
 test("portal home links directly to five standard demo paths", async ({ page }) => {
   const restrictedRequests = watchRestrictedBrowserRequests(page);
   const scenarios = [
-    ["S1", "工业设备运行指标 API 订阅"],
-    ["S2", "工业质量与产线日报文件包交付"],
-    ["S3", "供应链协同查询沙箱"],
-    ["S4", "零售门店经营分析 API / 报告订阅"],
-    ["S5", "商圈/门店选址查询服务"],
+    ["S1", "工业设备运行指标 API 订阅", "API_SUB", "API_PPU"],
+    ["S2", "工业质量与产线日报文件包交付", "FILE_STD", "FILE_SUB"],
+    ["S3", "供应链协同查询沙箱", "SBX_STD", "SHARE_RO"],
+    ["S4", "零售门店经营分析 API / 报告订阅", "API_SUB", "RPT_STD"],
+    ["S5", "商圈/门店选址查询服务", "QRY_LITE", "RPT_STD"],
   ] as const;
 
-  for (const [scenarioCode, scenarioName] of scenarios) {
+  for (const [scenarioCode, scenarioName, primarySku, supplementarySku] of scenarios) {
     await page.goto("/");
     await page
       .getByRole("link", { name: `查看 ${scenarioCode} 演示路径` })
@@ -106,6 +229,13 @@ test("portal home links directly to five standard demo paths", async ({ page }) 
     await expect(page.getByText("说明卡片", { exact: true })).toBeVisible();
     await expect(
       page.getByText("GET /api/v1/catalog/standard-scenarios").first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText("场景名 -> 主 SKU / 补充 SKU").first(),
+    ).toBeVisible();
+    await expect(page.getByText(`主 SKU ${primarySku}`).first()).toBeVisible();
+    await expect(
+      page.getByText(`补充 SKU ${supplementarySku}`).first(),
     ).toBeVisible();
     await expect(page.getByText("Idempotency-Key").first()).toBeVisible();
   }
@@ -327,6 +457,7 @@ test("WEB-018 portal user flow covers login, search, product, order, delivery, a
     `/trade/orders/new?product_id=${STANDARD_PRODUCT_ID}&sku_id=${STANDARD_SKU_ID}&scenario=S1&preview=empty`,
   );
   await expect(page.getByText("五条标准链路下单入口")).toBeVisible();
+  await expect(page.getByText("场景名 -> 主 SKU / 补充 SKU").first()).toBeVisible();
   await expect(page.getByText("工业设备运行指标 API 订阅").first()).toBeVisible();
   await expect(page.getByText("API_SUB + API_PPU").first()).toBeVisible();
 
@@ -346,6 +477,62 @@ test("WEB-018 portal user flow covers login, search, product, order, delivery, a
   await page.goto(`/developer/trace?order_id=${SEEDED_ORDER_ID}`);
   await expect(page.getByText("Trace 与调用日志联查")).toBeVisible();
   await expect(page.getByText("request_id").first()).toBeVisible();
+
+  expect(restrictedRequests).toEqual([]);
+});
+
+test("portal product detail renders standard scenario mapping from platform api", async ({
+  context,
+  page,
+}) => {
+  const restrictedRequests = watchRestrictedBrowserRequests(page);
+
+  await installPortalBearerSession(context);
+  await page.route("**/api/platform/api/v1/products/*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(STANDARD_PRODUCT_DETAIL_RESPONSE),
+    });
+  });
+  await page.route("**/api/platform/api/v1/catalog/standard-scenarios", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(STANDARD_SCENARIOS_RESPONSE),
+    });
+  });
+  await page.route("**/api/platform/api/v1/sellers/*/profile", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(SELLER_PROFILE_RESPONSE),
+    });
+  });
+  await page.route("**/api/platform/api/v1/recommendations*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(EMPTY_RECOMMENDATIONS_RESPONSE),
+    });
+  });
+
+  await page.goto(`/products/${STANDARD_PRODUCT_ID}`);
+
+  await expect(page.getByText("商品可承接的标准链路")).toBeVisible();
+  await expect(
+    page.getByText("场景名 -> 主 SKU / 补充 SKU").first(),
+  ).toBeVisible();
+  await expect(page.getByText("standard-scenarios live")).toBeVisible();
+  await expect(page.getByText("工业设备运行指标 API 订阅").first()).toBeVisible();
+  await expect(
+    page.getByText("当前商品已完整命中该标准链路的主 SKU / 补充 SKU，可携带 scenario_code 进入下单。"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("当前商品已命中主 SKU，但仍缺少部分补充 SKU；下单时仍以实际 SKU 快照为准。"),
+  ).toBeVisible();
+  await expect(page.getByText("待补充 SKU").first()).toBeVisible();
+  await expect(page.getByText("RPT_STD").first()).toBeVisible();
 
   expect(restrictedRequests).toEqual([]);
 });

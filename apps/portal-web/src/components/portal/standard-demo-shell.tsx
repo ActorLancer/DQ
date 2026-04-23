@@ -26,6 +26,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { StandardScenarioMatrixCard } from "@/components/portal/standard-scenario-matrix-card";
 import {
   ORDER_SCENARIO_BLUEPRINTS,
   readStandardOrderTemplates,
@@ -201,51 +202,48 @@ export function StandardDemoShell({
               </div>
             </Card>
 
-            <Card>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <CardTitle>模板与 SKU 映射</CardTitle>
-                  <CardDescription>
-                    展示合同、验收、退款模板和订单模板，不把 `SHARE_RO / QRY_LITE / RPT_STD`
-                    等独立 SKU 并回文件或 API 大类。
-                  </CardDescription>
+            <StandardScenarioMatrixCard
+              title="场景名 -> 主 SKU / 补充 SKU"
+              description="展示当前标准链路绑定的合同、验收、退款和订单模板，不把 `SHARE_RO / QRY_LITE / RPT_STD` 等独立 SKU 并回文件或 API 大类。"
+              items={scenario ? [scenario] : []}
+              summaryBadges={[
+                isLiveScenario ? "standard-scenarios live" : "standard-scenarios frozen",
+                isLiveTemplate ? "order-templates live" : "order-templates fallback",
+              ]}
+              emptyTitle="当前演示链路未返回标准场景"
+              emptyDescription="页面保留当前演示说明，但不会发明缺失的场景-SKU 映射。"
+              renderMeta={() => (
+                <div className="grid gap-2">
+                  <InfoRow
+                    label="合同模板"
+                    value={scenario?.contract_template ?? guide.contractTemplate}
+                  />
+                  <InfoRow
+                    label="验收模板"
+                    value={scenario?.acceptance_template ?? guide.acceptanceTemplate}
+                  />
+                  <InfoRow
+                    label="退款模板"
+                    value={scenario?.refund_template ?? guide.refundTemplate}
+                  />
+                  <InfoRow
+                    label="订单模板"
+                    value={orderTemplate?.template_code ?? "ORDER_TEMPLATE_PENDING"}
+                  />
+                  <InfoRow
+                    label="主流程"
+                    value={String(
+                      orderTemplate?.order_draft.primary_flow_code ??
+                        guide.deliveryType,
+                    )}
+                  />
+                  <InfoRow
+                    label="流程节点"
+                    value={formatList(orderTemplate?.workflow_steps ?? [])}
+                  />
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge>{guide.primarySku}</Badge>
-                  {guide.supplementarySkus.map((sku) => (
-                    <Badge key={sku} className="bg-white text-[var(--ink-soft)]">
-                      {sku}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <InfoRow
-                  label="合同模板"
-                  value={scenario?.contract_template ?? guide.contractTemplate}
-                />
-                <InfoRow
-                  label="验收模板"
-                  value={scenario?.acceptance_template ?? guide.acceptanceTemplate}
-                />
-                <InfoRow
-                  label="退款模板"
-                  value={scenario?.refund_template ?? guide.refundTemplate}
-                />
-                <InfoRow
-                  label="订单模板"
-                  value={orderTemplate?.template_code ?? "ORDER_TEMPLATE_PENDING"}
-                />
-                <InfoRow
-                  label="主流程"
-                  value={String(orderTemplate?.order_draft.primary_flow_code ?? guide.deliveryType)}
-                />
-                <InfoRow
-                  label="流程节点"
-                  value={formatList(orderTemplate?.workflow_steps ?? [])}
-                />
-              </div>
-            </Card>
+              )}
+            />
 
             <Card>
               <CardTitle>交付入口映射</CardTitle>
