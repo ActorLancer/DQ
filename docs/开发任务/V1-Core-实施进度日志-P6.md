@@ -477,6 +477,52 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-286（计划中）
+- 任务：`SEARCHREC-015` 逐任务复核与正式重验（搜索/推荐一致性与 worker 可靠性测试矩阵）
+- 状态：计划中
+- 说明：按 `SEARCHREC-015` 的冻结口径，重新核对“商品下架后搜索结果消失、冻结后推荐不可见、重建后 alias 生效”这三类业务一致性场景是否仍由真实 smoke 覆盖，同时确认统一 Bearer、正式权限点、必要 `X-Idempotency-Key` / `X-Step-Up-Token`、审计痕迹、`SEARCH_*` 错误码、consumer 幂等、双层 DLQ 与 reprocess 路径没有在后续 task 中回退成文档占位。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-015`，不提前进入 `SEARCHREC-016` 的 OpenAPI 归档冻结。
+
+### BATCH-286（待审批）
+- 任务：`SEARCHREC-015` 逐任务复核与正式重验（搜索/推荐一致性与 worker 可靠性测试矩阵）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-015`
+- 前置依赖核对结果：`SEARCHREC-001` 至 `SEARCHREC-014`、`SEARCHREC-018` 至 `SEARCHREC-020` 已在前序轮次重验搜索主链、推荐主链、运维写接口、统一鉴权和 consumer 可靠性；当前仓库仍具备 `PostgreSQL + Kafka + OpenSearch + Redis + audit` 的正式闭环，本批只重验 SEARCHREC 综合一致性与 worker 可靠性测试矩阵，不提前进入 `SEARCHREC-016`。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。`apps/platform-core/src/modules/search/tests/search_api_db.rs` 继续覆盖“商品/卖方状态变化后搜索结果消失、alias 切换后查询命中新索引、最终仍回 PostgreSQL 做可见性放行”；`apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs` 继续覆盖“冻结商品不会出现在推荐结果中、推荐读写链仍需 Bearer/权限/step-up/审计”。
+  - `workers/search-indexer/src/main.rs` 与 `workers/recommendation-aggregator/src/main.rs` 的 live smoke 仍通过真实数据库、Kafka 和 Redis 回查证明 worker 可靠性，没有退回“只跑函数单测、不验证实际副作用”的口径。
+  - `AUD-010` 的 `audit_dead_letter_reprocess_db_smoke` 继续作为 SEARCHREC worker 失败恢复的正式回查，证明 SEARCHREC 的双层 DLQ 不是孤立存在，而是仍能接入统一 reprocess 控制面。
+- 验证：
+  - `cargo fmt --all --check`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_visibility_and_alias_consistency_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_filters_frozen_product_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `search_api_and_ops_db_smoke` 与 `search_visibility_and_alias_consistency_db_smoke` 通过，继续证明搜索主链仍是 `PostgreSQL -> outbox/Kafka -> search-indexer -> OpenSearch -> Redis -> PostgreSQL final check`，并且 alias 切换、状态变化后的最终可见性判断没有回退成直接信任 OpenSearch 文档。
+  - `recommendation_api_full_runtime_db_smoke` 与 `recommendation_filters_frozen_product_db_smoke` 通过，继续证明推荐主链仍会回 PostgreSQL 过滤冻结/不可见商品，且推荐运行态编排、缓存、行为链没有让候选结果绕过最终业务放行。
+  - `search_indexer_db_smoke` 与 `recommendation_aggregator_db_smoke` 通过，继续证明两个 worker 都会真实处理消息、写回数据库/缓存副作用并维持正式可靠性链路。
+  - `audit_dead_letter_reprocess_db_smoke` 通过，继续证明 SEARCHREC worker 失败记录仍可接入统一 dead-letter reprocess 控制面。
+  - `cargo test -p platform-core` 全量通过，结果保持 `355 passed; 0 failed; 0 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 也通过，本轮没有发现新的查询编译或集成回归缺口。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-015`
+  - `商品搜索、排序与索引同步设计.md`：搜索投影、索引同步、alias 切换与最终 PostgreSQL 放行
+  - `商品推荐与个性化发现设计.md`：推荐编排、行为回流、冻结/可见性过滤与运行态缓存
+  - `A11-测试与Smoke口径误报风险.md`
+  - `search-rec-cases.md`
+- 覆盖的任务清单条目：`SEARCHREC-015`
+- 未覆盖项：
+  - 无。搜索/推荐一致性、worker 可靠性、双层 DLQ 与统一 reprocess 当前仍保持正式闭环，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
