@@ -523,6 +523,60 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-287（计划中）
+- 任务：`SEARCHREC-016` 逐任务复核与正式重验（Search / Recommendation OpenAPI 第一版归档与契约冻结）
+- 状态：计划中
+- 说明：按 `SEARCHREC-016` 的冻结口径，重新核对 `packages/openapi/{search,recommendation}.yaml` 与 `docs/02-openapi/{search,recommendation}.yaml` 是否仍逐字同步，并确认 Bearer 鉴权、正式权限点、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计/访问日志副作用与 `SEARCH_*` 错误码已经完整落入归档，不再存在 `x-role` 占位或 README/脚本/实现之间的契约漂移。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-016`，不提前进入 `SEARCHREC-017` 的测试矩阵归档。
+
+### BATCH-287（待审批）
+- 任务：`SEARCHREC-016` 逐任务复核与正式重验（Search / Recommendation OpenAPI 第一版归档与契约冻结）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-016`
+- 前置依赖核对结果：`CAT-001`、`DB-011`、`DB-012`、`CORE-008` 与 `SEARCHREC-015` 已在前序阶段完成；当前仓库已具备正式搜索/推荐运行时、统一 Bearer 契约、必要 `step-up` 与验收测试矩阵，本批只重验 OpenAPI 归档与实现对齐，不提前进入 `SEARCHREC-017` 的测试用例归档。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增代码修订。`packages/openapi/search.yaml` 与 `docs/02-openapi/search.yaml`、`packages/openapi/recommendation.yaml` 与 `docs/02-openapi/recommendation.yaml` 当前仍逐字同步，`cmp` 结果均为 `0`。
+  - `./scripts/check-openapi-schema.sh` 仍对 Search / Recommendation 契约执行强校验，已继续证明这两份 OpenAPI 不再使用 `x-role` 占位，并且要求 Bearer 鉴权、正式权限点、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计/访问日志副作用与 `SEARCH_*` 错误码。
+  - 搜索与推荐路由测试仍与文档口径一致：搜索前台读接口要求 Bearer，搜索运维接口要求正式权限点；推荐运维写接口要求 Bearer、正式权限点与必要 `step-up`。没有出现“YAML 已冻结但 handler 仍接受旧占位语义”的漂移。
+- 验证：
+  - `cargo fmt --all --check`
+  - `cmp -s packages/openapi/search.yaml docs/02-openapi/search.yaml`
+  - `cmp -s packages/openapi/recommendation.yaml docs/02-openapi/recommendation.yaml`
+  - `./scripts/check-openapi-schema.sh`
+  - `cargo test -p platform-core rejects_catalog_search_without_bearer -- --nocapture`
+  - `cargo test -p platform-core rejects_search_ops_without_permission -- --nocapture`
+  - `cargo test -p platform-core rejects_recommendation_placement_ops_without_bearer -- --nocapture`
+  - `cargo test -p platform-core recommendation_placement_patch_requires_step_up_token -- --nocapture`
+  - `cargo test -p platform-core rejects_recommendation_ranking_profiles_without_permission -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cmp` 对两组 OpenAPI 文件均返回 `0`，确认 `packages/openapi` 与 `docs/02-openapi` 当前仍保持逐字同步，没有归档副本落后于实现期参考。
+  - `./scripts/check-openapi-schema.sh` 通过，继续证明 Search / Recommendation OpenAPI 已覆盖 Bearer 鉴权、正式权限点、`X-Idempotency-Key`、必要 `X-Step-Up-Token`、审计/访问日志副作用，并强制清理 `x-role` 占位语义。
+  - 路由契约测试全部通过：
+    - `rejects_catalog_search_without_bearer`
+    - `rejects_search_ops_without_permission`
+    - `rejects_recommendation_placement_ops_without_bearer`
+    - `recommendation_placement_patch_requires_step_up_token`
+    - `rejects_recommendation_ranking_profiles_without_permission`
+    继续证明实现与归档契约在 Bearer、权限与 `step-up` 维度一致。
+  - `cargo test -p platform-core` 全量通过，结果保持 `355 passed; 0 failed; 0 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮没有发现新的契约或查询编译漂移。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-016`
+  - `商品搜索、排序与索引同步设计.md`：V1 搜索正式方案与投影边界
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索公共头、运维接口与 `SEARCH_*` 错误码
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐运维权限与 `step-up` / 审计边界
+  - `A09-推荐主链路与行为流契约缺口.md`
+  - `A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`
+  - `docs/02-openapi/README.md`、`packages/openapi/README.md`
+- 覆盖的任务清单条目：`SEARCHREC-016`
+- 未覆盖项：
+  - 无。Search / Recommendation OpenAPI 归档、README 索引、脚本校验与实现契约当前保持一致，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
