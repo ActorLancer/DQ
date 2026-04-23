@@ -577,6 +577,55 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-288（计划中）
+- 任务：`SEARCHREC-017` 逐任务复核与正式重验（Search / Recommendation 测试矩阵归档）
+- 状态：计划中
+- 说明：按 `SEARCHREC-017` 的冻结口径，重新核对 `docs/05-test-cases/search-rec-cases.md` 是否仍覆盖投影延迟、回 PostgreSQL 最终校验、推荐曝光/点击幂等、零结果兜底、统一 Bearer / 正式权限点 / 必要 `X-Step-Up-Token` / 审计 / 搜索域错误码，以及 consumer 幂等、双层 DLQ 与 dry-run reprocess，且 README / checker /实际 smoke 命令仍与文档保持一致。
+- 追溯：严格按 `SEARCHREC` 顺序推进；本批只处理 `SEARCHREC-017`，不提前进入 `SEARCHREC-021` 的 alias 权威源收口。
+
+### BATCH-288（待审批）
+- 任务：`SEARCHREC-017` 逐任务复核与正式重验（Search / Recommendation 测试矩阵归档）
+- 状态：待审批
+- 当前任务编号：`SEARCHREC-017`
+- 前置依赖核对结果：`SEARCHREC-016` 已重验 OpenAPI 归档与契约冻结，`SEARCHREC-020` 已重验 consumer 幂等 / 双层 DLQ / reprocess，当前仓库仍具备正式搜索/推荐运行时、worker smoke 与 canonical checker；本批只重验测试矩阵文档与真实回归命令的一致性。
+- 复核结论：
+  - 当前实现满足冻结口径，无需新增文档或代码修订。`docs/05-test-cases/search-rec-cases.md` 当前仍完整覆盖投影延迟、alias 切换后回 PostgreSQL 最终校验、推荐曝光/点击幂等、`APP_MODE=local` 的 zero-result fallback、统一 Bearer / 正式权限点 / 必要 `X-Step-Up-Token` / 审计 / 搜索域错误码，以及 consumer 幂等、双层 DLQ 与 dry-run reprocess。
+  - `docs/05-test-cases/README.md` 仍把 `search-rec-cases.md` 列为 `SEARCHREC-017` 的正式验收矩阵，并明确 `SEARCHREC consumer 幂等 / 双层 DLQ / reprocess` 由该文件承接；没有出现“文档存在但 README / checker 未引用”的漂移。
+  - 本轮按文档列出的核心回归命令重放后，搜索主链、推荐主链、本地最小候选、两个 worker 与 dead-letter reprocess 都继续通过，说明测试矩阵没有失真成过期说明。
+- 验证：
+  - `cargo fmt --all --check`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_api_and_ops_db_smoke -- --nocapture`
+  - `SEARCH_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core search_visibility_and_alias_consistency_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=staging cargo test -p platform-core recommendation_api_full_runtime_db_smoke -- --nocapture`
+  - `RECOMMEND_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab APP_MODE=local OPENSEARCH_ENDPOINT=http://127.0.0.1:1 cargo test -p platform-core recommendation_local_minimal_candidate_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p search-indexer search_indexer_db_smoke -- --nocapture`
+  - `SEARCHREC_WORKER_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p recommendation-aggregator recommendation_aggregator_db_smoke -- --nocapture`
+  - `AUD_DB_SMOKE=1 DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo test -p platform-core audit_dead_letter_reprocess_db_smoke -- --nocapture`
+  - `cargo check -p platform-core`
+  - `cargo test -p platform-core`
+  - `DATABASE_URL=postgres://datab:datab_local_pass@127.0.0.1:5432/datab cargo sqlx prepare --workspace`
+  - `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `search_api_and_ops_db_smoke` 与 `search_visibility_and_alias_consistency_db_smoke` 通过，继续证明文档中的“投影延迟 / sync state / alias switch + 回 PG 最终校验”验收项仍能被真实 smoke 覆盖。
+  - `recommendation_api_full_runtime_db_smoke` 与 `recommendation_local_minimal_candidate_db_smoke` 通过，继续证明文档中的“曝光/点击幂等 + 审计留痕”“local 最小候选 + zero_result_fallback”验收项仍为真实运行事实。
+  - `search_indexer_db_smoke`、`recommendation_aggregator_db_smoke` 与 `audit_dead_letter_reprocess_db_smoke` 通过，继续证明文档登记的 consumer 幂等、双层 DLQ 与 dry-run reprocess 不是纸面清单。
+  - `cargo test -p platform-core` 全量通过，结果保持 `355 passed; 0 failed; 0 ignored`；`cargo sqlx prepare --workspace` 与 `./scripts/check-query-compile.sh` 通过，本轮没有发现新的测试矩阵漂移或查询编译缺口。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`SEARCHREC-017`
+  - `商品搜索、排序与索引同步设计.md`：V1 搜索正式方案与最终 PostgreSQL 校验边界
+  - `商品搜索、排序与索引同步接口协议正式版.md`：搜索接口、运维接口、公共头与错误码
+  - `商品推荐与个性化发现接口协议正式版.md`：推荐读写、ops 权限、幂等与最终 PostgreSQL 校验
+  - `A09-推荐主链路与行为流契约缺口.md`
+  - `A11-测试与Smoke口径误报风险.md`
+  - `A13-SEARCHREC-统一鉴权-Step-Up-审计与契约口径缺口.md`
+  - `A15-SEARCHREC-Consumer-幂等与DLQ闭环缺口.md`
+  - `docs/05-test-cases/README.md`
+- 覆盖的任务清单条目：`SEARCHREC-017`
+- 未覆盖项：
+  - 无。`search-rec-cases.md` 当前仍被 README 正式引用，且其中列出的关键 smoke / worker / reprocess 命令与现有实现一致，没有新增 `V1-gap`。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-279（待审批）
 - 任务：`SEARCHREC-011` 逐任务复核与正式重验（推荐位配置接口 `GET/PATCH /api/v1/ops/recommendation/placements*`）
 - 状态：待审批
