@@ -4,7 +4,7 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use db::{Client, GenericClient, NoTls, connect};
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tower::util::ServiceExt;
 
     #[derive(Debug)]
@@ -42,14 +42,19 @@ mod tests {
             .expect("seed order graph");
 
         let app = crate::with_live_test_state(router()).await;
-        for action in [
+        let actions = [
             "authorize_template",
             "validate_params",
             "execute_query",
             "make_result_available",
             "close_acceptance",
-        ] {
-            let request_id = format!("req-trade013-{suffix}-{action}");
+        ];
+        let transition_request_ids = actions
+            .iter()
+            .map(|action| format!("req-trade013-{suffix}-{action}"))
+            .collect::<Vec<_>>();
+
+        for (action, request_id) in actions.iter().zip(transition_request_ids.iter()) {
             let response = app
                 .clone()
                 .oneshot(
@@ -61,7 +66,7 @@ mod tests {
                         ))
                         .header("x-role", "buyer_operator")
                         .header("x-tenant-id", &seed.buyer_org_id)
-                        .header("x-request-id", &request_id)
+                        .header("x-request-id", request_id)
                         .header("content-type", "application/json")
                         .body(Body::from(format!(r#"{{"action":"{action}"}}"#)))
                         .expect("request should build"),
@@ -87,6 +92,7 @@ mod tests {
         assert_eq!(final_row.get::<_, String>(4), "closed");
         assert_eq!(final_row.get::<_, String>(5), "none");
 
+        let conflict_request_id = format!("req-trade013-{suffix}-invalid");
         let conflict_resp = app
             .oneshot(
                 Request::builder()
@@ -97,14 +103,15 @@ mod tests {
                     ))
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", &seed.buyer_org_id)
-                    .header("x-request-id", format!("req-trade013-{suffix}-invalid"))
+                    .header("x-request-id", &conflict_request_id)
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"action":"execute_query"}"#))
                     .expect("request should build"),
             )
             .await
             .expect("response");
-        assert_eq!(conflict_resp.status(), StatusCode::CONFLICT);
+        let conflict_status = conflict_resp.status();
+        assert_eq!(conflict_status, StatusCode::CONFLICT);
         let body = to_bytes(conflict_resp.into_body(), usize::MAX)
             .await
             .expect("body");
@@ -115,6 +122,45 @@ mod tests {
             .unwrap_or_default()
             .to_string();
         assert!(msg.contains("QRY_LITE_TRANSITION_FORBIDDEN"));
+
+        let audit_count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM audit.audit_event
+                 WHERE action_name = 'trade.order.qry_lite.transition'
+                   AND request_id = ANY($1::text[])",
+                &[&transition_request_ids],
+            )
+            .await
+            .expect("query trade audit count")
+            .get(0);
+        assert_eq!(audit_count, 5);
+
+        crate::write_test026_artifact(
+            "trade013-qry-lite-state-machine.json",
+            &json!({
+                "test_id": "trade013_qry_lite_state_machine_db_smoke",
+                "order_id": seed.order_id,
+                "transition_actions": actions,
+                "transition_request_ids": transition_request_ids,
+                "order": {
+                    "current_state": final_row.get::<_, String>(0),
+                    "payment_status": final_row.get::<_, String>(1),
+                    "delivery_status": final_row.get::<_, String>(2),
+                    "acceptance_status": final_row.get::<_, String>(3),
+                    "settlement_status": final_row.get::<_, String>(4),
+                    "dispute_status": final_row.get::<_, String>(5),
+                },
+                "audit": {
+                    "trade_qry_lite_transition": audit_count,
+                },
+                "conflict": {
+                    "request_id": conflict_request_id,
+                    "http_status": conflict_status.as_u16(),
+                    "message": msg,
+                }
+            }),
+        );
 
         cleanup_seed_graph(&client, &seed).await;
     }

@@ -208,6 +208,7 @@ mod tests {
             "{}",
             String::from_utf8_lossy(&invalid_body)
         );
+        let invalid_message = String::from_utf8_lossy(&invalid_body).to_string();
 
         let grant_row = client
             .query_one(
@@ -333,6 +334,69 @@ mod tests {
             .expect("template outbox count")
             .get(0);
         assert_eq!(outbox_count, 2);
+
+        crate::write_test026_artifact(
+            "dlv011-template-grant.json",
+            &json!({
+                "test_id": "dlv011_template_grant_db_smoke",
+                "order_id": seed.order_id,
+                "create_request_id": create_request_id,
+                "update_request_id": update_request_id,
+                "create_response": {
+                    "template_query_grant_id": create_json["data"]["template_query_grant_id"],
+                    "operation": create_json["data"]["operation"],
+                    "current_state": create_json["data"]["current_state"],
+                    "grant_status": create_json["data"]["grant_status"],
+                    "allowed_template_ids": create_json["data"]["allowed_template_ids"],
+                },
+                "update_response": {
+                    "template_query_grant_id": update_json["data"]["template_query_grant_id"],
+                    "operation": update_json["data"]["operation"],
+                    "allowed_template_ids": update_json["data"]["allowed_template_ids"],
+                    "run_quota_json": update_json["data"]["run_quota_json"],
+                },
+                "invalid_response": {
+                    "http_status": invalid_status.as_u16(),
+                    "message": invalid_message,
+                },
+                "db": {
+                    "template_query_grant_id": template_query_grant_id,
+                    "query_surface_id": grant_row.get::<_, String>(0),
+                    "asset_object_id": grant_row.get::<_, String>(1),
+                    "environment_id": grant_row.get::<_, Option<String>>(2),
+                    "template_type": grant_row.get::<_, String>(3),
+                    "template_digest": template_digest,
+                    "allowed_template_ids": grant_row.get::<_, Value>(5),
+                    "execution_rule_snapshot": grant_row.get::<_, Value>(6),
+                    "output_boundary_json": grant_row.get::<_, Value>(7),
+                    "run_quota_json": grant_row.get::<_, Value>(8),
+                    "grant_status": grant_row.get::<_, String>(9),
+                    "delivery_record": {
+                        "status": delivery_row.get::<_, String>(0),
+                        "delivery_type": delivery_row.get::<_, String>(1),
+                        "delivery_route": delivery_row.get::<_, String>(2),
+                        "delivery_commit_hash": delivery_row.get::<_, Option<String>>(3),
+                        "receipt_hash": delivery_row.get::<_, Option<String>>(4),
+                    },
+                    "order": {
+                        "current_state": order_row.get::<_, String>(0),
+                        "payment_status": order_row.get::<_, String>(1),
+                        "delivery_status": order_row.get::<_, String>(2),
+                        "acceptance_status": order_row.get::<_, String>(3),
+                        "settlement_status": order_row.get::<_, String>(4),
+                    },
+                },
+                "audit_counts": {
+                    "delivery_template_query_enable": delivery_audit_count,
+                    "trade_order_qry_lite_transition": trade_audit_count,
+                },
+                "outbox": {
+                    "delivery_committed_count": outbox_count,
+                    "target_topic": "dtp.outbox.domain-events",
+                    "delivery_branch": "template",
+                }
+            }),
+        );
 
         cleanup_seed_graph(&client, &seed).await;
     }

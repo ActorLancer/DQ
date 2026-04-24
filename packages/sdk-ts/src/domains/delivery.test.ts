@@ -76,6 +76,15 @@ describe("delivery domain client", () => {
       },
       { idempotencyKey: "web-010-template-key" },
     );
+    await client.executeTemplateRun(
+      { id: orderId },
+      {
+        template_query_grant_id: "40000000-0000-0000-0000-000000000901",
+        query_template_id: "40000000-0000-0000-0000-000000000902",
+        request_payload_json: { city: "Shanghai", radius_km: 3, limit: 2 },
+      },
+      { idempotencyKey: "web-010-template-run-key" },
+    );
     await client.manageSandboxWorkspace(
       { id: orderId },
       {
@@ -101,6 +110,10 @@ describe("delivery domain client", () => {
       {
         input: `http://127.0.0.1:8080/api/v1/orders/${orderId}/template-grants`,
         key: "web-010-template-key",
+      },
+      {
+        input: `http://127.0.0.1:8080/api/v1/orders/${orderId}/template-runs`,
+        key: "web-010-template-run-key",
       },
       {
         input: `http://127.0.0.1:8080/api/v1/orders/${orderId}/sandbox-workspaces`,

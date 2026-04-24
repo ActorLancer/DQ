@@ -42,6 +42,8 @@
 - `check-order-orchestration.sh`：`TEST-024` 正式编排链路 checker；先复用 `check-order-e2e.sh` 跑五条标准链路门户 E2E，再执行 `trade030 / dlv029 / dlv017 / dlv018 / dlv025 / bil024 / bil025` 并通过 `check-order-orchestration.mjs` 汇总 `20+ order` sign-off artifact。
 - `share-ro-live-fixture.sh`：`TEST-025` 门户 live E2E 的临时 `SHARE_RO` 订单夹具；从 `fixtures/demo` 读取 `S3` 补充 SKU 真值，在正式 buyer/seller 租户下创建一笔临时订单，并在 checker 退出时清理业务数据、保留审计。
 - `check-share-ro-e2e.sh`：`TEST-025` 正式 `SHARE_RO` E2E checker；会复用 `smoke-local.sh`、`seed-local-iam-test-identities.sh`、`seed-demo.sh`、`trade012 / dlv006 / bil026`、临时 live fixture 与门户 `test025-share-ro-live.spec.ts`，并通过 `check-share-ro-e2e.mjs` 汇总 portal/API/DB/audit/outbox artifact。
+- `qry-lite-live-fixture.sh`：`TEST-026` 门户 live E2E 的临时 `QRY_LITE` 订单夹具；从 `fixtures/demo` 读取 `S5` 主 SKU 真值，在正式 buyer/seller/risk 租户下创建一笔临时查询订单、审批单、争议单与退款占位，并在 checker 退出时清理业务数据、保留审计。
+- `check-qry-lite-e2e.sh`：`TEST-026` 正式 `QRY_LITE` E2E checker；会复用 `smoke-local.sh`、`seed-local-iam-test-identities.sh`、`seed-demo.sh`、`trade013 / dlv011 / dlv012 / dlv013 / bil024`、临时 live fixture 与门户 `test026-qry-lite-live.spec.ts`，并通过 `check-qry-lite-e2e.mjs` 汇总 portal/API/DB/audit/outbox/billing bridge artifact。
 - `check-api-contract-baseline.sh`：`TEST-003` 正式 contract checker；校验 OpenAPI 成功/失败 envelope、关键响应字段、错误码基线，以及订单状态机 action enum / 禁止错误码绑定。它不替代 `TEST-028` 的 canonical smoke。
 - `check-migration-smoke.sh`：`TEST-004` 正式 migration smoke checker；启动 current local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core-bin` 回查 `/health/live`、`/health/ready`、`/health/deps` 和 `/internal/runtime`。
 - `validate_database_migrations.sh`：兼容入口，现已转发到 `check-migration-smoke.sh`，不再使用历史 `部署脚本/docker-compose.postgres-test.yml`。

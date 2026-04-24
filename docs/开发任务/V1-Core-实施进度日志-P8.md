@@ -6,6 +6,120 @@
 - 当前活动分卷以入口页为准
 - 若后续切换到新的 `P{N}` 分卷，必须先更新入口页，再开始续写新分卷
 
+### BATCH-323（计划中）
+- 任务：`TEST-026` 建立 `QRY_LITE` 端到端测试：模板授权、参数校验、执行成功、结果可取、验收关闭、退款/拒绝非法重复执行
+- 状态：计划中
+- 当前任务编号：`TEST-026`
+- 说明：当前仓库已经分别具备 `trade013_qry_lite_state_machine_db_smoke`、`dlv011_template_grant_db_smoke`、`dlv012_template_run_db_smoke`、`dlv013_query_runs_db_smoke` 与 `bil024_billing_trigger_bridge_db_smoke`，它们覆盖了 `QRY_LITE` 的状态机、模板授权、执行与结果读取、账单桥接和非法重复执行边界，但还没有形成一个把门户 template-query 页、正式 buyer/seller/risk 角色、真实 grant/run/read/refund、审计/outbox/MinIO/DB 回查与单一 summary 汇总到一起的官方 gate。当前批次将以冻结文档为 authority，把 `QRY_LITE` 从“有若干后端 smoke 的 SKU”提升为“有正式门户 E2E + 后端 artifact + refund evidence + checker + CI + 验收索引”的完整闭环。
+- 前置依赖核对结果：
+  - `TRADE-013`：`trade013_qry_lite_state_machine_db_smoke` 已冻结 `authorize_template / validate_params / execute_query / make_result_available / close_acceptance` 主状态机，并验证 `closed -> execute_query` 返回 `QRY_LITE_TRANSITION_FORBIDDEN`。
+  - `DLV-011`：`dlv011_template_grant_db_smoke` 已冻结 `POST /api/v1/orders/{id}/template-grants` 的授权/更新、`delivery_record`、审计与 `delivery.committed` outbox。
+  - `DLV-012`：`dlv012_template_run_db_smoke` 已冻结 `POST /api/v1/orders/{id}/template-runs` 的参数校验、审批票、MinIO 结果对象、审计与 `billing.trigger.bridge`。
+  - `BIL-024`：`bil024_billing_trigger_bridge_db_smoke` 已冻结 `QRY_LITE` 在 `query_run -> execution_completed` 阶段触发 `bill_once_after_task_acceptance` 的账单桥接 authority。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-026` 的正式目标、依赖、DoD 与顺序约束。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `4.4.3 沙箱 / 模板查询类交付`，确认 `template_query_grant -> 参数白名单校验 -> query run -> result artifact -> acceptance close / refund` 是该 SKU 的正式业务闭环。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：复核 `7.7 查询运行与结果记录页`，确认门户必须承接 `query_surface / query_template / parameter summary / result summary / billing units / audit refs / policy hits / export boundary` 正式字段。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.1`，确认 `TEST` 阶段必须把已有后端能力提升为可重复 E2E gate，而不是继续停留在单个 DB smoke。
+  - `docs/05-test-cases/README.md`、`delivery-cases.md`、`payment-billing-cases.md`、`five-standard-scenarios-e2e.md`、`v1-core-acceptance-checklist.md`：确认 `QRY_LITE` 必须同时覆盖模板授权、参数校验、执行结果、退款/争议证据与 `S5` 标准链路映射。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/port-matrix.md`、`docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/keycloak-local.md`、`scripts/README.md`：确认 `TEST-026` 必须运行在当前 local stack、Keycloak 正式本地身份与宿主机/容器 Kafka 边界上。
+  - `packages/openapi/delivery.yaml`、`fixtures/demo/orders.json`、`fixtures/demo/delivery.json`、`fixtures/demo/subjects.json`、`scripts/seed-demo.mjs`：确认 `S5 / QRY_LITE` 的正式 demo product、query surface、query template、refund template、buyer/seller/risk 身份与交付蓝图真值。
+  - `apps/platform-core/src/modules/order/tests/trade013_qry_lite_state_machine_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv011_template_grant_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv012_template_run_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv013_query_runs_db.rs`、`apps/platform-core/src/modules/billing/tests/bil009_refund_db.rs`、`apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs`：确认可复用的后端 smoke、缺失的 artifact 汇总，以及 `QRY_LITE` refund live 仍未形成正式入口的问题。
+  - `apps/portal-web/src/app/delivery/orders/[orderId]/template-query/page.tsx`、`apps/portal-web/src/app/delivery/orders/[orderId]/query-runs/page.tsx`、`apps/portal-web/src/components/portal/delivery-workflow-shell.tsx`、`apps/portal-web/src/lib/delivery-workflow.ts`、`apps/portal-web/src/components/portal/billing-workflow-shell.tsx`、`apps/portal-web/e2e/test006-standard-order-live.spec.ts`：确认门户 template-query 页已有授权/读态基座，但缺 `execute template run` 表单、缺 `TEST-026` live E2E 与 refund/risk 角色联动。
+- 当前完成标准理解：
+  - 必须形成 `TEST-026` 的正式 checker、文档、CI 与 artifact，至少证明：
+    1. `seller_operator` 能在门户 template-query 页真实提交模板授权，`buyer_operator` 能真实提交 query run 并读取结果记录。
+    2. 参数校验、审批票、MinIO 结果对象、`billing.trigger.bridge` 与 `delivery.template_query.*` 审计不是只看 HTTP 200，而要回查 `trade.order_main / delivery.template_query_grant / delivery.query_execution_run / delivery.delivery_record / audit.audit_event / ops.outbox_event / MinIO`。
+    3. `QRY_LITE` 的验收关闭与非法重复执行禁止不只停留在状态机定义，要由 `trade013` artifact 明确给出 `close_acceptance` 与 `QRY_LITE_TRANSITION_FORBIDDEN` 证据。
+    4. 退款必须走正式 `platform_risk_settlement` 高风险入口、step-up、mock payment refund、`billing.refund.execute` 审计与通知/outbox，而不是只改订单状态。
+    5. checker 能把门户 live E2E、后端 smoke artifact 与 refund live evidence 汇总为单个 `TEST-026` sign-off summary，并在失败时定位到 portal/state-machine/template-grant/query-run/refund 哪一段断裂。
+- 实施计划：
+  1. 给 `trade013 / dlv011 / dlv012 / dlv013` 增加可选 `TEST026_ARTIFACT_DIR` JSON 证据输出，沉淀状态机、授权、参数校验、运行结果、MinIO、审计与 outbox evidence。
+  2. 扩展 `packages/sdk-ts` 与 `portal-web`：补 `executeTemplateRun` SDK 方法、模板执行表单、`template-query` 角色/权限边界、query-runs 读态和门户结果摘要。
+  3. 新增 `scripts/qry-lite-live-fixture.sh`、`apps/portal-web/e2e/test026-qry-lite-live.spec.ts`、`scripts/check-qry-lite-e2e.sh` / `.mjs`、`docs/05-test-cases/qry-lite-e2e.md` 与 `.github/workflows/qry-lite-e2e.yml`，把 seller grant、buyer run/read、risk refund、artifact 汇总与 CI 入口收口为正式 gate。
+  4. 执行真实验证、回写 `BATCH-323（待审批）`、本地提交，然后继续 `TEST-027`。
+
+### BATCH-323（待审批）
+- 任务：`TEST-026` 建立 `QRY_LITE` 端到端测试：模板授权、参数校验、执行成功、结果可取、验收关闭、退款/拒绝非法重复执行
+- 状态：待审批
+- 当前任务编号：`TEST-026`
+- 前置依赖核对结果：
+  - `TRADE-013`：`trade013_qry_lite_state_machine_db_smoke` 已继续作为 `QRY_LITE` 状态机 authority，并新增 `TEST026_ARTIFACT_DIR` 输出，沉淀 `authorize_template / validate_params / execute_query / make_result_available / close_acceptance / forbidden replay` 的正式证据。
+  - `DLV-011`：`dlv011_template_grant_db_smoke` 已继续作为 `POST /api/v1/orders/{id}/template-grants` authority，并新增 `TEST026_ARTIFACT_DIR` 输出，沉淀授权、审计、`delivery.committed` outbox 与交付记录证据。
+  - `DLV-012`：`dlv012_template_run_db_smoke` 已继续作为 `POST /api/v1/orders/{id}/template-runs` authority，并新增 `TEST026_ARTIFACT_DIR` 输出，沉淀参数校验、审批票、MinIO 结果对象、`billing.trigger.bridge` 与审计证据。
+  - `BIL-024`：`bil024_billing_trigger_bridge_db_smoke` 已继续作为 `QRY_LITE query_run -> execution_completed` 账单桥接 authority，并新增 `TEST026_ARTIFACT_DIR` 输出，沉淀 acceptance close、refund 与重复执行拒绝证据。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-026` 顺序、交付、DoD 与 authority。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `4.4.3 沙箱 / 模板查询类交付`，确认授权、参数校验、运行结果、验收关闭、退款与非法重复执行禁止是该 SKU 正式闭环。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：复核 `7.7 查询运行与结果记录页`，确认门户必须承接 query template、参数摘要、结果摘要、approval ticket、billing units 与 audit refs。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段需要把单个 DB smoke 提升为可重复门户 E2E gate。
+  - `docs/05-test-cases/README.md`、`delivery-cases.md`、`payment-billing-cases.md`、`five-standard-scenarios-e2e.md`、`v1-core-acceptance-checklist.md`：确认 `QRY_LITE` 必须形成模板授权、执行、结果读取、退款与 `S5` 标准链路映射的正式验收口径。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/port-matrix.md`、`docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/keycloak-local.md`、`scripts/README.md`：确认 checker 必须运行在当前 local stack、Keycloak 正式本地身份与宿主机/容器 Kafka 边界上。
+  - `packages/openapi/delivery.yaml`、`fixtures/demo/orders.json`、`fixtures/demo/delivery.json`、`fixtures/demo/subjects.json`、`scripts/seed-demo.mjs`：确认 `S5 / QRY_LITE` 的正式 demo order、query surface、query template、approval ticket、refund template、buyer/seller/risk 身份与交付蓝图真值。
+  - `apps/platform-core/src/modules/order/tests/trade013_qry_lite_state_machine_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv011_template_grant_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv012_template_run_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv013_query_runs_db.rs`、`apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs`、`apps/portal-web/src/components/portal/delivery-workflow-shell.tsx`、`apps/portal-web/src/lib/delivery-workflow.ts`、`apps/portal-web/e2e/test006-standard-order-live.spec.ts`：复核可复用基座与 `TEST-026` 缺失的 execute form / live E2E / artifact / checker 闭环。
+- 实现要点：
+  - 扩展 SDK 与门户 template-query 闭环：
+    - `packages/sdk-ts/src/domains/delivery.ts` / `.test.ts` 新增 `executeTemplateRun` 正式 API 与 idempotency 断言。
+    - `apps/portal-web/src/lib/delivery-workflow.ts` / `.test.ts` 新增 `TemplateRunResult`、`templateRunFormSchema`、buyer/seller 角色边界与 PostgreSQL UUID literal 兼容校验，避免 demo fixture UUID 因 RFC variant 过严被前端误拒。
+    - `apps/portal-web/src/lib/portal-routes.ts` / `.test.ts` 把 `POST /api/v1/orders/{id}/template-runs` 收入 `delivery_template_query` 正式绑定。
+    - `apps/portal-web/src/components/portal/delivery-workflow-shell.tsx` 新增 `TemplateQueryActionPanel` / `TemplateRunForm`，卖方走授权，买方走 execute/run/read，风险角色只保留 refund 入口。
+  - 扩展后端 smoke artifact：
+    - `apps/platform-core/src/lib.rs` 新增 `write_test026_artifact(...)` 复用写盘 helper。
+    - `trade013_qry_lite_state_machine_db.rs`、`dlv011_template_grant_db.rs`、`dlv012_template_run_db.rs`、`dlv013_query_runs_db.rs`、`bil024_billing_trigger_bridge_db.rs` 新增 `TEST026_ARTIFACT_DIR` 输出，沉淀状态机、授权、运行结果、MinIO、审计、outbox、billing bridge、refund 与 replay forbid 证据。
+  - 新增正式 fixture / checker / E2E / CI：
+    - `scripts/qry-lite-live-fixture.sh` 负责插入和清理临时 `QRY_LITE` live 订单、approval ticket、payment intent、settlement、dispute/decision 与可选 MinIO 结果对象，审计保持 append-only。
+    - `apps/portal-web/e2e/test026-qry-lite-live.spec.ts` 用正式 Keycloak seller/buyer/risk 身份真实执行 grant、query run/result read、risk refund，并把门户证据写入 artifact。
+    - `scripts/check-qry-lite-e2e.sh` / `.mjs` 串联 `smoke-local.sh`、Keycloak identity seed、demo seed、后端 smoke、live fixture、Playwright 与 `summary.json` 汇总。
+    - `docs/05-test-cases/qry-lite-e2e.md`、`.github/workflows/qry-lite-e2e.yml`、`docs/05-test-cases/v1-core-acceptance-checklist.md`、`docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md` 更新正式索引与验收 gate。
+- 验证步骤：
+  1. `bash -n scripts/qry-lite-live-fixture.sh`
+  2. `bash -n scripts/check-qry-lite-e2e.sh`
+  3. `node --check scripts/check-qry-lite-e2e.mjs`
+  4. `pnpm --filter @datab/sdk-ts test -- delivery.test.ts`
+  5. `pnpm --filter @datab/portal-web test:unit`
+  6. `pnpm --filter @datab/portal-web typecheck`
+  7. `pnpm --filter @datab/portal-web build`
+  8. `cargo fmt --all`
+  9. `cargo check -p platform-core`
+  10. `cargo test -p platform-core`
+  11. `cargo sqlx prepare --workspace`
+  12. `./scripts/check-query-compile.sh`
+  13. `ENV_FILE=infra/docker/.env.local bash ./scripts/check-qry-lite-e2e.sh`
+- 验证结果：
+  - `bash -n scripts/qry-lite-live-fixture.sh`、`bash -n scripts/check-qry-lite-e2e.sh`、`node --check scripts/check-qry-lite-e2e.mjs` 均通过。
+  - `pnpm --filter @datab/sdk-ts test -- delivery.test.ts` 通过；`template-runs` idempotency header 与路径绑定可回归。
+  - `pnpm --filter @datab/portal-web test:unit`、`typecheck`、`build` 均通过；门户正式覆盖 `delivery/orders/[orderId]/template-query` 与 `query-runs` 读态。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仓库既有 warning 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过；包含 `trade013 / dlv011 / dlv012 / dlv013 / bil024` 正式 smoke。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-qry-lite-e2e.sh` 通过；真实覆盖：
+    - `smoke-local.sh`：PostgreSQL / Kafka / Redis / OpenSearch / MinIO / Keycloak / observability / mock payment / canonical topics / host-container Kafka boundary
+    - `trade013_qry_lite_state_machine_db_smoke`：状态机最终 `acceptance_closed` 与 `QRY_LITE_TRANSITION_FORBIDDEN`
+    - `dlv011_template_grant_db_smoke`：grant/update、`delivery.delivery_record`、`audit.audit_event`、`ops.outbox_event(target_topic=dtp.outbox.domain-events)`
+    - `dlv012_template_run_db_smoke`、`dlv013_query_runs_db_smoke`：参数校验、approval ticket、MinIO 结果对象、run/read 结果与 `billing.trigger.bridge`
+    - `bil024_billing_trigger_bridge_db_smoke`：`bill_once_after_task_acceptance`、refund live evidence、重复执行拒绝
+    - `apps/portal-web/e2e/test026-qry-lite-live.spec.ts`：seller grant、buyer run/read、risk refund、浏览器只经 `/api/platform/**`
+    - `scripts/check-qry-lite-e2e.mjs`：汇总 `trade / delivery / query-run / billing / portal` 五段证据，并输出 `target/test-artifacts/qry-lite-e2e/summary.json`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-026`
+  - `业务流程图-V1-完整版.md`：`4.4.3 沙箱 / 模板查询类交付`
+  - `页面说明书-V1-完整版.md`：`7.7 查询运行与结果记录页`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1`
+  - `docs/05-test-cases/delivery-cases.md`
+  - `docs/05-test-cases/payment-billing-cases.md`
+  - `docs/05-test-cases/five-standard-scenarios-e2e.md`
+  - `docs/05-test-cases/v1-core-acceptance-checklist.md`
+- 覆盖的任务清单条目：`TEST-026`
+- 未覆盖项：
+  - `TEST-027` 的通知链路 smoke 尚未开始；本 task 只覆盖 `QRY_LITE` 模板授权 / 执行 / 结果 / 退款 / 非法重复执行闭环。
+  - 外部真实第三方查询引擎不在当前仓库正式交付边界内；本 task 按冻结口径，以 `platform-core + MinIO result artifact + billing bridge + audit/outbox + portal` 为 authority。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-322（计划中）
 - 任务：`TEST-025` 建立 `SHARE_RO` 端到端测试：共享开通、访问授权、撤销、争议冻结、恢复或退款，确保该 SKU 不是只停留在状态机定义
 - 状态：计划中

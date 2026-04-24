@@ -274,7 +274,10 @@ mod tests {
             run_row.get::<_, Value>(4)["result_hash"].as_str().is_some(),
             true
         );
-        assert_eq!(run_row.get::<_, Option<String>>(5), Some(result_object_id));
+        assert_eq!(
+            run_row.get::<_, Option<String>>(5),
+            Some(result_object_id.clone())
+        );
         assert_eq!(run_row.get::<_, i64>(6), 2);
         assert_eq!(run_row.get::<_, String>(7), "1.00000000");
         assert_eq!(run_row.get::<_, i32>(8), 0);
@@ -352,6 +355,75 @@ mod tests {
         assert_eq!(
             billing_bridge_row.get::<_, Option<String>>(3).as_deref(),
             Some("bill_once_after_task_acceptance")
+        );
+
+        crate::write_test026_artifact(
+            "dlv012-template-run.json",
+            &json!({
+                "test_id": "dlv012_template_run_db_smoke",
+                "order_id": seed.order_id,
+                "success_request_id": success_request_id,
+                "success_response": {
+                    "query_run_id": query_run_id,
+                    "result_object_id": result_object_id,
+                    "bucket_name": bucket_name,
+                    "object_key": object_key,
+                    "status": data["status"],
+                    "current_state": data["current_state"],
+                    "result_row_count": data["result_row_count"],
+                    "masked_level": data["masked_level"],
+                    "export_scope": data["export_scope"],
+                    "approval_ticket_id": data["approval_ticket_id"],
+                },
+                "fetched_object": {
+                    "query_run_id": fetched_json["query_run_id"],
+                    "row_count": fetched_json["row_count"],
+                    "selected_format": fetched_json["selected_format"],
+                },
+                "missing_approval": {
+                    "http_status": missing_approval_status.as_u16(),
+                    "message": missing_approval_msg,
+                },
+                "invalid_format": {
+                    "http_status": invalid_format_status.as_u16(),
+                    "message": invalid_format_msg,
+                },
+                "db": {
+                    "query_run": {
+                        "query_template_id": run_row.get::<_, String>(0),
+                        "requester_user_id": run_row.get::<_, Option<String>>(1),
+                        "execution_mode": run_row.get::<_, String>(2),
+                        "request_payload_json": run_row.get::<_, Value>(3),
+                        "result_summary_json": run_row.get::<_, Value>(4),
+                        "result_object_id": run_row.get::<_, Option<String>>(5),
+                        "result_row_count": run_row.get::<_, i64>(6),
+                        "billed_units": run_row.get::<_, String>(7),
+                        "export_attempt_count": run_row.get::<_, i32>(8),
+                        "status": run_row.get::<_, String>(9),
+                        "masked_level": run_row.get::<_, String>(10),
+                        "export_scope": run_row.get::<_, String>(11),
+                        "approval_ticket_id": run_row.get::<_, Option<String>>(12),
+                        "sensitive_policy_snapshot": run_row.get::<_, Value>(13),
+                        "completed_at": run_row.get::<_, Option<String>>(14),
+                    },
+                    "order": {
+                        "current_state": order_row.get::<_, String>(0),
+                        "payment_status": order_row.get::<_, String>(1),
+                        "delivery_status": order_row.get::<_, String>(2),
+                        "acceptance_status": order_row.get::<_, String>(3),
+                        "settlement_status": order_row.get::<_, String>(4),
+                    },
+                },
+                "audit_counts": {
+                    "delivery_template_query_use": audit_count,
+                },
+                "outbox": {
+                    "target_topic": billing_bridge_row.get::<_, Option<String>>(0),
+                    "delivery_branch": billing_bridge_row.get::<_, Option<String>>(1),
+                    "trigger_stage": billing_bridge_row.get::<_, Option<String>>(2),
+                    "billing_trigger": billing_bridge_row.get::<_, Option<String>>(3),
+                }
+            }),
         );
 
         let _ = delete_object(&bucket_name, &object_key).await;

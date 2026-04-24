@@ -82,6 +82,7 @@ describe("portal route registry", () => {
     expect(portalRouteMap.delivery_template_query.apiBindings).toEqual(
       expect.arrayContaining([
         "POST /api/v1/orders/{id}/template-grants",
+        "POST /api/v1/orders/{id}/template-runs",
         "GET /api/v1/orders/{id}/template-runs",
       ]),
     );

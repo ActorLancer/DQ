@@ -4,6 +4,8 @@ import type {
   CommitOrderDeliveryRequest,
   CommitOrderDeliveryResponse,
   DownloadTicketResponse,
+  ExecuteTemplateRunRequest,
+  ExecuteTemplateRunResponse,
   ManageRevisionSubscriptionRequest,
   ManageRevisionSubscriptionResponse,
   ManageSandboxWorkspaceRequest,
@@ -40,6 +42,8 @@ export type ShareGrantResult =
   NonNullable<ManageShareGrantResponse["data"]>["data"];
 export type TemplateGrantResult =
   NonNullable<ManageTemplateGrantResponse["data"]>["data"];
+export type TemplateRunResult =
+  NonNullable<ExecuteTemplateRunResponse["data"]>["data"];
 export type SandboxWorkspaceResult =
   NonNullable<ManageSandboxWorkspaceResponse["data"]>["data"];
 export type ApiUsageLog = NonNullable<ApiUsageLogResponse["data"]>["data"];
@@ -145,9 +149,13 @@ export const DELIVERY_ENTRIES: DeliveryEntry[] = [
     shortTitle: "模板查询",
     pathSuffix: "template-query",
     supportedSkus: ["QRY_LITE"],
-    primaryPermissions: ["delivery.template_query.enable"],
+    primaryPermissions: [
+      "delivery.template_query.enable",
+      "delivery.template_query.use",
+    ],
     apiBindings: [
       "POST /api/v1/orders/{id}/template-grants",
+      "POST /api/v1/orders/{id}/template-runs",
       "GET /api/v1/orders/{id}/template-runs",
     ],
     description: "白名单模板、参数边界、输出边界、额度与结果入口。",
@@ -179,6 +187,14 @@ export const DELIVERY_ENTRIES: DeliveryEntry[] = [
   },
 ];
 
+const uuidLiteralSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    "请输入 PostgreSQL UUID 字面量",
+  );
+
 export const DELIVERY_READ_ALLOWED_ROLES = [
   "buyer_operator",
   "seller_operator",
@@ -188,6 +204,19 @@ export const DELIVERY_READ_ALLOWED_ROLES = [
   "platform_admin",
   "platform_audit_security",
   "platform_risk_settlement",
+] as const;
+
+export const TEMPLATE_QUERY_GRANT_ALLOWED_ROLES = [
+  "seller_operator",
+  "tenant_admin",
+  "platform_admin",
+] as const;
+
+export const TEMPLATE_QUERY_RUN_ALLOWED_ROLES = [
+  "buyer_operator",
+  "tenant_developer",
+  "tenant_admin",
+  "platform_admin",
 ] as const;
 
 export const DELIVERY_ACTION_ROLES: Record<DeliveryRouteKind, readonly string[]> = {
@@ -203,10 +232,8 @@ export const DELIVERY_ACTION_ROLES: Record<DeliveryRouteKind, readonly string[]>
   share: ["seller_operator", "tenant_admin", "platform_admin"],
   subscription: ["seller_operator", "tenant_admin", "platform_admin"],
   "template-query": [
-    "buyer_operator",
-    "tenant_developer",
-    "tenant_admin",
-    "platform_admin",
+    ...TEMPLATE_QUERY_GRANT_ALLOWED_ROLES,
+    ...TEMPLATE_QUERY_RUN_ALLOWED_ROLES,
   ],
   sandbox: [
     "buyer_operator",
@@ -224,6 +251,21 @@ const jsonRecordSchema = z
     if (!value) {
       return true;
     }
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed);
+    } catch {
+      return false;
+    }
+  }, {
+    message: "必须是可解析的 JSON object",
+  });
+
+const requiredJsonRecordSchema = z
+  .string()
+  .trim()
+  .min(2, "必须填写 JSON object")
+  .refine((value) => {
     try {
       const parsed = JSON.parse(value) as unknown;
       return Boolean(parsed) && typeof parsed === "object" && !Array.isArray(parsed);
@@ -302,7 +344,7 @@ export const shareGrantFormSchema = z.object({
 
 export const templateGrantFormSchema = z.object({
   template_query_grant_id: z.string().trim().optional(),
-  query_surface_id: z.string().trim().uuid("query_surface_id 必须是 UUID"),
+  query_surface_id: uuidLiteralSchema,
   asset_object_id: z.string().trim().optional(),
   environment_id: z.string().trim().optional(),
   template_type: z.string().trim().optional(),
@@ -313,8 +355,21 @@ export const templateGrantFormSchema = z.object({
   ...confirmActionSchema,
 });
 
+export const templateRunFormSchema = z.object({
+  template_query_grant_id: z.string().trim().optional(),
+  query_template_id: uuidLiteralSchema,
+  requester_user_id: z.string().trim().optional(),
+  request_payload_json: requiredJsonRecordSchema,
+  output_boundary_json: jsonRecordSchema,
+  masked_level: z.enum(["masked", "summary", "restricted"]).optional(),
+  export_scope: z.enum(["none", "summary", "restricted_object"]).optional(),
+  approval_ticket_id: z.string().trim().optional(),
+  execution_metadata_json: jsonRecordSchema,
+  ...confirmActionSchema,
+});
+
 export const sandboxWorkspaceFormSchema = z.object({
-  query_surface_id: z.string().trim().uuid("query_surface_id 必须是 UUID"),
+  query_surface_id: uuidLiteralSchema,
   workspace_name: z.string().trim().min(2, "workspace_name 至少 2 个字符"),
   seat_user_id: z.string().trim().optional(),
   expire_at: z.string().trim().optional(),
@@ -332,6 +387,7 @@ export type RevisionSubscriptionFormValues = z.infer<
 >;
 export type ShareGrantFormValues = z.infer<typeof shareGrantFormSchema>;
 export type TemplateGrantFormValues = z.infer<typeof templateGrantFormSchema>;
+export type TemplateRunFormValues = z.infer<typeof templateRunFormSchema>;
 export type SandboxWorkspaceFormValues = z.infer<
   typeof sandboxWorkspaceFormSchema
 >;
@@ -423,6 +479,22 @@ export function buildTemplateGrantRequest(
     output_boundary_json: parseJsonRecord(values.output_boundary_json),
     run_quota_json: parseJsonRecord(values.run_quota_json),
   }) as ManageTemplateGrantRequest;
+}
+
+export function buildTemplateRunRequest(
+  values: TemplateRunFormValues,
+): ExecuteTemplateRunRequest {
+  return compactObject({
+    template_query_grant_id: emptyToUndefined(values.template_query_grant_id),
+    query_template_id: values.query_template_id.trim(),
+    requester_user_id: emptyToUndefined(values.requester_user_id),
+    request_payload_json: parseJsonRecord(values.request_payload_json) ?? {},
+    output_boundary_json: parseJsonRecord(values.output_boundary_json),
+    masked_level: values.masked_level,
+    export_scope: values.export_scope,
+    approval_ticket_id: emptyToUndefined(values.approval_ticket_id),
+    execution_metadata_json: parseJsonRecord(values.execution_metadata_json),
+  }) as ExecuteTemplateRunRequest;
 }
 
 export function buildSandboxWorkspaceRequest(
@@ -524,6 +596,32 @@ export function defaultTemplateGrantValues(): TemplateGrantFormValues {
   };
 }
 
+export function defaultTemplateRunValues(): TemplateRunFormValues {
+  return {
+    template_query_grant_id: "",
+    query_template_id: "",
+    requester_user_id: "",
+    request_payload_json: jsonInputValue({
+      city: "Shanghai",
+      radius_km: 3,
+      limit: 2,
+    }),
+    output_boundary_json: jsonInputValue({
+      selected_format: "json",
+      allowed_formats: ["json"],
+      max_rows: 2,
+      max_cells: 6,
+    }),
+    masked_level: "masked",
+    export_scope: "none",
+    approval_ticket_id: "",
+    execution_metadata_json: jsonInputValue({ source: "portal-web", entrypoint: "template-query" }),
+    confirm_scope: false,
+    confirm_audit: false,
+    idempotency_key: createDeliveryIdempotencyKey("template-run"),
+  };
+}
+
 export function defaultSandboxWorkspaceValues(): SandboxWorkspaceFormValues {
   return {
     query_surface_id: "",
@@ -575,6 +673,18 @@ export function canOperateDelivery(
   kind: DeliveryRouteKind,
 ) {
   return hasAnyRole(subject?.roles, DELIVERY_ACTION_ROLES[kind]);
+}
+
+export function canManageTemplateQueryGrant(
+  subject: SessionSubject | null | undefined,
+) {
+  return hasAnyRole(subject?.roles, TEMPLATE_QUERY_GRANT_ALLOWED_ROLES);
+}
+
+export function canExecuteTemplateQueryRun(
+  subject: SessionSubject | null | undefined,
+) {
+  return hasAnyRole(subject?.roles, TEMPLATE_QUERY_RUN_ALLOWED_ROLES);
 }
 
 export function readSubjectTenant(subject: SessionSubject | null | undefined) {
@@ -649,6 +759,10 @@ export function unwrapTemplateGrant(
   response: ManageTemplateGrantResponse | undefined,
 ) {
   return unwrapEnvelopeData<TemplateGrantResult>(response);
+}
+
+export function unwrapTemplateRun(response: ExecuteTemplateRunResponse | undefined) {
+  return unwrapEnvelopeData<TemplateRunResult>(response);
 }
 
 export function unwrapSandboxWorkspace(

@@ -141,6 +141,7 @@ mod tests {
         ];
 
         let app = crate::with_live_test_state(billing_router()).await;
+        let mut qry_lite_bridge_artifact: Option<Value> = None;
         for seed in &cases {
             let response =
                 process_bridge(&app, &seed.order_id, &seed.outbox_event_id, &suffix).await;
@@ -222,6 +223,51 @@ mod tests {
                 .expect("query outbox status");
             assert_eq!(outbox_row.get::<_, String>(0), "published");
             assert!(outbox_row.get::<_, bool>(1));
+
+            if seed.sku_type == "QRY_LITE" {
+                let billing_event_id = data["processed_billing_event_ids"][0]
+                    .as_str()
+                    .expect("qry lite billing event id")
+                    .to_string();
+                let billing_row = client
+                    .query_one(
+                        "SELECT event_type,
+                                event_source,
+                                amount::text,
+                                currency_code,
+                                metadata ->> 'bridge_outbox_event_id',
+                                metadata ->> 'bridge_publish_attempt_id'
+                         FROM billing.billing_event
+                         WHERE billing_event_id = $1::text::uuid",
+                        &[&billing_event_id],
+                    )
+                    .await
+                    .expect("query qry lite billing event");
+                qry_lite_bridge_artifact = Some(json!({
+                    "order_id": seed.order_id,
+                    "sku_type": seed.sku_type,
+                    "outbox_event_id": seed.outbox_event_id,
+                    "publish_attempt_id": seed.publish_attempt_id,
+                    "bridge_response": {
+                        "processed_count": data["processed_count"],
+                        "replayed_count": data["replayed_count"],
+                        "processed_billing_event_ids": data["processed_billing_event_ids"],
+                    },
+                    "billing_event": {
+                        "billing_event_id": billing_event_id,
+                        "event_type": billing_row.get::<_, String>(0),
+                        "event_source": billing_row.get::<_, String>(1),
+                        "amount": billing_row.get::<_, String>(2),
+                        "currency_code": billing_row.get::<_, String>(3),
+                        "bridge_outbox_event_id": billing_row.get::<_, Option<String>>(4),
+                        "bridge_publish_attempt_id": billing_row.get::<_, Option<String>>(5),
+                    },
+                    "outbox": {
+                        "status": outbox_row.get::<_, String>(0),
+                        "published": outbox_row.get::<_, bool>(1),
+                    }
+                }));
+            }
         }
 
         let unpublished_seed = seed_order_without_publish_attempt(
@@ -305,6 +351,16 @@ mod tests {
                 }
             }),
         );
+        if let Some(qry_lite_bridge_artifact) = qry_lite_bridge_artifact {
+            crate::write_test026_artifact(
+                "bil024-qry-lite-billing-bridge.json",
+                &json!({
+                    "test_id": "bil024_billing_trigger_bridge_db_smoke",
+                    "focus": "qry_lite_execution_completed_to_billing_bridge",
+                    "qry_lite": qry_lite_bridge_artifact,
+                }),
+            );
+        }
 
         let mut cleanup_orders = cases.clone();
         cleanup_orders.push(unpublished_seed);

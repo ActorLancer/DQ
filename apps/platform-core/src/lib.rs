@@ -4,7 +4,7 @@ use auth::{
 };
 use config::{ProviderMode, RuntimeConfig, RuntimeMode};
 use db::{
-    AppDb, DbPool, DbPoolConfig, MySqlDbRuntime, NoopBusinessMutationWriter, OrderRepository,
+    AppDb, DbPool, DbPoolConfig, NoopBusinessMutationWriter, OrderRepository,
     OrderRepositoryBackend, TxTemplate, build_order_repository,
 };
 use http::{
@@ -46,7 +46,7 @@ pub struct AppState {
 pub fn stub_test_app_state() -> AppState {
     AppState {
         runtime: RuntimeConfig::from_env().expect("test runtime config should load"),
-        db: Arc::new(AppDb::Mysql(MySqlDbRuntime {
+        db: Arc::new(AppDb::Mysql(db::MySqlDbRuntime {
             dsn: "mysql://reserved-for-tests".to_string(),
             max_connections: 1,
         })),
@@ -103,6 +103,11 @@ pub fn write_test024_artifact(file_name: &str, artifact: &serde_json::Value) {
 #[cfg(test)]
 pub fn write_test025_artifact(file_name: &str, artifact: &serde_json::Value) {
     write_test_artifact("TEST025_ARTIFACT_DIR", file_name, artifact);
+}
+
+#[cfg(test)]
+pub fn write_test026_artifact(file_name: &str, artifact: &serde_json::Value) {
+    write_test_artifact("TEST026_ARTIFACT_DIR", file_name, artifact);
 }
 
 struct CoreModule {

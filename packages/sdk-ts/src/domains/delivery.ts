@@ -29,6 +29,9 @@ type GetShareGrantsOperation = NonNullable<
 type ManageTemplateGrantOperation = NonNullable<
   DeliveryPaths["/api/v1/orders/{id}/template-grants"]["post"]
 >;
+type ExecuteTemplateRunOperation = NonNullable<
+  DeliveryPaths["/api/v1/orders/{id}/template-runs"]["post"]
+>;
 type ManageSandboxWorkspaceOperation = NonNullable<
   DeliveryPaths["/api/v1/orders/{id}/sandbox-workspaces"]["post"]
 >;
@@ -69,6 +72,10 @@ export type ManageTemplateGrantRequest =
   RequestBody<ManageTemplateGrantOperation>;
 export type ManageTemplateGrantResponse =
   SuccessBody<ManageTemplateGrantOperation>;
+export type ExecuteTemplateRunRequest =
+  RequestBody<ExecuteTemplateRunOperation>;
+export type ExecuteTemplateRunResponse =
+  SuccessBody<ExecuteTemplateRunOperation>;
 export type ManageSandboxWorkspaceRequest =
   RequestBody<ManageSandboxWorkspaceOperation>;
 export type ManageSandboxWorkspaceResponse =
@@ -195,6 +202,20 @@ export function createDeliveryClient(client: PlatformClient) {
         ManageTemplateGrantResponse,
         ManageTemplateGrantRequest
       >("/api/v1/orders/{id}/template-grants", {
+        pathParams,
+        body,
+        headers: mutationHeaders(options),
+      });
+    },
+    executeTemplateRun(
+      pathParams: PathParams<ExecuteTemplateRunOperation>,
+      body: ExecuteTemplateRunRequest,
+      options: DeliveryMutationOptions,
+    ) {
+      return client.postJson<
+        ExecuteTemplateRunResponse,
+        ExecuteTemplateRunRequest
+      >("/api/v1/orders/{id}/template-runs", {
         pathParams,
         body,
         headers: mutationHeaders(options),

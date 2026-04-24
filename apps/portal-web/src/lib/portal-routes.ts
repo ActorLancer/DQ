@@ -369,13 +369,17 @@ export const portalRouteList: PortalRouteMeta[] = [
     title: "模板查询开通页",
     path: "/delivery/orders/:orderId/template-query",
     viewPermission: "trade.order.read",
-    primaryPermissions: ["delivery.template_query.enable"],
+    primaryPermissions: [
+      "delivery.template_query.enable",
+      "delivery.template_query.use",
+    ],
     description: "模板授权与执行入口。",
     apiBindings: [
       "/api/v1/auth/me",
       "GET /api/v1/orders/{id}",
       "GET /api/v1/orders/{id}/lifecycle-snapshots",
       "POST /api/v1/orders/{id}/template-grants",
+      "POST /api/v1/orders/{id}/template-runs",
       "GET /api/v1/orders/{id}/template-runs",
     ],
   },

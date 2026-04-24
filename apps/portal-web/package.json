@@ -13,6 +13,7 @@
     "test:e2e:preview": "WEB_E2E_PREVIEW=1 NEXT_PUBLIC_WEB_ROUTE_PREVIEW=1 playwright test e2e/preview-states.spec.ts",
     "test:e2e:orders-live": "WEB_E2E_LIVE=1 playwright test e2e/test006-standard-order-live.spec.ts",
     "test:e2e:share-live": "WEB_E2E_LIVE=1 playwright test e2e/test025-share-ro-live.spec.ts",
+    "test:e2e:qry-lite-live": "WEB_E2E_LIVE=1 playwright test e2e/test026-qry-lite-live.spec.ts",
     "test:e2e:live": "WEB_E2E_LIVE=1 playwright test e2e/smoke-live.spec.ts e2e/web018-live.spec.ts",
     "test": "pnpm test:unit && pnpm test:e2e"
   },

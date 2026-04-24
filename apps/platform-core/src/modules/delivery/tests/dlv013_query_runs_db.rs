@@ -78,6 +78,7 @@ mod tests {
         .await;
         objects_to_delete.push((second_run.1.clone(), second_run.2.clone()));
 
+        let read_request_id = format!("req-dlv013-read-{suffix}");
         let response = app
             .clone()
             .oneshot(
@@ -87,7 +88,7 @@ mod tests {
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", &seed.buyer_org_id)
                     .header("x-user-id", &seed.buyer_user_id)
-                    .header("x-request-id", format!("req-dlv013-read-{suffix}"))
+                    .header("x-request-id", &read_request_id)
                     .body(Body::empty())
                     .expect("read request"),
             )
@@ -161,6 +162,43 @@ mod tests {
             .expect("query read audit count")
             .get(0);
         assert_eq!(read_audit_count, 1);
+
+        crate::write_test026_artifact(
+            "dlv013-query-runs.json",
+            &json!({
+                "test_id": "dlv013_query_runs_db_smoke",
+                "order_id": seed.order_id,
+                "read_request_id": read_request_id,
+                "query_runs_response": {
+                    "current_state": data["current_state"],
+                    "payment_status": data["payment_status"],
+                    "delivery_status": data["delivery_status"],
+                    "query_run_count": query_runs.len(),
+                    "latest_query_run_id": query_runs[0]["query_run_id"],
+                    "latest_query_template_name": query_runs[0]["query_template_name"],
+                    "latest_result_row_count": query_runs[0]["result_row_count"],
+                    "latest_policy_hits": query_runs[0]["policy_hits"],
+                    "latest_audit_refs": query_runs[0]["audit_refs"],
+                    "latest_bucket_name": query_runs[0]["bucket_name"],
+                    "latest_object_key": query_runs[0]["object_key"],
+                },
+                "runs": {
+                    "first": {
+                        "query_run_id": first_run.0,
+                        "bucket_name": first_run.1,
+                        "object_key": first_run.2,
+                    },
+                    "second": {
+                        "query_run_id": second_run.0,
+                        "bucket_name": second_run.1,
+                        "object_key": second_run.2,
+                    }
+                },
+                "audit_counts": {
+                    "delivery_template_query_run_read": read_audit_count,
+                }
+            }),
+        );
 
         for (bucket_name, object_key) in objects_to_delete {
             let _ = delete_object(&bucket_name, &object_key).await;

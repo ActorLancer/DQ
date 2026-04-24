@@ -39,6 +39,9 @@ import {
   buildSandboxWorkspaceRequest,
   buildShareGrantRequest,
   buildTemplateGrantRequest,
+  buildTemplateRunRequest,
+  canExecuteTemplateQueryRun,
+  canManageTemplateQueryGrant,
   canOperateDelivery,
   canReadDelivery,
   commitDeliveryFormSchema,
@@ -48,6 +51,7 @@ import {
   defaultSandboxWorkspaceValues,
   defaultShareGrantValues,
   defaultTemplateGrantValues,
+  defaultTemplateRunValues,
   deliveryEntryByKind,
   deliveryEntryForSku,
   deliveryRouteForEntry,
@@ -60,6 +64,7 @@ import {
   shareGrantFormSchema,
   skuDisplayName,
   templateGrantFormSchema,
+  templateRunFormSchema,
   unwrapApiUsageLog,
   unwrapCommitDelivery,
   unwrapDownloadTicket,
@@ -70,6 +75,7 @@ import {
   unwrapShareGrant,
   unwrapShareGrantList,
   unwrapTemplateGrant,
+  unwrapTemplateRun,
   type CommitDeliveryFormValues,
   type CommitDeliveryResult,
   type DeliveryEntry,
@@ -79,6 +85,7 @@ import {
   type SandboxWorkspaceFormValues,
   type ShareGrantFormValues,
   type TemplateGrantFormValues,
+  type TemplateRunFormValues,
   type SessionSubject,
 } from "@/lib/delivery-workflow";
 import { orderStatusLabel, unwrapLifecycle, unwrapOrderDetail } from "@/lib/order-workflow";
@@ -223,6 +230,7 @@ export function DeliveryWorkflowShell({
             <DeliveryActionPanel
               kind={kind}
               orderId={orderId}
+              subject={subject}
               onChanged={() => {
                 void detailQuery.refetch();
                 void lifecycleQuery.refetch();
@@ -568,10 +576,12 @@ function BranchReadState({
 function DeliveryActionPanel({
   kind,
   orderId,
+  subject,
   onChanged,
 }: {
   kind: DeliveryRouteKind;
   orderId: string;
+  subject: SessionSubject | null;
   onChanged: () => void;
 }) {
   if (kind === "file" || kind === "report" || kind === "api") {
@@ -584,9 +594,54 @@ function DeliveryActionPanel({
     return <ShareGrantForm orderId={orderId} onChanged={onChanged} />;
   }
   if (kind === "template-query") {
-    return <TemplateGrantForm orderId={orderId} onChanged={onChanged} />;
+    return (
+      <TemplateQueryActionPanel
+        orderId={orderId}
+        subject={subject}
+        onChanged={onChanged}
+      />
+    );
   }
   return <SandboxWorkspaceForm orderId={orderId} onChanged={onChanged} />;
+}
+
+function TemplateQueryActionPanel({
+  orderId,
+  subject,
+  onChanged,
+}: {
+  orderId: string;
+  subject: SessionSubject | null;
+  onChanged: () => void;
+}) {
+  const roles = subject?.roles?.join(" / ") ?? "无";
+  const canGrant = canManageTemplateQueryGrant(subject);
+  const canRun = canExecuteTemplateQueryRun(subject);
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      {canGrant ? (
+        <TemplateGrantForm orderId={orderId} onChanged={onChanged} />
+      ) : (
+        <StateCard
+          icon={<TerminalSquare />}
+          title="模板授权动作未开放"
+          message={`当前角色 ${roles} 只允许查看或执行 query run，不允许提交 delivery.template_query.enable。`}
+          tone="warning"
+        />
+      )}
+      {canRun ? (
+        <TemplateRunForm orderId={orderId} onChanged={onChanged} />
+      ) : (
+        <StateCard
+          icon={<Boxes />}
+          title="模板执行动作未开放"
+          message={`当前角色 ${roles} 只允许提交模板授权，不允许执行 delivery.template_query.use。`}
+          tone="warning"
+        />
+      )}
+    </div>
+  );
 }
 
 function CommitDeliveryForm({
@@ -959,6 +1014,90 @@ function TemplateGrantForm({ orderId, onChanged }: { orderId: string; onChanged:
         </JsonField>
         <JsonField label="run_quota_json" error={form.formState.errors.run_quota_json?.message}>
           <Textarea {...form.register("run_quota_json")} />
+        </JsonField>
+      </div>
+    </GenericFormCard>
+  );
+}
+
+function TemplateRunForm({ orderId, onChanged }: { orderId: string; onChanged: () => void }) {
+  const [result, setResult] = useState<ReturnType<typeof unwrapTemplateRun>>(null);
+  const form = useForm<TemplateRunFormValues>({
+    resolver: zodResolver(templateRunFormSchema),
+    defaultValues: defaultTemplateRunValues(),
+  });
+  const mutation = useMutation({
+    mutationFn: async (values: TemplateRunFormValues) => {
+      const response = await sdk.delivery.executeTemplateRun(
+        { id: orderId },
+        buildTemplateRunRequest(values),
+        { idempotencyKey: values.idempotency_key },
+      );
+      const data = unwrapTemplateRun(response);
+      if (!data) {
+        throw new Error("DELIVERY_STATUS_INVALID: template-runs 未返回数据");
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      setResult(data);
+      form.setValue("idempotency_key", createDeliveryIdempotencyKey("template-run"));
+      onChanged();
+    },
+  });
+
+  return (
+    <GenericFormCard
+      icon={<Boxes />}
+      title="执行模板查询"
+      description="提交参数白名单、输出边界、审批票和幂等键，后端真实执行 query run 并落 MinIO 结果对象。"
+      form={form}
+      mutation={mutation}
+      result={result}
+      onSubmit={(values) => mutation.mutate(values)}
+      onResetKey={() => form.setValue("idempotency_key", createDeliveryIdempotencyKey("template-run"))}
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        <TextField label="query_template_id" error={form.formState.errors.query_template_id?.message}>
+          <Input {...form.register("query_template_id")} />
+        </TextField>
+        <TextField label="template_query_grant_id" error={form.formState.errors.template_query_grant_id?.message}>
+          <Input {...form.register("template_query_grant_id")} />
+        </TextField>
+        <TextField label="requester_user_id" error={form.formState.errors.requester_user_id?.message}>
+          <Input {...form.register("requester_user_id")} />
+        </TextField>
+        <TextField label="approval_ticket_id" error={form.formState.errors.approval_ticket_id?.message}>
+          <Input {...form.register("approval_ticket_id")} />
+        </TextField>
+        <TextField label="masked_level" error={form.formState.errors.masked_level?.message}>
+          <select
+            className="h-10 rounded-full border border-black/10 bg-white px-4 text-sm"
+            {...form.register("masked_level")}
+          >
+            <option value="masked">masked</option>
+            <option value="summary">summary</option>
+            <option value="restricted">restricted</option>
+          </select>
+        </TextField>
+        <TextField label="export_scope" error={form.formState.errors.export_scope?.message}>
+          <select
+            className="h-10 rounded-full border border-black/10 bg-white px-4 text-sm"
+            {...form.register("export_scope")}
+          >
+            <option value="none">none</option>
+            <option value="summary">summary</option>
+            <option value="restricted_object">restricted_object</option>
+          </select>
+        </TextField>
+        <JsonField label="request_payload_json" error={form.formState.errors.request_payload_json?.message}>
+          <Textarea {...form.register("request_payload_json")} />
+        </JsonField>
+        <JsonField label="output_boundary_json" error={form.formState.errors.output_boundary_json?.message}>
+          <Textarea {...form.register("output_boundary_json")} />
+        </JsonField>
+        <JsonField label="execution_metadata_json" error={form.formState.errors.execution_metadata_json?.message}>
+          <Textarea {...form.register("execution_metadata_json")} />
         </JsonField>
       </div>
     </GenericFormCard>
