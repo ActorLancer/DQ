@@ -345,6 +345,27 @@ mod tests {
             Some("bill_once_after_report_acceptance")
         );
 
+        crate::write_test024_artifact(
+            "dlv017-report-delivery.json",
+            &json!({
+                "test_id": "dlv017_report_delivery_db_smoke",
+                "focus": ["delivery_committed", "delivery_duplicate"],
+                "orders": [
+                    {
+                        "case": "report_delivery_commit",
+                        "order_id": seed.order_id,
+                        "request_id": request_id,
+                        "current_state": data["current_state"],
+                        "delivery_status": data["delivery_status"],
+                        "acceptance_status": data["acceptance_status"],
+                        "settlement_status": order_row.get::<_, String>(3),
+                        "report_artifact_id": report_artifact_id,
+                        "duplicate_operation": replay_json["data"]["operation"]
+                    }
+                ]
+            }),
+        );
+
         cleanup_seed_graph(&client, &seed).await;
     }
 

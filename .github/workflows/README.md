@@ -13,6 +13,7 @@
 - `failure-drills.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-failure-drills.sh`，承接 `TEST-019` 的 Kafka / OpenSearch / Fabric Adapter / Mock Payment 四类故障演练，并上传 group lag、响应快照、compose 日志与 live smoke 输出。
 - `rollback-recovery.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-rollback-recovery.sh`，承接 `TEST-020` 的业务库 reset、基础 seed replay、环境重启与 demo 数据恢复演练，并上传 rollback/recovery 汇总与 compose 日志。
 - `standard-sku-coverage.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-standard-sku-coverage.sh`，承接 `TEST-023` 的 8 个标准 SKU 覆盖矩阵、五条标准链路挂点、billing basis live readback 与 matrix artifact 上传。
+- `order-orchestration.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-order-orchestration.sh`，承接 `TEST-024` 的编排链路 gate，汇总 `TEST-006` 前端 scenario baseline、`trade030 / dlv029 / dlv017 / dlv018 / dlv025 / bil024 / bil025` 动态 order ids 与 `20+ order` sign-off artifact。
 - `order-e2e.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh`，承接 `TEST-006` 五条标准链路 order E2E。
 - `provider-switch.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`，承接 `TEST-007` 支付 / 签章 / 链写 provider 切换验收。
 - `outbox-consistency.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh`，承接 `TEST-008` 事务写入 / outbox 发布 / consumer 幂等验收。

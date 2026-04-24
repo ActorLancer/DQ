@@ -303,6 +303,96 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-321（计划中）
+- 任务：`TEST-024` 建立“支付成功 -> 待交付 -> 交付完成 -> 待验收 -> 验收通过/拒收 -> 结算/退款”编排链路测试，重点覆盖 webhook 乱序、交付重复、验收重复、结算重算
+- 状态：计划中
+- 当前任务编号：`TEST-024`
+- 说明：`TEST-024` 不是重复 `TEST-006` 的页面场景卡片，也不是把 `trade030 / dlv029 / dlv018 / bil024 / bil025` 各跑一遍就算完成。当前批次要把支付结果编排、自动创建交付任务、交付提交/重复提交、验收通过/重复验收/拒收、bridge 到 billing、结算冻结/退款重算串成一个正式 checker，并产出可汇总 `20+ order` sign-off 的 artifact。
+- 前置依赖核对结果：
+  - `TRADE-030`：`trade030_payment_result_orchestrator_db_smoke` 已冻结 payment webhook -> order state orchestration 与乱序保护。
+  - `DLV-029`：`dlv029_delivery_task_autocreation_db_smoke` 已冻结 payment result / renewal -> prepared delivery task 自动创建。
+  - `DLV-030`：交付完成到 billing trigger bridge 已落到正式 outbox，当前可通过 `bil024_billing_trigger_bridge_db_smoke` 复核 bridge 输出。
+  - `BIL-024`：`bil024_billing_trigger_bridge_db_smoke` 已冻结 delivery/acceptance -> billing trigger bridge。
+  - `BIL-025`：`bil025_billing_adjustment_freeze_db_smoke` 已冻结 reject/manual adjustment -> freeze/refund recompute。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-024` 正式目标、依赖、交付与 DoD。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `5.3.2 / 5.3.2A` 的五条标准链路与主/补充 SKU 映射。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.2`，确认 Phase 1 要支持连续演示 `20` 笔以上订单。
+  - `docs/05-test-cases/order-e2e-cases.md`、`docs/05-test-cases/five-standard-scenarios-e2e.md`：确认现有门户 E2E 和五条标准链路卡片可作为 `TEST-024` 的前端场景基线。
+  - `docs/05-test-cases/payment-billing-cases.md`、`docs/05-test-cases/delivery-cases.md`、`docs/05-test-cases/order-state-machine.md`：确认 webhook 乱序、重复交付、重复验收、reject/freeze/refund 的正式断言口径。
+  - `scripts/check-order-e2e.sh`：确认现有官方 E2E checker 可直接复用为 `TEST-024` 的前端联动入口。
+  - `trade030_payment_result_orchestrator_db.rs`、`dlv017_report_delivery_db.rs`、`dlv018_acceptance_db.rs`、`dlv025_delivery_integration_db.rs`、`dlv029_delivery_task_autocreation_db.rs`、`bil024_billing_trigger_bridge_db.rs`、`bil025_billing_adjustment_freeze_db.rs`：确认可复用的后端正式 smoke 与当前缺少可汇总 artifact 的问题。
+- 当前完成标准理解：
+  - 必须形成 `TEST-024` 的正式 checker、文档、CI 与 artifact，至少证明：
+    1. 前端五条标准链路 E2E 已和编排链路 gate 对齐，不是脱节的页面录制。
+    2. 后端正式 smoke 能真实覆盖 webhook 乱序、交付重复、验收重复、reject/freeze/refund 重算。
+    3. checker 会输出 demo order ids + 动态 orchestration order ids，形成 `20+ order` sign-off 摘要。
+    4. 失败时能明确定位到 payment / delivery / acceptance / billing 哪一段断裂。
+- 实施计划：
+  1. 先给 `trade030 / dlv029 / dlv017 / dlv018 / dlv025 / bil024 / bil025` 增加可选 artifact 输出，在 `TEST024_ARTIFACT_DIR` 打开时落 JSON 证据。
+  2. 新增 `docs/05-test-cases/order-orchestration-cases.md`，冻结 `TEST-024` 的正式链路矩阵、异常覆盖点、artifact 结构与官方命令。
+  3. 新增 `scripts/check-order-orchestration.sh` / `.mjs`，复用 `check-order-e2e.sh` 与上述 cargo smoke，汇总 `20+ order` sign-off 摘要并校验编排链路闭环。
+  4. 新增 `.github/workflows/order-orchestration.yml`，更新 acceptance checklist / README 索引，执行真实验证、回写 `BATCH-321（待审批）`、本地提交并继续下一个 `TEST` task。
+
+### BATCH-321（待审批）
+- 任务：`TEST-024` 建立“支付成功 -> 待交付 -> 交付完成 -> 待验收 -> 验收通过/拒收 -> 结算/退款”编排链路测试，重点覆盖 webhook 乱序、交付重复、验收重复、结算重算
+- 状态：待审批
+- 完成情况：
+  - 新增 `docs/05-test-cases/order-orchestration-cases.md`，正式冻结 `TEST-024` 的 authority、官方命令、阶段证据表、artifact contract、`20+ order` sign-off 规则与“订单主状态以 PostgreSQL 为准、乱序 webhook 只记 payment_intent audit”的边界。
+  - 新增 `scripts/check-order-orchestration.sh` / `scripts/check-order-orchestration.mjs`，正式串联：
+    - `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh`
+    - `trade030 / dlv029 / dlv017 / dlv018 / dlv025 / bil024 / bil025`
+    - `fixtures/demo/orders.json`
+    并输出 `target/test-artifacts/order-orchestration/summary.json`、`executed-cargo-tests.txt`、`cargo-tests.log`、`order-e2e.log` 与 `raw/*.json` 证据。
+  - 新增 `.github/workflows/order-orchestration.yml`，把 `TEST-024` 纳入最小 CI 矩阵；同步更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`、`scripts/README.md`、`.github/workflows/README.md`。
+  - 为了让 checker 真实对齐生产口径，补齐了若干正式回收：
+    - `apps/platform-core/src/lib.rs`：`with_stub_test_state / with_live_test_state` 统一挂上 `with_http_observability(...)`，让测试 router 也走正式 request context，`request_id` / trace / idempotency 不再偏离生产。
+    - `trade030_payment_result_orchestrator_db_smoke`：把 ignored webhook 的正式行为回收到当前实现口径，明确其结果为 `out_of_order_ignored`、订单主状态不回退、审计落在 `payment_intent` 上而不是伪造 `order.payment.result.ignored`。
+    - `dlv025_delivery_storage_query_integration_db_smoke`：请求 helper 自动为变更类请求补 `x-idempotency-key`，修复 `accept` / 其他写操作在当前正式幂等口径下的 `400` 误报。
+    - `scripts/check-order-orchestration.sh`：改为向 smoke tests 传入绝对 `TEST024_ARTIFACT_DIR`，消除 `cargo test` 进程在 `apps/platform-core/` 工作目录下把 artifact 写到错误 `target/` 的漂移。
+  - `trade030 / dlv029 / dlv017 / dlv018 / dlv025 / bil024 / bil025` 均增加可选 `TEST024_ARTIFACT_DIR` JSON 落盘，汇总出 `31` 个 sign-off 订单（`5` 个前端标准链路基线订单 + `26` 个后端动态编排订单）。
+- 验证步骤：
+  1. `bash -n scripts/check-order-orchestration.sh`
+  2. `node --check scripts/check-order-orchestration.mjs`
+  3. `cargo test -p platform-core --no-run`
+  4. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; TEST024_ARTIFACT_DIR=target/test-artifacts/order-orchestration/raw TRADE_DB_SMOKE=1 cargo test -p platform-core trade030_payment_result_orchestrator_db_smoke -- --nocapture'`
+  5. `bash -lc 'set -euo pipefail; set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; export TEST024_ARTIFACT_DIR=target/test-artifacts/order-orchestration/raw; export TRADE_DB_SMOKE=1; for t in dlv029_delivery_task_autocreation_db_smoke dlv017_report_delivery_db_smoke dlv018_acceptance_db_smoke bil024_billing_trigger_bridge_db_smoke bil025_billing_adjustment_freeze_db_smoke; do cargo test -p platform-core \"$t\" -- --nocapture; done'`
+  6. `TEST024_ARTIFACT_DIR=/home/luna/Documents/DataB/apps/platform-core/target/test-artifacts/order-orchestration/raw TEST024_SUMMARY_DIR=/home/luna/Documents/DataB/target/test-artifacts/order-orchestration node ./scripts/check-order-orchestration.mjs`
+  7. `bash -lc 'ENV_FILE=infra/docker/.env.local bash ./scripts/check-order-orchestration.sh > /tmp/test024-check.log 2>&1; status=$?; echo $status > /tmp/test024-check.exit; tail -n 60 /tmp/test024-check.log; exit $status'`
+  8. `cargo fmt --all`
+  9. `cargo check -p platform-core`
+  10. `cargo test -p platform-core`
+  11. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  12. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `bash -n`、`node --check`、`cargo test --no-run` 全部通过。
+  - 定向回归 `trade030`、`dlv029`、`dlv017`、`dlv018`、`dlv025`、`bil024`、`bil025` 全部通过，说明 webhook 乱序、自动建任务、重复交付、重复验收、bridge、冻结/重算链路已能稳定产出 artifact。
+  - `TEST024_ARTIFACT_DIR=... node ./scripts/check-order-orchestration.mjs` 单独通过，确认 `31 sign-off orders (5 frontend baseline + 26 dynamic orchestration)`。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-order-orchestration.sh` 正式通过；`/tmp/test024-check.exit = 0`，`/tmp/test024-check.log` 尾部已记录：
+    - `backend orchestration suite passed`
+    - `TEST-024 orchestration verified: 31 sign-off orders (5 frontend baseline + 26 dynamic orchestration)`
+    - `TEST-024 order orchestration checker passed`
+  - 产物已写入 `target/test-artifacts/order-orchestration/`；`summary.json` 中已固定 `task_id=TEST-024`、`signoff_order_count=31`、`frontend_baseline_order_count=5`、`dynamic_orchestration_order_count=26`。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warnings 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`1` ignored（仓库既有 `iam_party_access_flow_live`）。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-024`
+  - `数据交易平台-全集成基线-V1.md`：`5.3.2 / 5.3.2A`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.2`
+  - `order-e2e-cases.md`
+  - `payment-billing-cases.md`
+  - `delivery-cases.md`
+  - `order-state-machine.md`
+- 覆盖的任务清单条目：`TEST-024`
+- 未覆盖项：
+  - `TEST-024` 当前冻结为“标准链路编排 checker + 20+ sign-off artifact + CI gate”，不扩张为 `SHARE_RO` / `QRY_LITE` 的专属 E2E；这两条 SKU 仍由 `TEST-025 / TEST-026` 分别正式落盘。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-315（计划中）
 - 任务：`TEST-018` 补充性能冒烟：单次搜索、下单、交付、审计联查的基础响应时间门槛
 - 状态：计划中

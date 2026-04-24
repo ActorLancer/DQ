@@ -277,6 +277,44 @@ mod tests {
         )
         .await;
 
+        crate::write_test024_artifact(
+            "dlv029-delivery-task-autocreation.json",
+            &json!({
+                "test_id": "dlv029_delivery_task_autocreation_db_smoke",
+                "focus": ["delivery_task_autocreation", "pending_delivery_after_payment"],
+                "orders": [
+                    {
+                        "case": "file_std_lock_funds",
+                        "order_id": seed.file_std_order_id,
+                        "request_id": file_std_req,
+                        "current_state": "buyer_locked",
+                        "delivery_status": file_std_delivery["status"],
+                        "delivery_id": file_std_delivery["delivery_id"],
+                        "creation_source": file_std_delivery["trust_boundary_snapshot"]["delivery_task"]["creation_source"]
+                    },
+                    {
+                        "case": "file_sub_renewal",
+                        "order_id": seed.file_sub_order_id,
+                        "request_id": file_sub_req,
+                        "current_state": "buyer_locked",
+                        "delivery_status": file_sub_rows[0]["status"],
+                        "delivery_id": file_sub_rows[0]["delivery_id"],
+                        "creation_source": file_sub_rows[0]["trust_boundary_snapshot"]["delivery_task"]["creation_source"]
+                    },
+                    {
+                        "case": "api_sub_payment_webhook",
+                        "order_id": seed.api_sub_order_id,
+                        "request_id": webhook_req,
+                        "current_state": "buyer_locked",
+                        "delivery_status": api_sub_delivery["status"],
+                        "delivery_id": api_sub_delivery["delivery_id"],
+                        "creation_source": api_sub_delivery["trust_boundary_snapshot"]["delivery_task"]["creation_source"],
+                        "webhook_processed_status": webhook_json["data"]["processed_status"]
+                    }
+                ]
+            }),
+        );
+
         cleanup_seed_graph(
             &client,
             &seed,

@@ -112,8 +112,12 @@ mod tests {
         )
         .await;
         assert_success_envelope(&ignored_json, &ignored_request_id);
-        assert_eq!(ignored_json["data"]["processed_status"], "processed");
-        assert_eq!(ignored_json["data"]["applied_payment_status"], "failed");
+        assert_eq!(
+            ignored_json["data"]["processed_status"],
+            "out_of_order_ignored"
+        );
+        assert_eq!(ignored_json["data"]["out_of_order_ignored"], true);
+        assert!(ignored_json["data"]["applied_payment_status"].is_null());
 
         let success_row = client
             .query_one(
@@ -228,7 +232,7 @@ mod tests {
             )
             .await
             .expect("query ignored intent");
-        assert_eq!(ignored_intent.get::<_, String>(0), "failed");
+        assert_eq!(ignored_intent.get::<_, String>(0), "processing");
 
         assert_order_audit(
             &client,
@@ -260,16 +264,74 @@ mod tests {
             Some("payment_timeout_pending_compensation_cancel"),
         )
         .await;
-        assert_order_audit(
+        assert_no_order_audit(&client, &ignored_request_id, &seed.ignored.order_id).await;
+        assert_ref_audit(
             &client,
             &ignored_request_id,
-            &seed.ignored.order_id,
-            "order.payment.result.ignored",
+            "payment_intent",
+            &seed.ignored.payment_intent_id,
+            "payment.webhook.out_of_order_ignored",
             "ignored",
-            Some("contract_pending"),
-            None,
         )
         .await;
+
+        crate::write_test024_artifact(
+            "trade030-payment-result-orchestrator.json",
+            &serde_json::json!({
+                "test_id": "trade030_payment_result_orchestrator_db_smoke",
+                "focus": ["webhook_out_of_order", "payment_result_orchestration"],
+                "orders": [
+                    {
+                        "case": "success",
+                        "order_id": seed.success.order_id,
+                        "payment_intent_id": seed.success.payment_intent_id,
+                        "current_state": success_row.get::<_, String>(0),
+                        "payment_status": success_row.get::<_, String>(1),
+                        "delivery_status": success_row.get::<_, String>(2),
+                        "settlement_status": success_row.get::<_, String>(3),
+                        "request_id": success_request_id,
+                        "processed_status": success_json["data"]["processed_status"],
+                        "applied_payment_status": success_json["data"]["applied_payment_status"]
+                    },
+                    {
+                        "case": "failed",
+                        "order_id": seed.failed.order_id,
+                        "payment_intent_id": seed.failed.payment_intent_id,
+                        "current_state": failed_row.get::<_, String>(0),
+                        "payment_status": failed_row.get::<_, String>(1),
+                        "delivery_status": failed_row.get::<_, String>(2),
+                        "settlement_status": failed_row.get::<_, String>(3),
+                        "request_id": failed_request_id,
+                        "processed_status": failed_json["data"]["processed_status"],
+                        "applied_payment_status": failed_json["data"]["applied_payment_status"]
+                    },
+                    {
+                        "case": "timeout",
+                        "order_id": seed.timeout.order_id,
+                        "payment_intent_id": seed.timeout.payment_intent_id,
+                        "current_state": timeout_row.get::<_, String>(0),
+                        "payment_status": timeout_row.get::<_, String>(1),
+                        "delivery_status": timeout_row.get::<_, String>(2),
+                        "settlement_status": timeout_row.get::<_, String>(3),
+                        "request_id": timeout_request_id,
+                        "processed_status": timeout_json["data"]["processed_status"],
+                        "applied_payment_status": timeout_json["data"]["applied_payment_status"]
+                    },
+                    {
+                        "case": "ignored_out_of_order",
+                        "order_id": seed.ignored.order_id,
+                        "payment_intent_id": seed.ignored.payment_intent_id,
+                        "current_state": ignored_row.get::<_, String>(0),
+                        "payment_status": ignored_row.get::<_, String>(1),
+                        "delivery_status": ignored_row.get::<_, String>(2),
+                        "settlement_status": ignored_row.get::<_, String>(3),
+                        "request_id": ignored_request_id,
+                        "processed_status": ignored_json["data"]["processed_status"],
+                        "applied_payment_status": ignored_json["data"]["applied_payment_status"]
+                    }
+                ]
+            }),
+        );
 
         cleanup_seed_graph(
             &client,
@@ -378,6 +440,47 @@ mod tests {
             next_status,
             "unexpected next_status for {request_id}"
         );
+    }
+
+    async fn assert_no_order_audit(client: &Client, request_id: &str, order_id: &str) {
+        let count: i64 = client
+            .query_one(
+                "SELECT COUNT(*)::bigint
+                 FROM audit.audit_event
+                 WHERE request_id = $1
+                   AND ref_type = 'order'
+                   AND ref_id = $2::text::uuid",
+                &[&request_id, &order_id],
+            )
+            .await
+            .expect("query order audit count")
+            .get(0);
+        assert_eq!(count, 0, "unexpected order audit rows for {request_id}");
+    }
+
+    async fn assert_ref_audit(
+        client: &Client,
+        request_id: &str,
+        ref_type: &str,
+        ref_id: &str,
+        action_name: &str,
+        result_code: &str,
+    ) {
+        let row = client
+            .query_one(
+                "SELECT action_name, result_code
+                 FROM audit.audit_event
+                 WHERE request_id = $1
+                   AND ref_type = $2
+                   AND ref_id = $3::text::uuid
+                 ORDER BY event_time DESC
+                 LIMIT 1",
+                &[&request_id, &ref_type, &ref_id],
+            )
+            .await
+            .expect("query ref audit");
+        assert_eq!(row.get::<_, String>(0), action_name);
+        assert_eq!(row.get::<_, String>(1), result_code);
     }
 
     async fn seed_graph(client: &Client, suffix: &str) -> Result<SeedGraph, db::Error> {

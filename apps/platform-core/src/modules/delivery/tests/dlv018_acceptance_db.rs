@@ -459,6 +459,36 @@ mod tests {
             Some(format!("/support/cases/new?order_id={}", report_seed.order_id).as_str())
         );
 
+        crate::write_test024_artifact(
+            "dlv018-acceptance.json",
+            &json!({
+                "test_id": "dlv018_acceptance_db_smoke",
+                "focus": ["acceptance_passed", "acceptance_duplicate", "acceptance_rejected"],
+                "orders": [
+                    {
+                        "case": "file_acceptance_passed",
+                        "order_id": file_seed.order_id,
+                        "request_id": accept_request_id,
+                        "current_state": accept_data["current_state"],
+                        "delivery_status": file_order_row.get::<_, String>(1),
+                        "acceptance_status": accept_data["acceptance_status"],
+                        "settlement_status": accept_data["settlement_status"],
+                        "duplicate_operation": replay_json["data"]["operation"]
+                    },
+                    {
+                        "case": "report_acceptance_rejected",
+                        "order_id": report_seed.order_id,
+                        "request_id": reject_request_id,
+                        "current_state": reject_data["current_state"],
+                        "delivery_status": report_order_row.get::<_, String>(1),
+                        "acceptance_status": reject_data["acceptance_status"],
+                        "settlement_status": reject_data["settlement_status"],
+                        "dispute_status": reject_data["dispute_status"]
+                    }
+                ]
+            }),
+        );
+
         cleanup_seed(&client, &file_seed).await;
         cleanup_seed(&client, &report_seed).await;
     }

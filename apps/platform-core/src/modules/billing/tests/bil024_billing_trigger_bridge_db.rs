@@ -274,6 +274,38 @@ mod tests {
             .get(0);
         assert_eq!(processed_settlement_count, 6);
 
+        crate::write_test024_artifact(
+            "bil024-billing-trigger-bridge.json",
+            &json!({
+                "test_id": "bil024_billing_trigger_bridge_db_smoke",
+                "focus": ["delivery_to_billing_bridge", "acceptance_to_billing_bridge"],
+                "orders": cases
+                    .iter()
+                    .map(|seed| {
+                        let processing_mode = if matches!(seed.sku_type.as_str(), "API_SUB" | "API_PPU") {
+                            "ignored"
+                        } else {
+                            "processed"
+                        };
+                        json!({
+                            "sku_type": seed.sku_type,
+                            "order_id": seed.order_id,
+                            "outbox_event_id": seed.outbox_event_id,
+                            "publish_attempt_id": seed.publish_attempt_id,
+                            "processing_mode": processing_mode
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+                "unpublished_order": {
+                    "sku_type": unpublished_seed.sku_type,
+                    "order_id": unpublished_seed.order_id,
+                    "outbox_event_id": unpublished_seed.outbox_event_id,
+                    "publish_attempt_id": unpublished_seed.publish_attempt_id,
+                    "processing_mode": "unpublished_ignored"
+                }
+            }),
+        );
+
         let mut cleanup_orders = cases.clone();
         cleanup_orders.push(unpublished_seed);
         cleanup_seed_orders(&client, &cleanup_orders).await;

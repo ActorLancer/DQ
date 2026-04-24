@@ -524,6 +524,59 @@ mod tests {
         assert_eq!(outbox_count(&client, &sandbox_req).await, 1);
         assert_eq!(outbox_count(&client, &report_commit_req).await, 1);
 
+        crate::write_test024_artifact(
+            "dlv025-delivery-integration.json",
+            &json!({
+                "test_id": "dlv025_delivery_storage_query_integration_db_smoke",
+                "focus": ["delivery_completed", "pending_acceptance", "acceptance_rejected"],
+                "orders": [
+                    {
+                        "case": "file_delivery_acceptance",
+                        "order_id": file_seed.order_id,
+                        "request_ids": [file_commit_req, file_ticket_req, file_accept_req],
+                        "current_state": file_order_row.get::<_, String>(0),
+                        "payment_status": file_order_row.get::<_, String>(1),
+                        "delivery_status": file_order_row.get::<_, String>(2),
+                        "acceptance_status": file_order_row.get::<_, String>(3)
+                    },
+                    {
+                        "case": "api_delivery_enable",
+                        "order_id": api_seed.order_id,
+                        "request_ids": [api_req],
+                        "current_state": api_order_row.get::<_, String>(0),
+                        "delivery_status": api_order_row.get::<_, String>(1)
+                    },
+                    {
+                        "case": "query_result_available",
+                        "order_id": query_seed.order_id,
+                        "request_ids": [grant_req, run_req],
+                        "current_state": query_order_row.get::<_, String>(0),
+                        "payment_status": query_order_row.get::<_, String>(1),
+                        "delivery_status": query_order_row.get::<_, String>(2),
+                        "acceptance_status": query_order_row.get::<_, String>(3)
+                    },
+                    {
+                        "case": "sandbox_delivery_enable",
+                        "order_id": sandbox_seed.order_id,
+                        "request_ids": [sandbox_req],
+                        "current_state": sandbox_order_row.get::<_, String>(0),
+                        "delivery_status": sandbox_order_row.get::<_, String>(1),
+                        "acceptance_status": sandbox_order_row.get::<_, String>(2)
+                    },
+                    {
+                        "case": "report_delivery_rejected",
+                        "order_id": report_seed.order_id,
+                        "request_ids": [report_commit_req, report_reject_req],
+                        "current_state": report_order_row.get::<_, String>(0),
+                        "delivery_status": report_order_row.get::<_, String>(1),
+                        "acceptance_status": report_order_row.get::<_, String>(2),
+                        "dispute_status": report_order_row.get::<_, String>(3),
+                        "reject_state": report_reject_json["data"]["current_state"]
+                    }
+                ]
+            }),
+        );
+
         let _: () = redis_conn.del(&redis_key).await.expect("redis cleanup");
         let _ = delete_object(&result_bucket, &result_key).await;
 
@@ -543,12 +596,16 @@ mod tests {
         user_id: Option<&str>,
         body: Option<Value>,
     ) -> Request<Body> {
+        let is_mutation = !matches!(method, Method::GET | Method::HEAD | Method::OPTIONS);
         let mut builder = Request::builder()
             .method(method)
             .uri(uri)
             .header("x-role", role)
             .header("x-tenant-id", tenant_id)
             .header("x-request-id", request_id);
+        if is_mutation {
+            builder = builder.header("x-idempotency-key", format!("idem-{request_id}"));
+        }
         if let Some(user_id) = user_id {
             builder = builder.header("x-user-id", user_id);
         }

@@ -148,6 +148,24 @@ mod tests {
         assert_eq!(audit_row.get::<_, i64>(0), 1);
         assert_eq!(audit_row.get::<_, i64>(1), 1);
 
+        crate::write_test024_artifact(
+            "bil025-reject-freeze.json",
+            &json!({
+                "test_id": "bil025_billing_adjustment_freeze_db_smoke",
+                "focus": ["acceptance_rejected", "settlement_freeze"],
+                "orders": [
+                    {
+                        "case": "delivery_reject_freeze",
+                        "order_id": seed.order_id,
+                        "request_id": request_id,
+                        "current_state": data["current_state"],
+                        "settlement_status": data["settlement_status"],
+                        "dispute_status": data["dispute_status"]
+                    }
+                ]
+            }),
+        );
+
         cleanup_reject_seed(&client, &seed).await;
         let manual_suffix = format!("{suffix}-manual");
         let seed = seed_manual_adjustment_order(&client, &manual_suffix).await;
@@ -350,6 +368,26 @@ mod tests {
         assert_eq!(audit_row.get::<_, i64>(1), 1);
         assert_eq!(audit_row.get::<_, i64>(2), 1);
         assert_eq!(audit_row.get::<_, i64>(3), 1);
+
+        crate::write_test024_artifact(
+            "bil025-manual-adjustment.json",
+            &json!({
+                "test_id": "bil025_billing_adjustment_freeze_db_smoke",
+                "focus": ["settlement_recompute", "manual_refund_or_payout"],
+                "orders": [
+                    {
+                        "case": "manual_adjustment_resolution",
+                        "order_id": seed.order_id,
+                        "case_id": case_id,
+                        "request_ids": [create_request_id, resolve_request_id, payout_request_id],
+                        "settlement_status": frozen_row.get::<_, String>(0),
+                        "dispute_status": frozen_row.get::<_, String>(1),
+                        "payout_status": payout["data"]["current_status"],
+                        "summary_state": detail["data"]["settlement_summary"]["summary_state"]
+                    }
+                ]
+            }),
+        );
 
         cleanup_manual_adjustment_seed(
             &client,
