@@ -1,0 +1,19 @@
+name: migration-smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-004-migration-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install checker deps
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client ripgrep
+      - name: Run TEST-004 migration smoke
+        run: ENV_FILE=infra/docker/.env.local bash ./scripts/check-migration-smoke.sh
+      - name: Tear down local stack
+        if: always()
+        run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true

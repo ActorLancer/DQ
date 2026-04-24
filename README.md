@@ -25,10 +25,10 @@
 
 ## 本地开发入口
 
-- 本地编排：`部署脚本/docker-compose.local.yml`
+- 本地编排：`infra/docker/docker-compose.local.yml`
 - 环境检查：`scripts/check-local-env.sh`
 - 栈验证：`scripts/verify-local-stack.sh`
-- 迁移校验：`scripts/validate_database_migrations.sh`
+- 迁移校验：`scripts/validate_database_migrations.sh`（当前正式入口会转发到 `TEST-004` migration smoke）
 
 ## 约束
 

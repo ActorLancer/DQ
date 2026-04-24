@@ -15,4 +15,8 @@
 
 ## 迁移验证
 
-- 执行 `./scripts/validate_database_migrations.sh`，确保迁移脚本在当前数据库上可执行。
+- 执行 `./scripts/validate_database_migrations.sh`，运行 `TEST-004` 正式 migration smoke：
+  - 启动 current local core stack
+  - 初始化 MinIO buckets
+  - 执行 migration/seed roundtrip
+  - 最终启动 `platform-core-bin` 并回查健康端点

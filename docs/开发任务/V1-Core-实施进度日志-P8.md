@@ -207,6 +207,95 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-301（计划中）
+- 任务：`TEST-004` 建立 migration smoke test，验证空库升级、种子导入、应用启动、重置回滚与重新升级
+- 状态：计划中
+- 说明：当前仓库已有 `db/scripts/verify-db-compatibility.sh`、`verify-migration-roundtrip.sh` 等 DB-032 资产，但它们只覆盖 migration/seed 兼容性，不覆盖 `platform-core` 启动；同时 `scripts/validate_database_migrations.sh` 仍指向历史 `部署脚本/docker-compose.postgres-test.yml` 方案，`db/scripts/*` 也残留旧的 `55432/luna_data_trading/luna` 默认值。当前批次将以冻结文档和现有 `infra/docker/.env.local` 为 authority，把 migration smoke 收口成正式 checker：统一复用当前 local core stack、执行空库升级/seed/回滚重升级、校验 seed history，并在最终升级后真实启动 `platform-core`、回查健康端点和运行态信息，再把该入口纳入 CI。
+- 前置依赖核对结果：`ENV-040` 已提供本地 core stack 与 `infra/docker/.env.local` 运行基线；`DB-032` 已提供 migration/seed 兼容回归链路；`CORE-024` 已提供 `platform-core` 启动与健康端点骨架。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-004` 的正式交付是本地/CI 可重复运行的 migration smoke，而不是单独的 DB roundtrip 脚本。
+  - `docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/README.md`、`docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 V1 migration 执行顺序、upgrade/downgrade 策略与 TEST 阶段“真实可重复 smoke”要求。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/平台总体架构设计草案.md`：确认 `platform-core` 是唯一主应用，运行时数据库入口统一走 `DATABASE_URL`，宿主机本地依赖口径统一为当前 `infra/docker/.env.local`。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/postgres-local.md`、`docs/05-test-cases/README.md`、`scripts/README.md`：确认 migration smoke 需要覆盖 core stack、bucket/topic 准备、`platform-core` 启动与正式脚本入口，不得继续沿用历史 compose/test 编排。
+  - `db/scripts/migration-runner.sh`、`migrate-up.sh`、`migrate-down.sh`、`migrate-reset.sh`、`seed-runner.sh`、`seed-up.sh`、`verify-migration-roundtrip.sh`、`verify-db-compatibility.sh`、`check-db-ready.sh`：确认现有可复用的 migration/seed 兼容回归链路，以及旧默认数据库参数尚未收口到当前 local baseline。
+  - `scripts/validate_database_migrations.sh`、`Makefile`、`xtask/src/main.rs`、`.github/workflows/*.yml`：确认当前迁移校验入口和 CI 仍缺失 `TEST-004` 的正式 smoke job。
+- 当前完成标准理解：
+  - 形成 `TEST-004` 专属 migration smoke checker，执行顺序至少覆盖：启动 core stack、初始化 MinIO buckets、空库 upgrade、全量 seed、回滚/重升级、seed history 回查、最终 `platform-core` 启动与健康/运行态断言。
+  - `scripts/validate_database_migrations.sh` 收口到当前正式 smoke 入口，不再继续执行历史 `部署脚本/docker-compose.postgres-test.yml` 路径。
+  - `db/scripts/*` 的默认本地数据库参数与 `infra/docker/.env.local` 对齐，避免 migration smoke 依赖隐式 export 才能通过。
+  - 文档、fixtures 与 `.github/workflows/**` 同步补齐，确保本地与 CI 至少一处可重复通过并留下可读结果。
+- 实施计划：
+  1. 追加 `TEST-004` 基线文档与 fixture，明确 required seed versions、应用启动口径和 checker 命令。
+  2. 新增 migration smoke checker，并让 `scripts/validate_database_migrations.sh` 兼容转发到该入口。
+  3. 收口 `db/scripts/*` 默认本地数据库参数到 `infra/docker/.env.local` 当前口径，避免旧 `55432/luna_*` 漂移继续污染 smoke。
+  4. 接入 GitHub Actions workflow，并执行本地真实验证：core stack、migration smoke、Rust 通用校验、`sqlx prepare`、query compile check。
+
+### BATCH-301（待审批）
+- 任务：`TEST-004` 建立 migration smoke test，验证空库升级、种子导入、应用启动、重置回滚与重新升级
+- 状态：待审批
+- 当前任务编号：`TEST-004`
+- 前置依赖核对结果：`ENV-040`、`DB-032`、`CORE-024` 均继续满足；本批直接复用当前 `infra/docker/.env.local` core stack、`db/scripts/verify-db-compatibility.sh` 与 `platform-core` 健康端点，不再引入历史 test compose。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-004` 要求的是“migration smoke + app startup + CI”，不是单独的 DB compatibility。
+  - `docs/数据库设计/数据库设计总说明.md`、`docs/数据库设计/README.md`、`db/migrations/v1/README.md`、`docs/03-db/migration-compatibility.md`：确认 upgrade/downgrade 顺序、manifest 入口、`verify-db-compatibility.sh` 覆盖边界与 current migration 最新版本来源。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/平台总体架构设计草案.md`：确认 `platform-core` 是唯一主应用，本地运行时入口以 `infra/docker/.env.local` 和 `DATABASE_URL` 为准。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/postgres-local.md`、`docs/05-test-cases/README.md`、`scripts/README.md`、`README.md`：确认 `TEST` 阶段需要正式 smoke/checker/runbook/CI 留痕，且历史 `部署脚本/docker-compose.postgres-test.yml` 已不应继续作为正式入口。
+  - `db/scripts/migration-runner.sh`、`seed-runner.sh`、`migrate-reset.sh`、`verify-migration-roundtrip.sh`、`verify-db-compatibility.sh`、`check-db-ready.sh`、`scripts/validate_database_migrations.sh`、`xtask/src/main.rs`、`Makefile`、`.github/workflows/*.yml`：确认现有脚本可复用，但入口和默认数据库参数需要统一收口。
+- 实现要点：
+  - 新增 `scripts/check-migration-smoke.sh`，作为 `TEST-004` 正式 checker，完整执行：
+    - 启动 current local core stack
+    - 初始化 MinIO buckets
+    - 运行 `db/scripts/verify-db-compatibility.sh`
+    - 回查 `public.seed_history` 中 `001/010/020/030/031/032/033`
+    - 最终启动 `platform-core-bin`
+    - 回查 `/health/live`、`/health/ready`、`/health/deps`、`/internal/runtime`
+  - 新增 `fixtures/smoke/test-004/required-seed-versions.txt` 与 `runtime-baseline.env`，冻结 `TEST-004` 的 seed history 和运行态基线；并新增 `fixtures/smoke/test-004/README.md` 说明。
+  - 新增 `docs/05-test-cases/migration-smoke-cases.md`，并更新 `docs/05-test-cases/README.md`，把 `TEST-004` checker 与验收断言纳入正式测试文档。
+  - 新增 `.github/workflows/migration-smoke.yml`，把 `TEST-004` 作为独立 CI job 落盘。
+  - 把 `scripts/validate_database_migrations.sh` 收口为兼容 wrapper，统一转发到 `check-migration-smoke.sh`；同时更新 `README.md`、`scripts/README.md`、`docs/04-runbooks/postgres-local.md` 的正式入口说明。
+  - 收口本地数据库默认参数漂移：
+    - `db/scripts/*` 中原残留的 `55432/luna_data_trading/luna/5686` 默认值，统一改为当前 `5432/datab/datab/datab_local_pass`
+    - `scripts/seed-demo.mjs`、`scripts/check-demo-seed.mjs` 同步对齐 current local baseline，避免 TEST 资产内部继续保留第二套本地数据库默认口径
+- 验证步骤：
+  1. `chmod +x scripts/check-migration-smoke.sh scripts/validate_database_migrations.sh`
+  2. `bash -n scripts/check-migration-smoke.sh scripts/validate_database_migrations.sh db/scripts/verify-db-compatibility.sh db/scripts/verify-migration-roundtrip.sh`
+  3. `ENV_FILE=infra/docker/.env.local bash ./scripts/validate_database_migrations.sh`
+  4. `cargo fmt --all`
+  5. `cargo check -p platform-core`
+  6. `cargo test -p platform-core`
+  7. `bash -lc 'set -a; source infra/docker/.env.local; set +a; cargo sqlx prepare --workspace'`
+  8. `./scripts/check-query-compile.sh`
+  9. `git diff --check`
+- 验证结果：
+  - `bash -n ...` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/validate_database_migrations.sh` 通过，完整输出：
+    - core stack 启动、Kafka topics 初始化、MinIO buckets 初始化成功
+    - `db compatibility baseline verified`
+    - `required seed_history versions recorded`
+    - `platform-core` 最终以 `APP_MODE=local / PROVIDER_MODE=mock` 启动成功
+    - `/health/live`、`/health/ready` 返回 `200`
+    - `/health/deps` 回查 `db / redis / kafka / minio / keycloak reachable=true`
+    - `/internal/runtime` 回查 `migration_version=083`
+    - `TEST-004 migration smoke checker passed`
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - `cargo test -p platform-core` 通过：`358` 个测试通过、`0` 失败、`1` ignored（仓库既有 `iam_party_access_flow_live`）。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 编译期查询缓存已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `git diff --check` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-004`
+  - `数据库设计总说明.md`：7.1 V1 migration 顺序
+  - `数据库设计/README.md`：4. 迁移策略
+  - `15-测试策略、验收标准与实施里程碑.md`：15.1 测试策略
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/postgres-local.md`
+  - `docs/05-test-cases/README.md`
+- 覆盖的任务清单条目：`TEST-004`
+- 未覆盖项：
+  - `TEST-005` 的 local stack smoke、Grafana/realm/canonical topic 边界仍由下一批单独处理；本批只覆盖 migration/seed/app startup smoke，不提前越界到 observability 或 canonical checker。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-300（计划中）
 - 任务：`TEST-003` 建立 contract test 目录，覆盖 OpenAPI schema、错误码、状态机枚举、关键响应字段
 - 状态：计划中

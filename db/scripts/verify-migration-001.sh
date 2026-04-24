@@ -2,10 +2,10 @@
 set -euo pipefail
 
 DB_HOST="${DB_HOST:-127.0.0.1}"
-DB_PORT="${DB_PORT:-55432}"
-DB_NAME="${DB_NAME:-luna_data_trading}"
-DB_USER="${DB_USER:-luna}"
-DB_PASSWORD="${DB_PASSWORD:-5686}"
+DB_PORT="${DB_PORT:-5432}"
+DB_NAME="${DB_NAME:-datab}"
+DB_USER="${DB_USER:-datab}"
+DB_PASSWORD="${DB_PASSWORD:-datab_local_pass}"
 
 export PGPASSWORD="${DB_PASSWORD}"
 PSQL=(psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR_STOP=1 -X -q -tA)

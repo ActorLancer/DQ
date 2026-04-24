@@ -13,6 +13,7 @@
 - `./scripts/check-topic-topology.sh` 只用于通知 / Fabric / audit-anchor 相关关键静态 topology 与 route seed 校验；若要验证 `infra/kafka/topics.v1.json` 中全部 canonical topics 是否真实存在，应执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`。
 - `./scripts/check-canonical-contracts.sh` 是 `TEST-028` 的正式 checker：本地默认 `full` 模式会串行执行 `check-openapi-schema.sh + check-topic-topology.sh + smoke-local.sh`，并额外校验 canonical consumer group、宿主机/容器 Kafka 边界与正式运行态文档中不存在旧 topic / 旧命名默认值；CI 则使用 `CANONICAL_CHECK_MODE=static` 跑静态子集。
 - `./scripts/check-api-contract-baseline.sh` 是 `TEST-003` 的正式 checker：它只校验 API/OpenAPI 相关冻结契约，包括成功/失败 envelope、关键响应字段、错误码基线与订单状态机 action enum / 禁止错误码绑定，不替代 `TEST-028` 的 canonical smoke。
+- `./scripts/check-migration-smoke.sh` 是 `TEST-004` 的正式 checker：它会启动当前 local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core` 做健康与运行态回查；`./scripts/validate_database_migrations.sh` 仅作为兼容入口转发到该 checker。
 - 当前仓库已分别由以下文件承接三条事件的正式验收清单：
   - `notification.requested -> docs/05-test-cases/notification-cases.md`
   - `audit.anchor_requested / fabric.proof_submit_requested -> docs/05-test-cases/audit-consistency-cases.md`
@@ -22,6 +23,7 @@
 - `order-state-machine.md`：Order/Contract/Authorization 主交易链路 8 个标准 SKU 状态转换测试矩阵。
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
+- `migration-smoke-cases.md`：`TEST-004` 的正式 migration smoke 清单，固定 core stack、migration/seed roundtrip、seed_history 回查与 `platform-core` 启动验证入口。
 - `search-rec-cases.md`：`SEARCHREC-017` 正式冻结的 Search/Recommendation 验收矩阵，覆盖投影延迟、回 PostgreSQL 最终校验、推荐曝光/点击幂等、零结果兜底、统一鉴权 / step-up / 审计 / 错误码，以及 consumer 幂等、双层 DLQ 与 dry-run reprocess。
 - `notification-cases.md`：通知链路验收清单，覆盖 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log`、幂等、重试、DLQ、人工补发与审计联查。
 - `web-smoke-cases.md`：`WEB-020` 冻结的 portal / console 最小页面 smoke 基线，覆盖页面路由、状态态面、浏览器受控 API 边界与 `WEB-018` live E2E 入口。

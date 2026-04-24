@@ -27,10 +27,10 @@ async function readJson(relativePath) {
 function loadDbConfig() {
   return {
     host: process.env.DB_HOST ?? "127.0.0.1",
-    port: process.env.DB_PORT ?? "55432",
-    name: process.env.DB_NAME ?? "luna_data_trading",
-    user: process.env.DB_USER ?? "luna",
-    password: process.env.DB_PASSWORD ?? "5686",
+    port: process.env.DB_PORT ?? "5432",
+    name: process.env.DB_NAME ?? "datab",
+    user: process.env.DB_USER ?? "datab",
+    password: process.env.DB_PASSWORD ?? "datab_local_pass",
   };
 }
 
