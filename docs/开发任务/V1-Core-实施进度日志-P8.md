@@ -661,3 +661,80 @@
   - real payment / real signing 的外部生产 provider 仍为占位实现；本批验证的是配置切换与业务路径无代码分叉，不包含真实第三方厂商联调。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-305（计划中）
+- 任务：`TEST-008` 建立 outbox 一致性测试：DB 事务成功时有 outbox，事务失败时无 outbox，重复消费不重复产生副作用
+- 状态：计划中
+- 说明：当前仓库已经分别具备 `trade003_create_order_db_smoke` 的成功写 outbox 断言、`workers/outbox-publisher` 的发布 / dead letter live smoke、以及 `notification-worker` 的 duplicate dedupe live smoke，但这些资产仍分散在不同模块和文档里，尚未形成 `TEST-008` 官方 checker / 文档 / CI，也没有把“事务失败无 outbox”收口成正式断言。本批次将以 `PostgreSQL` 为主状态权威、`Kafka` 为事件总线、`ops.consumer_idempotency_record` 为消费幂等证据，把事务写入、发布、消费三段闭环整理成单一可重复入口。
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / Kafka / Redis / Keycloak / OpenSearch / MinIO / observability 的本地联调基线；`DB-032` 已通过 `TEST-004`/`TEST-005` 验证 migration 与本地 smoke；`CORE-024` 已提供 `platform-core` canonical outbox writer、`outbox-publisher` 与 `notification-worker` 运行骨架。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-008` 的正式交付是 outbox 一致性测试，不是局部 DB 断言或 worker 单测。
+  - `docs/原始PRD/双层权威模型与链上链下一致性设计.md`：确认 `ops.outbox_event` / `ops.dead_letter_event` / `ops.consumer_idempotency_record` 的正式字段、双层权威边界以及“不允许把 Kafka 当主状态机 / 不允许重试造成重复副作用”。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/测试用例矩阵正式版.md`：确认 `platform-core` 事务内必须同写主对象 + 审计 + outbox，`outbox-publisher` 是正式发布者，`notification-worker` 是正式消费者之一，`ASYNC-001 ~ 003` 是冻结测试面。
+  - `docs/04-runbooks/outbox-publisher.md`、`docs/04-runbooks/audit-ops-outbox-dead-letters.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/notification-cases.md`：确认当前已有 outbox publish / dead letter / consumer idempotency 的正式回查方式，可复用到 `TEST-008` checker。
+  - `apps/platform-core/src/shared/outbox.rs`、`apps/platform-core/src/modules/order/tests/trade003_create_order_db.rs`、`trade006_contract_confirm_db.rs`、`workers/outbox-publisher/src/main.rs`、`apps/notification-worker/src/main.rs`：确认现有成功样本、发布侧 smoke 与 duplicate dedupe live smoke 的实现位置。
+- 当前完成标准理解：
+  - 必须至少证明三条正式断言：
+    1. 业务事务成功时，主对象 / 审计 / outbox 同事务存在。
+    2. 业务事务失败时，请求不得留下脏 outbox 或成功审计副作用。
+    3. 重复消费正式事件时，不得重复产生下游副作用，并能从 `ops.consumer_idempotency_record` / 审计 / 系统日志回查。
+  - 需要形成 `TEST-008` 专属文档、checker 和 CI 入口，且要复用正式服务与正式 topic，不新造第二套事件目录或模拟协议。
+- 实施计划：
+  1. 补强 `platform-core` 失败路径测试，明确断言冲突事务不会留下 outbox / 成功审计 / 主状态推进副作用。
+  2. 新增 `TEST-008` 官方文档与 checker，串联 `trade003` 成功样本、失败无 outbox 样本、`outbox-publisher` live smoke 和 `notification-worker` duplicate dedupe live smoke。
+  3. 新增最小 CI workflow，保证 `TEST-008` 在 GitHub Actions 上可重复执行。
+  4. 执行真实验证、回写 `P8` 待审批记录并提交，然后继续 `TEST-009`。
+
+### BATCH-305（待审批）
+- 任务：`TEST-008` 建立 outbox 一致性测试：DB 事务成功时有 outbox，事务失败时无 outbox，重复消费不重复产生副作用
+- 状态：待审批
+- 当前任务编号：`TEST-008`
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / Kafka / Redis / Keycloak / OpenSearch / MinIO / observability 的本地联调基线；`DB-032` 已通过 `TEST-004`/`TEST-005` 验证 migration 与本地 smoke；`CORE-024` 已提供 `platform-core` canonical outbox writer、`outbox-publisher` 与 `notification-worker` 正式运行骨架。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-008` 的正式交付是 outbox 一致性测试，不是单条 DB count 或局部 worker 单测。
+  - `docs/原始PRD/双层权威模型与链上链下一致性设计.md`：确认 `ops.outbox_event / ops.dead_letter_event / ops.consumer_idempotency_record` 的正式字段，以及“不允许把 Kafka 当主状态机 / 不允许重试造成重复副作用”的边界。
+  - `docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/测试用例矩阵正式版.md`：确认事务内必须同写主对象 + 审计 + outbox，`outbox-publisher` 是正式发布者，`notification-worker` 是正式消费者，`ASYNC-001 ~ 003` 是冻结测试面。
+  - `docs/04-runbooks/outbox-publisher.md`、`docs/04-runbooks/audit-ops-outbox-dead-letters.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/05-test-cases/notification-cases.md`：确认发布、死信和 consumer 幂等的正式回查方式。
+  - `apps/platform-core/src/shared/outbox.rs`、`apps/platform-core/src/modules/order/tests/trade003_create_order_db.rs`、`workers/outbox-publisher/src/main.rs`、`apps/notification-worker/src/main.rs`：确认成功样本、失败无 outbox 断言补位点，以及发布侧 / 消费侧 live smoke 入口。
+- 实现要点：
+  - 补强 `apps/platform-core/src/modules/order/tests/trade003_create_order_db.rs`，使同一 `create order` live smoke 同时覆盖：
+    - 成功分支：`trade.order_main + audit.audit_event + ops.outbox_event` 同事务存在。
+    - 失败分支：缺失 buyer org 时返回 `403 / ORDER_CREATE_FORBIDDEN`，并明确断言 `trade.order_main(idempotency_key=failed)`、`audit.audit_event(request_id=failed)`、`ops.outbox_event(request_id=failed)` 全部为 `0`。
+  - 新增 `docs/05-test-cases/outbox-consistency-cases.md`，冻结 `TEST-008` 的四个正式 case、官方 checker 和主要回查点。
+  - 新增 `scripts/check-outbox-consistency.sh`，串联 `smoke-local.sh`、`trade003_create_order_db_smoke`、`outbox_publisher_db_smoke`、`notif012_notification_worker_live_smoke`，并在运行前显式拦截本机已有 `notification-worker` 常驻实例。
+  - 新增 `.github/workflows/outbox-consistency.yml`，把 `TEST-008` checker 纳入最小 CI 路径；同步更新 `docs/05-test-cases/README.md`、`docs/04-runbooks/outbox-publisher.md`、`scripts/README.md`、`.github/workflows/README.md`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `TRADE_DB_SMOKE=1 cargo test -p platform-core trade003_create_order_db_smoke -- --nocapture`
+  4. `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh`
+  5. `cargo test -p platform-core`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 unused / dead-code warning，但无新增编译失败。
+  - `TRADE_DB_SMOKE=1 cargo test -p platform-core trade003_create_order_db_smoke -- --nocapture` 通过，新增失败分支已确认不会落任何主对象 / 审计 / outbox 脏副作用。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh` 通过，完成以下真实联动验证：
+    - `smoke-local.sh` 校验 PostgreSQL / Kafka / Redis / Keycloak / MinIO / Mock Payment / observability 基线。
+    - `trade003_create_order_db_smoke` 同时验证 `trade.order.created` 成功写主对象 + 审计 + outbox，以及失败请求无脏 order / audit / outbox。
+    - `outbox_publisher_db_smoke` 验证 `ops.outbox_event -> dtp.outbox.domain-events` 成功发布、`ops.outbox_publish_attempt(result_code='published')`、以及失败样本进入 `ops.dead_letter_event + dtp.dead-letter`。
+    - `notif012_notification_worker_live_smoke` 验证 `notification.requested -> dtp.notification.dispatch -> notification-worker` 的 duplicate dedupe：第二次消费不重复写 `notification sent via mock-log`，也不重复写 `notification.dispatch.sent` 审计。
+  - `cargo test -p platform-core` 通过：`360` 个测试通过，`0` 失败；仓库既有 `iam_party_access_flow_live` 继续保持 ignored。
+  - `cargo sqlx prepare --workspace` 通过，workspace 根目录 `.sqlx` 查询编译元数据已重建并更新。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-008`
+  - `双层权威模型与链上链下一致性设计.md`
+  - `事件模型与Topic清单正式版.md`
+  - `服务清单与服务边界正式版.md`
+  - `测试用例矩阵正式版.md`
+  - `docs/04-runbooks/outbox-publisher.md`
+  - `docs/05-test-cases/audit-consistency-cases.md`
+  - `docs/05-test-cases/notification-cases.md`
+- 覆盖的任务清单条目：`TEST-008`
+- 未覆盖项：
+  - `TEST-017` 的 dead letter / reprocess 专项、`TEST-018` 的 replay dry-run、`TEST-021`/`TEST-028` 的 canonical checker 不在本批范围，后续按任务顺序继续补齐。
+  - 本批的“重复消费不重复副作用”正式样本落在 `notification-worker`；搜索、推荐、Fabric 等其他 consumer 的幂等矩阵由后续专项任务继续扩展。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

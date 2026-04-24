@@ -10,6 +10,7 @@
 - `local-environment-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`，承接 `TEST-005` 本地环境 smoke。
 - `order-e2e.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh`，承接 `TEST-006` 五条标准链路 order E2E。
 - `provider-switch.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`，承接 `TEST-007` 支付 / 签章 / 链写 provider 切换验收。
+- `outbox-consistency.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh`，承接 `TEST-008` 事务写入 / outbox 发布 / consumer 幂等验收。
 
 后续任务将继续补齐：
 

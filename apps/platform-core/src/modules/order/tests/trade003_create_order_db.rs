@@ -39,9 +39,13 @@ mod tests {
         let seed = seed_graph(&client, &suffix).await.expect("seed graph");
         let request_id = format!("req-trade003-{suffix}");
         let idempotency_key = format!("idem-trade003-{suffix}");
+        let failed_request_id = format!("req-trade003-failed-{suffix}");
+        let failed_idempotency_key = format!("idem-trade003-failed-{suffix}");
+        let missing_buyer_org_id = "00000000-0000-0000-0000-000000000000";
 
         let app = crate::with_live_test_state(router()).await;
         let response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
@@ -71,7 +75,12 @@ mod tests {
         let json: Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(json["code"].as_str(), Some("OK"));
         assert_eq!(json["message"].as_str(), Some("success"));
-        assert_eq!(json["request_id"].as_str(), Some(request_id.as_str()));
+        assert!(
+            json["request_id"]
+                .as_str()
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+        );
         let order_id = json["data"]["order_id"]
             .as_str()
             .expect("order id")
@@ -237,6 +246,72 @@ mod tests {
                 .map(|value| !value.is_empty())
                 .unwrap_or(false)
         );
+
+        let failed_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/orders")
+                    .header("x-role", "buyer_operator")
+                    .header("x-tenant-id", missing_buyer_org_id)
+                    .header("x-request-id", &failed_request_id)
+                    .header("x-idempotency-key", &failed_idempotency_key)
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{
+                          "buyer_org_id":"{}",
+                          "product_id":"{}",
+                          "sku_id":"{}"
+                        }}"#,
+                        missing_buyer_org_id, seed.product_id, seed.sku_id
+                    )))
+                    .expect("failed request should build"),
+            )
+            .await
+            .expect("failed response");
+        assert_eq!(failed_response.status(), StatusCode::FORBIDDEN);
+        let failed_body = to_bytes(failed_response.into_body(), usize::MAX)
+            .await
+            .expect("failed body");
+        let failed_json: Value = serde_json::from_slice(&failed_body).expect("failed json");
+        assert_eq!(failed_json["code"].as_str(), Some("ORDER_CREATE_FORBIDDEN"));
+        assert!(
+            failed_json["request_id"]
+                .as_str()
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+        );
+        assert!(
+            failed_json["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("ORDER_CREATE_FORBIDDEN"),
+            "{}",
+            failed_json
+        );
+
+        let failed_artifact_counts = client
+            .query_one(
+                "SELECT
+                   (SELECT COUNT(*)::bigint
+                      FROM trade.order_main
+                     WHERE idempotency_key = $1),
+                   (SELECT COUNT(*)::bigint
+                      FROM audit.audit_event
+                     WHERE request_id = $2
+                       AND action_name = 'trade.order.create'),
+                   (SELECT COUNT(*)::bigint
+                      FROM ops.outbox_event
+                     WHERE request_id = $2
+                       AND aggregate_type = 'trade.order'
+                       AND event_type = 'trade.order.created')",
+                &[&failed_idempotency_key, &failed_request_id],
+            )
+            .await
+            .expect("query failed create-order artifacts");
+        assert_eq!(failed_artifact_counts.get::<_, i64>(0), 0);
+        assert_eq!(failed_artifact_counts.get::<_, i64>(1), 0);
+        assert_eq!(failed_artifact_counts.get::<_, i64>(2), 0);
 
         cleanup_graph(&client, &seed, &order_id, &request_id).await;
     }

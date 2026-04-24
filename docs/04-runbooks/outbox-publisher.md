@@ -55,6 +55,14 @@ curl -fsS http://127.0.0.1:8098/metrics
 
 ## 真实验证
 
+`TEST-008` 官方 checker：
+
+```bash
+ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh
+```
+
+若只需要单独验证发布侧与死信隔离，可继续执行下面的 worker live smoke：
+
 建议先启动基础设施，再单独跑 worker live smoke：
 
 ```bash
