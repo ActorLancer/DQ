@@ -4,7 +4,7 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use db::{Client, GenericClient, NoTls, connect};
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tower::util::ServiceExt;
 
     #[derive(Debug)]
@@ -51,6 +51,17 @@ mod tests {
             "disable_access",
         ] {
             let request_id = format!("req-trade011-{suffix}-{action}");
+            let body = if action == "settle_success_call" {
+                json!({
+                    "action": action,
+                    "billing_amount": "20.01000000",
+                    "usage_units": "1",
+                    "reason_note": "test api ppu usage settlement"
+                })
+                .to_string()
+            } else {
+                json!({ "action": action }).to_string()
+            };
             let response = app
                 .clone()
                 .oneshot(
@@ -63,8 +74,12 @@ mod tests {
                         .header("x-role", "buyer_operator")
                         .header("x-tenant-id", &seed.buyer_org_id)
                         .header("x-request-id", &request_id)
+                        .header(
+                            "x-idempotency-key",
+                            format!("trade011:{suffix}:{action}:{}", seed.order_id),
+                        )
                         .header("content-type", "application/json")
-                        .body(Body::from(format!(r#"{{"action":"{action}"}}"#)))
+                        .body(Body::from(body))
                         .expect("request should build"),
                 )
                 .await
@@ -99,8 +114,20 @@ mod tests {
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", &seed.buyer_org_id)
                     .header("x-request-id", format!("req-trade011-{suffix}-invalid"))
+                    .header(
+                        "x-idempotency-key",
+                        format!("trade011:{suffix}:invalid-settle-success:{}", seed.order_id),
+                    )
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"action":"settle_success_call"}"#))
+                    .body(Body::from(
+                        json!({
+                            "action": "settle_success_call",
+                            "billing_amount": "20.01000000",
+                            "usage_units": "1",
+                            "reason_note": "invalid usage settlement after disable"
+                        })
+                        .to_string(),
+                    ))
                     .expect("request should build"),
             )
             .await

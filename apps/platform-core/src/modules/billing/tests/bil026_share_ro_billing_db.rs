@@ -211,7 +211,7 @@ mod tests {
         assert_eq!(cycle_counts.get::<_, i64>(1), 1);
         assert_eq!(cycle_counts.get::<_, i64>(2), 1);
         assert_eq!(cycle_counts.get::<_, String>(3), "99.00000000");
-        assert_eq!(cycle_counts.get::<_, String>(4), "closed");
+        assert_eq!(cycle_counts.get::<_, String>(4), "refunded");
         assert_eq!(cycle_counts.get::<_, i64>(5), 1);
         assert_eq!(cycle_counts.get::<_, i64>(6), 1);
         assert_eq!(cycle_counts.get::<_, i64>(7), 1);
@@ -232,7 +232,10 @@ mod tests {
             &create_case_request_id,
         )
         .await;
-        assert_eq!(dispute_case["data"]["case_status"].as_str(), Some("open"));
+        assert_eq!(
+            dispute_case["data"]["current_status"].as_str(),
+            Some("opened")
+        );
 
         let dispute_row = client
             .query_one(
@@ -247,7 +250,7 @@ mod tests {
             .await
             .expect("query dispute row");
         assert_eq!(dispute_row.get::<_, String>(0), "frozen");
-        assert_eq!(dispute_row.get::<_, String>(1), "open");
+        assert_eq!(dispute_row.get::<_, String>(1), "opened");
         assert_eq!(dispute_row.get::<_, i64>(2), 1);
         assert_eq!(dispute_row.get::<_, String>(3), "frozen");
         assert_eq!(dispute_row.get::<_, i64>(4), 1);
@@ -549,7 +552,7 @@ mod tests {
                    $1::text::uuid, $2::text::uuid, $3::text::uuid, $4, 'manufacturing', 'data_product',
                    $5, 'listed', 'subscription', 66.00, 'CNY', 'read_only_share',
                    ARRAY['internal_use']::text[], $6,
-                   '{\"review_status\":\"approved\",\"share_protocol\":\"share_grant\"}'::jsonb
+                   '{"review_status":"approved","share_protocol":"share_grant"}'::jsonb
                  )
                  RETURNING product_id::text"#,
                 &[
@@ -597,7 +600,7 @@ mod tests {
                      'refund_template_code', 'REFUND_SHARE_RO_V1'
                    ),
                    'share_link',
-                   '{\"share_delivery\":\"readonly\"}'::jsonb
+                   '{"share_delivery":"readonly"}'::jsonb
                  )
                  RETURNING order_id::text"#,
                 &[&product_id, &asset_version_id, &buyer_org_id, &seller_org_id, &sku_id],

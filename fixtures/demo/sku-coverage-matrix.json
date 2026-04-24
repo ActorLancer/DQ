@@ -1,0 +1,397 @@
+{
+  "generated_for_task": "TEST-023",
+  "version": "1.0.0",
+  "official_checker": "scripts/check-standard-sku-coverage.sh",
+  "shared_checks": [
+    {
+      "kind": "cargo_test",
+      "target": "cat023_standard_scenarios_endpoint_db_smoke",
+      "entry_point": "apps/platform-core/src/modules/catalog/tests/cat023_standard_scenarios_db.rs",
+      "purpose": "catalog_api_scenario_mapping"
+    },
+    {
+      "kind": "live_api",
+      "target": "scripts/check-standard-sku-coverage.mjs",
+      "entry_point": "scripts/check-standard-sku-coverage.mjs",
+      "purpose": "demo_order_billing_basis_and_matrix_artifact"
+    }
+  ],
+  "standard_sku_matrix": [
+    {
+      "sku_type": "FILE_STD",
+      "scenario_links": [
+        {
+          "scenario_code": "S2",
+          "scenario_role": "primary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000002"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000002",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade008_file_std_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade008_file_std_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade008_file_std_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade008_file_std_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "direct_transition_dispute_refund",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade008_file_std_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade008_file_std_state_machine_db.rs"
+          }
+        ]
+      }
+    },
+    {
+      "sku_type": "FILE_SUB",
+      "scenario_links": [
+        {
+          "scenario_code": "S2",
+          "scenario_role": "supplementary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000102"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000102",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade009_file_sub_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade009_file_sub_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade009_file_sub_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade009_file_sub_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "direct_transition_dispute_refund",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade009_file_sub_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade009_file_sub_state_machine_db.rs"
+          }
+        ]
+      }
+    },
+    {
+      "sku_type": "SHARE_RO",
+      "scenario_links": [
+        {
+          "scenario_code": "S3",
+          "scenario_role": "supplementary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000103"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000103",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade012_share_ro_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade012_share_ro_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade012_share_ro_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade012_share_ro_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "direct_billing_revoke_or_dispute",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "bil026_share_ro_billing_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil026_share_ro_billing_db.rs"
+          }
+        ]
+      }
+    },
+    {
+      "sku_type": "API_SUB",
+      "scenario_links": [
+        {
+          "scenario_code": "S1",
+          "scenario_role": "primary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000001"
+        },
+        {
+          "scenario_code": "S4",
+          "scenario_role": "primary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000004"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000001",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade010_api_sub_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade010_api_sub_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade010_api_sub_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade010_api_sub_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "billing_trigger_mediated",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "bil017_api_sku_billing_basis_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil017_api_sku_billing_basis_db.rs"
+          },
+          {
+            "kind": "cargo_test",
+            "target": "bil024_billing_trigger_bridge_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs"
+          },
+          {
+            "kind": "cargo_test",
+            "target": "bil019_dispute_refund_compensation_recompute_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs"
+          },
+          {
+            "kind": "live_api",
+            "target": "scripts/check-standard-sku-coverage.mjs",
+            "entry_point": "scripts/check-standard-sku-coverage.mjs"
+          }
+        ],
+        "notes": "API_SUB 的退款/争议不通过额外 order transition action 表达，而是通过正式 billing basis + settlement dispute engine 挂接。"
+      }
+    },
+    {
+      "sku_type": "API_PPU",
+      "scenario_links": [
+        {
+          "scenario_code": "S1",
+          "scenario_role": "supplementary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000101"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000101",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade011_api_ppu_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade011_api_ppu_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade011_api_ppu_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade011_api_ppu_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "billing_trigger_mediated",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "bil017_api_sku_billing_basis_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil017_api_sku_billing_basis_db.rs"
+          },
+          {
+            "kind": "cargo_test",
+            "target": "bil024_billing_trigger_bridge_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs"
+          },
+          {
+            "kind": "cargo_test",
+            "target": "bil019_dispute_refund_compensation_recompute_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs"
+          },
+          {
+            "kind": "live_api",
+            "target": "scripts/check-standard-sku-coverage.mjs",
+            "entry_point": "scripts/check-standard-sku-coverage.mjs"
+          }
+        ],
+        "notes": "API_PPU 的退款/争议通过 metering billing basis 与 dispute settlement engine 统一进入正式冻结/重算链路。"
+      }
+    },
+    {
+      "sku_type": "QRY_LITE",
+      "scenario_links": [
+        {
+          "scenario_code": "S5",
+          "scenario_role": "primary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000005"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000005",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade013_qry_lite_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade013_qry_lite_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade013_qry_lite_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade013_qry_lite_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "billing_trigger_mediated",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "bil024_billing_trigger_bridge_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs"
+          },
+          {
+            "kind": "cargo_test",
+            "target": "bil019_dispute_refund_compensation_recompute_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs"
+          },
+          {
+            "kind": "live_api",
+            "target": "scripts/check-standard-sku-coverage.mjs",
+            "entry_point": "scripts/check-standard-sku-coverage.mjs"
+          }
+        ],
+        "notes": "QRY_LITE 的退款/争议依据正式 `sku_billing_basis` 暴露，并通过统一 dispute linkage / recompute engine 执行。"
+      }
+    },
+    {
+      "sku_type": "SBX_STD",
+      "scenario_links": [
+        {
+          "scenario_code": "S3",
+          "scenario_role": "primary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000003"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000003",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade014_sbx_std_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade014_sbx_std_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade014_sbx_std_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade014_sbx_std_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "billing_trigger_mediated",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "bil024_billing_trigger_bridge_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil024_billing_trigger_bridge_db.rs"
+          },
+          {
+            "kind": "cargo_test",
+            "target": "bil019_dispute_refund_compensation_recompute_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs"
+          },
+          {
+            "kind": "live_api",
+            "target": "scripts/check-standard-sku-coverage.mjs",
+            "entry_point": "scripts/check-standard-sku-coverage.mjs"
+          }
+        ],
+        "notes": "SBX_STD 的退款/争议通过 workspace billing basis 与统一冻结/重算链路进入正式 settlement 域。"
+      }
+    },
+    {
+      "sku_type": "RPT_STD",
+      "scenario_links": [
+        {
+          "scenario_code": "S4",
+          "scenario_role": "supplementary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000104"
+        },
+        {
+          "scenario_code": "S5",
+          "scenario_role": "supplementary",
+          "order_blueprint_id": "34000000-0000-0000-0000-000000000105"
+        }
+      ],
+      "billing_basis_order_blueprint_id": "34000000-0000-0000-0000-000000000104",
+      "main_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade015_rpt_std_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade015_rpt_std_state_machine_db.rs"
+          }
+        ]
+      },
+      "exception_path_evidence": {
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "trade015_rpt_std_state_machine_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/order/tests/trade015_rpt_std_state_machine_db.rs"
+          }
+        ]
+      },
+      "refund_or_dispute_evidence": {
+        "mode": "direct_billing_dispute_freeze",
+        "checks": [
+          {
+            "kind": "cargo_test",
+            "target": "bil025_billing_adjustment_freeze_db_smoke",
+            "entry_point": "apps/platform-core/src/modules/billing/tests/bil025_billing_adjustment_freeze_db.rs"
+          }
+        ]
+      }
+    }
+  ]
+}

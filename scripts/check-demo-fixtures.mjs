@@ -81,6 +81,8 @@ async function main() {
   const userMap = mapBy(sections.subjects.users, "user_id");
   const applicationMap = mapBy(sections.subjects.applications, "app_id");
   const billingTriggerMap = mapBy(sections.billing.sku_billing_trigger_matrix, "sku_code");
+  const skuCoverageMatrix = sections.sku_coverage_matrix?.standard_sku_matrix || [];
+  const sharedCoverageChecks = sections.sku_coverage_matrix?.shared_checks || [];
 
   const coveredSkus = new Set();
   for (const template of sections.catalog.scenario_templates) {
@@ -93,6 +95,85 @@ async function main() {
     sameArray([...coveredSkus].sort(), [...manifest.coverage.standard_skus].sort()),
     `standard sku coverage mismatch: expected ${manifest.coverage.standard_skus.join(",")}`
   );
+  assert(
+    skuCoverageMatrix.length === manifest.coverage.standard_skus.length,
+    `standard sku matrix count mismatch: expected ${manifest.coverage.standard_skus.length}, got ${skuCoverageMatrix.length}`
+  );
+  const skuCoverageMap = mapBy(skuCoverageMatrix, "sku_type");
+  assert(
+    sameArray([...skuCoverageMap.keys()].sort(), [...manifest.coverage.standard_skus].sort()),
+    `standard sku matrix sku mismatch: expected ${manifest.coverage.standard_skus.join(",")}`
+  );
+
+  assert(
+    sections.sku_coverage_matrix.official_checker === "scripts/check-standard-sku-coverage.sh",
+    "sku coverage matrix official checker must be scripts/check-standard-sku-coverage.sh"
+  );
+  assert(sharedCoverageChecks.length >= 2, "sku coverage shared checks missing");
+  assert(
+    sharedCoverageChecks.some((check) => check.target === "cat023_standard_scenarios_endpoint_db_smoke"),
+    "sku coverage shared checks missing cat023_standard_scenarios_endpoint_db_smoke"
+  );
+  assert(
+    sharedCoverageChecks.some((check) => check.target === "scripts/check-standard-sku-coverage.mjs"),
+    "sku coverage shared checks missing scripts/check-standard-sku-coverage.mjs"
+  );
+
+  for (const entry of skuCoverageMatrix) {
+    assert(entry.billing_basis_order_blueprint_id, `billing basis order missing for ${entry.sku_type}`);
+    const basisOrder = orderMap.get(entry.billing_basis_order_blueprint_id);
+    assert(basisOrder, `billing basis order not found for ${entry.sku_type}`);
+    const basisSku = skuMap.get(basisOrder.sku_id);
+    assert(basisSku, `billing basis sku missing for ${entry.sku_type}`);
+    assert(basisSku.sku_type === entry.sku_type, `billing basis sku mismatch for ${entry.sku_type}`);
+    assert(billingTriggerMap.has(entry.sku_type), `billing trigger missing for ${entry.sku_type}`);
+    assert(Array.isArray(entry.scenario_links) && entry.scenario_links.length > 0, `scenario links missing for ${entry.sku_type}`);
+
+    for (const evidenceKey of ["main_path_evidence", "exception_path_evidence", "refund_or_dispute_evidence"]) {
+      const evidence = entry[evidenceKey];
+      assert(evidence, `${evidenceKey} missing for ${entry.sku_type}`);
+      assert(Array.isArray(evidence.checks) && evidence.checks.length > 0, `${evidenceKey} checks missing for ${entry.sku_type}`);
+      for (const check of evidence.checks) {
+        assert(["cargo_test", "checker", "live_api"].includes(check.kind), `unsupported check kind ${check.kind} for ${entry.sku_type}`);
+        assert(check.target, `missing check target for ${entry.sku_type}`);
+        assert(check.entry_point, `missing check entry point for ${entry.sku_type}`);
+      }
+    }
+
+    if (entry.refund_or_dispute_evidence.mode === "billing_trigger_mediated") {
+      assert(
+        entry.refund_or_dispute_evidence.checks.some((check) => check.target === "bil019_dispute_refund_compensation_recompute_db_smoke"),
+        `billing-trigger-mediated sku ${entry.sku_type} must include bil019_dispute_refund_compensation_recompute_db_smoke`
+      );
+      assert(
+        entry.refund_or_dispute_evidence.checks.some((check) => check.target === "scripts/check-standard-sku-coverage.mjs"),
+        `billing-trigger-mediated sku ${entry.sku_type} must include live api verification`
+      );
+    }
+
+    for (const link of entry.scenario_links) {
+      const scenario = scenarioMap.get(link.scenario_code);
+      assert(scenario, `unknown scenario ${link.scenario_code} for ${entry.sku_type}`);
+      const order = orderMap.get(link.order_blueprint_id);
+      assert(order, `unknown order ${link.order_blueprint_id} for ${entry.sku_type}`);
+      assert(order.scenario_code === link.scenario_code, `scenario link mismatch for ${entry.sku_type}`);
+      assert(order.scenario_role === link.scenario_role, `scenario role mismatch for ${entry.sku_type}`);
+      const linkedSku = skuMap.get(order.sku_id);
+      assert(linkedSku, `linked sku missing for ${entry.sku_type}`);
+      assert(linkedSku.sku_type === entry.sku_type, `linked order sku mismatch for ${entry.sku_type}`);
+      if (link.scenario_role === "primary") {
+        assert(
+          scenario.primary_order_blueprint_id === link.order_blueprint_id,
+          `primary scenario order mismatch for ${entry.sku_type} ${link.scenario_code}`
+        );
+      } else {
+        assert(
+          scenario.supplementary_order_blueprint_ids.includes(link.order_blueprint_id),
+          `supplementary scenario order mismatch for ${entry.sku_type} ${link.scenario_code}`
+        );
+      }
+    }
+  }
 
   const fixedSamples = [...sections.catalog.home_featured_fixed_samples].sort(
     (left, right) => left.sample_order - right.sample_order

@@ -1,0 +1,32 @@
+name: standard-sku-coverage
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-023-standard-sku-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install checker deps
+        run: sudo apt-get update && sudo apt-get install -y jq postgresql-client ripgrep
+      - name: Run TEST-023 standard sku coverage
+        run: ENV_FILE=infra/docker/.env.local bash ./scripts/check-standard-sku-coverage.sh
+      - name: Collect standard sku coverage artifacts
+        if: always()
+        run: |
+          mkdir -p target/test-artifacts/standard-sku-coverage
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml ps -a > target/test-artifacts/standard-sku-coverage/docker-compose-ps.txt || true
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml logs --no-color > target/test-artifacts/standard-sku-coverage/docker-compose.log || true
+      - name: Upload standard sku coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standard-sku-coverage-artifacts
+          path: target/test-artifacts/standard-sku-coverage
+          if-no-files-found: warn
+      - name: Tear down local stack
+        if: always()
+        run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true

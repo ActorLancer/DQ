@@ -377,6 +377,10 @@ mod tests {
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", buyer_org_id)
                     .header("x-request-id", request_id)
+                    .header(
+                        "x-idempotency-key",
+                        format!("delivery-reject:{order_id}:{request_id}"),
+                    )
                     .body(Body::from(
                         json!({
                             "reason_code": reason_code,

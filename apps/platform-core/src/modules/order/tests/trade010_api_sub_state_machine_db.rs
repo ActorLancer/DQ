@@ -4,7 +4,7 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use db::{Client, GenericClient, NoTls, connect};
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tower::util::ServiceExt;
 
     #[derive(Debug)]
@@ -52,6 +52,17 @@ mod tests {
             "terminate_subscription",
         ] {
             let request_id = format!("req-trade010-{suffix}-{action}");
+            let body = if action == "bill_cycle" {
+                json!({
+                    "action": action,
+                    "billing_cycle_code": "2026-04",
+                    "billing_amount": "66.00000000",
+                    "reason_note": "test api subscription cycle"
+                })
+                .to_string()
+            } else {
+                json!({ "action": action }).to_string()
+            };
             let response = app
                 .clone()
                 .oneshot(
@@ -64,8 +75,12 @@ mod tests {
                         .header("x-role", "buyer_operator")
                         .header("x-tenant-id", &seed.buyer_org_id)
                         .header("x-request-id", &request_id)
+                        .header(
+                            "x-idempotency-key",
+                            format!("trade010:{suffix}:{action}:{}", seed.order_id),
+                        )
                         .header("content-type", "application/json")
-                        .body(Body::from(format!(r#"{{"action":"{action}"}}"#)))
+                        .body(Body::from(body))
                         .expect("request should build"),
                 )
                 .await
@@ -100,8 +115,20 @@ mod tests {
                     .header("x-role", "buyer_operator")
                     .header("x-tenant-id", &seed.buyer_org_id)
                     .header("x-request-id", format!("req-trade010-{suffix}-invalid"))
+                    .header(
+                        "x-idempotency-key",
+                        format!("trade010:{suffix}:invalid-bill-cycle:{}", seed.order_id),
+                    )
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"action":"bill_cycle"}"#))
+                    .body(Body::from(
+                        json!({
+                            "action": "bill_cycle",
+                            "billing_cycle_code": "2026-05",
+                            "billing_amount": "66.00000000",
+                            "reason_note": "invalid bill cycle after close"
+                        })
+                        .to_string(),
+                    ))
                     .expect("request should build"),
             )
             .await

@@ -207,6 +207,102 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-320（计划中）
+- 任务：`TEST-023` 建立 8 个标准 SKU 覆盖矩阵测试，验证每个 SKU 至少有一条主路径、一条异常路径、一条退款或争议路径，并与五条标准链路建立映射
+- 状态：计划中
+- 当前任务编号：`TEST-023`
+- 说明：`TEST-023` 不是重复 `order-state-machine.md` 的静态抄录，也不是把已有 smoke 名称拼成一张表。当前批次要把 `fixtures/demo`、五条标准链路、8 个标准 SKU、状态机 smoke、billing bridge / basis / dispute smoke 与正式 API 读回绑成一个可执行矩阵 checker，避免把“已有一些单测”误报为“8 SKU 覆盖矩阵已完成”。
+- 前置依赖核对结果：`TRADE-029` 已通过 `docs/05-test-cases/order-state-machine.md` 与 `trade008~015` 冻结 8 个标准 SKU 的主状态机与非法跳转保护；`DB-034` 已通过 `db/seeds/031_sku_trigger_matrix.sql` 固化 8 个标准 SKU 的 `payment / billing / refund / dispute freeze / resume` 触发矩阵；`DB-035` 已通过 `db/seeds/032_five_scenarios.sql` 固化五条标准链路与主/补充 SKU 映射。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-023` 的正式目标、依赖、交付与 DoD。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `5.3.2 / 5.3.2A` 五条标准链路与主/补充 SKU 映射。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.2`，确认 `Phase 1` 需形成可连续演示的回归面。
+  - `docs/05-test-cases/order-state-machine.md`：确认 `trade008~015` 已能提供 8 个标准 SKU 的主路径与非法跳转基线，但并非每个 SKU 都直接在 order transition 内表达退款/争议动作。
+  - `docs/00-context/v1-closed-loop-matrix.md`、`docs/00-context/standard-sku-truth.md`：复核 `8 SKU × 5 场景` 的正式挂点、非挂点与 `sku_type` 真值边界。
+  - `db/seeds/031_sku_trigger_matrix.sql`、`db/seeds/032_five_scenarios.sql`：确认 refund/dispute trigger authority 与 `S1~S5` 场景到 SKU / 模板 / application 映射。
+  - `fixtures/demo/manifest.json`、`fixtures/demo/scenarios.json`、`fixtures/demo/orders.json`、`fixtures/demo/billing.json`：确认 10 笔 demo 订单已覆盖 8 个标准 SKU，且 billing trigger matrix 已有正式 fixture 载体。
+  - `apps/platform-core/src/modules/order/tests/trade008~015_*`、`apps/platform-core/src/modules/billing/tests/bil017/018/024/025/026_*`、`apps/platform-core/src/modules/catalog/tests/cat023_standard_scenarios_db.rs`：确认可复用的主路径、异常、billing basis、trigger bridge、share / report dispute 与标准场景 API smoke。
+- 当前完成标准理解：
+  - 必须新增一套正式 SKU 覆盖矩阵资产，至少包括：
+    1. `fixtures/demo` 下可机读的 `8 SKU × 5 场景` 覆盖矩阵真值文件。
+    2. `docs/05-test-cases/**` 下的正式矩阵说明文档，明确每个 SKU 的主路径、异常路径、退款/争议证据以及场景挂点。
+    3. 本地/CI 可执行的官方 checker，真实运行 order state machine smoke、billing bridge / basis / dispute smoke，并通过正式 API 回查 demo 订单的 `catalog.standard-scenarios` 与 `billing` 读模型。
+  - 对 `API_SUB / API_PPU / QRY_LITE / SBX_STD` 这类 order transition 不直接暴露 `open_dispute / request_refund` 的 SKU，必须显式说明其退款/争议证据通过正式 billing basis + dispute settlement engine 挂接，而不是伪造第二套状态机。
+- 实施计划：
+  1. 在 `fixtures/demo/` 新增 `sku-coverage-matrix.json`，并扩展 `check-demo-fixtures.mjs`，把 8 个标准 SKU、场景挂点、billing basis order 与证据引用纳入正式 fixture 校验。
+  2. 新增 `docs/05-test-cases/standard-sku-coverage-matrix.md`，冻结 8 个标准 SKU 的主路径 / 异常 / 退款争议证据与 `S1~S5` 映射，并明确 direct dispute/refund 与 billing-trigger-mediated 证据边界。
+  3. 新增 `scripts/check-standard-sku-coverage.sh` 与配套 live verifier，复用 `smoke-local.sh`、`check-demo-fixtures.sh`、`seed-demo.sh`、`trade008~015`、`bil017/018/024/025/026`、`cat023` 等正式入口，产出矩阵 artifact。
+  4. 新增 `.github/workflows/standard-sku-coverage.yml`，并同步更新 `README` / `acceptance checklist` 索引，然后执行真实验证、回写 `BATCH-320（待审批）`、本地提交并继续 `TEST-024`。
+
+### BATCH-320（待审批）
+- 任务：`TEST-023` 建立 8 个标准 SKU 覆盖矩阵测试，验证每个 SKU 至少有一条主路径、一条异常路径、一条退款或争议路径，并与五条标准链路建立映射
+- 状态：待审批
+- 完成情况：
+  - 新增 `fixtures/demo/sku-coverage-matrix.json`，把 8 个标准 SKU 与五条标准链路、正式 billing basis order、主路径/异常路径/退款或争议证据固化为单一 machine-readable authority，并在 `fixtures/demo/manifest.json` / `fixtures/demo/README.md` 中登记。
+  - 新增 `docs/05-test-cases/standard-sku-coverage-matrix.md`，明确 `TEST-023` 的正式 checker、证据边界、direct transition vs billing-trigger-mediated 退款/争议证明方式，以及 8 个 SKU 与 `S1~S5` 标准链路的映射表。
+  - 新增 `scripts/check-standard-sku-coverage.sh` / `scripts/check-standard-sku-coverage.mjs`，正式串联：
+    - `smoke-local.sh`
+    - `check-demo-fixtures.sh`
+    - `seed-demo.sh --skip-base-seeds`
+    - `cat023_standard_scenarios_endpoint_db_smoke`
+    - `trade008~015` / `bil017` / `bil019` / `bil024` / `bil025` / `bil026`
+    - `GET /api/v1/catalog/standard-scenarios`
+    - `GET /api/v1/billing/{order_id}`
+    并产出 `target/test-artifacts/standard-sku-coverage/summary.json`、`catalog-standard-scenarios-response.json`、`billing-detail-*.json`、`executed-cargo-tests.txt`。
+  - 新增 `.github/workflows/standard-sku-coverage.yml`，把 `TEST-023` 纳入 GitHub Actions 最小矩阵；同步更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`、`docs/05-test-cases/five-standard-scenarios-e2e.md`、`scripts/README.md`、`.github/workflows/README.md`。
+  - 为了让现有正式证据链重新可跑，顺带回收了几处历史测试残留：
+    - `bil025_billing_adjustment_freeze_db_smoke` 的 `delivery.reject` 写操作补齐 `x-idempotency-key`
+    - `bil026_share_ro_billing_db_smoke` 修正 raw SQL JSON 字面量、`settlement_status=refunded` 和 `current_status=opened` 口径
+    - `trade010_api_sub_state_machine_db_smoke`、`trade011_api_ppu_state_machine_db_smoke` 补齐写操作幂等头，并为 `bill_cycle / settle_success_call` 提供正式请求体字段
+  - `scripts/check-demo-fixtures.mjs` 增加 `sku_coverage_matrix` 校验，防止 matrix 漂移成第二套真相源。
+  - `scripts/check-standard-sku-coverage.mjs` 改为按金额数值等价比较 `order_amount`，消除 `fixtures/demo` 两位小数与 billing API 八位小数的显示精度差异误报。
+  - `scripts/check-standard-sku-coverage.sh` 改为在 `smoke-local.sh` 之后自管 `platform-core` 生命周期，避免 `smoke-local` 退出时关闭进程导致 live API 回查落空。
+- 验证步骤：
+  1. `bash -n scripts/check-standard-sku-coverage.sh`
+  2. `jq empty fixtures/demo/manifest.json fixtures/demo/sku-coverage-matrix.json`
+  3. `node scripts/check-demo-fixtures.mjs`
+  4. `node --check scripts/check-standard-sku-coverage.mjs`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; TRADE_DB_SMOKE=1 cargo test -p platform-core bil025_billing_adjustment_freeze_db_smoke -- --nocapture'`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; TRADE_DB_SMOKE=1 cargo test -p platform-core bil026_share_ro_billing_db_smoke -- --nocapture'`
+  7. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; TRADE_DB_SMOKE=1 cargo test -p platform-core trade010_api_sub_state_machine_db_smoke -- --nocapture'`
+  8. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; TRADE_DB_SMOKE=1 cargo test -p platform-core trade011_api_ppu_state_machine_db_smoke -- --nocapture'`
+  9. `STANDARD_SKU_COVERAGE_ARTIFACT_DIR=target/test-artifacts/standard-sku-coverage PLATFORM_CORE_BASE_URL=http://127.0.0.1:8094 node scripts/check-standard-sku-coverage.mjs`
+  10. `bash -lc 'ENV_FILE=infra/docker/.env.local bash ./scripts/check-standard-sku-coverage.sh > /tmp/test023-check.log 2>&1; status=$?; echo $status > /tmp/test023-check.exit; exit $status'`
+  11. `cargo fmt --all`
+  12. `cargo check -p platform-core`
+  13. `cargo test -p platform-core`
+  14. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  15. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `bash -n scripts/check-standard-sku-coverage.sh`、`jq empty ...`、`node scripts/check-demo-fixtures.mjs`、`node --check scripts/check-standard-sku-coverage.mjs` 全部通过。
+  - 定向回归 `bil025`、`bil026`、`trade010`、`trade011` 全部通过，说明为适配当前正式幂等 / 请求体 / 状态口径所做的历史测试回收已经稳定。
+  - `STANDARD_SKU_COVERAGE_ARTIFACT_DIR=... node scripts/check-standard-sku-coverage.mjs` 单独通过，真实回查：
+    - `catalog/standard-scenarios` 成功返回 `S1~S5`
+    - 8 个 SKU 的 billing detail 与 demo fixture、trigger matrix、scenario template 一致
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-standard-sku-coverage.sh` 通过；`/tmp/test023-check.exit = 0`，`/tmp/test023-check.log` 尾部已记录：
+    - `cargo evidence suite passed`
+    - `live sku coverage verified via http://127.0.0.1:8094: 8 skus, 5 standard scenarios`
+    - `TEST-023 standard sku coverage checker passed`
+  - 产物已写入 `target/test-artifacts/standard-sku-coverage/`；`summary.json` 中 `task_id=TEST-023`、`standard_sku_count=8`、`catalog_scenario_count=5`。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`1` ignored（仓库既有 `iam_party_access_flow_live`）。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-023`
+  - `数据交易平台-全集成基线-V1.md`：`5.3.2 / 5.3.2A`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.2`
+  - `docs/05-test-cases/order-state-machine.md`
+  - `docs/00-context/v1-closed-loop-matrix.md`
+  - `docs/00-context/standard-sku-truth.md`
+- 覆盖的任务清单条目：`TEST-023`
+- 未覆盖项：
+  - `TEST-024` 的五条标准链路整体编排 E2E 还未开始；本批仅把 8 个标准 SKU 的主路径、异常路径、退款/争议路径与五条标准链路映射闭合为独立 gate。
+  - 更大范围的 `portal-web / console-web` 页面联动验证继续留给后续 `TEST-024+` 任务，不在 `TEST-023` 本身扩张。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-315（计划中）
 - 任务：`TEST-018` 补充性能冒烟：单次搜索、下单、交付、审计联查的基础响应时间门槛
 - 状态：计划中

@@ -164,7 +164,7 @@ ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh
 2. 主路径必须保持 `API_SUB`；补充 `RPT_STD` 只作为报告交付和签收证据。
 3. 后端回查必须能关联 `api_access` 与 `report_artifact` 两类交付对象。
 4. 页面与 API 返回必须展示 `S4` 的正式场景名，而不是 `S1` 的 API 订阅别名。
-5. 后续 `TEST-023` 需要把 `RPT_STD` 的异常/退款证据补齐到该场景。
+5. `TEST-023` 已把 `RPT_STD` 的异常/退款证据收口到 `standard-sku-coverage-matrix.md` 与 `check-standard-sku-coverage.sh`；`TEST-024` 继续补编排顺序验证。
 
 ### `S5` 商圈/门店选址查询服务
 

@@ -21,7 +21,8 @@
       "delivery",
       "billing",
       "audit",
-      "scenarios"
+      "scenarios",
+      "sku_coverage_matrix"
     ],
     "home_featured_placement_code": "home_featured"
   },
@@ -32,7 +33,8 @@
     "delivery": "fixtures/demo/delivery.json",
     "billing": "fixtures/demo/billing.json",
     "audit": "fixtures/demo/audit.json",
-    "scenarios": "fixtures/demo/scenarios.json"
+    "scenarios": "fixtures/demo/scenarios.json",
+    "sku_coverage_matrix": "fixtures/demo/sku-coverage-matrix.json"
   },
   "validation": {
     "script": "scripts/check-demo-fixtures.sh",
@@ -40,6 +42,7 @@
       "five_scenarios_present_and_ordered",
       "eight_standard_skus_covered",
       "scenario_templates_match_catalog_and_orders",
+      "standard_sku_matrix_matches_demo_orders_and_evidence",
       "home_featured_fixed_samples_match_official_products",
       "delivery_billing_audit_refs_complete",
       "upstream_truth_sources_exist_and_are_referenced"
@@ -50,6 +53,7 @@
     "apps/platform-core/src/modules/catalog/standard_scenarios.rs",
     "db/seeds/010_test_tenants.sql",
     "db/seeds/031_sku_trigger_matrix.sql",
+    "docs/05-test-cases/order-state-machine.md",
     "db/seeds/033_searchrec_recommendation_samples.sql",
     "apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/manifest.json",
     "fixtures/local/standard-scenarios-manifest.json"

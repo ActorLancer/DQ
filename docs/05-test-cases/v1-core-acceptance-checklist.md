@@ -67,7 +67,7 @@
 说明：
 
 - `TEST-021` 先冻结覆盖规则；`TEST-022~024` 会继续把场景明细、SKU 矩阵和编排链路展开成专门文档与 checker。
-- 在 `TEST-023` 完成前，不允许把 “主路径已存在” 误报成 “8 SKU 覆盖矩阵已完成”。
+- `TEST-023` 的正式矩阵入口已收口到 `ENV_FILE=infra/docker/.env.local ./scripts/check-standard-sku-coverage.sh`，后续 task 不允许再发明第二套 SKU 覆盖 checker。
 
 ## Mandatory Gates
 
@@ -77,7 +77,7 @@
 | `ACC-MIGRATION` | `TEST-004` | `ENV_FILE=infra/docker/.env.local ./scripts/check-migration-smoke.sh` | migration/seed roundtrip、`platform-core` health/runtime 回查通过 | migration smoke artifact、`seed_history` 与 health probe |
 | `ACC-LOCAL` | `TEST-005` | `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh` | `core + observability + mocks` 正式本地栈可真实拉起 | `check-local-stack`、Keycloak realm、Grafana、canonical topics、Kafka 双地址边界 |
 | `ACC-SCENARIO` | `TEST-006` | `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh` | 五条标准链路门户 E2E、后端 `order detail / lifecycle / developer trace` 全部通过 | Playwright artifact、后端 API 回查、order ids |
-| `ACC-SKU-COVERAGE` | `TEST-023` | `TEST-023` 产出的正式 SKU 覆盖矩阵 checker | 8 个标准 SKU 都至少具备主路径、异常/阻断、退款/争议三类证据，且与五条标准链路映射一致 | SKU matrix artifact、场景/SKU 映射、order ids |
+| `ACC-SKU-COVERAGE` | `TEST-023` | `ENV_FILE=infra/docker/.env.local ./scripts/check-standard-sku-coverage.sh` | 8 个标准 SKU 都至少具备主路径、异常/阻断、退款/争议三类证据，且与五条标准链路映射一致 | SKU matrix artifact、场景/SKU 映射、order ids |
 | `ACC-ORCH-20ORDERS` | `TEST-024` | `TEST-024` 产出的正式编排链路 checker | `支付成功 -> 待交付 -> 交付完成 -> 待验收 -> 验收通过/拒收 -> 结算/退款` 编排链路成立，并支撑最终 `20+ order` sign-off | 编排链路 artifact、webhook/交付/验收/结算 order ids |
 | `ACC-PROVIDER` | `TEST-007` | `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh` | 支付 / 签章 / 链写 provider mock/real 切换均不改业务代码 | live smoke 输出、provider config / artifact |
 | `ACC-OUTBOX` | `TEST-008` | `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh` | 事务成功有 outbox、失败无脏副作用、重复消费不重复副作用 | `trade.order_main`、`ops.outbox_event`、通知消费证据 |
