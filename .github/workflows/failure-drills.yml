@@ -1,0 +1,36 @@
+name: failure-drills
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-019-failure-drills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+      - name: Install checker deps
+        run: sudo apt-get update && sudo apt-get install -y jq postgresql-client ripgrep
+      - name: Run TEST-019 failure drills
+        run: ENV_FILE=infra/docker/.env.local bash ./scripts/check-failure-drills.sh
+      - name: Collect failure drill artifacts
+        if: always()
+        run: |
+          mkdir -p target/test-artifacts/failure-drills
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml ps -a > target/test-artifacts/failure-drills/docker-compose-ps.txt || true
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml logs --no-color > target/test-artifacts/failure-drills/docker-compose.log || true
+          docker ps -a > target/test-artifacts/failure-drills/docker-ps.txt || true
+      - name: Upload failure drill artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-drills-artifacts
+          path: target/test-artifacts/failure-drills
+          if-no-files-found: warn
+      - name: Tear down local stack
+        if: always()
+        run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true

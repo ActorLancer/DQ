@@ -325,6 +325,96 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-316（计划中）
+- 任务：`TEST-019` 补充故障演练脚本：Kafka 停机、Fabric Adapter 停机、OpenSearch 不可用、Mock Payment 延迟，验证主链路退化行为
+- 状态：计划中
+- 说明：`TEST-019` 的目标不是“停掉几个容器看会不会报错”，而是把四类真实故障收口成正式、可重复、可回查的 drill。当前仓库已有 `smoke-local.sh`、`check-searchrec-pg-authority.sh`、`check-mock-payment.sh`、`fabric-adapter` runbook、`outbox-publisher` / `billing` / `audit` smoke 基座，但还缺一个把“真实停机/延迟 + 主链路退化口径 + 观测证据 + 恢复清理”统一起来的正式 checker。当前批次将围绕 `PostgreSQL` 权威、Kafka 异步副作用、OpenSearch fallback、Fabric adapter 异步链写、Mock Payment 延迟超时这五条冻结边界，补齐 `TEST-019` 的脚本、文档与 CI。
+- 前置依赖核对结果：`ENV-040` 已提供本地 core / observability / mocks / Fabric 最小联调基线；`DB-032` 已提供 migration / seed / `.sqlx` 回归；`CORE-024` 已提供 `platform-core` 正式 API、health deps、审计与 outbox 夹具。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-019` 的正式交付是四类故障 drill 脚本，可在本地/CI 重复运行并定位失败。
+  - `docs/原始PRD/链上链下技术架构与能力边界稿.md`：复核 `4. 分层架构` 与 `13. 故障与降级策略`，确认链写、搜索与支付故障都必须以“核心业务主链路仍由 `platform-core + PostgreSQL` 控制、外部能力降级但不伪造成功”为准。
+  - `docs/原始PRD/交易链监控、公平性与信任安全设计.md`：复核 `5. 六层交易链监控模型`，确认故障 drill 至少要留下业务状态、交付/执行、审计/证据或链写回执层的可观测证据。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段的容灾/故障验证必须变成正式集成入口，而不是手工 runbook。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`：确认 `PostgreSQL` 是主状态权威，`Kafka` 是事件总线，`OpenSearch` 是读模型，`fabric-adapter` 是外围适配进程，`mock-payment-provider` 只通过正式 provider 层接入。
+  - `docs/05-test-cases/search-rec-cases.md`、`payment-billing-cases.md`、`audit-consistency-cases.md`：确认 OpenSearch fallback、支付 timeout 口径、Fabric 异步链写与 projection gap / receipt 留痕均已冻结，可直接作为 `TEST-019` 子场景 authority。
+  - `docs/04-runbooks/local-startup.md`、`mock-payment.md`、`fabric-adapter.md`、`kafka-topics.md`、`observability-local.md`：确认本地停机/恢复、provider timeout、Fabric adapter 消费组、Prometheus / health deps / metrics 的正式回查路径。
+  - `scripts/check-searchrec-pg-authority.sh`、`check-mock-payment.sh`、`check-outbox-consistency.sh`、`scripts/fabric-adapter-run.sh`、`services/fabric-adapter/**`、`workers/outbox-publisher/**`、`apps/platform-core/src/modules/billing/tests/bil004_mock_payment_adapter_db.rs`：确认当前可复用的 fallback、live provider、Kafka publish、Fabric consumer 与 timeout smoke 基座。
+- 当前完成标准理解：
+  - 必须新增 `TEST-019` 正式 checker，统一覆盖：
+    1. Kafka 停机时，`health/deps` 明确报依赖不可达，但正式下单主链路仍可落库并写出 outbox。
+    2. Fabric Adapter 停机时，Kafka 上 `dtp.audit.anchor` 真实积压，`ops.external_fact_receipt` 不会伪造成功，恢复后消息可被消费排空。
+    3. OpenSearch 不可用时，正式搜索 API 仍可返回 `backend=postgresql` 的 fallback 结果，而不是直接 500 或空结果。
+    4. Mock Payment 延迟时，真实 provider timeout 路径会把支付意图推进到 `expired`、订单推进到 `payment_timeout_pending_compensation_cancel`。
+    5. 四类场景都要留下 health deps / Kafka lag / DB / audit / metrics / logs 至少一种正式回查证据，并在脚本退出时恢复环境。
+  - 当前批次还需要补齐 `docs/05-test-cases/**`、workflow 与索引文档，避免故障演练继续只存在于 runbook 或临时命令。
+- 实施计划：
+  1. 新增 `scripts/check-failure-drills.sh`，统一编排本地基线、停机/恢复、API/DB/Kafka/Prometheus 回查与 artifact 落盘。
+  2. 为 Kafka、Fabric Adapter、OpenSearch、Mock Payment 四类 drill 分别补齐最小真实链路和恢复清理逻辑。
+  3. 新增 `docs/05-test-cases/failure-drill-cases.md` 与 `.github/workflows/failure-drills.yml`，并更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`。
+  4. 执行真实验证、回写 `BATCH-316（待审批）`、本地提交，然后继续 `TEST-020`。
+
+### BATCH-316（待审批）
+- 任务：`TEST-019` 补充故障演练脚本：Kafka 停机、Fabric Adapter 停机、OpenSearch 不可用、Mock Payment 延迟，验证主链路退化行为
+- 状态：待审批
+- 当前任务编号：`TEST-019`
+- 前置依赖核对结果：`ENV-040` 的 `smoke-local.sh`、本地 core / observability / mocks / Kafka / OpenSearch / Keycloak 基线继续可用；`DB-032` 的 migration / seed / `.sqlx` 回归链路继续可用；`CORE-024` 的 `platform-core` 正式 API、`health/deps`、outbox / audit 夹具与 billing live smoke 继续可用。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-019` 交付是正式故障演练 checker，不是 runbook 摘抄或临时命令。
+  - `docs/原始PRD/链上链下技术架构与能力边界稿.md`：复核 `4. 分层架构` 与 `13. 故障与降级策略`，确认链写、搜索、支付等外围能力故障都不得伪造成功。
+  - `docs/原始PRD/交易链监控、公平性与信任安全设计.md`：复核 `5. 六层交易链监控模型`，确认故障 drill 需要留下业务状态、Kafka lag、receipt 或日志等正式回查证据。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认故障演练必须成为本地/CI 可重复入口。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`本地开发环境与中间件部署清单.md`：确认 `PostgreSQL`、`Kafka`、`OpenSearch`、`fabric-adapter`、`mock-payment-provider` 的正式角色边界。
+  - `docs/05-test-cases/search-rec-cases.md`、`payment-billing-cases.md`、`audit-consistency-cases.md`：确认 OpenSearch fallback、支付 timeout、`audit.anchor_requested -> dtp.audit.anchor -> fabric-adapter -> ops.external_fact_receipt` 等子场景 authority。
+  - `docs/04-runbooks/local-startup.md`、`mock-payment.md`、`fabric-adapter.md`、`kafka-topics.md`、`observability-local.md`：确认停机/恢复、delay、consumer group 与 observability 的正式回查路径。
+  - `scripts/check-searchrec-pg-authority.sh`、`check-mock-payment.sh`、`check-outbox-consistency.sh`、`scripts/fabric-adapter-run.sh`、`services/fabric-adapter/**`、`apps/platform-core/src/modules/billing/tests/bil004_mock_payment_adapter_db.rs`：确认可复用的 fallback、live provider、Kafka publish 与 billing timeout smoke 基座。
+- 实现要点：
+  - 新增 `scripts/check-failure-drills.sh`：
+    - 统一复用 `smoke-local.sh`、`seed-local-iam-test-identities.sh`、`seed-demo.sh`、`check-demo-seed.sh` 与 `check-mock-payment.sh`
+    - Kafka 子场景：真实 `docker compose stop/start kafka`，使用 Keycloak Bearer 调 `POST /api/v1/orders`，回查 `trade.order_main + ops.outbox_event`
+    - OpenSearch 子场景：清空 Redis 搜索短缓存后真实 `docker compose stop/start opensearch`，连续两次调用正式搜索 API，固定 `backend=postgresql`、`cache_hit=false -> true`
+    - Fabric 子场景：在停止 host `platform-core` 后，用唯一 consumer group 把 `dtp.audit.anchor / dtp.fabric.requests` reset 到当前 tail，启动/停止 `fabric-adapter` 做 warm-up、停机积压与恢复回放；显式回查 Kafka lag、`ops.external_fact_receipt` 与清理边界
+    - Mock Payment 子场景：真实调用 `/mock/payment/charge/timeout` 验证 `504 + ~15s`，再执行 `bil004_mock_payment_adapter_db_smoke` 证明 `platform-core` timeout 路径落到 `expired`
+    - 全量 artifact 落盘到 `target/test-artifacts/failure-drills/`
+  - 新增 `docs/05-test-cases/failure-drill-cases.md`，冻结四类 drill 的故障注入、主链路、正式断言、回查与清理边界。
+  - 新增 `.github/workflows/failure-drills.yml`，把 `TEST-019` 接入 GitHub Actions。
+  - 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`，登记 `TEST-019` 官方入口。
+- 验证步骤：
+  1. `bash -n scripts/check-failure-drills.sh`
+  2. `ENV_FILE=infra/docker/.env.local bash ./scripts/check-failure-drills.sh`
+  3. `cargo fmt --all`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `bash -n scripts/check-failure-drills.sh` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-failure-drills.sh` 通过；`target/test-artifacts/failure-drills/summary.json` 固化结果：
+    - Kafka 停机：`POST /api/v1/orders` 仍成功，`order_id=bc807e78-87b4-450f-b680-0b0ba0b8fa27`，`ops.outbox_event` 计数 `1`
+    - OpenSearch 不可用：两次正式搜索 API 都返回 `backend=postgresql`，且 `cache_hit=false -> true`
+    - Fabric Adapter 停机：唯一 consumer group `cg-fabric-adapter-test019-1777008198949130674` 停机期间 lag=`1`、receipt=`0`，恢复后 `ops.external_fact_receipt` 变为 `1`
+    - Mock Payment 延迟：`POST /mock/payment/charge/timeout` 返回 `504`，耗时 `15.001143s`；`bil004_mock_payment_adapter_db_smoke` live provider smoke 通过
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 unused import / dead code warning。
+  - `cargo test -p platform-core` 通过：`360` 个测试通过、`0` 失败、`1` ignored（`iam_party_access_flow_live` 仓库既有 live ignore）。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 元数据可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-019`
+  - `链上链下技术架构与能力边界稿.md`：`4`、`13`
+  - `交易链监控、公平性与信任安全设计.md`：`5`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1 / 15.2`
+  - `docs/05-test-cases/search-rec-cases.md`
+  - `docs/05-test-cases/payment-billing-cases.md`
+  - `docs/05-test-cases/audit-consistency-cases.md`
+  - `docs/04-runbooks/mock-payment.md`
+  - `docs/04-runbooks/fabric-adapter.md`
+  - `docs/04-runbooks/kafka-topics.md`
+- 覆盖的任务清单条目：`TEST-019`
+- 未覆盖项：
+  - 当前批次不做 Kafka/Fabric/OpenSearch/Payment 的长时 chaos、并发风暴或跨 host 网络隔离；这些不属于 `TEST-019` 的基础故障演练边界。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-310（待审批）
 - 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
 - 状态：待审批
