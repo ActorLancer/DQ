@@ -580,6 +580,78 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-319（计划中）
+- 任务：`TEST-022` 输出 `docs/05-test-cases/five-standard-scenarios-e2e.md`，明确每条标准链路的输入数据、期望状态、验证点，供后续顺序执行与回归验证使用
+- 状态：计划中
+- 说明：`TEST-022` 不是重复 `TEST-006` 的矩阵摘要，而是把五条标准链路拆成逐条可执行的 E2E 规格卡片：每条链路都要明确 fixture 输入、主/补充 SKU、模板、目标状态、页面路径、后端回查与审计/交付对象回查点，供后续 `TEST-023 / 024` 和最终 V1 sign-off 顺序执行。
+- 前置依赖核对结果：`ENV-040` 的本地 stack / Keycloak / smoke 入口继续可用；`DB-032` 的 demo fixture、migration/seed 回归链路继续可用；`CORE-024` 的 order / delivery / developer trace 正式路由继续可用。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-022` 交付是五条标准链路的顺序执行文档。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `5.3.2 / 5.3.2A` 的五条场景与主/补充 SKU、模板映射。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.2`，确认需要给最终验收提供顺序执行路径。
+  - `docs/05-test-cases/order-e2e-cases.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`：抽取当前官方 checker、E2E 页面路径与最终 sign-off 对这些场景文档的依赖。
+  - `fixtures/demo/scenarios.json`、`fixtures/demo/orders.json`、`fixtures/demo/delivery.json`、`fixtures/demo/billing.json`：提取每条场景的输入数据、目标状态、交付对象与计费样本。
+- 当前完成标准理解：
+  - 必须新增 `docs/05-test-cases/five-standard-scenarios-e2e.md`，逐条覆盖 `S1~S5`：
+    1. 输入数据：商品、主/补充 SKU、主订单、请求键、模板、交付对象、计费样本
+    2. 期望状态：`current_state / payment_status / delivery_status / acceptance_status / settlement_status / dispute_status`
+    3. 验证点：页面路径、正式 API 回查、developer trace、审计/交付对象回查
+  - 文档必须被 `docs/05-test-cases/README.md` 索引，并明确继续复用 `TEST-006` 官方 checker。
+- 实施计划：
+  1. 新增 `docs/05-test-cases/five-standard-scenarios-e2e.md`，按 `S1~S5` 输出顺序执行卡片。
+  2. 更新 `docs/05-test-cases/README.md`，登记 `TEST-022` 官方入口。
+  3. 执行本地验证、回写 `BATCH-319（待审批）`、本地提交，然后继续 `TEST-023`。
+
+### BATCH-319（待审批）
+- 任务：`TEST-022` 输出 `docs/05-test-cases/five-standard-scenarios-e2e.md`，明确每条标准链路的输入数据、期望状态、验证点，供后续顺序执行与回归验证使用
+- 状态：待审批
+- 当前任务编号：`TEST-022`
+- 前置依赖核对结果：`ENV-040` 的本地 stack / Keycloak / smoke 入口继续可用；`DB-032` 的 demo fixture、migration/seed 回归链路继续可用；`CORE-024` 的 order / delivery / developer trace 正式路由继续可用。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-022` 交付是五条标准链路的顺序执行文档。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `5.3.2 / 5.3.2A` 的五条场景、主/补充 SKU、模板映射。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.2`，确认该文档将服务于最终顺序验收。
+  - `docs/05-test-cases/order-e2e-cases.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`：抽取官方 checker、页面路径、sign-off 对场景卡片的依赖。
+  - `fixtures/demo/scenarios.json`、`fixtures/demo/orders.json`、`fixtures/demo/delivery.json`、`fixtures/demo/billing.json`：提取每条场景的商品、主/补充订单、模板、交付对象与计费样本。
+- 实现要点：
+  - 新增 `docs/05-test-cases/five-standard-scenarios-e2e.md`，统一收口：
+    - global preconditions 与正式自动化入口 `check-order-e2e.sh`
+    - 五条链路共享验证点
+    - `S1~S5` 场景摘要表：主 SKU、补充 SKU、主/补充订单、主交付对象、目标终态
+    - `S1~S5` 场景卡片：fixture 输入、请求锚点、模板、交付对象、计费样本、期望状态、页面/API/审计验证点
+  - 对 `S5` 明确了 `QRY_LITE` 主路径与 `RPT_STD` 补充路径的双交付对象事实；对 `S1~S4` 明确了 API / file / sandbox / report 的正式入口边界。
+  - 更新 `docs/05-test-cases/README.md`，把 `five-standard-scenarios-e2e.md` 纳入正式索引。
+- 验证步骤：
+  1. `rg -n "工业设备运行指标 API 订阅|工业质量与产线日报文件包交付|供应链协同查询沙箱|零售门店经营分析 API / 报告订阅|商圈/门店选址查询服务|34000000-0000-0000-0000-000000000001|34000000-0000-0000-0000-000000000005|CONTRACT_QUERY_LITE_V1|check-order-e2e.sh|five-standard-scenarios-e2e.md" docs/05-test-cases/five-standard-scenarios-e2e.md docs/05-test-cases/README.md`
+  2. `cargo fmt --all`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - 场景文档 linkage 检查通过；`target/test-artifacts/test-022/scenario-doc-linkage.log` 已回查到：
+    - `README` 中的 `five-standard-scenarios-e2e.md` 索引项
+    - `S1~S5` 五条正式场景名
+    - 主订单 `34000000-0000-0000-0000-000000000001`、`34000000-0000-0000-0000-000000000005`
+    - `CONTRACT_QUERY_LITE_V1`
+    - 官方入口 `check-order-e2e.sh`
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 warning（`product_type`、`SERVICE_NAME` 未使用）。
+  - `cargo test -p platform-core` 通过；当前结果为 `0` 失败、`1` ignored（`iam_party_access_flow_live` 仓库既有 live ignore）。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 元数据可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-022`
+  - `数据交易平台-全集成基线-V1.md`：`5.3.2 / 5.3.2A`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.2`
+  - `order-e2e-cases.md`
+  - `v1-core-acceptance-checklist.md`
+- 覆盖的任务清单条目：`TEST-022`
+- 未覆盖项：
+  - `TEST-022` 只冻结顺序执行卡片，不替代 `TEST-023` 的 SKU 覆盖矩阵与 `TEST-024` 的编排链路专项；这些扩展已在文中显式挂到后续任务。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-310（待审批）
 - 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
 - 状态：待审批

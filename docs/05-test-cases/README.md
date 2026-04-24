@@ -45,6 +45,7 @@
 - `failure-drill-cases.md`：`TEST-019` 的正式故障演练清单，冻结 Kafka 停机、OpenSearch 不可用、Fabric Adapter 停机、Mock Payment 延迟四类真实故障注入、恢复与回查口径。
 - `rollback-recovery-cases.md`：`TEST-020` 的正式回滚恢复清单，冻结业务库 reset、基础 seed replay、环境重启与 demo 数据恢复的正式入口与回查边界。
 - `v1-core-acceptance-checklist.md`：`TEST-021` 的正式 V1 退出验收清单，把退出门槛、五条标准链路 / 8 SKU 映射、官方 checker 与最终 sign-off 顺序收口为一张可执行 checklist。
+- `five-standard-scenarios-e2e.md`：`TEST-022` 的五条标准链路顺序执行文档，逐条冻结 fixture 输入、目标状态与页面/API/审计验证点，供后续回归与 V1 sign-off 使用。
 - `search-rec-cases.md`：`SEARCHREC-017` 正式冻结的 Search/Recommendation 验收矩阵，覆盖投影延迟、回 PostgreSQL 最终校验、推荐曝光/点击幂等、零结果兜底、统一鉴权 / step-up / 审计 / 错误码，以及 consumer 幂等、双层 DLQ 与 dry-run reprocess。
 - `notification-cases.md`：通知链路验收清单，覆盖 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log`、幂等、重试、DLQ、人工补发与审计联查。
 - `web-smoke-cases.md`：`WEB-020` 冻结的 portal / console 最小页面 smoke 基线，覆盖页面路由、状态态面、浏览器受控 API 边界与 `WEB-018` live E2E 入口。
