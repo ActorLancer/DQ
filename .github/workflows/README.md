@@ -9,6 +9,7 @@
 - `migration-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-migration-smoke.sh`，承接 `TEST-004` migration smoke。
 - `local-environment-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-compose-smoke.sh`；CI 内承接 `TEST-016` compose smoke，并复用 `TEST-005` 的 `smoke-local.sh` 运行态检查与 canonical 静态漂移拦截。
 - `schema-drift.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-schema-drift.sh`，承接 `TEST-017` 的 migration / `.sqlx` / `db::entity` / OpenAPI drift gate，并上传实体 / 表清单 artifact。
+- `performance-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-performance-smoke.sh`，承接 `TEST-018` 搜索 / 下单 / 交付 / 审计联查四条正式 API 的基础性能守门，并上传耗时汇总、Prometheus / metrics 快照与 `platform-core` 请求日志。
 - `order-e2e.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh`，承接 `TEST-006` 五条标准链路 order E2E。
 - `provider-switch.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`，承接 `TEST-007` 支付 / 签章 / 链写 provider 切换验收。
 - `outbox-consistency.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh`，承接 `TEST-008` 事务写入 / outbox 发布 / consumer 幂等验收。

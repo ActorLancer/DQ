@@ -7,7 +7,10 @@ use db::{
     AppDb, DbPool, DbPoolConfig, MySqlDbRuntime, NoopBusinessMutationWriter, OrderRepository,
     OrderRepositoryBackend, TxTemplate, build_order_repository,
 };
-use http::{build_router, live_handler, record_chain_receipt, record_outbox_event, serve};
+use http::{
+    build_router, live_handler, record_chain_receipt, record_outbox_event, serve,
+    with_http_observability,
+};
 use kernel::{
     AppError, AppLauncher, AppResult, DomainEventEnvelope, InProcessEventBus, Module,
     ModuleContext, UtcTimestampMs, new_external_readable_id, validate_error_code_document,
@@ -457,17 +460,19 @@ pub async fn run() -> AppResult<()> {
         ),
     };
 
-    let router = build_router::<AppState>(cfg.clone())
-        .route("/healthz", axum::routing::get(live_handler))
-        .merge(modules::audit::api::router())
-        .merge(modules::billing::api::router())
-        .merge(modules::catalog::api::router())
-        .merge(modules::delivery::api::router())
-        .merge(modules::iam::api::router())
-        .merge(modules::order::api::router())
-        .merge(modules::recommendation::api::router())
-        .merge(modules::search::api::router())
-        .with_state(state.clone());
+    let router = with_http_observability(
+        build_router::<AppState>(cfg.clone())
+            .route("/healthz", axum::routing::get(live_handler))
+            .merge(modules::audit::api::router())
+            .merge(modules::billing::api::router())
+            .merge(modules::catalog::api::router())
+            .merge(modules::delivery::api::router())
+            .merge(modules::iam::api::router())
+            .merge(modules::order::api::router())
+            .merge(modules::recommendation::api::router())
+            .merge(modules::search::api::router())
+            .with_state(state.clone()),
+    );
 
     let mut launcher = AppLauncher::new("platform-core");
     let provider_backend = match cfg.provider {

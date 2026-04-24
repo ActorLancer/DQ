@@ -167,7 +167,13 @@ where
             }),
         )
         .merge(build_internal_dev_router())
-        .layer(middleware::from_fn(request_context_middleware))
+}
+
+pub fn with_http_observability<S>(router: Router<S>) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    router.layer(middleware::from_fn(request_context_middleware))
 }
 
 fn build_internal_dev_router<S>() -> Router<S>

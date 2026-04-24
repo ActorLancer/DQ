@@ -207,6 +207,30 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-315（计划中）
+- 任务：`TEST-018` 补充性能冒烟：单次搜索、下单、交付、审计联查的基础响应时间门槛
+- 状态：计划中
+- 说明：`TEST-018` 不是压测或容量测试，而是要把四条正式入口的“明显性能回退”拦在本地和 CI 之外。当前仓库已有 `smoke-local.sh`、`check-order-e2e.sh`、`check-searchrec-pg-authority.sh`、`check-audit-completeness.sh` 等正式入口，但还没有把搜索、下单、交付、审计联查四条链路收敛成一个真实 API 级性能 smoke。当前批次将复用 Keycloak password grant、demo seed、宿主机 `platform-core` 与 Prometheus 指标，把 `GET /api/v1/catalog/search`、`POST /api/v1/orders`、`POST /api/v1/orders/{id}/deliver`、`GET /api/v1/audit/orders/{id}` 四条路径统一纳入一个正式 checker。
+- 前置依赖核对结果：`ENV-040` 已提供本地 core + observability + mocks 运行时与 `smoke-local.sh` 基线；`DB-032` 已提供 migration / seed / `.sqlx` 回归链路；`CORE-024` 已提供 `platform-core` HTTP 指标、订单/交付/审计 API 与 demo 数据夹具。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-018` 的目标是四条正式链路的基础响应时间门槛，不是局部 benchmark。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.1/15.2`，确认性能测试在 `TEST` 阶段必须变成可重复集成 smoke。
+  - `docs/原始PRD/日志、可观测性与告警设计.md`、`docs/04-runbooks/observability-local.md`：复核 V1 正式观测栈与 `platform_core_http_request_duration_seconds` 指标来源，确认 checker 应留下可观测证据。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`：确认 `local / demo` 允许 PostgreSQL 搜索投影降级，`TEST-018` 仍应以正式搜索 API 为入口。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/原始PRD/基于区块链技术的数据交易平台-需求清单-PRD-正式清理版.md`：复核 `26.2 性能 SLO`，冻结 `标准下单/合同查看/账单查询 p95 <= 2 秒` 作为基础门槛参考。
+  - `docs/05-test-cases/README.md`、`scripts/check-order-e2e.sh`、`scripts/check-searchrec-pg-authority.sh`、`scripts/check-audit-completeness.sh`、`apps/portal-web/e2e/test006-standard-order-live.spec.ts`：复核现有正式入口、Keycloak Bearer 联调与可复用的 order / audit / search 路径。
+- 当前完成标准理解：
+  - `TEST-018` 必须至少证明：
+    1. 真实 Keycloak / IAM Bearer 下的搜索、下单、交付、审计联查四条 API 都能在本地正式环境重复执行。
+    2. 四条路径各自有明确的基础响应时间门槛，并在 checker 中失败即中断。
+    3. 结果要留下原始响应、计时结果与 HTTP 指标证据，避免只看 `HTTP 200`。
+    4. 检查入口必须可在本地与 CI 运行，并写入 `docs/05-test-cases/**` 与 workflow 索引。
+- 实施计划：
+  1. 新增 `TEST-018` 官方 checker，复用 `smoke-local.sh`、demo seed、Keycloak password grant 与宿主机 `platform-core`，测量四条正式 API 的 `time_total`。
+  2. 为 `delivery` 路径补齐最小前置编排：创建订单、合同确认、`API_SUB lock_funds`、再执行正式 `deliver`，确保不是伪造响应。
+  3. 落盘 `docs/05-test-cases/performance-smoke-cases.md` 与 GitHub Actions workflow，并更新 `README` 索引。
+  4. 执行真实验证、补 `BATCH-315（待审批）`、本地提交，然后继续 `TEST-019`。
+
 ### BATCH-310（计划中）
 - 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
 - 状态：计划中
@@ -234,6 +258,72 @@
   2. 新增 `TEST-013` 官方用例文档、checker 与 GitHub Actions workflow，统一复用 `smoke-local.sh` 与 dispute/billing 主 smoke。
   3. 更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/payment-billing-cases.md`、`scripts/README.md`、`.github/workflows/README.md`，明确 `TEST-013` 官方入口。
   4. 执行真实验证、回写 `BATCH-310（待审批）`、本地提交，然后继续 `TEST-014`。
+
+### BATCH-315（待审批）
+- 任务：`TEST-018` 补充性能冒烟：单次搜索、下单、交付、审计联查的基础响应时间门槛
+- 状态：待审批
+- 当前任务编号：`TEST-018`
+- 前置依赖核对结果：`ENV-040`、`DB-032`、`CORE-024` 已在前序分卷完成并继续复用；本批次继续基于 `smoke-local.sh`、`seed-demo.sh`、Keycloak realm 与 `platform-core` 正式 API 推进。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-018` 是四条正式 API 的基础性能守门，不是局部 benchmark。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认性能 smoke 必须沉淀为本地/CI 可重复入口。
+  - `docs/原始PRD/日志、可观测性与告警设计.md`、`docs/04-runbooks/observability-local.md`：确认需要留下 Prometheus / metrics / request log 级证据，而不是只看 200。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`：确认 local / demo 允许走 PostgreSQL 搜索投影，但正式入口仍必须使用 `GET /api/v1/catalog/search`。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/原始PRD/基于区块链技术的数据交易平台-需求清单-PRD-正式清理版.md`：复核 `26.2 性能 SLO`，收敛 `标准下单 / 合同查看 / 账单查询 p95 <= 2 秒` 作为当前单次 smoke 的 `2.0s` 守门线。
+  - `docs/05-test-cases/README.md`、`scripts/check-order-e2e.sh`、`scripts/check-searchrec-pg-authority.sh`、`scripts/check-audit-completeness.sh`、`apps/portal-web/e2e/test006-standard-order-live.spec.ts`：确认现有正式入口、Keycloak Bearer 联调与 order / search / audit 路径可复用。
+- 实现要点：
+  - 新增 `scripts/check-performance-smoke.sh` 作为 `TEST-018` 唯一正式 checker：
+    - 自带 `smoke-local.sh`、`seed-local-iam-test-identities.sh`、`seed-demo.sh --skip-base-seeds` 与 `check-demo-seed.sh` 前置。
+    - 通过 Keycloak password grant 获取 `local-buyer-operator / local-tenant-developer / local-audit-security` 的正式 Bearer token 与 `user_id / org_id / role` claims。
+    - 真实执行 `search -> order create -> contract-confirm -> api-sub lock_funds -> deliver -> audit order lookup` 链路；其中 `deliver` 之前会临时插入 `contract.template_definition` 与 `catalog.asset_object_binding(object_kind='api_endpoint')`，保证交付不是伪请求。
+    - 固定对四条目标 API 校验正式成功 envelope、`time_total <= 2.0s`，并落盘 `summary.json`、原始请求/响应、Prometheus `up{job="platform-core"}`、`/metrics` snapshot 与 `platform-core` request log。
+    - `EXIT` cleanup 会删除本批次创建的订单、合同模板、临时 `api_endpoint` 绑定与应用对象；审计 append-only 记录保留。
+  - 修正 `apps/platform-core/crates/http/src/lib.rs` 与 `apps/platform-core/src/lib.rs`：
+    - 将 HTTP request context / metrics middleware 提升到最终合成 router，确保业务 API 与 health API 共用同一套 `request_id`、request log 和 `platform_core_http_request_duration_seconds` 指标，不再只覆盖基础 health/internal 路由。
+  - 新增 `docs/05-test-cases/performance-smoke-cases.md` 与 `.github/workflows/performance-smoke.yml`，并更新：
+    - `docs/05-test-cases/README.md`
+    - `scripts/README.md`
+    - `.github/workflows/README.md`
+    明确 `TEST-018` 的正式入口、artifact 与边界。
+- 验证步骤：
+  1. `bash -n scripts/check-performance-smoke.sh`
+  2. `ENV_FILE=infra/docker/.env.local bash ./scripts/check-performance-smoke.sh`
+  3. `cargo fmt --all`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `bash -n scripts/check-performance-smoke.sh` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-performance-smoke.sh` 通过，关键 artifact 位于 `target/test-artifacts/performance-smoke/`，其中：
+    - `summary.json` 记录单次实际耗时：
+      - `search`: `0.016038s`
+      - `order-create`: `0.006470s`
+      - `delivery`: `0.013499s`
+      - `audit-order`: `0.003833s`
+    - `prometheus-platform-core-up.json` 证明 `up{job="platform-core"} == 1`
+    - `platform-core-metrics.prom` 包含：
+      - `platform_core_http_request_duration_seconds_count{method="GET",path="/api/v1/catalog/search"} 1`
+      - `platform_core_http_request_duration_seconds_count{method="POST",path="/api/v1/orders"} 1`
+      - `platform_core_http_request_duration_seconds_count{method="POST",path="/api/v1/orders/{id}/deliver"} 1`
+      - `platform_core_http_request_duration_seconds_count{method="GET",path="/api/v1/audit/orders/{id}"} 1`
+    - `test-018-platform-core.log` 记录四条请求的 `request finished` 行，可按 `request_id` 对齐 `summary.json`
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 unused warnings，未由当前批次新增阻塞。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`1` ignored（仓库既有 `iam_party_access_flow_live` live 依赖项）。
+  - `cargo sqlx prepare --workspace` 通过，workspace `.sqlx` 已保持最新。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-018`
+  - `数据交易平台-全集成基线-V1.md`、`基于区块链技术的数据交易平台-需求清单-PRD-正式清理版.md`：`26.2 性能 SLO`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1 / 15.2`
+  - `docs/04-runbooks/observability-local.md`
+  - `docs/05-test-cases/README.md`
+- 覆盖的任务清单条目：`TEST-018`
+- 未覆盖项：
+  - 当前批次不做压测、长时 p95/p99 统计或多并发容量建模；这些不属于 `TEST-018` 的基础性能冒烟边界。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
 ### BATCH-310（待审批）
 - 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
