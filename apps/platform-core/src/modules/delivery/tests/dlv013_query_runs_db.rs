@@ -99,7 +99,7 @@ mod tests {
             .expect("read body");
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("read json");
-        let data = &json["data"]["data"];
+        let data = &json["data"];
         assert_eq!(data["order_id"].as_str(), Some(seed.order_id.as_str()));
         assert_eq!(data["current_state"].as_str(), Some("query_executed"));
         assert_eq!(data["payment_status"].as_str(), Some("paid"));
@@ -215,15 +215,15 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("execute json");
         (
-            json["data"]["data"]["query_run_id"]
+            json["data"]["query_run_id"]
                 .as_str()
                 .expect("query_run_id")
                 .to_string(),
-            json["data"]["data"]["bucket_name"]
+            json["data"]["bucket_name"]
                 .as_str()
                 .expect("bucket_name")
                 .to_string(),
-            json["data"]["data"]["object_key"]
+            json["data"]["object_key"]
                 .as_str()
                 .expect("object_key")
                 .to_string(),

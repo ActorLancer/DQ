@@ -86,20 +86,17 @@ mod tests {
             .expect("deliver body");
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("deliver json");
+        assert_eq!(json["data"]["current_state"].as_str(), Some("delivered"));
+        assert_eq!(json["data"]["ticket_id"].as_str().is_some(), true);
         assert_eq!(
-            json["data"]["data"]["current_state"].as_str(),
-            Some("delivered")
-        );
-        assert_eq!(json["data"]["data"]["ticket_id"].as_str().is_some(), true);
-        assert_eq!(
-            json["data"]["data"]["bucket_name"].as_str(),
+            json["data"]["bucket_name"].as_str(),
             Some("delivery-objects")
         );
         assert_eq!(
-            json["data"]["data"]["object_key"].as_str(),
+            json["data"]["object_key"].as_str(),
             Some(format!("orders/{suffix}/payload.enc").as_str())
         );
-        assert_eq!(json["data"]["data"]["download_limit"].as_i64(), Some(5));
+        assert_eq!(json["data"]["download_limit"].as_i64(), Some(5));
 
         let detail_response = app
             .oneshot(
@@ -126,23 +123,25 @@ mod tests {
         );
         let detail_json: Value = serde_json::from_slice(&detail_body).expect("detail json");
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["object_locator"]["bucket_name"].as_str(),
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]["object_locator"]
+                ["bucket_name"]
+                .as_str(),
             Some("delivery-objects")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["mode"].as_str(),
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["mode"].as_str(),
             Some("rule_bound")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["delivery_branch"].as_str(),
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["delivery_branch"].as_str(),
             Some("file")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["pipeline"]["status"].as_str(),
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["pipeline"]["status"].as_str(),
             Some("reserved")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["fingerprint_strategy"].as_str(),
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]["watermark_policy"]["rule"]["fingerprint_strategy"].as_str(),
             Some("field_bound")
         );
 

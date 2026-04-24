@@ -87,7 +87,7 @@ mod tests {
             .expect("body bytes");
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("response json");
-        let data = &json["data"]["data"];
+        let data = &json["data"];
         let policy_id = data["sensitive_execution_policy_id"]
             .as_str()
             .expect("policy id")

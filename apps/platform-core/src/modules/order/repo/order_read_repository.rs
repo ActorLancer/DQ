@@ -89,7 +89,7 @@ fn parse_order_row(
         acceptance_status: acceptance_status.unwrap_or(derived.acceptance_status),
         settlement_status: settlement_status.unwrap_or(derived.settlement_status),
         dispute_status: dispute_status.unwrap_or(derived.dispute_status),
-        amount: row.get(11),
+        order_amount: row.get(11),
         currency_code: row.get(12),
         price_snapshot,
         relations,

@@ -165,11 +165,11 @@ mod tests {
         .await;
         assert_eq!(success.status, StatusCode::OK, "{}", success.body);
         assert_eq!(
-            success.json["data"]["data"]["current_state"].as_str(),
+            success.json["data"]["current_state"].as_str(),
             Some("share_enabled")
         );
         assert_eq!(
-            success.json["data"]["data"]["delivery_status"].as_str(),
+            success.json["data"]["delivery_status"].as_str(),
             Some("in_progress")
         );
 

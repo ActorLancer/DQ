@@ -97,7 +97,7 @@ mod tests {
             String::from_utf8_lossy(&success_body)
         );
         let success_json: Value = serde_json::from_slice(&success_body).expect("success json");
-        let data = &success_json["data"]["data"];
+        let data = &success_json["data"];
         let query_run_id = data["query_run_id"]
             .as_str()
             .expect("query_run_id")

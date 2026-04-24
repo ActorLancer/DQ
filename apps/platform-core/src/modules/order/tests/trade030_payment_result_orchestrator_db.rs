@@ -69,7 +69,7 @@ mod tests {
             base_timestamp_ms as i64,
         )
         .await;
-        assert_eq!(success_json["success"], true);
+        assert_success_envelope(&success_json, &success_request_id);
         assert_eq!(success_json["data"]["processed_status"], "processed");
         assert_eq!(success_json["data"]["applied_payment_status"], "succeeded");
 
@@ -83,7 +83,7 @@ mod tests {
             base_timestamp_ms as i64 + 1,
         )
         .await;
-        assert_eq!(failed_json["success"], true);
+        assert_success_envelope(&failed_json, &failed_request_id);
         assert_eq!(failed_json["data"]["processed_status"], "processed");
         assert_eq!(failed_json["data"]["applied_payment_status"], "failed");
 
@@ -97,7 +97,7 @@ mod tests {
             base_timestamp_ms as i64 + 2,
         )
         .await;
-        assert_eq!(timeout_json["success"], true);
+        assert_success_envelope(&timeout_json, &timeout_request_id);
         assert_eq!(timeout_json["data"]["processed_status"], "processed");
         assert_eq!(timeout_json["data"]["applied_payment_status"], "expired");
 
@@ -111,7 +111,7 @@ mod tests {
             base_timestamp_ms as i64 + 3,
         )
         .await;
-        assert_eq!(ignored_json["success"], true);
+        assert_success_envelope(&ignored_json, &ignored_request_id);
         assert_eq!(ignored_json["data"]["processed_status"], "processed");
         assert_eq!(ignored_json["data"]["applied_payment_status"], "failed");
 
@@ -335,6 +335,12 @@ mod tests {
             .await
             .expect("body");
         serde_json::from_slice(&body).expect("json")
+    }
+
+    fn assert_success_envelope(json: &Value, request_id: &str) {
+        assert_eq!(json["code"].as_str(), Some("OK"));
+        assert_eq!(json["message"].as_str(), Some("success"));
+        assert_eq!(json["request_id"].as_str(), Some(request_id));
     }
 
     async fn assert_order_audit(

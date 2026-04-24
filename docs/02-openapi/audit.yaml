@@ -462,21 +462,33 @@ components:
     AuditTracePageResponse:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AuditTracePage"
     OrderAuditResponse:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/OrderAuditView"
     EvidenceManifest:
@@ -591,11 +603,17 @@ components:
     AuditPackageExportResponse:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AuditPackageExportView"
     AuditReplayJobCreateRequest:
@@ -728,11 +746,17 @@ components:
     AuditReplayJobDetailResponse:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AuditReplayJobDetail"
     LegalHold:
@@ -829,11 +853,17 @@ components:
     AuditLegalHoldActionResponse:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AuditLegalHoldActionView"
     AnchorBatch:
@@ -906,11 +936,17 @@ components:
     AuditAnchorBatchPageResponse:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AuditAnchorBatchPage"
     AuditAnchorBatchRetryRequest:
@@ -936,10 +972,16 @@ components:
     AuditAnchorBatchRetryResponse:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AuditAnchorBatchRetryView"

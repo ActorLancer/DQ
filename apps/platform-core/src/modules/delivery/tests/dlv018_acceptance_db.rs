@@ -95,7 +95,7 @@ mod tests {
             String::from_utf8_lossy(&accept_body)
         );
         let accept_json: Value = serde_json::from_slice(&accept_body).expect("accept json");
-        let accept_data = &accept_json["data"]["data"];
+        let accept_data = &accept_json["data"];
         assert_eq!(accept_data["current_state"].as_str(), Some("accepted"));
         assert_eq!(accept_data["delivery_branch"].as_str(), Some("file"));
         assert_eq!(accept_data["acceptance_status"].as_str(), Some("accepted"));
@@ -140,7 +140,7 @@ mod tests {
         );
         let replay_json: Value = serde_json::from_slice(&replay_body).expect("accept replay json");
         assert_eq!(
-            replay_json["data"]["data"]["operation"].as_str(),
+            replay_json["data"]["operation"].as_str(),
             Some("already_accepted")
         );
 
@@ -182,7 +182,7 @@ mod tests {
             String::from_utf8_lossy(&reject_body)
         );
         let reject_json: Value = serde_json::from_slice(&reject_body).expect("reject json");
-        let reject_data = &reject_json["data"]["data"];
+        let reject_data = &reject_json["data"];
         assert_eq!(reject_data["current_state"].as_str(), Some("rejected"));
         assert_eq!(reject_data["delivery_branch"].as_str(), Some("report"));
         assert_eq!(reject_data["acceptance_status"].as_str(), Some("rejected"));

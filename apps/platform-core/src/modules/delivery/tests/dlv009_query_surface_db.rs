@@ -99,16 +99,13 @@ mod tests {
             String::from_utf8_lossy(&create_body)
         );
         let create_json: Value = serde_json::from_slice(&create_body).expect("create json");
-        let query_surface_id = create_json["data"]["data"]["query_surface_id"]
+        let query_surface_id = create_json["data"]["query_surface_id"]
             .as_str()
             .expect("query_surface_id")
             .to_string();
+        assert_eq!(create_json["data"]["operation"].as_str(), Some("created"));
         assert_eq!(
-            create_json["data"]["data"]["operation"].as_str(),
-            Some("created")
-        );
-        assert_eq!(
-            create_json["data"]["data"]["execution_scope"].as_str(),
+            create_json["data"]["execution_scope"].as_str(),
             Some("curated_zone")
         );
 
@@ -173,20 +170,14 @@ mod tests {
             String::from_utf8_lossy(&update_body)
         );
         let update_json: Value = serde_json::from_slice(&update_body).expect("update json");
+        assert_eq!(update_json["data"]["operation"].as_str(), Some("updated"));
+        assert_eq!(update_json["data"]["status"].as_str(), Some("active"));
         assert_eq!(
-            update_json["data"]["data"]["operation"].as_str(),
-            Some("updated")
-        );
-        assert_eq!(
-            update_json["data"]["data"]["status"].as_str(),
-            Some("active")
-        );
-        assert_eq!(
-            update_json["data"]["data"]["execution_scope"].as_str(),
+            update_json["data"]["execution_scope"].as_str(),
             Some("product_zone")
         );
         assert_eq!(
-            update_json["data"]["data"]["query_policy_json"]["analysis_rule"].as_str(),
+            update_json["data"]["query_policy_json"]["analysis_rule"].as_str(),
             Some("whitelist_only")
         );
 

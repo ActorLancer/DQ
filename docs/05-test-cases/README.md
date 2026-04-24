@@ -12,6 +12,7 @@
 - 宿主机示例优先使用 `set -a; source infra/docker/.env.local; set +a` 载入运行时入口，避免手工散落 Kafka / DB / MinIO 地址后再次漂移。
 - `./scripts/check-topic-topology.sh` 只用于通知 / Fabric / audit-anchor 相关关键静态 topology 与 route seed 校验；若要验证 `infra/kafka/topics.v1.json` 中全部 canonical topics 是否真实存在，应执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`。
 - `./scripts/check-canonical-contracts.sh` 是 `TEST-028` 的正式 checker：本地默认 `full` 模式会串行执行 `check-openapi-schema.sh + check-topic-topology.sh + smoke-local.sh`，并额外校验 canonical consumer group、宿主机/容器 Kafka 边界与正式运行态文档中不存在旧 topic / 旧命名默认值；CI 则使用 `CANONICAL_CHECK_MODE=static` 跑静态子集。
+- `./scripts/check-api-contract-baseline.sh` 是 `TEST-003` 的正式 checker：它只校验 API/OpenAPI 相关冻结契约，包括成功/失败 envelope、关键响应字段、错误码基线与订单状态机 action enum / 禁止错误码绑定，不替代 `TEST-028` 的 canonical smoke。
 - 当前仓库已分别由以下文件承接三条事件的正式验收清单：
   - `notification.requested -> docs/05-test-cases/notification-cases.md`
   - `audit.anchor_requested / fabric.proof_submit_requested -> docs/05-test-cases/audit-consistency-cases.md`

@@ -56,7 +56,7 @@ mod tests {
         )
         .await;
         assert_eq!(file_order.status, StatusCode::OK, "{}", file_order.body);
-        let file_order_id = file_order.json["data"]["data"]["order_id"]
+        let file_order_id = file_order.json["data"]["order_id"]
             .as_str()
             .expect("file order id")
             .to_string();
@@ -85,7 +85,7 @@ mod tests {
             contract_resp.body
         );
         assert_eq!(
-            contract_resp.json["data"]["data"]["signature_provider_mode"].as_str(),
+            contract_resp.json["data"]["signature_provider_mode"].as_str(),
             Some("mock")
         );
 
@@ -141,7 +141,7 @@ mod tests {
         .await;
         assert_eq!(lock_ok.status, StatusCode::OK, "{}", lock_ok.body);
         assert_eq!(
-            lock_ok.json["data"]["data"]["current_state"].as_str(),
+            lock_ok.json["data"]["current_state"].as_str(),
             Some("buyer_locked")
         );
 
@@ -172,7 +172,7 @@ mod tests {
         )
         .await;
         assert_eq!(share_order.status, StatusCode::OK, "{}", share_order.body);
-        let share_order_id = share_order.json["data"]["data"]["order_id"]
+        let share_order_id = share_order.json["data"]["order_id"]
             .as_str()
             .expect("share order id")
             .to_string();

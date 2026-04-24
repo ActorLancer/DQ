@@ -115,29 +115,26 @@ mod tests {
             String::from_utf8_lossy(&create_api_body)
         );
         let create_api_json: Value = serde_json::from_slice(&create_api_body).expect("json");
-        let api_order_id = create_api_json["data"]["data"]["order_id"]
+        let api_order_id = create_api_json["data"]["order_id"]
             .as_str()
             .expect("api order id")
             .to_string();
         assert_eq!(
-            create_api_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"]
+            create_api_json["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"]
                 .as_str(),
             Some("S4")
         );
         assert_eq!(
-            create_api_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]
-                ["selected_sku_role"]
+            create_api_json["data"]["price_snapshot"]["scenario_snapshot"]["selected_sku_role"]
                 .as_str(),
             Some("primary")
         );
         assert_eq!(
-            create_api_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["primary_sku"]
-                .as_str(),
+            create_api_json["data"]["price_snapshot"]["scenario_snapshot"]["primary_sku"].as_str(),
             Some("API_SUB")
         );
         assert_eq!(
-            create_api_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]
-                ["supplementary_skus"][0]
+            create_api_json["data"]["price_snapshot"]["scenario_snapshot"]["supplementary_skus"][0]
                 .as_str(),
             Some("RPT_STD")
         );
@@ -170,7 +167,7 @@ mod tests {
         );
         let freeze_json: Value = serde_json::from_slice(&freeze_body).expect("freeze json");
         assert_eq!(
-            freeze_json["data"]["data"]["snapshot"]["scenario_snapshot"]["scenario_code"].as_str(),
+            freeze_json["data"]["snapshot"]["scenario_snapshot"]["scenario_code"].as_str(),
             Some("S4")
         );
 
@@ -210,24 +207,22 @@ mod tests {
             String::from_utf8_lossy(&create_rpt_body)
         );
         let create_rpt_json: Value = serde_json::from_slice(&create_rpt_body).expect("json");
-        let rpt_order_id = create_rpt_json["data"]["data"]["order_id"]
+        let rpt_order_id = create_rpt_json["data"]["order_id"]
             .as_str()
             .expect("rpt order id")
             .to_string();
         assert_eq!(
-            create_rpt_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"]
+            create_rpt_json["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"]
                 .as_str(),
             Some("S5")
         );
         assert_eq!(
-            create_rpt_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]
-                ["selected_sku_role"]
+            create_rpt_json["data"]["price_snapshot"]["scenario_snapshot"]["selected_sku_role"]
                 .as_str(),
             Some("supplementary")
         );
         assert_eq!(
-            create_rpt_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["primary_sku"]
-                .as_str(),
+            create_rpt_json["data"]["price_snapshot"]["scenario_snapshot"]["primary_sku"].as_str(),
             Some("QRY_LITE")
         );
 
@@ -268,14 +263,12 @@ mod tests {
         );
         let confirm_json: Value = serde_json::from_slice(&confirm_body).expect("json");
         assert_eq!(
-            confirm_json["data"]["data"]["variables_json"]["scenario_sku_snapshot"]
-                ["scenario_code"]
+            confirm_json["data"]["variables_json"]["scenario_sku_snapshot"]["scenario_code"]
                 .as_str(),
             Some("S4")
         );
         assert_eq!(
-            confirm_json["data"]["data"]["variables_json"]["scenario_sku_snapshot"]
-                ["selected_sku_type"]
+            confirm_json["data"]["variables_json"]["scenario_sku_snapshot"]["selected_sku_type"]
                 .as_str(),
             Some("API_SUB")
         );
@@ -311,14 +304,12 @@ mod tests {
         let authorization_json: Value =
             serde_json::from_slice(&authorization_body).expect("authorization json");
         assert_eq!(
-            authorization_json["data"]["data"]["policy_snapshot"]["scenario_sku_snapshot"]
-                ["scenario_code"]
+            authorization_json["data"]["policy_snapshot"]["scenario_sku_snapshot"]["scenario_code"]
                 .as_str(),
             Some("S4")
         );
         assert_eq!(
-            authorization_json["data"]["data"]["authorization_model"]["resource"]["sku_type"]
-                .as_str(),
+            authorization_json["data"]["authorization_model"]["resource"]["sku_type"].as_str(),
             Some("API_SUB")
         );
 
@@ -347,18 +338,17 @@ mod tests {
         );
         let detail_json: Value = serde_json::from_slice(&detail_body).expect("detail json");
         assert_eq!(
-            detail_json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"]
-                .as_str(),
+            detail_json["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"].as_str(),
             Some("S4")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["contract"]["variables_json"]
-                ["scenario_sku_snapshot"]["selected_sku_type"]
+            detail_json["data"]["relations"]["contract"]["variables_json"]["scenario_sku_snapshot"]
+                ["selected_sku_type"]
                 .as_str(),
             Some("API_SUB")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["authorizations"][0]["policy_snapshot"]
+            detail_json["data"]["relations"]["authorizations"][0]["policy_snapshot"]
                 ["scenario_sku_snapshot"]["scenario_code"]
                 .as_str(),
             Some("S4")

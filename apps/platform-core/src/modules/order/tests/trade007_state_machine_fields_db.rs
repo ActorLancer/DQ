@@ -71,7 +71,7 @@ mod tests {
             .await
             .expect("body");
         let json: Value = serde_json::from_slice(&body).expect("json");
-        let order_id = json["data"]["data"]["order_id"]
+        let order_id = json["data"]["order_id"]
             .as_str()
             .expect("order id")
             .to_string();

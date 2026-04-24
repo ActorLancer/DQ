@@ -2673,11 +2673,17 @@ components:
     ApiResponseStandardScenarioTemplateList:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           type: array
           items:
@@ -2685,101 +2691,161 @@ components:
     ApiResponseProductDetail:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ProductDetail"
     ApiResponseProductList:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ProductList"
     ApiResponseDataProduct:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/DataProduct"
     ApiResponseSellerProfile:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/SellerProfile"
     ApiResponseProductSku:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ProductSku"
     ApiResponseTemplateBinding:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/TemplateBinding"
     ApiResponseProductMetadataProfile:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ProductMetadataProfile"
     ApiResponseAssetQualityReport:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AssetQualityReport"
     ApiResponseProductSubmit:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ProductSubmit"
     ApiResponseReviewDecision:
       type: object
       required:
-        - success
+        - code
+        - message
+        - request_id
         - data
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ReviewDecision"
     ProductSubmit:

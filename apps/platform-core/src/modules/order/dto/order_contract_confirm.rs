@@ -28,7 +28,7 @@ pub struct ConfirmOrderContractResponseData {
     pub data_contract_id: Option<String>,
     pub data_contract_digest: Option<String>,
     pub contract_status: String,
-    pub order_status: String,
+    pub current_state: String,
     pub signer_id: String,
     pub signer_type: String,
     pub signer_role: String,

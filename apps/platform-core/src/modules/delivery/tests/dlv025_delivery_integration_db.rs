@@ -154,12 +154,12 @@ mod tests {
             .expect("file deliver response");
         let (file_commit_status, _, file_commit_json) = decode_json(file_commit_response).await;
         assert_eq!(file_commit_status, StatusCode::OK);
-        let file_ticket_id = file_commit_json["data"]["data"]["ticket_id"]
+        let file_ticket_id = file_commit_json["data"]["ticket_id"]
             .as_str()
             .expect("file ticket id")
             .to_string();
         assert_eq!(
-            file_commit_json["data"]["data"]["current_state"].as_str(),
+            file_commit_json["data"]["current_state"].as_str(),
             Some("delivered")
         );
 
@@ -180,7 +180,7 @@ mod tests {
         let (file_ticket_status, _, file_ticket_json) = decode_json(file_ticket_response).await;
         assert_eq!(file_ticket_status, StatusCode::OK);
         assert_eq!(
-            file_ticket_json["data"]["data"]["ticket_id"].as_str(),
+            file_ticket_json["data"]["ticket_id"].as_str(),
             Some(file_ticket_id.as_str())
         );
         let redis_key = format!("datab:v1:download-ticket:{}", file_ticket_id);
@@ -212,7 +212,7 @@ mod tests {
         let (file_accept_status, _, file_accept_json) = decode_json(file_accept_response).await;
         assert_eq!(file_accept_status, StatusCode::OK);
         assert_eq!(
-            file_accept_json["data"]["data"]["current_state"].as_str(),
+            file_accept_json["data"]["current_state"].as_str(),
             Some("accepted")
         );
 
@@ -242,12 +242,8 @@ mod tests {
             .expect("api deliver response");
         let (api_status, _, api_json) = decode_json(api_response).await;
         assert_eq!(api_status, StatusCode::OK);
-        assert_eq!(api_json["data"]["data"]["branch"].as_str(), Some("api"));
-        assert!(
-            api_json["data"]["data"]["api_credential_id"]
-                .as_str()
-                .is_some()
-        );
+        assert_eq!(api_json["data"]["branch"].as_str(), Some("api"));
+        assert!(api_json["data"]["api_credential_id"].as_str().is_some());
 
         let grant_req = format!("req-dlv025-template-grant-{suffix}");
         let grant_response = app
@@ -282,12 +278,12 @@ mod tests {
             .expect("grant response");
         let (grant_status, _, grant_json) = decode_json(grant_response).await;
         assert_eq!(grant_status, StatusCode::OK);
-        let template_query_grant_id = grant_json["data"]["data"]["template_query_grant_id"]
+        let template_query_grant_id = grant_json["data"]["template_query_grant_id"]
             .as_str()
             .expect("template_query_grant_id")
             .to_string();
         assert_eq!(
-            grant_json["data"]["data"]["current_state"].as_str(),
+            grant_json["data"]["current_state"].as_str(),
             Some("template_authorized")
         );
 
@@ -315,11 +311,11 @@ mod tests {
             .expect("run response");
         let (run_status, _, run_json) = decode_json(run_response).await;
         assert_eq!(run_status, StatusCode::OK);
-        let result_bucket = run_json["data"]["data"]["bucket_name"]
+        let result_bucket = run_json["data"]["bucket_name"]
             .as_str()
             .expect("result bucket")
             .to_string();
-        let result_key = run_json["data"]["data"]["object_key"]
+        let result_key = run_json["data"]["object_key"]
             .as_str()
             .expect("result key")
             .to_string();
@@ -354,11 +350,11 @@ mod tests {
         let (sandbox_status, _, sandbox_json) = decode_json(sandbox_response).await;
         assert_eq!(sandbox_status, StatusCode::OK);
         assert_eq!(
-            sandbox_json["data"]["data"]["workspace_status"].as_str(),
+            sandbox_json["data"]["workspace_status"].as_str(),
             Some("active")
         );
         assert_eq!(
-            sandbox_json["data"]["data"]["environment_type"].as_str(),
+            sandbox_json["data"]["environment_type"].as_str(),
             Some("sandbox")
         );
 
@@ -391,7 +387,7 @@ mod tests {
             decode_json(report_commit_response).await;
         assert_eq!(report_commit_status, StatusCode::OK);
         assert_eq!(
-            report_commit_json["data"]["data"]["current_state"].as_str(),
+            report_commit_json["data"]["current_state"].as_str(),
             Some("report_delivered")
         );
 
@@ -417,7 +413,7 @@ mod tests {
             decode_json(report_reject_response).await;
         assert_eq!(report_reject_status, StatusCode::OK);
         assert_eq!(
-            report_reject_json["data"]["data"]["current_state"].as_str(),
+            report_reject_json["data"]["current_state"].as_str(),
             Some("rejected")
         );
 

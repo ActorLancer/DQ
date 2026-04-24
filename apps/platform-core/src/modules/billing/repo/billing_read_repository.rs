@@ -1,6 +1,6 @@
 use crate::modules::billing::db::map_db_error;
 use crate::modules::billing::models::{
-    ApiBillingBasisView as ApiBillingBasisResponseView, BillingCompensationView,
+    ApiBillingBasisView as ApiBillingBasisResponseView, BillingCompensationView, BillingEventView,
     BillingInvoicePlaceholderView, BillingInvoiceView, BillingOrderDetailView, BillingPayoutView,
     BillingRefundView, BillingSettlementSummaryView, BillingSettlementView,
     BillingSplitInstructionView, BillingTaxPlaceholderView,
@@ -38,7 +38,21 @@ pub async fn get_billing_order_detail(
     enforce_order_scope(&context, tenant_scope_id, request_id)?;
 
     let billing_events =
-        list_billing_events_for_order(client, order_id, tenant_scope_id, request_id).await?;
+        list_billing_events_for_order(client, order_id, tenant_scope_id, request_id)
+            .await?
+            .into_iter()
+            .map(|event| BillingEventView {
+                billing_event_id: event.billing_event_id,
+                order_id: event.order_id,
+                event_type: event.event_type,
+                event_source: event.event_source,
+                amount: event.amount,
+                currency_code: event.currency_code,
+                metered_quantity: event.units,
+                occurred_at: event.occurred_at,
+                metadata: event.metadata,
+            })
+            .collect();
     let sku_billing_basis = load_sku_billing_basis_view(client, order_id, request_id)
         .await?
         .map(|basis| SkuBillingBasisResponseView {
@@ -89,7 +103,7 @@ pub async fn get_billing_order_detail(
 
     Ok(Some(BillingOrderDetailView {
         order_id: context.order_id,
-        order_status: context.order_status,
+        current_state: context.order_status,
         payment_status: context.payment_status,
         settlement_status: context.settlement_status,
         dispute_status: context.dispute_status,

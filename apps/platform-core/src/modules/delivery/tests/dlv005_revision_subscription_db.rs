@@ -68,16 +68,13 @@ mod tests {
             String::from_utf8_lossy(&create_body)
         );
         let create_json: Value = serde_json::from_slice(&create_body).expect("create json");
+        assert_eq!(create_json["data"]["operation"].as_str(), Some("created"));
         assert_eq!(
-            create_json["data"]["data"]["operation"].as_str(),
-            Some("created")
-        );
-        assert_eq!(
-            create_json["data"]["data"]["subscription_status"].as_str(),
+            create_json["data"]["subscription_status"].as_str(),
             Some("active")
         );
         assert_eq!(
-            create_json["data"]["data"]["current_state"].as_str(),
+            create_json["data"]["current_state"].as_str(),
             Some("buyer_locked")
         );
 
@@ -108,7 +105,7 @@ mod tests {
         );
         let get_json: Value = serde_json::from_slice(&get_body).expect("get json");
         assert_eq!(
-            get_json["data"]["data"]["subscription_status"].as_str(),
+            get_json["data"]["subscription_status"].as_str(),
             Some("active")
         );
 
@@ -154,11 +151,11 @@ mod tests {
         let paused_get_json: Value =
             serde_json::from_slice(&paused_get_body).expect("paused get json");
         assert_eq!(
-            paused_get_json["data"]["data"]["subscription_status"].as_str(),
+            paused_get_json["data"]["subscription_status"].as_str(),
             Some("paused")
         );
         assert_eq!(
-            paused_get_json["data"]["data"]["current_state"].as_str(),
+            paused_get_json["data"]["current_state"].as_str(),
             Some("paused")
         );
 
@@ -191,20 +188,14 @@ mod tests {
             String::from_utf8_lossy(&renew_body)
         );
         let renew_json: Value = serde_json::from_slice(&renew_body).expect("renew json");
+        assert_eq!(renew_json["data"]["operation"].as_str(), Some("renewed"));
+        assert_eq!(renew_json["data"]["cadence"].as_str(), Some("quarterly"));
         assert_eq!(
-            renew_json["data"]["data"]["operation"].as_str(),
-            Some("renewed")
-        );
-        assert_eq!(
-            renew_json["data"]["data"]["cadence"].as_str(),
-            Some("quarterly")
-        );
-        assert_eq!(
-            renew_json["data"]["data"]["subscription_status"].as_str(),
+            renew_json["data"]["subscription_status"].as_str(),
             Some("active")
         );
         assert_eq!(
-            renew_json["data"]["data"]["current_state"].as_str(),
+            renew_json["data"]["current_state"].as_str(),
             Some("buyer_locked")
         );
 

@@ -930,11 +930,12 @@ paths:
                 shareRoOpeningAndCycle:
                   summary: SHARE_RO opening fee + periodic share fee + revoke placeholder
                   value:
-                    code: 0
-                    message: ok
+                    code: "OK"
+                    message: "success"
+                    request_id: "req_example"
                     data:
                       order_id: "7c7d39f8-20af-4f5b-9c54-793c5f04fd65"
-                      order_status: "revoked"
+                      current_state: "revoked"
                       payment_status: "paid"
                       settlement_status: "closed"
                       dispute_status: "none"
@@ -968,7 +969,7 @@ paths:
                           event_source: "share_enable"
                           amount: "66.00000000"
                           currency_code: "CNY"
-                          units: "1"
+                          metered_quantity: "1"
                           occurred_at: "2026-04-20T10:00:00.000Z"
                           updated_at: "2026-04-20T10:00:00.000Z"
                           metadata: {}
@@ -978,7 +979,7 @@ paths:
                           event_source: "share_cycle"
                           amount: "33.00000000"
                           currency_code: "CNY"
-                          units: "1"
+                          metered_quantity: "1"
                           occurred_at: "2026-04-20T10:30:00.000Z"
                           updated_at: "2026-04-20T10:30:00.000Z"
                           metadata: {}
@@ -988,7 +989,7 @@ paths:
                           event_source: "share_revoke_refund_placeholder"
                           amount: "99.00000000"
                           currency_code: "CNY"
-                          units: "1"
+                          metered_quantity: "1"
                           occurred_at: "2026-04-20T11:00:00.000Z"
                           updated_at: "2026-04-20T11:00:00.000Z"
                           metadata: {}
@@ -1520,7 +1521,7 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: [code, message]
+      required: [code, message, request_id, details]
       properties:
         code:
           type: string
@@ -1528,131 +1529,193 @@ components:
           type: string
         request_id:
           type: string
-          nullable: true
+        details:
+          type: object
+          additionalProperties: true
     ApiEnvelopeJurisdictionList:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           type: array
           items:
             $ref: "#/components/schemas/JurisdictionProfile"
     ApiEnvelopeJurisdiction:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/JurisdictionProfile"
     ApiEnvelopeCorridorList:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           type: array
           items:
             $ref: "#/components/schemas/CorridorPolicy"
     ApiEnvelopeCorridor:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/CorridorPolicy"
     ApiEnvelopePayoutPreferenceList:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           type: array
           items:
             $ref: "#/components/schemas/PayoutPreference"
     ApiEnvelopePayoutPreference:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/PayoutPreference"
     ApiEnvelopePaymentIntent:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/PaymentIntent"
     ApiEnvelopePaymentIntentDetail:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/PaymentIntentDetail"
     ApiEnvelopeBillingOrderDetail:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/BillingOrderDetail"
     ApiEnvelopeBillingBridgeProcess:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/BillingBridgeProcess"
     ApiEnvelopeShareRoCycleCharge:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ShareRoCycleCharge"
     ApiEnvelopeOrderLock:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/OrderLock"
     ApiEnvelopePaymentWebhookResult:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/PaymentWebhookResult"
     ApiEnvelopePaymentPolledResult:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/PaymentPolledResult"
     ApiEnvelopeMockPaymentSimulation:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/MockPaymentSimulation"
     JurisdictionProfile:
@@ -2136,6 +2199,7 @@ components:
           event_source,
           amount,
           currency_code,
+          metered_quantity,
           occurred_at,
           metadata,
         ]
@@ -2152,7 +2216,7 @@ components:
           type: string
         currency_code:
           type: string
-        units:
+        metered_quantity:
           type: string
           nullable: true
         occurred_at:
@@ -3040,7 +3104,7 @@ components:
       required:
         [
           order_id,
-          order_status,
+          current_state,
           payment_status,
           settlement_status,
           dispute_status,
@@ -3062,7 +3126,7 @@ components:
       properties:
         order_id:
           type: string
-        order_status:
+        current_state:
           type: string
         payment_status:
           type: string
@@ -3304,13 +3368,13 @@ components:
     OrderLock:
       type: object
       required:
-        [order_id, payment_intent_id, order_status, payment_status, buyer_locked_at]
+        [order_id, payment_intent_id, current_state, payment_status, buyer_locked_at]
       properties:
         order_id:
           type: string
         payment_intent_id:
           type: string
-        order_status:
+        current_state:
           type: string
         payment_status:
           type: string

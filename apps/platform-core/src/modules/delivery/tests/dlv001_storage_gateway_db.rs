@@ -71,8 +71,7 @@ mod tests {
         );
         let detail_json: Value = serde_json::from_slice(&detail_body).expect("detail json");
 
-        let storage_gateway =
-            &detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"];
+        let storage_gateway = &detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"];
         assert_eq!(
             storage_gateway["object_locator"]["object_id"].as_str(),
             Some(seed.object_id.as_str())
@@ -149,8 +148,7 @@ mod tests {
         let lifecycle_json: Value =
             serde_json::from_slice(&lifecycle_body).expect("lifecycle json");
         assert_eq!(
-            lifecycle_json["data"]["data"]["delivery"]["storage_gateway"]["object_locator"]
-                ["bucket_name"]
+            lifecycle_json["data"]["delivery"]["storage_gateway"]["object_locator"]["bucket_name"]
                 .as_str(),
             Some("delivery-objects")
         );

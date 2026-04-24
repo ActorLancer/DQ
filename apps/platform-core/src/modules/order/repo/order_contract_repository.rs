@@ -300,7 +300,7 @@ pub async fn confirm_order_contract(
         data_contract_id,
         data_contract_digest,
         contract_status,
-        order_status,
+        current_state: order_status,
         signer_id: signer_id.to_string(),
         signer_type: "user".to_string(),
         signer_role: payload.signer_role.clone(),

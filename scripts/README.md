@@ -23,6 +23,7 @@
 - `check-demo-fixtures.sh`：校验 `fixtures/demo/` 五条标准链路正式数据包的场景顺序、SKU 覆盖、商品/订单/交付/账单/审计引用和上游真值源一致性。
 - `seed-demo.sh`：执行 `TEST-002` 正式 demo importer；先跑 `db/seeds/manifest.csv`，再把 `fixtures/demo/` 的 10 笔订单、支付记录和交付对象写入 `trade / payment / billing / delivery`。
 - `check-demo-seed.sh`：回查 `seed-demo.sh` 的正式落库结果，验证五条标准链路的 demo 主体、商品、订单、支付和交付对象都已真实落到数据库。
+- `check-api-contract-baseline.sh`：`TEST-003` 正式 contract checker；校验 OpenAPI 成功/失败 envelope、关键响应字段、错误码基线，以及订单状态机 action enum / 禁止错误码绑定。它不替代 `TEST-028` 的 canonical smoke。
 - `check-keycloak-realm.sh`：校验 Keycloak realm 导入、`portal-web` password grant、正式角色 claim 与 `user_id/org_id` 自定义 claims。
 - `reset-keycloak-local.sh`：重建本地独立 Keycloak 数据库并重新导入 `platform-local` realm，修复旧 realm 残留或导入污染。
 - `prune-local.sh`：安全清理当前仓库本地卷、网络、Fabric 状态（默认 `--dry-run`）。

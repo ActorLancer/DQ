@@ -88,47 +88,47 @@ mod tests {
             );
         }
         let json: Value = serde_json::from_slice(&body).expect("json");
-        let contract_id = json["data"]["data"]["contract_id"]
+        assert_eq!(json["code"].as_str(), Some("OK"));
+        assert_eq!(json["message"].as_str(), Some("success"));
+        assert_eq!(json["request_id"].as_str(), Some(request_id.as_str()));
+        let contract_id = json["data"]["contract_id"]
             .as_str()
             .expect("contract_id")
             .to_string();
         assert_eq!(
-            json["data"]["data"]["order_status"].as_str(),
+            json["data"]["current_state"].as_str(),
             Some("contract_effective")
         );
+        assert_eq!(json["data"]["contract_status"].as_str(), Some("signed"));
         assert_eq!(
-            json["data"]["data"]["contract_status"].as_str(),
-            Some("signed")
-        );
-        assert_eq!(
-            json["data"]["data"]["contract_template_id"].as_str(),
+            json["data"]["contract_template_id"].as_str(),
             Some(seed.contract_template_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["data_contract_id"].as_str(),
+            json["data"]["data_contract_id"].as_str(),
             Some(seed.data_contract_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["signer_id"].as_str(),
+            json["data"]["signer_id"].as_str(),
             Some(seed.signer_user_id.as_str())
         );
-        assert_eq!(json["data"]["data"]["signer_type"].as_str(), Some("user"));
+        assert_eq!(json["data"]["signer_type"].as_str(), Some("user"));
         assert_eq!(
-            json["data"]["data"]["signature_provider_mode"].as_str(),
+            json["data"]["signature_provider_mode"].as_str(),
             Some("mock")
         );
         assert_eq!(
-            json["data"]["data"]["signature_provider_kind"].as_str(),
+            json["data"]["signature_provider_kind"].as_str(),
             Some("mock")
         );
         assert!(
-            json["data"]["data"]["signature_provider_ref"]
+            json["data"]["signature_provider_ref"]
                 .as_str()
                 .unwrap_or_default()
                 .contains("mock-signing-ok")
         );
         assert_eq!(
-            json["data"]["data"]["onchain_digest_ref"].as_str(),
+            json["data"]["onchain_digest_ref"].as_str(),
             Some(format!("sha256:trade016-contract:{suffix}").as_str())
         );
 

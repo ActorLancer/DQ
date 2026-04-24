@@ -63,14 +63,21 @@ mod tests {
             .await
             .expect("body");
         let create_json: Value = serde_json::from_slice(&create_body).expect("json");
-        let inquiry_id = create_json["data"]["data"]["inquiry_id"]
+        assert_eq!(create_json["code"].as_str(), Some("OK"));
+        assert_eq!(create_json["message"].as_str(), Some("success"));
+        assert_eq!(
+            create_json["request_id"].as_str(),
+            Some(request_id.as_str())
+        );
+        let inquiry_id = create_json["data"]["inquiry_id"]
             .as_str()
             .expect("inquiry id")
             .to_string();
         assert_eq!(
-            create_json["data"]["data"]["request_kind"].as_str(),
+            create_json["data"]["request_kind"].as_str(),
             Some("sample_request")
         );
+        assert_eq!(create_json["data"]["current_state"].as_str(), Some("open"));
 
         let get_resp = crate::with_live_test_state(router())
             .await

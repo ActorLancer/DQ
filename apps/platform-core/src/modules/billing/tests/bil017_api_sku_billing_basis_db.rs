@@ -92,14 +92,14 @@ mod tests {
         )
         .await;
         assert_eq!(
-            sub_first["data"]["data"]["billing_event_type"].as_str(),
+            sub_first["data"]["billing_event_type"].as_str(),
             Some("recurring_charge")
         );
         assert_eq!(
-            sub_first["data"]["data"]["billing_event_replayed"].as_bool(),
+            sub_first["data"]["billing_event_replayed"].as_bool(),
             Some(false)
         );
-        let sub_event_id = sub_first["data"]["data"]["billing_event_id"]
+        let sub_event_id = sub_first["data"]["billing_event_id"]
             .as_str()
             .expect("sub event id")
             .to_string();
@@ -118,11 +118,11 @@ mod tests {
         )
         .await;
         assert_eq!(
-            sub_replay["data"]["data"]["billing_event_id"].as_str(),
+            sub_replay["data"]["billing_event_id"].as_str(),
             Some(sub_event_id.as_str())
         );
         assert_eq!(
-            sub_replay["data"]["data"]["billing_event_replayed"].as_bool(),
+            sub_replay["data"]["billing_event_replayed"].as_bool(),
             Some(true)
         );
 
@@ -142,14 +142,14 @@ mod tests {
         )
         .await;
         assert_eq!(
-            ppu_first["data"]["data"]["billing_event_type"].as_str(),
+            ppu_first["data"]["billing_event_type"].as_str(),
             Some("usage_charge")
         );
         assert_eq!(
-            ppu_first["data"]["data"]["billing_event_replayed"].as_bool(),
+            ppu_first["data"]["billing_event_replayed"].as_bool(),
             Some(false)
         );
-        let ppu_event_id = ppu_first["data"]["data"]["billing_event_id"]
+        let ppu_event_id = ppu_first["data"]["billing_event_id"]
             .as_str()
             .expect("ppu event id")
             .to_string();
@@ -169,11 +169,11 @@ mod tests {
         )
         .await;
         assert_eq!(
-            ppu_replay["data"]["data"]["billing_event_id"].as_str(),
+            ppu_replay["data"]["billing_event_id"].as_str(),
             Some(ppu_event_id.as_str())
         );
         assert_eq!(
-            ppu_replay["data"]["data"]["billing_event_replayed"].as_bool(),
+            ppu_replay["data"]["billing_event_replayed"].as_bool(),
             Some(true)
         );
 

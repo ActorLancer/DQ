@@ -1,5 +1,7 @@
 use async_trait::async_trait;
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::future::Future;
@@ -12,6 +14,10 @@ use uuid::Uuid;
 mod tests;
 
 pub type AppResult<T> = Result<T, AppError>;
+
+tokio::task_local! {
+    static CURRENT_REQUEST_ID: String;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ErrorCode {
@@ -75,11 +81,46 @@ impl AppError {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ErrorResponse {
     pub code: String,
     pub message: String,
     pub request_id: Option<String>,
+}
+
+impl Serialize for ErrorResponse {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let emitted_code = embedded_error_code(&self.message).unwrap_or_else(|| self.code.clone());
+        let mut state = serializer.serialize_struct("ErrorResponse", 4)?;
+        state.serialize_field("code", &emitted_code)?;
+        state.serialize_field("message", &self.message)?;
+        state.serialize_field(
+            "request_id",
+            &self
+                .request_id
+                .clone()
+                .unwrap_or_else(current_request_id_or_new),
+        )?;
+        state.serialize_field("details", &Value::Object(Map::new()))?;
+        state.end()
+    }
+}
+
+fn embedded_error_code(message: &str) -> Option<String> {
+    let candidate = message
+        .split_once(':')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(message)
+        .trim();
+    let has_multiple_segments = candidate.contains('_');
+    let is_valid = has_multiple_segments
+        && candidate
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_');
+    is_valid.then(|| candidate.to_string())
 }
 
 impl ErrorResponse {
@@ -90,6 +131,21 @@ impl ErrorResponse {
             request_id,
         }
     }
+}
+
+pub async fn scope_request_id<F>(request_id: String, future: F) -> F::Output
+where
+    F: Future,
+{
+    CURRENT_REQUEST_ID.scope(request_id, future).await
+}
+
+pub fn current_request_id() -> Option<String> {
+    CURRENT_REQUEST_ID.try_with(Clone::clone).ok()
+}
+
+pub fn current_request_id_or_new() -> String {
+    current_request_id().unwrap_or_else(new_uuid_string)
 }
 
 pub fn validate_error_code_document(doc: &str) -> AppResult<()> {

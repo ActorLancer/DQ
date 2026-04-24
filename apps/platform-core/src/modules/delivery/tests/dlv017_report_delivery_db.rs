@@ -82,7 +82,7 @@ mod tests {
             .expect("deliver body");
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("deliver json");
-        let data = &json["data"]["data"];
+        let data = &json["data"];
         assert_eq!(data["current_state"].as_str(), Some("report_delivered"));
         assert_eq!(data["delivery_status"].as_str(), Some("delivered"));
         assert_eq!(
@@ -148,11 +148,11 @@ mod tests {
         );
         let replay_json: Value = serde_json::from_slice(&replay_body).expect("replay json");
         assert_eq!(
-            replay_json["data"]["data"]["operation"].as_str(),
+            replay_json["data"]["operation"].as_str(),
             Some("already_committed")
         );
         assert_eq!(
-            replay_json["data"]["data"]["report_artifact_id"].as_str(),
+            replay_json["data"]["report_artifact_id"].as_str(),
             Some(report_artifact_id.as_str())
         );
 
@@ -181,19 +181,19 @@ mod tests {
         );
         let detail_json: Value = serde_json::from_slice(&detail_body).expect("detail json");
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
-                ["object_locator"]["bucket_name"]
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]["object_locator"]
+                ["bucket_name"]
                 .as_str(),
             Some("report-results")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]
                 ["watermark_policy"]["rule"]["delivery_branch"]
                 .as_str(),
             Some("report")
         );
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+            detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]
                 ["watermark_policy"]["rule"]["pipeline"]["status"]
                 .as_str(),
             Some("reserved")

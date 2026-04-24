@@ -728,18 +728,18 @@ components:
           nullable: true
     ManageQuerySurfaceResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageQuerySurfaceResponse'
     ManageQuerySurfaceResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/QuerySurfaceResponseData'
+      $ref: '#/components/schemas/QuerySurfaceResponseData'
     QuerySurfaceResponseData:
       type: object
       required:
@@ -855,18 +855,18 @@ components:
           nullable: true
     ManageQueryTemplateResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageQueryTemplateResponse'
     ManageQueryTemplateResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/QueryTemplateResponseData'
+      $ref: '#/components/schemas/QueryTemplateResponseData'
     QueryTemplateResponseData:
       type: object
       required:
@@ -1121,88 +1121,88 @@ components:
           nullable: true
     ManageTemplateGrantResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageTemplateGrantResponse'
     ManageSandboxWorkspaceResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageSandboxWorkspaceResponse'
     ManageSensitiveExecutionPolicyResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageSensitiveExecutionPolicyResponse'
     ReviewResultDisclosureResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ReviewResultDisclosureResponse'
     GetOrderAttestationsResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/GetOrderAttestationsResponse'
     ManageDestructionAttestationResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageDestructionAttestationResponse'
     ManageTemplateGrantResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/TemplateGrantResponseData'
+      $ref: '#/components/schemas/TemplateGrantResponseData'
     ManageSandboxWorkspaceResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/SandboxWorkspaceResponseData'
+      $ref: '#/components/schemas/SandboxWorkspaceResponseData'
     ManageSensitiveExecutionPolicyResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/SensitiveExecutionPolicyResponseData'
+      $ref: '#/components/schemas/SensitiveExecutionPolicyResponseData'
     ReviewResultDisclosureResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/ResultDisclosureReviewResponseData'
+      $ref: '#/components/schemas/ResultDisclosureReviewResponseData'
     GetOrderAttestationsResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/OrderAttestationListResponseData'
+      $ref: '#/components/schemas/OrderAttestationListResponseData'
     ManageDestructionAttestationResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/DestructionAttestationResponseData'
+      $ref: '#/components/schemas/DestructionAttestationResponseData'
     TemplateGrantResponseData:
       type: object
       required:
@@ -1790,32 +1790,32 @@ components:
           nullable: true
     ExecuteTemplateRunResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ExecuteTemplateRunResponse'
     ExecuteTemplateRunResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/QueryRunResponseData'
+      $ref: '#/components/schemas/QueryRunResponseData'
     GetQueryRunsResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/GetQueryRunsResponse'
     GetQueryRunsResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/QueryRunListResponseData'
+      $ref: '#/components/schemas/QueryRunListResponseData'
     QueryRunListResponseData:
       type: object
       required: [order_id, current_state, payment_status, delivery_status, query_runs]
@@ -2224,18 +2224,18 @@ components:
           format: date-time
     ApiUsageLogResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ApiUsageLogResponse'
     ApiUsageLogResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/ApiUsageLogListResponseData'
+      $ref: '#/components/schemas/ApiUsageLogListResponseData'
     ApiUsageLogListResponseData:
       type: object
       required:
@@ -2367,32 +2367,32 @@ components:
           nullable: true
     ManageShareGrantResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageShareGrantResponse'
     ManageShareGrantResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/ShareGrantResponseData'
+      $ref: '#/components/schemas/ShareGrantResponseData'
     GetShareGrantResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/GetShareGrantResponse'
     GetShareGrantResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/ShareGrantListResponseData'
+      $ref: '#/components/schemas/ShareGrantListResponseData'
     ShareGrantListResponseData:
       type: object
       required:
@@ -2526,32 +2526,32 @@ components:
           nullable: true
     ManageRevisionSubscriptionResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/ManageRevisionSubscriptionResponse'
     ManageRevisionSubscriptionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/RevisionSubscriptionResponseData'
+      $ref: '#/components/schemas/RevisionSubscriptionResponseData'
     GetRevisionSubscriptionResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/GetRevisionSubscriptionResponse'
     GetRevisionSubscriptionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/RevisionSubscriptionResponseData'
+      $ref: '#/components/schemas/RevisionSubscriptionResponseData'
     RevisionSubscriptionResponseData:
       type: object
       required:
@@ -2735,32 +2735,32 @@ components:
           nullable: true
     AcceptOrderResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/AcceptOrderResponse'
     AcceptOrderResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/OrderAcceptanceResponseData'
+      $ref: '#/components/schemas/OrderAcceptanceResponseData'
     RejectOrderResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/RejectOrderResponse'
     RejectOrderResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/OrderAcceptanceResponseData'
+      $ref: '#/components/schemas/OrderAcceptanceResponseData'
     OrderAcceptanceResponseData:
       type: object
       required:
@@ -2820,18 +2820,18 @@ components:
           nullable: true
     CommitOrderDeliveryResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/CommitOrderDeliveryResponse'
     CommitOrderDeliveryResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/CommitOrderDeliveryResponseData'
+      $ref: '#/components/schemas/CommitOrderDeliveryResponseData'
     CommitOrderDeliveryResponseData:
       type: object
       required:
@@ -2964,18 +2964,18 @@ components:
           nullable: true
     DownloadTicketResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/DownloadTicketResponse'
     DownloadTicketResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/DownloadTicketResponseData'
+      $ref: '#/components/schemas/DownloadTicketResponseData'
     DownloadTicketResponseData:
       type: object
       required:
@@ -3030,18 +3030,18 @@ components:
           type: string
     DownloadFileResponseEnvelope:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
         data:
           $ref: '#/components/schemas/DownloadFileResponse'
     DownloadFileResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          $ref: '#/components/schemas/DownloadFileResponseData'
+      $ref: '#/components/schemas/DownloadFileResponseData'
     DownloadFileResponseData:
       type: object
       required:

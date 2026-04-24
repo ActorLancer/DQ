@@ -69,28 +69,30 @@ mod tests {
             .await
             .expect("body");
         let json: Value = serde_json::from_slice(&body).expect("json");
-        let order_id = json["data"]["data"]["order_id"]
+        assert_eq!(json["code"].as_str(), Some("OK"));
+        assert_eq!(json["message"].as_str(), Some("success"));
+        assert_eq!(json["request_id"].as_str(), Some(request_id.as_str()));
+        let order_id = json["data"]["order_id"]
             .as_str()
             .expect("order id")
             .to_string();
         assert_eq!(
-            json["data"]["data"]["price_snapshot"]["product_id"].as_str(),
+            json["data"]["price_snapshot"]["product_id"].as_str(),
             Some(seed.product_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["price_snapshot"]["sku_id"].as_str(),
+            json["data"]["price_snapshot"]["sku_id"].as_str(),
             Some(seed.sku_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"].as_str(),
+            json["data"]["price_snapshot"]["scenario_snapshot"]["scenario_code"].as_str(),
             Some("S2")
         );
         assert_eq!(
-            json["data"]["data"]["price_snapshot"]["scenario_snapshot"]["selected_sku_role"]
-                .as_str(),
+            json["data"]["price_snapshot"]["scenario_snapshot"]["selected_sku_role"].as_str(),
             Some("primary")
         );
-        assert_eq!(json["data"]["data"]["status"].as_str(), Some("created"));
+        assert_eq!(json["data"]["current_state"].as_str(), Some("created"));
 
         let row = client
             .query_one(

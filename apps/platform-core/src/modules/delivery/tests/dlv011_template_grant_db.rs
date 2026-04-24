@@ -94,24 +94,18 @@ mod tests {
             String::from_utf8_lossy(&create_body)
         );
         let create_json: Value = serde_json::from_slice(&create_body).expect("create json");
-        let template_query_grant_id = create_json["data"]["data"]["template_query_grant_id"]
+        let template_query_grant_id = create_json["data"]["template_query_grant_id"]
             .as_str()
             .expect("template_query_grant_id")
             .to_string();
+        assert_eq!(create_json["data"]["operation"].as_str(), Some("granted"));
         assert_eq!(
-            create_json["data"]["data"]["operation"].as_str(),
-            Some("granted")
-        );
-        assert_eq!(
-            create_json["data"]["data"]["current_state"].as_str(),
+            create_json["data"]["current_state"].as_str(),
             Some("template_authorized")
         );
+        assert_eq!(create_json["data"]["grant_status"].as_str(), Some("active"));
         assert_eq!(
-            create_json["data"]["data"]["grant_status"].as_str(),
-            Some("active")
-        );
-        assert_eq!(
-            create_json["data"]["data"]["allowed_template_ids"],
+            create_json["data"]["allowed_template_ids"],
             json!([seed.template_v1_id, seed.template_v2_id])
         );
 
@@ -164,19 +158,16 @@ mod tests {
         );
         let update_json: Value = serde_json::from_slice(&update_body).expect("update json");
         assert_eq!(
-            update_json["data"]["data"]["template_query_grant_id"].as_str(),
+            update_json["data"]["template_query_grant_id"].as_str(),
             Some(template_query_grant_id.as_str())
         );
+        assert_eq!(update_json["data"]["operation"].as_str(), Some("updated"));
         assert_eq!(
-            update_json["data"]["data"]["operation"].as_str(),
-            Some("updated")
-        );
-        assert_eq!(
-            update_json["data"]["data"]["allowed_template_ids"],
+            update_json["data"]["allowed_template_ids"],
             json!([seed.template_v2_id])
         );
         assert_eq!(
-            update_json["data"]["data"]["run_quota_json"]["max_runs"].as_i64(),
+            update_json["data"]["run_quota_json"]["max_runs"].as_i64(),
             Some(10)
         );
 

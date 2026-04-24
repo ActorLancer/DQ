@@ -34,7 +34,7 @@ pub struct OrderLifecycleSnapshot {
 pub struct PaymentLifecycleSnapshot {
     pub current_status: String,
     pub payment_mode: String,
-    pub amount: String,
+    pub order_amount: String,
     pub currency_code: String,
     pub buyer_locked_at: Option<String>,
 }

@@ -77,7 +77,7 @@ mod tests {
             "report_quality_failed",
         )
         .await;
-        let data = &reject["data"]["data"];
+        let data = &reject["data"];
         assert_eq!(data["current_state"].as_str(), Some("rejected"));
         assert_eq!(data["settlement_status"].as_str(), Some("blocked"));
         assert_eq!(data["dispute_status"].as_str(), Some("open"));

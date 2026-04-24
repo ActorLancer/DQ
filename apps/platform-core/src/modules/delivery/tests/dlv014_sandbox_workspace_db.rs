@@ -91,7 +91,7 @@ mod tests {
             String::from_utf8_lossy(&create_body)
         );
         let create_json: Value = serde_json::from_slice(&create_body).expect("create json");
-        let data = &create_json["data"]["data"];
+        let data = &create_json["data"];
         let sandbox_workspace_id = data["sandbox_workspace_id"]
             .as_str()
             .expect("sandbox_workspace_id")

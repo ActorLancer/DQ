@@ -69,7 +69,7 @@ mod tests {
         .await;
         assert_eq!(ticket_resp.status, StatusCode::OK, "{}", ticket_resp.body);
         let ticket_json: Value = serde_json::from_str(&ticket_resp.body).expect("ticket json");
-        let download_token = ticket_json["data"]["data"]["download_token"]
+        let download_token = ticket_json["data"]["download_token"]
             .as_str()
             .expect("download token")
             .to_string();

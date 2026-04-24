@@ -64,18 +64,12 @@ mod tests {
             .await
             .expect("body");
         let lock_json: Value = serde_json::from_slice(&lock_body).expect("json");
+        assert_eq!(lock_json["data"]["current_state"].as_str(), Some("closed"));
         assert_eq!(
-            lock_json["data"]["data"]["current_state"].as_str(),
-            Some("closed")
-        );
-        assert_eq!(
-            lock_json["data"]["data"]["payment_status"].as_str(),
+            lock_json["data"]["payment_status"].as_str(),
             Some("refund_pending")
         );
-        assert_eq!(
-            lock_json["data"]["data"]["refund_required"].as_bool(),
-            Some(true)
-        );
+        assert_eq!(lock_json["data"]["refund_required"].as_bool(), Some(true));
 
         let row = client
             .query_one(
@@ -164,11 +158,11 @@ mod tests {
         let created_cancel_json: Value =
             serde_json::from_slice(&created_cancel_body).expect("json");
         assert_eq!(
-            created_cancel_json["data"]["data"]["refund_required"].as_bool(),
+            created_cancel_json["data"]["refund_required"].as_bool(),
             Some(false)
         );
         assert_eq!(
-            created_cancel_json["data"]["data"]["refund_branch"].as_str(),
+            created_cancel_json["data"]["refund_branch"].as_str(),
             Some("no_refund")
         );
 

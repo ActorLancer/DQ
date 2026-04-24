@@ -48,7 +48,7 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: [code, message]
+      required: [code, message, request_id, details]
       properties:
         code:
           type: string
@@ -56,7 +56,9 @@ components:
           type: string
         request_id:
           type: string
-          nullable: true
+        details:
+          type: object
+          additionalProperties: true
       examples:
         invalid:
           value:
@@ -477,69 +479,104 @@ components:
           nullable: true
     ApiResponseSearchResponse:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
-          const: true
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/SearchResponse"
     ApiResponseSearchSyncTasks:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
-          const: true
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        request_id:
+          type: string
         data:
           type: array
           items:
             $ref: "#/components/schemas/SearchSyncTaskView"
     ApiResponseReindexResponse:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
-          const: true
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/ReindexResponse"
     ApiResponseAliasSwitchResponse:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
-          const: true
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/AliasSwitchResponse"
     ApiResponseCacheInvalidateResponse:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
-          const: true
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/CacheInvalidateResponse"
     ApiResponseRankingProfiles:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
-          const: true
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        request_id:
+          type: string
         data:
           type: array
           items:
             $ref: "#/components/schemas/RankingProfileView"
     ApiResponseRankingProfile:
       type: object
-      required: [success, data]
+      required: [code, message, request_id, data]
       properties:
-        success:
-          type: boolean
-          const: true
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        request_id:
+          type: string
         data:
           $ref: "#/components/schemas/RankingProfileView"
 paths:

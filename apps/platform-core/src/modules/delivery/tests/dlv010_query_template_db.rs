@@ -107,15 +107,12 @@ mod tests {
             String::from_utf8_lossy(&create_body)
         );
         let create_json: Value = serde_json::from_slice(&create_body).expect("create json");
-        let query_template_v1_id = create_json["data"]["data"]["query_template_id"]
+        let query_template_v1_id = create_json["data"]["query_template_id"]
             .as_str()
             .expect("query_template_v1_id")
             .to_string();
-        assert_eq!(
-            create_json["data"]["data"]["operation"].as_str(),
-            Some("created")
-        );
-        assert_eq!(create_json["data"]["data"]["version_no"].as_i64(), Some(1));
+        assert_eq!(create_json["data"]["operation"].as_str(), Some("created"));
+        assert_eq!(create_json["data"]["version_no"].as_i64(), Some(1));
 
         let create_v2_request_id = format!("req-dlv010-create-v2-{suffix}");
         let create_v2_response = app
@@ -185,18 +182,15 @@ mod tests {
         );
         let create_v2_json: Value =
             serde_json::from_slice(&create_v2_body).expect("create v2 json");
-        let query_template_v2_id = create_v2_json["data"]["data"]["query_template_id"]
+        let query_template_v2_id = create_v2_json["data"]["query_template_id"]
             .as_str()
             .expect("query_template_v2_id")
             .to_string();
         assert_eq!(
-            create_v2_json["data"]["data"]["operation"].as_str(),
+            create_v2_json["data"]["operation"].as_str(),
             Some("created")
         );
-        assert_eq!(
-            create_v2_json["data"]["data"]["version_no"].as_i64(),
-            Some(2)
-        );
+        assert_eq!(create_v2_json["data"]["version_no"].as_i64(), Some(2));
 
         let update_request_id = format!("req-dlv010-update-v2-{suffix}");
         let update_response = app
@@ -260,16 +254,13 @@ mod tests {
         );
         let update_json: Value = serde_json::from_slice(&update_body).expect("update json");
         assert_eq!(
-            update_json["data"]["data"]["query_template_id"].as_str(),
+            update_json["data"]["query_template_id"].as_str(),
             Some(query_template_v2_id.as_str())
         );
+        assert_eq!(update_json["data"]["operation"].as_str(), Some("updated"));
+        assert_eq!(update_json["data"]["version_no"].as_i64(), Some(2));
         assert_eq!(
-            update_json["data"]["data"]["operation"].as_str(),
-            Some("updated")
-        );
-        assert_eq!(update_json["data"]["data"]["version_no"].as_i64(), Some(2));
-        assert_eq!(
-            update_json["data"]["data"]["whitelist_fields"],
+            update_json["data"]["whitelist_fields"],
             json!(["city", "total_amount", "confidence"])
         );
 
@@ -587,7 +578,7 @@ mod tests {
             .expect("seed surface body");
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let payload: Value = serde_json::from_slice(&body).expect("seed surface json");
-        Ok(payload["data"]["data"]["query_surface_id"]
+        Ok(payload["data"]["query_surface_id"]
             .as_str()
             .expect("seed query_surface_id")
             .to_string())

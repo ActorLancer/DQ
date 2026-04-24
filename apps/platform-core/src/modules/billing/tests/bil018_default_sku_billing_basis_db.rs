@@ -111,18 +111,18 @@ mod tests {
         )
         .await;
         assert_eq!(
-            transition["data"]["data"]["current_state"].as_str(),
+            transition["data"]["current_state"].as_str(),
             Some("share_enabled")
         );
         assert_eq!(
-            transition["data"]["data"]["billing_event_type"].as_str(),
+            transition["data"]["billing_event_type"].as_str(),
             Some("one_time_charge")
         );
         assert_eq!(
-            transition["data"]["data"]["billing_event_replayed"].as_bool(),
+            transition["data"]["billing_event_replayed"].as_bool(),
             Some(false)
         );
-        let billing_event_id = transition["data"]["data"]["billing_event_id"]
+        let billing_event_id = transition["data"]["billing_event_id"]
             .as_str()
             .expect("share billing event id")
             .to_string();

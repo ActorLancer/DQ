@@ -1,0 +1,21 @@
+# path|token
+docs/开发准备/统一错误码字典正式版.md|OK
+docs/开发准备/统一错误码字典正式版.md|ORDER_CREATE_FORBIDDEN
+docs/开发准备/统一错误码字典正式版.md|AUDIT_REPLAY_DRY_RUN_ONLY
+docs/开发准备/统一错误码字典正式版.md|AUDIT_LEGAL_HOLD_ACTIVE
+docs/开发准备/统一错误码字典正式版.md|SEARCH_QUERY_INVALID
+docs/开发准备/统一错误码字典正式版.md|SEARCH_BACKEND_UNAVAILABLE
+docs/开发准备/统一错误码字典正式版.md|SEARCH_RESULT_STALE
+docs/开发准备/统一错误码字典正式版.md|SEARCH_REINDEX_FORBIDDEN
+docs/开发准备/统一错误码字典正式版.md|SEARCH_ALIAS_SWITCH_FORBIDDEN
+docs/开发准备/统一错误码字典正式版.md|SEARCH_CACHE_INVALIDATE_FORBIDDEN
+packages/openapi/search.yaml|SEARCH_QUERY_INVALID
+packages/openapi/search.yaml|SEARCH_BACKEND_UNAVAILABLE
+packages/openapi/search.yaml|SEARCH_RESULT_STALE
+packages/openapi/search.yaml|SEARCH_REINDEX_FORBIDDEN
+packages/openapi/search.yaml|SEARCH_ALIAS_SWITCH_FORBIDDEN
+packages/openapi/search.yaml|SEARCH_CACHE_INVALIDATE_FORBIDDEN
+packages/openapi/audit.yaml|AUDIT_REPLAY_DRY_RUN_ONLY
+packages/openapi/audit.yaml|AUDIT_LEGAL_HOLD_ACTIVE
+apps/platform-core/src/modules/order/repo/order_create_repository.rs|ORDER_CREATE_FORBIDDEN
+apps/platform-core/src/modules/recommendation/service.rs|RECOMMENDATION_REBUILD_FORBIDDEN

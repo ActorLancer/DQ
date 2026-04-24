@@ -72,20 +72,20 @@ mod tests {
             .await
             .expect("body");
         let json: Value = serde_json::from_slice(&body).expect("json");
-        let contract_id = json["data"]["data"]["contract_id"]
+        let contract_id = json["data"]["contract_id"]
             .as_str()
             .expect("contract_id")
             .to_string();
-        let provider_ref = json["data"]["data"]["signature_provider_ref"]
+        let provider_ref = json["data"]["signature_provider_ref"]
             .as_str()
             .expect("signature_provider_ref")
             .to_string();
         assert_eq!(
-            json["data"]["data"]["signature_provider_mode"].as_str(),
+            json["data"]["signature_provider_mode"].as_str(),
             Some("mock")
         );
         assert_eq!(
-            json["data"]["data"]["signature_provider_kind"].as_str(),
+            json["data"]["signature_provider_kind"].as_str(),
             Some("mock")
         );
         assert!(provider_ref.contains("mock-signing-ok"));

@@ -1,5 +1,5 @@
 use crate::modules::billing::domain::{
-    BillingEvent, CorridorPolicy, JurisdictionProfile, Settlement, SettlementSummary,
+    CorridorPolicy, JurisdictionProfile, Settlement, SettlementSummary,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -10,7 +10,19 @@ pub struct BillingPolicyView {
     pub corridor_policies: Vec<CorridorPolicy>,
 }
 
-pub type BillingEventView = BillingEvent;
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct BillingEventView {
+    pub billing_event_id: String,
+    pub order_id: String,
+    pub event_type: String,
+    pub event_source: String,
+    pub amount: String,
+    pub currency_code: String,
+    pub metered_quantity: Option<String>,
+    pub occurred_at: String,
+    pub metadata: Value,
+}
+
 pub type BillingSettlementView = Settlement;
 pub type BillingSettlementSummaryView = SettlementSummary;
 
@@ -356,7 +368,7 @@ pub struct ManualPayoutExecutionView {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct BillingOrderDetailView {
     pub order_id: String,
-    pub order_status: String,
+    pub current_state: String,
     pub payment_status: String,
     pub settlement_status: String,
     pub dispute_status: String,
@@ -582,7 +594,7 @@ pub struct LockOrderRequest {
 pub struct OrderLockView {
     pub order_id: String,
     pub payment_intent_id: String,
-    pub order_status: String,
+    pub current_state: String,
     pub payment_status: String,
     pub buyer_locked_at: String,
 }

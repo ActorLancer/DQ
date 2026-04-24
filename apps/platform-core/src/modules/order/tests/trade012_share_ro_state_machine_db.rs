@@ -76,15 +76,12 @@ mod tests {
             let json: Value = serde_json::from_slice(&body).expect("transition json");
             if action == "grant_read_access" {
                 assert_eq!(
-                    json["data"]["data"]["current_state"].as_str(),
+                    json["data"]["current_state"].as_str(),
                     Some("share_granted")
                 );
+                assert_eq!(json["data"]["delivery_status"].as_str(), Some("delivered"));
                 assert_eq!(
-                    json["data"]["data"]["delivery_status"].as_str(),
-                    Some("delivered")
-                );
-                assert_eq!(
-                    json["data"]["data"]["acceptance_status"].as_str(),
+                    json["data"]["acceptance_status"].as_str(),
                     Some(
                         expected_acceptance_status_for_state("SHARE_RO", "share_granted")
                             .expect("share_granted acceptance status")

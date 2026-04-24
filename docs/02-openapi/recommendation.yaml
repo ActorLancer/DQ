@@ -25,7 +25,7 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: [code, message]
+      required: [code, message, request_id, details]
       properties:
         code:
           type: string
@@ -33,7 +33,9 @@ components:
           type: string
         request_id:
           type: string
-          nullable: true
+        details:
+          type: object
+          additionalProperties: true
     RecommendationItem:
       type: object
       required:
@@ -435,10 +437,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     $ref: "#/components/schemas/RecommendationResponse"
         "400":
@@ -503,10 +509,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     $ref: "#/components/schemas/BehaviorTrackResponse"
         "400":
@@ -571,10 +581,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     $ref: "#/components/schemas/BehaviorTrackResponse"
         "400":
@@ -623,10 +637,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     type: array
                     items:
@@ -688,10 +706,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     $ref: "#/components/schemas/PlacementView"
         "400":
@@ -740,10 +762,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     type: array
                     items:
@@ -808,10 +834,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     $ref: "#/components/schemas/RecommendationRankingProfileView"
         "400":
@@ -887,10 +917,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, data]
+                required: [code, message, request_id, data]
                 properties:
-                  success:
-                    type: boolean
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  request_id:
+                    type: string
                   data:
                     $ref: "#/components/schemas/RecommendationRebuildResponse"
         "400":

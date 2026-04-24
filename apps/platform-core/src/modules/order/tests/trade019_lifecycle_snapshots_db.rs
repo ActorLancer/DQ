@@ -68,53 +68,51 @@ mod tests {
         let json: Value = serde_json::from_slice(&body).expect("json");
 
         assert_eq!(
-            json["data"]["data"]["order"]["order_id"].as_str(),
+            json["data"]["order"]["order_id"].as_str(),
             Some(seed.order_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["order"]["current_state"].as_str(),
+            json["data"]["order"]["current_state"].as_str(),
             Some("shared_active")
         );
         assert_eq!(
-            json["data"]["data"]["order"]["payment"]["current_status"].as_str(),
+            json["data"]["order"]["payment"]["current_status"].as_str(),
             Some("paid")
         );
         assert_eq!(
-            json["data"]["data"]["order"]["settlement"]["current_status"].as_str(),
+            json["data"]["order"]["settlement"]["current_status"].as_str(),
             Some("pending_settlement")
         );
         assert_eq!(
-            json["data"]["data"]["order"]["dispute"]["current_status"].as_str(),
+            json["data"]["order"]["dispute"]["current_status"].as_str(),
             Some("none")
         );
         assert_eq!(
-            json["data"]["data"]["contract"]["contract_status"].as_str(),
+            json["data"]["contract"]["contract_status"].as_str(),
             Some("signed")
         );
         assert_eq!(
-            json["data"]["data"]["authorization"]["authorization_id"].as_str(),
+            json["data"]["authorization"]["authorization_id"].as_str(),
             Some(seed.authorization_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["authorization"]["current_status"].as_str(),
+            json["data"]["authorization"]["current_status"].as_str(),
             Some("active")
         );
         assert_eq!(
-            json["data"]["data"]["authorization"]["authorization_model"]["scope"]["order_id"]
-                .as_str(),
+            json["data"]["authorization"]["authorization_model"]["scope"]["order_id"].as_str(),
             Some(seed.order_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["authorization"]["authorization_model"]["resource"]["sku_id"]
-                .as_str(),
+            json["data"]["authorization"]["authorization_model"]["resource"]["sku_id"].as_str(),
             Some(seed.sku_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["delivery"]["delivery_id"].as_str(),
+            json["data"]["delivery"]["delivery_id"].as_str(),
             Some(seed.delivery_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["delivery"]["current_status"].as_str(),
+            json["data"]["delivery"]["current_status"].as_str(),
             Some("delivered")
         );
 

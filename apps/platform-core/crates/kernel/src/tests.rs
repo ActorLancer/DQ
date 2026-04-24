@@ -84,4 +84,33 @@ mod tests {
         assert_eq!(q.pagination.offset(), 25);
         assert_eq!(q.filter.status.as_deref(), Some("open"));
     }
+
+    #[test]
+    fn error_response_prefers_embedded_business_code() {
+        let response = ErrorResponse {
+            code: "CONFLICT".to_string(),
+            message: "FILE_STD_TRANSITION_FORBIDDEN: invalid transition".to_string(),
+            request_id: Some("req-kernel-embedded".to_string()),
+        };
+
+        let json = serde_json::to_value(&response).expect("serialize error response");
+        assert_eq!(json["code"].as_str(), Some("FILE_STD_TRANSITION_FORBIDDEN"));
+        assert_eq!(json["message"].as_str(), Some(response.message.as_str()));
+        assert_eq!(json["request_id"].as_str(), Some("req-kernel-embedded"));
+        assert_eq!(json["details"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn error_response_keeps_generic_code_without_business_prefix() {
+        let response = ErrorResponse {
+            code: "FORBIDDEN".to_string(),
+            message: "permission denied".to_string(),
+            request_id: Some("req-kernel-generic".to_string()),
+        };
+
+        let json = serde_json::to_value(&response).expect("serialize error response");
+        assert_eq!(json["code"].as_str(), Some("FORBIDDEN"));
+        assert_eq!(json["request_id"].as_str(), Some("req-kernel-generic"));
+        assert_eq!(json["details"], serde_json::json!({}));
+    }
 }

@@ -76,7 +76,9 @@ mod tests {
             .await
             .expect("body");
         let json: Value = serde_json::from_slice(&body).expect("json");
-        assert_eq!(json["success"], true);
+        assert_eq!(json["code"].as_str(), Some("OK"));
+        assert_eq!(json["message"].as_str(), Some("success"));
+        assert_eq!(json["request_id"].as_str(), Some(request_id.as_str()));
         assert_eq!(json["data"]["processed_status"], "processed");
         assert_eq!(json["data"]["out_of_order_ignored"], false);
         assert_eq!(json["data"]["applied_payment_status"], "failed");

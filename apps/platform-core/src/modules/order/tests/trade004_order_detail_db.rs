@@ -61,55 +61,50 @@ mod tests {
             .await
             .expect("body");
         let json: Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["code"].as_str(), Some("OK"));
+        assert_eq!(json["message"].as_str(), Some("success"));
+        assert_eq!(json["request_id"].as_str(), Some(request_id.as_str()));
         assert_eq!(
-            json["data"]["data"]["order_id"].as_str(),
+            json["data"]["order_id"].as_str(),
             Some(seed.order_id.as_str())
         );
+        assert_eq!(json["data"]["current_state"].as_str(), Some("created"));
+        assert_eq!(json["data"]["payment_status"].as_str(), Some("unpaid"));
         assert_eq!(
-            json["data"]["data"]["current_state"].as_str(),
-            Some("created")
-        );
-        assert_eq!(
-            json["data"]["data"]["payment_status"].as_str(),
-            Some("unpaid")
-        );
-        assert_eq!(
-            json["data"]["data"]["delivery_status"].as_str(),
+            json["data"]["delivery_status"].as_str(),
             Some("pending_delivery")
         );
         assert_eq!(
-            json["data"]["data"]["acceptance_status"].as_str(),
+            json["data"]["acceptance_status"].as_str(),
             Some("not_started")
         );
         assert_eq!(
-            json["data"]["data"]["settlement_status"].as_str(),
+            json["data"]["settlement_status"].as_str(),
             Some("not_started")
         );
+        assert_eq!(json["data"]["dispute_status"].as_str(), Some("none"));
+        assert_eq!(json["data"]["order_amount"].as_str(), Some("99.00000000"));
+        assert!(json["data"]["relations"]["contract"].is_null());
         assert_eq!(
-            json["data"]["data"]["dispute_status"].as_str(),
-            Some("none")
-        );
-        assert!(json["data"]["data"]["relations"]["contract"].is_null());
-        assert_eq!(
-            json["data"]["data"]["relations"]["authorizations"]
+            json["data"]["relations"]["authorizations"]
                 .as_array()
                 .map(|items| items.len()),
             Some(0)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["deliveries"]
+            json["data"]["relations"]["deliveries"]
                 .as_array()
                 .map(|items| items.len()),
             Some(0)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["billing"]["billing_events"]
+            json["data"]["relations"]["billing"]["billing_events"]
                 .as_array()
                 .map(|items| items.len()),
             Some(0)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["disputes"]
+            json["data"]["relations"]["disputes"]
                 .as_array()
                 .map(|items| items.len()),
             Some(0)

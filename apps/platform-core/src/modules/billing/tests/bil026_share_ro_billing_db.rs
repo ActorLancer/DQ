@@ -98,10 +98,10 @@ mod tests {
         )
         .await;
         assert_eq!(
-            enable["data"]["data"]["billing_event_type"].as_str(),
+            enable["data"]["billing_event_type"].as_str(),
             Some("one_time_charge")
         );
-        let opening_event_id = enable["data"]["data"]["billing_event_id"]
+        let opening_event_id = enable["data"]["billing_event_id"]
             .as_str()
             .expect("opening event id")
             .to_string();
@@ -117,7 +117,7 @@ mod tests {
         )
         .await;
         assert_eq!(
-            grant["data"]["data"]["current_state"].as_str(),
+            grant["data"]["current_state"].as_str(),
             Some("share_granted")
         );
 
@@ -169,10 +169,7 @@ mod tests {
             &suffix,
         )
         .await;
-        assert_eq!(
-            revoke["data"]["data"]["current_state"].as_str(),
-            Some("revoked")
-        );
+        assert_eq!(revoke["data"]["current_state"].as_str(), Some("revoked"));
 
         let after = get_billing_order(
             &app,

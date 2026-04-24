@@ -97,19 +97,15 @@ mod tests {
         );
         let sub_json: Value = serde_json::from_slice(&sub_body).expect("api_sub json");
         assert_eq!(
-            sub_json["data"]["data"]["current_state"].as_str(),
+            sub_json["data"]["current_state"].as_str(),
             Some("api_key_issued")
         );
-        assert_eq!(sub_json["data"]["data"]["branch"].as_str(), Some("api"));
-        assert!(sub_json["data"]["data"]["app_id"].as_str().is_some());
-        assert!(
-            sub_json["data"]["data"]["api_credential_id"]
-                .as_str()
-                .is_some()
-        );
-        assert!(sub_json["data"]["data"]["api_key"].as_str().is_some());
+        assert_eq!(sub_json["data"]["branch"].as_str(), Some("api"));
+        assert!(sub_json["data"]["app_id"].as_str().is_some());
+        assert!(sub_json["data"]["api_credential_id"].as_str().is_some());
+        assert!(sub_json["data"]["api_key"].as_str().is_some());
         assert_eq!(
-            sub_json["data"]["data"]["upstream_mode"].as_str(),
+            sub_json["data"]["upstream_mode"].as_str(),
             Some("platform_proxy")
         );
 
@@ -157,15 +153,15 @@ mod tests {
         );
         let ppu_json: Value = serde_json::from_slice(&ppu_body).expect("api_ppu json");
         assert_eq!(
-            ppu_json["data"]["data"]["current_state"].as_str(),
+            ppu_json["data"]["current_state"].as_str(),
             Some("quota_ready")
         );
         assert_eq!(
-            ppu_json["data"]["data"]["credential_status"].as_str(),
+            ppu_json["data"]["credential_status"].as_str(),
             Some("active")
         );
         assert_eq!(
-            ppu_json["data"]["data"]["upstream_mode"].as_str(),
+            ppu_json["data"]["upstream_mode"].as_str(),
             Some("seller_gateway")
         );
 

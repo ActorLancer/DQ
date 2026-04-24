@@ -68,7 +68,7 @@ pub async fn load_order_lifecycle_snapshots(
             payment: PaymentLifecycleSnapshot {
                 current_status: payment_status,
                 payment_mode: order_row.get(5),
-                amount: order_row.get(6),
+                order_amount: order_row.get(6),
                 currency_code: order_row.get(7),
                 buyer_locked_at: order_row.get(14),
             },

@@ -231,7 +231,7 @@ async fn load_billing_events(
             event_source: row.get(2),
             amount: row.get(3),
             currency_code: row.get(4),
-            units: row.get(5),
+            metered_quantity: row.get(5),
             occurred_at: row.get(6),
             metadata: row.get(7),
         })

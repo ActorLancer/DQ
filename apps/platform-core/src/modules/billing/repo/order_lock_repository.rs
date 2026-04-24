@@ -61,7 +61,7 @@ pub async fn lock_order_payment(
             let view = OrderLockView {
                 order_id: order.order_id,
                 payment_intent_id: payload.payment_intent_id.clone(),
-                order_status: order.status,
+                current_state: order.status,
                 payment_status: order.payment_status,
                 buyer_locked_at: order.buyer_locked_at.unwrap_or_default(),
             };
@@ -120,7 +120,7 @@ pub async fn lock_order_payment(
         OrderLockView {
             order_id: row.get::<_, String>(0),
             payment_intent_id: payload.payment_intent_id.clone(),
-            order_status: row.get::<_, String>(1),
+            current_state: row.get::<_, String>(1),
             payment_status: row.get::<_, String>(2),
             buyer_locked_at: row.get::<_, String>(3),
         },

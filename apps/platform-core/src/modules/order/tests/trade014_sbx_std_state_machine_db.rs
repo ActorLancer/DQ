@@ -76,16 +76,10 @@ mod tests {
             assert_eq!(status, StatusCode::OK, "{action} should succeed");
             let json: Value = serde_json::from_slice(&body).expect("transition json");
             if action == "issue_account_seat" {
+                assert_eq!(json["data"]["current_state"].as_str(), Some("seat_issued"));
+                assert_eq!(json["data"]["delivery_status"].as_str(), Some("delivered"));
                 assert_eq!(
-                    json["data"]["data"]["current_state"].as_str(),
-                    Some("seat_issued")
-                );
-                assert_eq!(
-                    json["data"]["data"]["delivery_status"].as_str(),
-                    Some("delivered")
-                );
-                assert_eq!(
-                    json["data"]["data"]["acceptance_status"].as_str(),
+                    json["data"]["acceptance_status"].as_str(),
                     Some(
                         expected_acceptance_status_for_state("SBX_STD", "seat_issued")
                             .expect("seat_issued acceptance status")

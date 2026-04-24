@@ -42,13 +42,25 @@ mod tests {
         let app = crate::with_live_test_state(router()).await;
         let request_id = format!("req-bil007-read-{suffix}");
         let detail = get_billing_order(&app, &order.order_id, &buyer_org_id, &request_id).await;
+        assert_eq!(detail["code"].as_str(), Some("OK"));
+        assert_eq!(detail["message"].as_str(), Some("success"));
+        assert_eq!(detail["request_id"].as_str(), Some(request_id.as_str()));
         assert_eq!(
             detail["data"]["order_id"].as_str(),
             Some(order.order_id.as_str())
         );
         assert_eq!(
+            detail["data"]["current_state"].as_str(),
+            Some("buyer_locked")
+        );
+        assert_eq!(detail["data"]["order_amount"].as_str(), Some("88.00000000"));
+        assert_eq!(
             detail["data"]["billing_events"].as_array().map(Vec::len),
             Some(1)
+        );
+        assert_eq!(
+            detail["data"]["billing_events"][0]["metered_quantity"].as_str(),
+            Some("1")
         );
         assert_eq!(
             detail["data"]["settlements"].as_array().map(Vec::len),
@@ -80,6 +92,8 @@ mod tests {
             &format!("req-bil007-buyer-read-{suffix}"),
         )
         .await;
+        assert_eq!(buyer_detail["code"].as_str(), Some("OK"));
+        assert_eq!(buyer_detail["message"].as_str(), Some("success"));
         assert_eq!(
             buyer_detail["data"]["order_id"].as_str(),
             Some(order.order_id.as_str())

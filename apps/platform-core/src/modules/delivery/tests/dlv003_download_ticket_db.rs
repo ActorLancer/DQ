@@ -66,24 +66,21 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("download ticket json");
         assert_eq!(
-            json["data"]["data"]["ticket_id"].as_str(),
+            json["data"]["ticket_id"].as_str(),
             Some(seed.ticket_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["bucket_name"].as_str(),
+            json["data"]["bucket_name"].as_str(),
             Some("delivery-objects")
         );
         assert_eq!(
-            json["data"]["data"]["object_key"].as_str(),
+            json["data"]["object_key"].as_str(),
             Some(format!("orders/{suffix}/payload.enc").as_str())
         );
-        assert_eq!(json["data"]["data"]["download_limit"].as_i64(), Some(5));
-        assert_eq!(json["data"]["data"]["download_count"].as_i64(), Some(2));
-        assert_eq!(
-            json["data"]["data"]["remaining_downloads"].as_i64(),
-            Some(3)
-        );
-        let issued_token = json["data"]["data"]["download_token"]
+        assert_eq!(json["data"]["download_limit"].as_i64(), Some(5));
+        assert_eq!(json["data"]["download_count"].as_i64(), Some(2));
+        assert_eq!(json["data"]["remaining_downloads"].as_i64(), Some(3));
+        let issued_token = json["data"]["download_token"]
             .as_str()
             .expect("download token")
             .to_string();

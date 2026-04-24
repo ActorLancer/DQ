@@ -61,28 +61,27 @@ mod tests {
             grant_resp.json
         );
         assert_eq!(
-            grant_resp.json["data"]["data"]["current_status"].as_str(),
+            grant_resp.json["data"]["current_status"].as_str(),
             Some("active")
         );
         assert_eq!(
-            grant_resp.json["data"]["data"]["policy_id"].as_str(),
+            grant_resp.json["data"]["policy_id"].as_str(),
             Some(seed.policy_id.as_str())
         );
         assert_eq!(
-            grant_resp.json["data"]["data"]["authorization_model"]["scope"]["order_id"].as_str(),
+            grant_resp.json["data"]["authorization_model"]["scope"]["order_id"].as_str(),
             Some(seed.order_expire_id.as_str())
         );
         assert_eq!(
-            grant_resp.json["data"]["data"]["authorization_model"]["resource"]["sku_id"].as_str(),
+            grant_resp.json["data"]["authorization_model"]["resource"]["sku_id"].as_str(),
             Some(seed.sku_id.as_str())
         );
         assert_eq!(
-            grant_resp.json["data"]["data"]["authorization_model"]["subject"]["subject_id"]
-                .as_str(),
+            grant_resp.json["data"]["authorization_model"]["subject"]["subject_id"].as_str(),
             Some(seed.buyer_org_id.as_str())
         );
         assert_eq!(
-            grant_resp.json["data"]["data"]["authorization_model"]["action"]["grant_type"].as_str(),
+            grant_resp.json["data"]["authorization_model"]["action"]["grant_type"].as_str(),
             Some("share_grant")
         );
 
@@ -102,11 +101,11 @@ mod tests {
             suspend_resp.json
         );
         assert_eq!(
-            suspend_resp.json["data"]["data"]["previous_status"].as_str(),
+            suspend_resp.json["data"]["previous_status"].as_str(),
             Some("active")
         );
         assert_eq!(
-            suspend_resp.json["data"]["data"]["current_status"].as_str(),
+            suspend_resp.json["data"]["current_status"].as_str(),
             Some("suspended")
         );
 
@@ -126,7 +125,7 @@ mod tests {
             recover_resp.json
         );
         assert_eq!(
-            recover_resp.json["data"]["data"]["current_status"].as_str(),
+            recover_resp.json["data"]["current_status"].as_str(),
             Some("active")
         );
 
@@ -146,7 +145,7 @@ mod tests {
             expire_resp.json
         );
         assert_eq!(
-            expire_resp.json["data"]["data"]["current_status"].as_str(),
+            expire_resp.json["data"]["current_status"].as_str(),
             Some("expired")
         );
 
@@ -182,7 +181,7 @@ mod tests {
             revoke_resp.json
         );
         assert_eq!(
-            revoke_resp.json["data"]["data"]["current_status"].as_str(),
+            revoke_resp.json["data"]["current_status"].as_str(),
             Some("revoked")
         );
 

@@ -44,7 +44,7 @@ mod tests {
             .expect("body");
         let json: Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(
-            json["data"]["data"]["snapshot"]["billing_mode"].as_str(),
+            json["data"]["snapshot"]["billing_mode"].as_str(),
             Some("one_time")
         );
 

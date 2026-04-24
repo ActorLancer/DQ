@@ -70,97 +70,93 @@ mod tests {
         let json: Value = serde_json::from_slice(&body).expect("json");
 
         assert_eq!(
-            json["data"]["data"]["order_id"].as_str(),
+            json["data"]["order_id"].as_str(),
             Some(seed.order_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["contract"]["contract_id"].as_str(),
+            json["data"]["relations"]["contract"]["contract_id"].as_str(),
             Some(seed.contract_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["contract"]["contract_status"].as_str(),
+            json["data"]["relations"]["contract"]["contract_status"].as_str(),
             Some("signed")
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["authorizations"]
+            json["data"]["relations"]["authorizations"]
                 .as_array()
                 .map(|items| items.len()),
             Some(2)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["authorizations"][0]["authorization_id"].as_str(),
+            json["data"]["relations"]["authorizations"][0]["authorization_id"].as_str(),
             Some(seed.authorization_ids[1].as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["authorizations"][0]["authorization_model"]["scope"]
+            json["data"]["relations"]["authorizations"][0]["authorization_model"]["scope"]
                 ["order_id"]
                 .as_str(),
             Some(seed.order_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["authorizations"][0]["authorization_model"]["resource"]["sku_id"].as_str(),
+            json["data"]["relations"]["authorizations"][0]["authorization_model"]["resource"]["sku_id"].as_str(),
             Some(seed.sku_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["deliveries"]
+            json["data"]["relations"]["deliveries"]
                 .as_array()
                 .map(|items| items.len()),
             Some(2)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["deliveries"][0]["delivery_id"].as_str(),
+            json["data"]["relations"]["deliveries"][0]["delivery_id"].as_str(),
             Some(seed.delivery_ids[1].as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["billing"]["billing_events"]
+            json["data"]["relations"]["billing"]["billing_events"]
                 .as_array()
                 .map(|items| items.len()),
             Some(2)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["billing"]["billing_events"][0]["billing_event_id"]
-                .as_str(),
+            json["data"]["relations"]["billing"]["billing_events"][0]["billing_event_id"].as_str(),
             Some(seed.billing_event_ids[1].as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["billing"]["settlements"][0]["settlement_id"]
-                .as_str(),
+            json["data"]["relations"]["billing"]["settlements"][0]["settlement_id"].as_str(),
             Some(seed.settlement_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["billing"]["refunds"][0]["refund_id"].as_str(),
+            json["data"]["relations"]["billing"]["refunds"][0]["refund_id"].as_str(),
             Some(seed.refund_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["billing"]["compensations"][0]["compensation_id"]
-                .as_str(),
+            json["data"]["relations"]["billing"]["compensations"][0]["compensation_id"].as_str(),
             Some(seed.compensation_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["billing"]["invoices"][0]["invoice_request_id"]
-                .as_str(),
+            json["data"]["relations"]["billing"]["invoices"][0]["invoice_request_id"].as_str(),
             Some(seed.invoice_request_id.as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["disputes"]
+            json["data"]["relations"]["disputes"]
                 .as_array()
                 .map(|items| items.len()),
             Some(2)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["disputes"][0]["case_id"].as_str(),
+            json["data"]["relations"]["disputes"][0]["case_id"].as_str(),
             Some(seed.dispute_case_ids[1].as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["disputes"][0]["evidence_count"].as_i64(),
+            json["data"]["relations"]["disputes"][0]["evidence_count"].as_i64(),
             Some(0)
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["disputes"][1]["case_id"].as_str(),
+            json["data"]["relations"]["disputes"][1]["case_id"].as_str(),
             Some(seed.dispute_case_ids[0].as_str())
         );
         assert_eq!(
-            json["data"]["data"]["relations"]["disputes"][1]["evidence_count"].as_i64(),
+            json["data"]["relations"]["disputes"][1]["evidence_count"].as_i64(),
             Some(1)
         );
 

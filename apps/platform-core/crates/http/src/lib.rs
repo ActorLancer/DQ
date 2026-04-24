@@ -8,9 +8,14 @@ use axum::{
     routing::get,
 };
 use config::RuntimeConfig;
-use kernel::{AppError, AppResult, ErrorResponse, new_uuid_string};
+use kernel::{
+    AppError, AppResult, ErrorResponse, current_request_id_or_new, new_uuid_string,
+    scope_request_id,
+};
 use prometheus::{Encoder, HistogramOpts, HistogramVec, IntCounterVec, Registry, TextEncoder};
 use serde::Serialize;
+use serde::ser::SerializeStruct;
+use serde_json::{Map, Value};
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -22,13 +27,35 @@ use tracing::info;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct ApiResponse<T>
 where
     T: Serialize,
 {
-    pub success: bool,
+    pub code: String,
+    pub message: String,
+    pub request_id: String,
     pub data: T,
+}
+
+impl<T> Serialize for ApiResponse<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("ApiResponse", 4)?;
+        state.serialize_field("code", &self.code)?;
+        state.serialize_field("message", &self.message)?;
+        state.serialize_field("request_id", &self.request_id)?;
+        state.serialize_field(
+            "data",
+            &unwrap_nested_data(&self.data).map_err(serde::ser::Error::custom)?,
+        )?;
+        state.end()
+    }
 }
 
 impl<T> ApiResponse<T>
@@ -37,7 +64,9 @@ where
 {
     pub fn ok(data: T) -> Json<Self> {
         Json(Self {
-            success: true,
+            code: "OK".to_string(),
+            message: "success".to_string(),
+            request_id: current_request_id_or_new(),
             data,
         })
     }
@@ -383,7 +412,8 @@ async fn request_context_middleware(mut req: Request, next: Next) -> Response {
         idempotency_key: idempotency_key.clone(),
     });
 
-    let mut response = next.run(req).await;
+    let mut response =
+        scope_request_id(request_id.clone(), async move { next.run(req).await }).await;
     let status = response.status().as_u16().to_string();
     let elapsed_seconds = started_at.elapsed().as_secs_f64();
     http_metrics()
@@ -510,9 +540,27 @@ fn internal_error(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse
         Json(ErrorResponse {
             code: "OPS_INTERNAL".to_string(),
             message: message.into(),
-            request_id: None,
+            request_id: Some(current_request_id_or_new()),
         }),
     )
+}
+
+fn unwrap_nested_data<T>(payload: &T) -> Result<Value, serde_json::Error>
+where
+    T: Serialize,
+{
+    let value = serde_json::to_value(payload)?;
+    match value {
+        Value::Object(map) if is_single_data_wrapper(&map) => Ok(map
+            .get("data")
+            .cloned()
+            .unwrap_or(Value::Object(Map::new()))),
+        other => Ok(other),
+    }
+}
+
+fn is_single_data_wrapper(map: &Map<String, Value>) -> bool {
+    map.len() == 1 && map.contains_key("data")
 }
 
 pub fn set_audit_annotation(req: &mut Request, annotation: AuditAnnotation) {

@@ -97,7 +97,7 @@
 - 未覆盖项：
   - `TEST-002` 的 `seed-demo.sh` 导入器尚未实现；当前批次只交付正式 demo 数据包与其校验入口，不提前越界实现 importer。
 - 新增 TODO / 预留项：
-  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+  - 新增 non-blocking tech-debt：`TODO-TEST-003-001`，记录历史 `ErrorResponse` callsite 仍有“通用 fallback code + message 前缀业务码”的兼容路径；当前已由统一序列化层维持对外契约，后续再逐步回收调用点本身。
 
 ### BATCH-299（计划中）
 - 任务：`TEST-002` 一键导入 demo 数据
@@ -204,5 +204,104 @@
 - 覆盖的任务清单条目：`TEST-002`
 - 未覆盖项：
   - `TEST-003` 的 contract test 目录与 OpenAPI / 错误码 / 状态机 checker 尚未开始，本批只完成正式 demo importer 与回查入口。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-300（计划中）
+- 任务：`TEST-003` 建立 contract test 目录，覆盖 OpenAPI schema、错误码、状态机枚举、关键响应字段
+- 状态：计划中
+- 说明：在按 `TEST-003` 阅读冻结文档与现有实现后，确认仓库当前仍存在两类外部契约漂移：一是成功响应仍混用 `success + data` 与 `data.data` 旧 envelope；二是对外逻辑字段仍暴露 `amount / order_status / units` 等持久化命名。用户已明确要求本批次选择 `A/A`，即以冻结文档为唯一 authority 先做一次正式契约回收，再建立 contract baseline / checker，避免把当前漂移固化成“正式基线”。
+- 前置依赖核对结果：`ENV-040`、`DB-032`、`CORE-024` 已在前序分卷完成并作为当前批次基线复用；`TEST-001` 演示数据包与 `TEST-002` demo importer 已完成并留痕，可继续作为 contract fixture 与后续验收链路输入，当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-003` 的正式交付是 contract test 目录与 checker，范围覆盖 OpenAPI schema、错误码、状态机枚举、关键响应字段，且必须先满足 `depends_on=ENV-040;DB-032;CORE-024`。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`：确认成功响应统一为 `code/message/request_id/data`、失败响应统一为 `code/message/request_id/details`，并明确对外逻辑字段应使用 `current_state / order_amount / metered_quantity`，不得直接暴露 `status / amount / units`。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `9.1.4` 字段映射要求与 `current_state -> trade.order_main.status`、`order_amount -> trade.order_main.amount`、`metered_quantity -> billing.billing_event.units` 的冻结口径。
+  - `docs/开发准备/统一错误码字典正式版.md`、`docs/05-test-cases/order-state-machine.md`、`docs/05-test-cases/README.md`、`docs/页面说明书/页面说明书-V1-完整版.md`：确认 contract checker 需要同时约束错误码前缀、订单状态机枚举与前端/后端共享的关键响应字段，不得只校验 schema 文件存在。
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段 contract 检查是冻结契约回归，不是现状快照。
+  - `apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/crates/kernel/src/lib.rs`：确认当前运行时成功 envelope 仍是 `ApiResponse { success, data }`，失败 envelope 缺少 `details`，但请求上下文中已有 `request_id` / `trace_id` 可复用，不需要再发明第二套请求标识。
+  - `apps/platform-core/src/modules/order/api/handlers.rs`、`dto/order_read.rs`、`repo/order_read_repository.rs`、`tests/trade004_order_detail_db.rs`：确认 Trade 订单详情仍使用 `GetOrderDetailResponse { data }` 双层包装，且对外字段仍暴露 `amount`，测试仍断言 `json["data"]["data"]`。
+  - `apps/platform-core/src/modules/billing/billing_read_handlers.rs`、`models.rs`、`repo/billing_read_repository.rs`、`packages/openapi/billing.yaml`：确认 Billing 对外详情仍暴露 `order_status`，样例仍暴露 `units`。
+  - `packages/openapi/catalog.yaml`、`trade.yaml`、`billing.yaml` 及 `docs/02-openapi/*`：确认多份 OpenAPI 仍用 `required: [success, data]` 或保留 `data.data` 旧包装，需在本批次统一回收。
+  - `scripts/check-openapi-schema.sh`、`scripts/check-canonical-contracts.sh`、`.github/workflows/canonical-contracts.yml`、`.github/workflows/test.yml`：确认仓库已有 OpenAPI / canonical checker 入口可复用，但在正式 checker 落地前必须先让公共响应封装、OpenAPI 和测试回到冻结口径。
+- 当前完成标准理解：
+  - `platform-core` 成功响应统一输出 `code/message/request_id/data`，失败响应统一输出 `code/message/request_id/details`；仓库内不再把 `success + data` 或 `data.data` 视为正式外部契约。
+  - Trade / Billing 等对外 DTO、OpenAPI 与测试统一回收到冻结字段名：`current_state / order_amount / metered_quantity`；数据库字段命名可继续保持内部使用，但不得直接外露。
+  - 新建 `TEST-003` contract fixtures / checker / 文档与 CI 接入，能机器化拒绝旧 envelope、错误字段名、错误码/状态机漂移。
+- 实施计划：
+  1. 回收公共响应封装与失败 envelope，补齐 `request_id`、`details` 等冻结字段，并修复受影响 handler / 测试。
+  2. 回收 Trade / Billing 等对外 DTO、OpenAPI 与示例，统一移除 `data.data` 与 `amount / order_status / units` 漂移字段。
+  3. 新增 contract fixtures、checker、文档与 CI 接入，锁定 OpenAPI schema、错误码、状态机枚举与关键响应字段的正式基线。
+  4. 运行 `cargo fmt --all`、`cargo check -p platform-core`、`cargo test -p platform-core`、`cargo sqlx prepare --workspace`、`./scripts/check-query-compile.sh` 以及本批次新增的 contract / OpenAPI checker，完成留痕与提交。
+
+### BATCH-300（待审批）
+- 任务：`TEST-003` 建立 contract test 目录，覆盖 OpenAPI schema、错误码、状态机枚举、关键响应字段
+- 状态：待审批
+- 当前任务编号：`TEST-003`
+- 前置依赖核对结果：`ENV-040`、`DB-032`、`CORE-024` 继续满足；`TEST-001/002` 已完成并可复用为当前批次的 demo / contract fixture 输入。
+- authority 决策留痕：
+  - 用户已明确确认 `Q-TEST-003-01=A`、`Q-TEST-003-02=A`：`TEST-003` 以冻结文档为唯一 authority，不允许把当前漂移的 `success + data` / `data.data` / `amount` / `order_status` / `units` 固化成正式 baseline。
+  - 本批次因此先做一次“契约回收”，再落 checker / fixture / CI。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-003` 正式交付物为 contract test 目录与可复用 checker，覆盖 OpenAPI schema、错误码、状态机枚举、关键响应字段。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认统一成功/失败 envelope 以及 `current_state / order_amount / metered_quantity` 的冻结映射。
+  - `docs/开发准备/统一错误码字典正式版.md`、`docs/05-test-cases/order-state-machine.md`、`docs/05-test-cases/README.md`：确认 `TEST-003` 需要同时覆盖错误码基线、订单状态机 action enum 与禁止错误码绑定，且不得与 `TEST-028` 的 canonical checker 混淆。
+  - `packages/openapi/*.yaml`、`docs/02-openapi/*.yaml`、`apps/platform-core/crates/http/src/lib.rs`、`apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core/src/modules/order/**`、`apps/platform-core/src/modules/billing/**`、现有 DB smoke：确认旧 envelope 与旧字段名在运行时、OpenAPI 和测试中均有残留，需要统一回收。
+  - `scripts/check-openapi-schema.sh`、`.github/workflows/canonical-contracts.yml`、`.github/workflows/test.yml`、`scripts/README.md`：确认现有脚本与 CI 仍未提供 `TEST-003` 专属 contract baseline checker。
+- 实现要点：
+  - 回收公共响应 envelope：
+    - `apps/platform-core/crates/http/src/lib.rs`：成功响应统一序列化为 `code/message/request_id/data`，并自动消除旧 `data.data` 包装。
+    - `apps/platform-core/crates/kernel/src/lib.rs`：失败响应统一序列化为 `code/message/request_id/details`；请求上下文统一透传 `request_id`；若错误消息前缀已带正式业务错误码，则优先作为对外 `code` 发出，减少运行时与冻结错误码字典的偏差。
+  - 回收对外字段名：
+    - Trade DTO / repository / OpenAPI：`amount -> order_amount`、`status/order_status -> current_state`、`units -> metered_quantity`。
+    - Billing view / repository / OpenAPI：`order_status -> current_state`、`units -> metered_quantity`、`OrderLock.order_status -> current_state`。
+    - 同步修正所有受影响 DB smoke 断言，移除 `json["data"]["data"]`、`json["success"]` 与旧字段名断言。
+  - 新增 `TEST-003` 正式 contract baseline：
+    - `fixtures/contracts/test-003/README.md`
+    - `fixtures/contracts/test-003/key-response-fields.tsv`
+    - `fixtures/contracts/test-003/error-code-baseline.tsv`
+    - `fixtures/contracts/test-003/state-machine-contracts.tsv`
+    - `scripts/check-api-contract-baseline.sh`
+    - `.github/workflows/contract-tests.yml`
+  - 更新索引文档：
+    - `scripts/README.md`
+    - `docs/05-test-cases/README.md`
+    - `docs/02-openapi/*.yaml` 与 `packages/openapi/*.yaml` 重新逐字同步。
+  - 补充 runtime 断言：
+    - `bil003_order_lock_db_smoke` 增加 `current_state` 与统一 success envelope 断言。
+    - `bil007_billing_read_db_smoke` 增加 `current_state / order_amount / billing_events[0].metered_quantity` 与统一 success envelope 断言。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `bash ./scripts/check-api-contract-baseline.sh`
+  4. `cargo test -p platform-core`
+  5. `./scripts/check-query-compile.sh`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; set +a; cargo sqlx prepare --workspace'`
+  7. `cargo test -p platform-core bil003_order_lock_db_smoke -- --nocapture`
+  8. `cargo test -p platform-core bil007_billing_read_db_smoke -- --nocapture`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - `bash ./scripts/check-api-contract-baseline.sh` 通过，输出：
+    - `success envelopes aligned`
+    - `error envelopes aligned`
+    - `key response fields aligned`
+    - `error-code baseline aligned`
+    - `state-machine contract baseline aligned`
+  - `cargo test -p platform-core` 通过：`358` 个测试通过，`0` 失败，另有仓库既有 `iam_party_access_flow_live` 继续保持 ignored。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 查询编译元数据已重建并更新。
+  - `cargo test -p platform-core bil003_order_lock_db_smoke -- --nocapture` 通过。
+  - `cargo test -p platform-core bil007_billing_read_db_smoke -- --nocapture` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-003`
+  - `接口清单与OpenAPI-Schema冻结表.md`
+  - `数据交易平台-全集成基线-V1.md`
+  - `统一错误码字典正式版.md`
+  - `docs/05-test-cases/order-state-machine.md`
+  - `docs/05-test-cases/README.md`
+- 覆盖的任务清单条目：`TEST-003`
+- 未覆盖项：
+  - `TEST-028` 的 canonical topic / topology / smoke checker 仍由既有 `./scripts/check-canonical-contracts.sh` 负责，本批次未改动其职责边界。
+  - 统一错误码字典在若干历史 runtime callsite 仍存在“消息前缀携带业务码、原始 fallback code 保留通用码”的兼容路径；本批通过统一序列化层优先发出消息前缀中的正式业务错误码，未在本任务中逐一重写全部历史调用点。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

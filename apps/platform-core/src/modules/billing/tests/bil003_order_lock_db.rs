@@ -90,6 +90,13 @@ mod tests {
             String::from_utf8_lossy(&lock_body)
         );
         let lock_json: Value = serde_json::from_slice(&lock_body).expect("lock json");
+        assert_eq!(lock_json["code"].as_str(), Some("OK"));
+        assert_eq!(lock_json["message"].as_str(), Some("success"));
+        assert_eq!(lock_json["request_id"].as_str(), Some(request_ok.as_str()));
+        assert_eq!(
+            lock_json["data"]["current_state"].as_str(),
+            Some("buyer_locked")
+        );
         assert_eq!(lock_json["data"]["payment_status"].as_str(), Some("locked"));
 
         let replay_response = app
@@ -113,6 +120,16 @@ mod tests {
             .await
             .expect("replay body");
         let replay_json: Value = serde_json::from_slice(&replay_body).expect("replay json");
+        assert_eq!(replay_json["code"].as_str(), Some("OK"));
+        assert_eq!(replay_json["message"].as_str(), Some("success"));
+        assert_eq!(
+            replay_json["request_id"].as_str(),
+            Some(request_replay.as_str())
+        );
+        assert_eq!(
+            replay_json["data"]["current_state"].as_str(),
+            Some("buyer_locked")
+        );
         assert_eq!(
             replay_json["data"]["payment_intent_id"].as_str(),
             Some(payment_intent_id.as_str())
@@ -143,6 +160,12 @@ mod tests {
             StatusCode::CONFLICT,
             "{}",
             String::from_utf8_lossy(&mismatch_body)
+        );
+        let mismatch_json: Value = serde_json::from_slice(&mismatch_body).expect("mismatch json");
+        assert_eq!(mismatch_json["code"].as_str(), Some("BIL_PROVIDER_FAILED"));
+        assert_eq!(
+            mismatch_json["request_id"].as_str(),
+            Some(request_mismatch.as_str())
         );
 
         let lock_db: (String, String, String, String) = {

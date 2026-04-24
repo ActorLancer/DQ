@@ -98,19 +98,19 @@ mod tests {
             String::from_utf8_lossy(&run_body)
         );
         let run_json: Value = serde_json::from_slice(&run_body).expect("run json");
-        let query_run_id = run_json["data"]["data"]["query_run_id"]
+        let query_run_id = run_json["data"]["query_run_id"]
             .as_str()
             .expect("query_run_id")
             .to_string();
-        let result_object_id = run_json["data"]["data"]["result_object_id"]
+        let result_object_id = run_json["data"]["result_object_id"]
             .as_str()
             .expect("result_object_id")
             .to_string();
-        let bucket_name = run_json["data"]["data"]["bucket_name"]
+        let bucket_name = run_json["data"]["bucket_name"]
             .as_str()
             .expect("bucket_name")
             .to_string();
-        let object_key = run_json["data"]["data"]["object_key"]
+        let object_key = run_json["data"]["object_key"]
             .as_str()
             .expect("object_key")
             .to_string();
@@ -155,7 +155,7 @@ mod tests {
             String::from_utf8_lossy(&create_body)
         );
         let create_json: Value = serde_json::from_slice(&create_body).expect("create json");
-        let create_data = &create_json["data"]["data"];
+        let create_data = &create_json["data"];
         let review_id = create_data["result_disclosure_review_id"]
             .as_str()
             .expect("review id")
@@ -210,7 +210,7 @@ mod tests {
             String::from_utf8_lossy(&update_body)
         );
         let update_json: Value = serde_json::from_slice(&update_body).expect("update json");
-        let update_data = &update_json["data"]["data"];
+        let update_data = &update_json["data"];
         assert_eq!(update_data["operation"].as_str(), Some("updated"));
         assert_eq!(update_data["review_status"].as_str(), Some("rejected"));
         assert_eq!(

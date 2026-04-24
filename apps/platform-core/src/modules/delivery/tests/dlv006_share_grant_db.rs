@@ -82,24 +82,18 @@ mod tests {
             String::from_utf8_lossy(&grant_body)
         );
         let grant_json: Value = serde_json::from_slice(&grant_body).expect("grant json");
+        assert_eq!(grant_json["data"]["grant_status"].as_str(), Some("active"));
+        assert_eq!(grant_json["data"]["operation"].as_str(), Some("granted"));
         assert_eq!(
-            grant_json["data"]["data"]["grant_status"].as_str(),
-            Some("active")
-        );
-        assert_eq!(
-            grant_json["data"]["data"]["operation"].as_str(),
-            Some("granted")
-        );
-        assert_eq!(
-            grant_json["data"]["data"]["current_state"].as_str(),
+            grant_json["data"]["current_state"].as_str(),
             Some("share_granted")
         );
         assert_eq!(
-            grant_json["data"]["data"]["delivery_status"].as_str(),
+            grant_json["data"]["delivery_status"].as_str(),
             Some("delivered")
         );
         assert_eq!(
-            grant_json["data"]["data"]["subscriber_ref"].as_str(),
+            grant_json["data"]["subscriber_ref"].as_str(),
             Some(format!("sub-{suffix}").as_str())
         );
 
@@ -129,12 +123,9 @@ mod tests {
             String::from_utf8_lossy(&get_body)
         );
         let get_json: Value = serde_json::from_slice(&get_body).expect("get json");
+        assert_eq!(get_json["data"]["grants"].as_array().map(Vec::len), Some(1));
         assert_eq!(
-            get_json["data"]["data"]["grants"].as_array().map(Vec::len),
-            Some(1)
-        );
-        assert_eq!(
-            get_json["data"]["data"]["grants"][0]["grant_status"].as_str(),
+            get_json["data"]["grants"][0]["grant_status"].as_str(),
             Some("active")
         );
 
@@ -192,15 +183,12 @@ mod tests {
         );
         let revoke_json: Value = serde_json::from_slice(&revoke_body).expect("revoke json");
         assert_eq!(
-            revoke_json["data"]["data"]["grant_status"].as_str(),
+            revoke_json["data"]["grant_status"].as_str(),
             Some("revoked")
         );
+        assert_eq!(revoke_json["data"]["operation"].as_str(), Some("revoked"));
         assert_eq!(
-            revoke_json["data"]["data"]["operation"].as_str(),
-            Some("revoked")
-        );
-        assert_eq!(
-            revoke_json["data"]["data"]["current_state"].as_str(),
+            revoke_json["data"]["current_state"].as_str(),
             Some("revoked")
         );
 

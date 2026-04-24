@@ -69,7 +69,7 @@ pub struct OrderBillingEventRelation {
     pub event_source: String,
     pub amount: String,
     pub currency_code: String,
-    pub units: Option<String>,
+    pub metered_quantity: Option<String>,
     pub occurred_at: String,
     pub metadata: Value,
 }

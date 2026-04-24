@@ -20,7 +20,7 @@ pub struct GetOrderDetailResponseData {
     pub acceptance_status: String,
     pub settlement_status: String,
     pub dispute_status: String,
-    pub amount: String,
+    pub order_amount: String,
     pub currency_code: String,
     pub price_snapshot: Option<OrderPriceSnapshot>,
     pub relations: OrderRelations,

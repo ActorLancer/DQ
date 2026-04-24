@@ -92,20 +92,14 @@ mod tests {
             .expect("download body");
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("download json");
+        assert_eq!(json["data"]["ticket_status"].as_str(), Some("exhausted"));
+        assert_eq!(json["data"]["download_count"].as_i64(), Some(2));
+        assert_eq!(json["data"]["remaining_downloads"].as_i64(), Some(0));
         assert_eq!(
-            json["data"]["data"]["ticket_status"].as_str(),
-            Some("exhausted")
-        );
-        assert_eq!(json["data"]["data"]["download_count"].as_i64(), Some(2));
-        assert_eq!(
-            json["data"]["data"]["remaining_downloads"].as_i64(),
-            Some(0)
-        );
-        assert_eq!(
-            json["data"]["data"]["key_envelope"]["key_cipher"].as_str(),
+            json["data"]["key_envelope"]["key_cipher"].as_str(),
             Some(format!("cipher-{suffix}").as_str())
         );
-        let object_base64 = json["data"]["data"]["object_base64"]
+        let object_base64 = json["data"]["object_base64"]
             .as_str()
             .expect("object base64");
         let decoded = base64::engine::general_purpose::STANDARD
@@ -225,7 +219,7 @@ mod tests {
             .expect("issue ticket body");
         assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
         let json: Value = serde_json::from_slice(&body).expect("issue ticket json");
-        json["data"]["data"]["download_token"]
+        json["data"]["download_token"]
             .as_str()
             .expect("download token")
             .to_string()

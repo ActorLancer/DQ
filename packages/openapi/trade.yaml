@@ -434,13 +434,9 @@ paths:
 components:
   schemas:
     GetOrderTemplatesResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/OrderTemplateView'
+      type: array
+      items:
+        $ref: '#/components/schemas/OrderTemplateView'
     OrderTemplateView:
       type: object
       required:
@@ -571,15 +567,7 @@ components:
           type: string
           format: uuid
     CreateOrderResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/CreateOrderResponseData'
+      $ref: '#/components/schemas/CreateOrderResponseData'
     CreateOrderResponseData:
       type: object
       required:
@@ -589,9 +577,9 @@ components:
           seller_org_id,
           product_id,
           sku_id,
-          status,
+          current_state,
           payment_status,
-          amount,
+          order_amount,
           currency_code,
           price_snapshot,
           created_at,
@@ -612,11 +600,11 @@ components:
         sku_id:
           type: string
           format: uuid
-        status:
+        current_state:
           type: string
         payment_status:
           type: string
-        amount:
+        order_amount:
           type: string
         currency_code:
           type: string
@@ -626,15 +614,7 @@ components:
           type: string
           format: date-time
     GetOrderDetailResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/GetOrderDetailResponseData'
+      $ref: '#/components/schemas/GetOrderDetailResponseData'
     GetOrderDetailResponseData:
       type: object
       required:
@@ -650,7 +630,7 @@ components:
           acceptance_status,
           settlement_status,
           dispute_status,
-          amount,
+          order_amount,
           currency_code,
           relations,
           created_at,
@@ -684,7 +664,7 @@ components:
           type: string
         dispute_status:
           type: string
-        amount:
+        order_amount:
           type: string
         currency_code:
           type: string
@@ -861,6 +841,7 @@ components:
           event_source,
           amount,
           currency_code,
+          metered_quantity,
           occurred_at,
           metadata,
         ]
@@ -876,7 +857,7 @@ components:
           type: string
         currency_code:
           type: string
-        units:
+        metered_quantity:
           type: string
           nullable: true
         occurred_at:
@@ -1044,15 +1025,7 @@ components:
           type: string
           format: date-time
     GetOrderLifecycleSnapshotsResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/GetOrderLifecycleSnapshotsResponseData'
+      $ref: '#/components/schemas/GetOrderLifecycleSnapshotsResponseData'
     GetOrderLifecycleSnapshotsResponseData:
       type: object
       required: [order]
@@ -1111,13 +1084,13 @@ components:
           format: date-time
     PaymentLifecycleSnapshot:
       type: object
-      required: [current_status, payment_mode, amount, currency_code]
+      required: [current_status, payment_mode, order_amount, currency_code]
       properties:
         current_status:
           type: string
         payment_mode:
           type: string
-        amount:
+        order_amount:
           type: string
         currency_code:
           type: string
@@ -1376,15 +1349,7 @@ components:
           type: string
           nullable: true
     CancelOrderResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/CancelOrderResponseData'
+      $ref: '#/components/schemas/CancelOrderResponseData'
     CancelOrderResponseData:
       type: object
       required:
@@ -1442,15 +1407,7 @@ components:
           type: string
           enum: [buyer_signatory, buyer_operator, legal_reviewer]
     ConfirmOrderContractResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/ConfirmOrderContractResponseData'
+      $ref: '#/components/schemas/ConfirmOrderContractResponseData'
     ConfirmOrderContractResponseData:
       type: object
       required:
@@ -1460,7 +1417,7 @@ components:
           contract_template_id,
           contract_digest,
           contract_status,
-          order_status,
+          current_state,
           signer_id,
           signer_type,
           signer_role,
@@ -1492,7 +1449,7 @@ components:
           nullable: true
         contract_status:
           type: string
-        order_status:
+        current_state:
           type: string
         signer_id:
           type: string
@@ -1701,95 +1658,23 @@ components:
           type: object
           additionalProperties: true
     FileStdTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/FileStdTransitionResponseData'
+      $ref: '#/components/schemas/FileStdTransitionResponseData'
     FileSubTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/FileSubTransitionResponseData'
+      $ref: '#/components/schemas/FileSubTransitionResponseData'
     ApiSubTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/ApiSubTransitionResponseData'
+      $ref: '#/components/schemas/ApiSubTransitionResponseData'
     ApiPpuTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/ApiPpuTransitionResponseData'
+      $ref: '#/components/schemas/ApiPpuTransitionResponseData'
     ShareRoTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/ShareRoTransitionResponseData'
+      $ref: '#/components/schemas/ShareRoTransitionResponseData'
     QryLiteTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/QryLiteTransitionResponseData'
+      $ref: '#/components/schemas/QryLiteTransitionResponseData'
     SbxStdTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/SbxStdTransitionResponseData'
+      $ref: '#/components/schemas/SbxStdTransitionResponseData'
     RptStdTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/RptStdTransitionResponseData'
+      $ref: '#/components/schemas/RptStdTransitionResponseData'
     OrderAuthorizationTransitionResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/OrderAuthorizationTransitionResponseData'
+      $ref: '#/components/schemas/OrderAuthorizationTransitionResponseData'
     FileStdTransitionResponseData:
       type: object
       required:
@@ -2289,22 +2174,14 @@ components:
         exportable:
           type: boolean
     TradePreRequestResponse:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/TradePreRequestResponseData'
+      $ref: '#/components/schemas/TradePreRequestResponseData'
     TradePreRequestResponseData:
       type: object
       required:
         [
           inquiry_id,
           buyer_org_id,
-          status,
+          current_state,
           request_kind,
           details,
           contract_expectation,
@@ -2325,7 +2202,7 @@ components:
         created_by:
           type: string
           format: uuid
-        status:
+        current_state:
           type: string
           enum: [open, submitted, closed]
         request_kind:
@@ -2462,21 +2339,13 @@ components:
           type: string
     FreezeOrderPriceSnapshotResponse:
       type: object
-      required: [data]
+      required: [order_id, snapshot]
       properties:
-        data:
-          type: object
-          required: [data]
-          properties:
-            data:
-              type: object
-              required: [order_id, snapshot]
-              properties:
-                order_id:
-                  type: string
-                  format: uuid
-                snapshot:
-                  $ref: '#/components/schemas/OrderPriceSnapshot'
+        order_id:
+          type: string
+          format: uuid
+        snapshot:
+          $ref: '#/components/schemas/OrderPriceSnapshot'
     OrderPaymentOrchestrationTransition:
       type: object
       required: [payment_result, from_order_status, to_order_status, non_regression_guard]

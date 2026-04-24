@@ -180,13 +180,13 @@ mod tests {
         let file_detail_json: Value =
             serde_json::from_slice(&file_detail_body).expect("file detail json");
         assert_eq!(
-            file_detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+            file_detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]
                 ["watermark_policy"]["rule"]["delivery_branch"]
                 .as_str(),
             Some("file")
         );
         assert_eq!(
-            file_detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+            file_detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]
                 ["watermark_policy"]["rule"]["pipeline"]["stage"]
                 .as_str(),
             Some("post_delivery_commit")
@@ -218,13 +218,13 @@ mod tests {
         let report_detail_json: Value =
             serde_json::from_slice(&report_detail_body).expect("report detail json");
         assert_eq!(
-            report_detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+            report_detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]
                 ["watermark_policy"]["rule"]["delivery_branch"]
                 .as_str(),
             Some("report")
         );
         assert_eq!(
-            report_detail_json["data"]["data"]["relations"]["deliveries"][0]["storage_gateway"]
+            report_detail_json["data"]["relations"]["deliveries"][0]["storage_gateway"]
                 ["watermark_policy"]["rule"]["policy"]
                 .as_str(),
             Some("result_attested")

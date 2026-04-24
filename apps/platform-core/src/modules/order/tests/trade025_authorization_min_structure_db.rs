@@ -72,17 +72,15 @@ mod tests {
         );
         let transition_json: Value = serde_json::from_slice(&transition_body).expect("json");
         assert_eq!(
-            transition_json["data"]["data"]["authorization_model"]["scope"]["order_id"].as_str(),
+            transition_json["data"]["authorization_model"]["scope"]["order_id"].as_str(),
             Some(seed.order_id.as_str())
         );
         assert_eq!(
-            transition_json["data"]["data"]["authorization_model"]["resource"]["product_id"]
-                .as_str(),
+            transition_json["data"]["authorization_model"]["resource"]["product_id"].as_str(),
             Some(seed.product_id.as_str())
         );
         assert_eq!(
-            transition_json["data"]["data"]["authorization_model"]["action"]["allowed_usage"][0]
-                .as_str(),
+            transition_json["data"]["authorization_model"]["action"]["allowed_usage"][0].as_str(),
             Some("internal_use")
         );
 
@@ -105,8 +103,8 @@ mod tests {
             .expect("detail body");
         let detail_json: Value = serde_json::from_slice(&detail_body).expect("detail json");
         assert_eq!(
-            detail_json["data"]["data"]["relations"]["authorizations"][0]["authorization_model"]
-                ["subject"]["subject_id"]
+            detail_json["data"]["relations"]["authorizations"][0]["authorization_model"]["subject"]
+                ["subject_id"]
                 .as_str(),
             Some(seed.buyer_org_id.as_str())
         );

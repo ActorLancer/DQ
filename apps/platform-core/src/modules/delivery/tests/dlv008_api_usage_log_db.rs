@@ -82,11 +82,11 @@ mod tests {
             String::from_utf8_lossy(&enable_body)
         );
         let enable_json: Value = serde_json::from_slice(&enable_body).expect("enable json");
-        let app_id = enable_json["data"]["data"]["app_id"]
+        let app_id = enable_json["data"]["app_id"]
             .as_str()
             .expect("app id")
             .to_string();
-        let api_credential_id = enable_json["data"]["data"]["api_credential_id"]
+        let api_credential_id = enable_json["data"]["api_credential_id"]
             .as_str()
             .expect("api credential id")
             .to_string();
@@ -144,43 +144,34 @@ mod tests {
         );
         let get_json: Value = serde_json::from_slice(&get_body).expect("get json");
         assert_eq!(
-            get_json["data"]["data"]["order_id"].as_str(),
+            get_json["data"]["order_id"].as_str(),
             Some(seed.order_id.as_str())
         );
+        assert_eq!(get_json["data"]["sku_type"].as_str(), Some("API_SUB"));
         assert_eq!(
-            get_json["data"]["data"]["sku_type"].as_str(),
-            Some("API_SUB")
-        );
-        assert_eq!(
-            get_json["data"]["data"]["app"]["app_id"].as_str(),
+            get_json["data"]["app"]["app_id"].as_str(),
             Some(app_id.as_str())
         );
+        assert_eq!(get_json["data"]["summary"]["total_calls"].as_i64(), Some(3));
         assert_eq!(
-            get_json["data"]["data"]["summary"]["total_calls"].as_i64(),
-            Some(3)
-        );
-        assert_eq!(
-            get_json["data"]["data"]["summary"]["successful_calls"].as_i64(),
+            get_json["data"]["summary"]["successful_calls"].as_i64(),
             Some(1)
         );
         assert_eq!(
-            get_json["data"]["data"]["summary"]["failed_calls"].as_i64(),
+            get_json["data"]["summary"]["failed_calls"].as_i64(),
             Some(2)
         );
         assert_eq!(
-            get_json["data"]["data"]["summary"]["total_usage_units"].as_str(),
+            get_json["data"]["summary"]["total_usage_units"].as_str(),
             Some("4.75000000")
         );
+        assert_eq!(get_json["data"]["logs"].as_array().map(Vec::len), Some(3));
         assert_eq!(
-            get_json["data"]["data"]["logs"].as_array().map(Vec::len),
-            Some(3)
-        );
-        assert_eq!(
-            get_json["data"]["data"]["logs"][0]["response_class"].as_str(),
+            get_json["data"]["logs"][0]["response_class"].as_str(),
             Some("5xx")
         );
         assert_eq!(
-            get_json["data"]["data"]["logs"][0]["request_ref"]
+            get_json["data"]["logs"][0]["request_ref"]
                 .as_str()
                 .map(|value| value.starts_with("***")),
             Some(true)

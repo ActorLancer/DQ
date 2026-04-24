@@ -94,7 +94,7 @@ mod tests {
             String::from_utf8_lossy(&create_body)
         );
         let create_json: Value = serde_json::from_slice(&create_body).expect("create json");
-        let create_data = &create_json["data"]["data"];
+        let create_data = &create_json["data"];
         let attestation_record_id = create_data["attestation"]["attestation_record_id"]
             .as_str()
             .expect("attestation_record_id")
@@ -130,7 +130,7 @@ mod tests {
             String::from_utf8_lossy(&read_body)
         );
         let read_json: Value = serde_json::from_slice(&read_body).expect("read json");
-        let attestations = read_json["data"]["data"]["attestations"]
+        let attestations = read_json["data"]["attestations"]
             .as_array()
             .expect("attestations array");
         assert_eq!(attestations.len(), 1);
@@ -288,7 +288,7 @@ mod tests {
         );
         let create_proof_json: Value =
             serde_json::from_slice(&create_proof_body).expect("create proof json");
-        let create_proof_data = &create_proof_json["data"]["data"];
+        let create_proof_data = &create_proof_json["data"];
         let destruction_attestation_id = create_proof_data["destruction_attestation_id"]
             .as_str()
             .expect("destruction_attestation_id")
@@ -351,7 +351,7 @@ mod tests {
         );
         let update_proof_json: Value =
             serde_json::from_slice(&update_proof_body).expect("update proof json");
-        let update_proof_data = &update_proof_json["data"]["data"];
+        let update_proof_data = &update_proof_json["data"];
         assert_eq!(update_proof_data["operation"].as_str(), Some("updated"));
         assert_eq!(
             update_proof_data["retention_action"].as_str(),
