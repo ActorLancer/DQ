@@ -30,6 +30,7 @@
 - `payment-webhook-idempotency-cases.md`：`TEST-011` 支付 webhook 幂等正式清单，冻结 duplicate success、`success -> fail`、`timeout -> success` 三条回调保护，以及 `payment_intent / order_main / audit` 联查。
 - `delivery-revocation-cases.md`：`TEST-012` 交付与断权正式清单，冻结文件票据撤权、share/API/sandbox 断权后的正式入口失败、`Redis / PostgreSQL / audit` 联查。
 - `dispute-settlement-linkage-cases.md`：`TEST-013` 争议与结算联动正式清单，冻结 `POST /api/v1/cases` 触发的结算冻结，以及裁决后 `refund / compensation` 的正式入账、结算重算、审计与 outbox 联查。
+- `audit-replay-dry-run-cases.md`：`TEST-014` 审计回放 dry-run 正式清单，冻结订单 replay job 的差异报告输出、MinIO report、`replay_result.diff_summary`、权限 / step-up / dry-run-only 约束与审计留痕。
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
 - `migration-smoke-cases.md`：`TEST-004` 的正式 migration smoke 清单，固定 core stack、migration/seed roundtrip、seed_history 回查与 `platform-core` 启动验证入口。

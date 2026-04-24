@@ -16,6 +16,7 @@
 - `payment-webhook-idempotency.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-payment-webhook-idempotency.sh`，承接 `TEST-011` 支付 webhook duplicate / out-of-order / late success 保护验收。
 - `delivery-revocation.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-delivery-revocation.sh`，承接 `TEST-012` 文件票据 / share / API / sandbox 断权与正式入口拒绝验收。
 - `dispute-settlement-linkage.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-dispute-settlement-linkage.sh`，承接 `TEST-013` 争议冻结结算与裁决后退款 / 赔付重算验收。
+- `audit-replay-dry-run.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-replay-dry-run.sh`，承接 `TEST-014` 审计 replay dry-run 差异报告、MinIO report 与权限 / step-up 验收。
 
 后续任务将继续补齐：
 

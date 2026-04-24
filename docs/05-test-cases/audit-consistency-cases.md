@@ -1502,3 +1502,9 @@ WHERE request_id IN (
 )
   AND message_text = 'developer trace lookup executed: GET /api/v1/developer/trace';
 ```
+
+## TEST-014 Official Entry
+
+- 正式用例清单：`docs/05-test-cases/audit-replay-dry-run-cases.md`
+- 正式 checker：`ENV_FILE=infra/docker/.env.local ./scripts/check-audit-replay-dry-run.sh`
+- 核心自动化证据：`apps/platform-core/src/modules/audit/tests/api_db.rs` 中的 `audit_trace_api_db_smoke`

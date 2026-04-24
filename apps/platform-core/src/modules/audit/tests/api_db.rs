@@ -11,6 +11,7 @@ use axum::http::{Request, StatusCode};
 use db::{Client, Error, GenericClient, NoTls, connect};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use tower::ServiceExt;
 
 fn live_db_enabled() -> bool {
@@ -1199,6 +1200,12 @@ async fn audit_trace_api_db_smoke() {
         replay_lookup_json["data"]["replay_job"]["replay_job_id"].as_str(),
         Some(replay_job_id.as_str())
     );
+    assert_eq!(
+        replay_lookup_json["data"]["results"]
+            .as_array()
+            .map(|items| items.len()),
+        Some(4)
+    );
 
     let replay_job_row = client
         .query_one(
@@ -1249,18 +1256,160 @@ async fn audit_trace_api_db_smoke() {
         replay_report_json["target"]["order_id"].as_str(),
         Some(seed.order_id.as_str())
     );
+    assert_eq!(replay_report_json["dry_run"].as_bool(), Some(true));
+    let replay_trace_total = replay_report_json["counts"]["audit_trace_total"]
+        .as_i64()
+        .expect("replay trace total");
+    assert!(replay_trace_total >= 3);
+    assert_eq!(
+        replay_report_json["results"][0]["step_name"].as_str(),
+        Some("target_snapshot")
+    );
+    assert_eq!(
+        replay_report_json["results"][0]["diff_summary"]["target"]["order_id"].as_str(),
+        Some(seed.order_id.as_str())
+    );
+    assert_eq!(
+        replay_report_json["results"][0]["diff_summary"]["target"]["payment_status"].as_str(),
+        Some("paid")
+    );
+    assert_eq!(
+        replay_report_json["results"][0]["diff_summary"]["target"]["delivery_status"].as_str(),
+        Some("pending_delivery")
+    );
+    assert_eq!(
+        replay_report_json["results"][0]["diff_summary"]["target"]["settlement_status"].as_str(),
+        Some("pending_settlement")
+    );
+    assert_eq!(
+        replay_report_json["results"][1]["step_name"].as_str(),
+        Some("audit_timeline")
+    );
+    assert_eq!(
+        replay_report_json["results"][1]["diff_summary"]["trace_total"].as_i64(),
+        Some(replay_trace_total)
+    );
+    let replay_trace_preview = replay_report_json["results"][1]["diff_summary"]["preview"]
+        .as_array()
+        .expect("replay trace preview");
+    assert!(!replay_trace_preview.is_empty());
+    assert_eq!(replay_trace_preview.len() as i64, replay_trace_total);
+    let replay_trace_actions = replay_trace_preview
+        .iter()
+        .filter_map(|item| {
+            item.get("action_name")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .collect::<Vec<_>>();
+    assert!(replay_trace_actions.contains(&"trade.order.create".to_string()));
+    assert!(replay_trace_actions.contains(&"trade.order.lock".to_string()));
+    assert!(replay_trace_actions.contains(&"audit.package.export".to_string()));
+    assert_eq!(
+        replay_report_json["results"][2]["step_name"].as_str(),
+        Some("evidence_projection")
+    );
+    assert!(
+        replay_report_json["results"][2]["diff_summary"]["manifest_count"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
+    assert!(
+        replay_report_json["results"][2]["diff_summary"]["item_count"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
+    assert_eq!(
+        replay_report_json["results"][2]["diff_summary"]["legal_hold_status"].as_str(),
+        Some("none")
+    );
+    assert_eq!(
+        replay_report_json["results"][3]["step_name"].as_str(),
+        Some("execution_policy")
+    );
+    assert_eq!(
+        replay_report_json["results"][3]["diff_summary"]["dry_run"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        replay_report_json["results"][3]["diff_summary"]["side_effects_executed"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        replay_report_json["results"][3]["diff_summary"]["recommendation"].as_str(),
+        Some("dry_run_completed")
+    );
 
-    let replay_result_count: i64 = client
-        .query_one(
-            "SELECT COUNT(*)::bigint
+    let replay_result_rows = client
+        .query(
+            "SELECT step_name, result_code, diff_summary
              FROM audit.replay_result
-             WHERE replay_job_id = $1::text::uuid",
+             WHERE replay_job_id = $1::text::uuid
+             ORDER BY created_at, replay_result_id",
             &[&replay_job_id],
         )
         .await
-        .expect("count replay results")
-        .get(0);
-    assert_eq!(replay_result_count, 4);
+        .expect("query replay results");
+    assert_eq!(replay_result_rows.len(), 4);
+    let mut replay_result_by_step = HashMap::new();
+    for row in replay_result_rows.iter() {
+        let inserted = replay_result_by_step.insert(
+            row.get::<_, String>(0),
+            (row.get::<_, String>(1), row.get::<_, Value>(2)),
+        );
+        assert!(inserted.is_none());
+    }
+    assert!(replay_result_by_step.contains_key("target_snapshot"));
+    assert!(replay_result_by_step.contains_key("audit_timeline"));
+    assert!(replay_result_by_step.contains_key("evidence_projection"));
+    assert!(replay_result_by_step.contains_key("execution_policy"));
+    assert_eq!(
+        replay_result_by_step["target_snapshot"].0,
+        "loaded".to_string()
+    );
+    assert_eq!(
+        replay_result_by_step["audit_timeline"].0,
+        "ready".to_string()
+    );
+    assert_eq!(
+        replay_result_by_step["evidence_projection"].0,
+        "ready".to_string()
+    );
+    assert_eq!(
+        replay_result_by_step["execution_policy"].0,
+        "AUDIT_REPLAY_DRY_RUN_ONLY".to_string()
+    );
+    let target_diff = replay_result_by_step["target_snapshot"].1.clone();
+    assert_eq!(
+        target_diff["target"]["order_id"].as_str(),
+        Some(seed.order_id.as_str())
+    );
+    assert_eq!(
+        target_diff["target"]["settlement_status"].as_str(),
+        Some("pending_settlement")
+    );
+    let timeline_diff = replay_result_by_step["audit_timeline"].1.clone();
+    assert_eq!(
+        timeline_diff["trace_total"].as_i64(),
+        Some(replay_trace_total)
+    );
+    let timeline_preview = timeline_diff["preview"]
+        .as_array()
+        .expect("timeline preview diff");
+    assert_eq!(timeline_preview.len() as i64, replay_trace_total);
+    let evidence_diff = replay_result_by_step["evidence_projection"].1.clone();
+    assert_eq!(evidence_diff["legal_hold_status"].as_str(), Some("none"));
+    let execution_policy_diff = replay_result_by_step["execution_policy"].1.clone();
+    assert_eq!(
+        execution_policy_diff["side_effects_executed"].as_bool(),
+        Some(false)
+    );
+    assert_eq!(
+        execution_policy_diff["recommendation"].as_str(),
+        Some("dry_run_completed")
+    );
 
     let replay_audit_count: i64 = client
         .query_one(

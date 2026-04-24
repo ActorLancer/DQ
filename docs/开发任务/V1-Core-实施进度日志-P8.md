@@ -292,6 +292,83 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-311（计划中）
+- 任务：`TEST-014` 建立审计回放 dry-run 测试：能按订单回放关键状态并输出差异报告
+- 状态：计划中
+- 当前任务编号：`TEST-014`
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / MinIO / Keycloak 与 `smoke-local.sh` 本地基线；`DB-032` 已提供 migration / seed / `.sqlx` 回归链路；`CORE-024` 已提供 audit 控制面、order 审计对象、evidence snapshot 与 live audit router。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-014` 必须验证 replay dry-run 能按订单输出差异报告，而不是只测路由存在。
+  - `docs/原始PRD/审计、证据链与回放设计.md`：复核 `8. 回放设计`，确认回放输出至少包含时间线重建、状态差异、缺失证据清单、建议补偿与安全边界；`V1` 默认只允许 dry-run。
+  - `docs/数据库设计/接口协议/审计、证据链与回放接口协议正式版.md`：复核 `5. V1 接口` 与错误码基线，确认正式入口是 `POST /api/v1/audit/replay-jobs`、`GET /api/v1/audit/replay-jobs/{id}`，并要求 `AUDIT_REPLAY_DRY_RUN_ONLY`。
+  - `docs/04-runbooks/audit-replay.md`：确认 replay create / lookup / DB / MinIO / access audit / system log 的正式回查口径。
+  - `docs/05-test-cases/audit-consistency-cases.md`：确认 `AUD-CASE-004 / 005 / 006 / 007` 已冻结 replay dry-run、dry-run-only、防越权与读取留痕要求。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`、`scripts/check-audit-completeness.sh`：复核现有 route guard 与 `audit_trace_api_db_smoke`，确认已有 create/get/report 基线，但仍需补强“差异报告内容”断言与 task 专属 checker/CI。
+- 当前完成标准理解：
+  - `TEST-014` 必须至少证明：
+    1. `POST /api/v1/audit/replay-jobs` 对 `order` 目标只允许 `dry_run=true`。
+    2. replay job 会写入 `audit.replay_job / audit.replay_result`，并把 report 落到 MinIO。
+    3. report / `replay_result.diff_summary` 必须真实包含订单关键状态、审计时间线摘要、证据投影摘要与 dry-run 执行策略差异。
+    4. `GET /api/v1/audit/replay-jobs/{id}` 可回读相同结果，并留下 `audit.access_audit / ops.system_log`。
+    5. 缺权限、缺 step-up、`dry_run=false` 都必须被正式拒绝。
+- 实施计划：
+  1. 扩展 `apps/platform-core/src/modules/audit/tests/api_db.rs`，把 replay dry-run 差异报告内容断言补齐到 `audit_trace_api_db_smoke`。
+  2. 新增 `TEST-014` 官方用例文档、checker 与 GitHub Actions workflow。
+  3. 更新 `docs/05-test-cases/README.md`、相关 audit 用例文档索引、`scripts/README.md`、`.github/workflows/README.md`，明确 `TEST-014` 官方入口。
+  4. 执行真实验证、回写 `BATCH-311（待审批）`、本地提交，然后继续下一个 `TEST` task。
+
+### BATCH-311（待审批）
+- 任务：`TEST-014` 建立审计回放 dry-run 测试：能按订单回放关键状态并输出差异报告
+- 状态：待审批
+- 当前任务编号：`TEST-014`
+- 实现要点：
+  - 扩展 `apps/platform-core/src/modules/audit/tests/api_db.rs` 的 `audit_trace_api_db_smoke`：
+    - 回放报告必须断言 `target_snapshot / audit_timeline / evidence_projection / execution_policy` 四个步骤齐全
+    - 真实回查 MinIO replay report 的 `counts.audit_trace_total`、订单关键状态、证据投影摘要、`dry_run=true` 与 `side_effects_executed=false`
+    - 将 `audit.replay_result` 校验收口为“按 `step_name` 建映射后逐步断言”，避免把同秒 `created_at` 写库顺序误当作业务失败
+    - 强化 `audit_timeline.preview`，要求至少覆盖 `trade.order.create`、`trade.order.lock`、`audit.package.export` 三类已知动作，并与 `trace_total` 自洽
+  - 新增 `docs/05-test-cases/audit-replay-dry-run-cases.md`，冻结 `TEST-014` 的正式命令、权限/step-up 边界、MinIO/DB/audit/system_log 回查与禁止误报边界。
+  - 新增 `scripts/check-audit-replay-dry-run.sh`，统一复用：
+    - replay route guard：缺权限、缺 step-up、`dry_run=false`、缺读取权限
+    - `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+    - `AUD_DB_SMOKE=1 cargo test -p platform-core audit_trace_api_db_smoke -- --nocapture`
+  - 新增 `.github/workflows/audit-replay-dry-run.yml`，将 `TEST-014` 纳入 GitHub Actions 最小矩阵。
+  - 更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/audit-consistency-cases.md`、`scripts/README.md`、`.github/workflows/README.md`，明确 `TEST-014` 官方入口。
+  - 修正 `infra/docker/.env.local` 的 Kafka 宿主机边界漂移与字面 `\n...` 脏行：
+    - `KAFKA_EXTERNAL_ADVERTISED_HOST=127.0.0.1`
+    - `KAFKA_BROKERS=127.0.0.1:9094`
+    - `KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094`
+    - 同步移除 checker 内部对 Kafka 地址的强制覆盖，确保正式 smoke 直接以 repo env 为 authority，不再掩盖环境漂移
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-replay-dry-run.sh`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-replay-dry-run.sh` 通过；真实覆盖：
+    - replay route guard 的权限、step-up、dry-run-only 与 lookup 守卫
+    - `smoke-local.sh` 的 compose / migration / MinIO / Keycloak / Grafana / canonical topics / Kafka 双地址边界
+    - `audit_trace_api_db_smoke` 的 replay job create / lookup、`audit.replay_job / audit.replay_result`、MinIO replay report、`audit.access_audit`、`ops.system_log`
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed；另有 `iam_party_access_flow_live` 维持仓库既有 ignored。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 查询缓存可重建，无新增漂移文件残留。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-014`
+  - `审计、证据链与回放设计.md`：`8. 回放设计`
+  - `审计、证据链与回放接口协议正式版.md`：`5. V1 接口`
+  - `15-测试策略、验收标准与实施里程碑.md`
+  - `docs/05-test-cases/audit-consistency-cases.md`
+  - `docs/04-runbooks/audit-replay.md`
+- 覆盖的任务清单条目：`TEST-014`
+- 未覆盖项：
+  - `TEST-015` 的最小 CI 矩阵尚未开始。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-301（计划中）
 - 任务：`TEST-004` 建立 migration smoke test，验证空库升级、种子导入、应用启动、重置回滚与重新升级
 - 状态：计划中

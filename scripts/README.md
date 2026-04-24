@@ -31,6 +31,7 @@
 - `check-payment-webhook-idempotency.sh`：`TEST-011` 正式支付 webhook 幂等 checker；会复用 `smoke-local.sh`、`check-mock-payment.sh` 与 `bil005_payment_webhook_db_smoke`，验证 duplicate success、`success -> fail`、`timeout -> success` 不会破坏 `payment_intent / order_main` 最终状态。
 - `check-delivery-revocation.sh`：`TEST-012` 正式交付断权 checker；会复用 `smoke-local.sh` 与 `dlv021_auto_cutoff_resources_db_smoke`，验证文件 ticket、share grant、API credential、sandbox workspace/session 在退款、到期、争议和风控冻结后的正式入口断权与 `Redis / PostgreSQL / audit` 联查。
 - `check-dispute-settlement-linkage.sh`：`TEST-013` 正式争议与结算联动 checker；会复用 `smoke-local.sh` 与 `bil019_dispute_refund_compensation_recompute_db_smoke`，验证争议打开后的结算冻结、裁决后的退款/赔付正式入账，以及 `billing_event / settlement_record / audit / outbox` 联查。
+- `check-audit-replay-dry-run.sh`：`TEST-014` 正式审计回放 dry-run checker；会先校验 replay 路由的权限 / step-up / dry-run-only 守卫，再复用 `smoke-local.sh` 与 `audit_trace_api_db_smoke`，验证 replay job、diff summary、MinIO report、`audit.access_audit / ops.system_log` 留痕。
 - `check-api-contract-baseline.sh`：`TEST-003` 正式 contract checker；校验 OpenAPI 成功/失败 envelope、关键响应字段、错误码基线，以及订单状态机 action enum / 禁止错误码绑定。它不替代 `TEST-028` 的 canonical smoke。
 - `check-migration-smoke.sh`：`TEST-004` 正式 migration smoke checker；启动 current local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core-bin` 回查 `/health/live`、`/health/ready`、`/health/deps` 和 `/internal/runtime`。
 - `validate_database_migrations.sh`：兼容入口，现已转发到 `check-migration-smoke.sh`，不再使用历史 `部署脚本/docker-compose.postgres-test.yml`。
