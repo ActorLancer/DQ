@@ -34,6 +34,7 @@
 - `check-audit-replay-dry-run.sh`：`TEST-014` 正式审计回放 dry-run checker；会先校验 replay 路由的权限 / step-up / dry-run-only 守卫，再复用 `smoke-local.sh` 与 `audit_trace_api_db_smoke`，验证 replay job、diff summary、MinIO report、`audit.access_audit / ops.system_log` 留痕。
 - `check-ci-minimal-matrix.sh`：`TEST-015` 正式最小 CI 矩阵 checker；支持 `rust / ts / go / migration / openapi / all` 六个入口，统一收口 Rust `fmt/check/test`、TS lint/typecheck/unit test、Go build/test、migration smoke 与 OpenAPI schema 检查。
 - `check-compose-smoke.sh`：`TEST-016` 正式 compose CI smoke checker；先复用 `smoke-local.sh` 拉起 `core + observability + mocks`、完成健康与控制面回查，再串联 `CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh`，把 canonical topic、consumer group catalog 与关键 OpenAPI 漂移一起拦在 compose 作业中。
+- `check-schema-drift.sh`：`TEST-017` 正式 schema drift checker；会先拉起 `core` profile、执行 `migrate-up`，然后依次校验 `cargo sqlx prepare --workspace --check`、`check-query-compile.sh`、`db::entity` 受管 table catalog 对齐 `keycloak.public + datab.public.schema_migration_history`，以及 `check-openapi-schema.sh`。
 - `check-api-contract-baseline.sh`：`TEST-003` 正式 contract checker；校验 OpenAPI 成功/失败 envelope、关键响应字段、错误码基线，以及订单状态机 action enum / 禁止错误码绑定。它不替代 `TEST-028` 的 canonical smoke。
 - `check-migration-smoke.sh`：`TEST-004` 正式 migration smoke checker；启动 current local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core-bin` 回查 `/health/live`、`/health/ready`、`/health/deps` 和 `/internal/runtime`。
 - `validate_database_migrations.sh`：兼容入口，现已转发到 `check-migration-smoke.sh`，不再使用历史 `部署脚本/docker-compose.postgres-test.yml`。

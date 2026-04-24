@@ -532,6 +532,94 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-314（计划中）
+- 任务：`TEST-017` schema drift 检查
+- 状态：计划中
+- 当前任务编号：`TEST-017`
+- 前置依赖核对结果：`ENV-040` 已提供 `infra/docker/.env.local`、`up-local.sh` 与 Keycloak 独立服务数据库；`DB-032` 已提供 `db/scripts/migrate-up.sh` 与 `schema_migration_history` 正式迁移入口；`CORE-024` 已提供 `db` crate / `.sqlx` / OpenAPI 校验基线。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-017` 目标是把 schema drift 检查正式接入 CI，不是继续把 `sqlx prepare` 和 `check-openapi-schema` 当作附带动作。
+  - `docs/data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`：复核 `14.4`，确认 CI/CD 需要自动拦截 schema / contract 漂移。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.1 / 15.2`，确认 drift 校验属于持续验收基线的一部分。
+  - `scripts/check-openapi-schema.sh`、`scripts/check-query-compile.sh`、`.cargo/config.toml`、`xtask/src/main.rs`：确认现有仓库已有 OpenAPI 同步检查、SQLx 离线编译检查和 `cargo sqlx prepare --workspace --check` 入口，可作为 `TEST-017` 的直接复用基础。
+  - `apps/platform-core/crates/db/src/entity/**`、`infra/docker/.env.local`、`infra/docker/docker-compose.local.yml`、`scripts/up-local.sh`：确认 `db::entity` 是 SeaORM codegen 的受管 catalog，对应本地 PostgreSQL 上 `KEYCLOAK_DB_NAME=keycloak` 的 public schema；额外 `schema_migration_history` 来自主业务库 `datab.public`。
+  - `docs/04-runbooks/local-startup.md`、`docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`：确认当前还没有 `TEST-017` 的正式 checker / workflow / case 文档入口。
+- 当前完成标准理解：
+  - 存在统一的 `TEST-017` checker，至少覆盖：
+    1. `cargo sqlx prepare --workspace --check`
+    2. `./scripts/check-query-compile.sh`
+    3. `db::entity` 受管 table catalog 与 live DB 真表对齐
+    4. `./scripts/check-openapi-schema.sh`
+  - checker 需要自带最小可重复前置：拉起 core stack、确保 `keycloak` 服务数据库和 `schema_migration_history` 存在，不能假设开发者手工先起好所有依赖。
+  - CI 中至少一条 workflow 会执行该 checker，并在失败时留下实体 / 表清单等 artifact，便于定位漂移点。
+  - 文档明确边界：`db::entity` drift 只覆盖当前受管的 Keycloak public schema + `public.schema_migration_history`，不把整套业务库错误地误报为必须全部有 SeaORM entity。
+- 实施计划：
+  1. 新增 `scripts/check-schema-drift.sh`，统一编排 core stack 前置、`cargo sqlx prepare --workspace --check`、`check-query-compile.sh`、live entity catalog 校验与 `check-openapi-schema.sh`。
+  2. 新增 `docs/05-test-cases/schema-drift-cases.md`，冻结 `TEST-017` 的 drift 范围、正式入口与边界说明。
+  3. 新增 `.github/workflows/schema-drift.yml`，将 `TEST-017` 纳入 CI，并上传 schema drift artifacts。
+  4. 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md` 与 `P8` 留痕，随后执行真实验证、提交并继续下一个 `TEST` task。
+
+### BATCH-314（待审批）
+- 任务：`TEST-017` schema drift 检查
+- 状态：待审批
+- 当前任务编号：`TEST-017`
+- 实现要点：
+  - 新增 `scripts/check-schema-drift.sh`，作为 `TEST-017` 的正式单一入口：
+    - 自带 `core` profile 本地前置，执行 `up-local.sh`、`check-local-stack.sh core` 与 `db/scripts/migrate-up.sh`
+    - 执行 `cargo sqlx prepare --workspace --check`
+    - 执行 `./scripts/check-query-compile.sh`
+    - 采集并校验 `db::entity` 受管 catalog 与 live DB 真表：
+      - `keycloak.public` 全表必须与 `apps/platform-core/crates/db/src/entity/**` 对齐
+      - `datab.public.schema_migration_history` 必须存在
+    - 最后执行 `./scripts/check-openapi-schema.sh`
+    - 将 `entity-table-catalog.txt`、`keycloak-public-tables.txt`、`datab-public-tables.txt` 等 artifact 固定输出到 `target/test-artifacts/schema-drift/`。
+  - 新增 `docs/05-test-cases/schema-drift-cases.md`，冻结 `TEST-017` 的目标、统一入口、收口路径、五条验收 case 与边界说明。
+  - 新增 `.github/workflows/schema-drift.yml`：
+    - 在 GitHub Actions 内执行 `ENV_FILE=infra/docker/.env.local bash ./scripts/check-schema-drift.sh`
+    - `always()` 上传 `target/test-artifacts/schema-drift`
+    - `always()` 执行 `down-local.sh` 清理。
+  - 更新：
+    - `docs/05-test-cases/README.md`
+    - `scripts/README.md`
+    - `.github/workflows/README.md`
+    明确 `TEST-017` 负责 migration / `.sqlx` / 受管 entity catalog / OpenAPI 的 drift gate，不把业务库全表误报成 SeaORM entity 范围。
+- 验证步骤：
+  1. `bash -n scripts/check-schema-drift.sh`
+  2. `python - <<'PY' ... yaml.safe_load('.github/workflows/schema-drift.yml') ... PY`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-schema-drift.sh`
+  4. `cargo fmt --all`
+  5. `cargo check -p platform-core`
+  6. `cargo test -p platform-core`
+  7. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  8. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `bash -n scripts/check-schema-drift.sh` 通过。
+  - `python + PyYAML` 解析 `.github/workflows/schema-drift.yml` 通过。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-schema-drift.sh` 通过；真实覆盖：
+    - `core` profile 本地栈启动与 `check-local-stack.sh core`
+    - `datab.public.schema_migration_history` 与 `keycloak.public.realm` 等待就绪
+    - `db::entity` catalog 对齐 `keycloak.public`，额外校验 `schema_migration_history`
+    - `cargo sqlx prepare --workspace --check`
+    - `check-query-compile.sh`
+    - `check-openapi-schema.sh`
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅保留仓库既有 `unused_* / dead_code` warning。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`1` ignored（仓库既有 `iam_party_access_flow_live`）。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 查询缓存可重建，无新增漂移文件残留。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-017`
+  - `14-部署架构、容量规划与持续交付.md`：`14.4`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1 / 15.2`
+  - `docs/05-test-cases/README.md`
+  - `docs/04-runbooks/local-startup.md`
+  - `.cargo/config.toml`
+- 覆盖的任务清单条目：`TEST-017`
+- 未覆盖项：
+  - `TEST-018` 的性能冒烟尚未开始；当前批次只交付 schema / metadata / archive drift gate。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-301（计划中）
 - 任务：`TEST-004` 建立 migration smoke test，验证空库升级、种子导入、应用启动、重置回滚与重新升级
 - 状态：计划中

@@ -1,0 +1,26 @@
+name: schema-drift
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-017-schema-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install checker deps
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client ripgrep
+      - name: Run TEST-017 schema drift checker
+        run: ENV_FILE=infra/docker/.env.local bash ./scripts/check-schema-drift.sh
+      - name: Upload schema drift artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-drift-artifacts
+          path: target/test-artifacts/schema-drift
+          if-no-files-found: warn
+      - name: Tear down local stack
+        if: always()
+        run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true
