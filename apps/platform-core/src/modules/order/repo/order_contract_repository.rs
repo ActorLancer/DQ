@@ -72,7 +72,7 @@ pub async fn confirm_order_contract(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CONTRACT_CONFIRM_FORBIDDEN".to_string(),
                 message: format!(
                     "ORDER_CONTRACT_CONFIRM_FORBIDDEN: current state `{current_status}` is not confirmable"
                 ),
@@ -109,7 +109,7 @@ pub async fn confirm_order_contract(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CONTRACT_CONFIRM_FORBIDDEN".to_string(),
                 message: format!(
                     "ORDER_CONTRACT_CONFIRM_FORBIDDEN: contract template `{contract_template_name}` is not active"
                 ),
@@ -128,7 +128,7 @@ pub async fn confirm_order_contract(
             return Err((
                 StatusCode::CONFLICT,
                 Json(ErrorResponse {
-                    code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                    code: "ORDER_CONTRACT_CONFIRM_FORBIDDEN".to_string(),
                     message: format!(
                         "ORDER_CONTRACT_CONFIRM_FORBIDDEN: contract template `{contract_template_name}` does not match scenario snapshot `{expected_contract_template}`"
                     ),
@@ -203,7 +203,7 @@ pub async fn confirm_order_contract(
             (
                 StatusCode::BAD_GATEWAY,
                 Json(ErrorResponse {
-                    code: ErrorCode::BilProviderFailed.as_str().to_string(),
+                    code: "CONTRACT_SIGNING_PROVIDER_FAILED".to_string(),
                     message: format!("CONTRACT_SIGNING_PROVIDER_FAILED: {}", err.message()),
                     request_id: request_id.map(str::to_string),
                 }),

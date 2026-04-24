@@ -86,9 +86,9 @@ mod tests {
     }
 
     #[test]
-    fn error_response_prefers_embedded_business_code() {
+    fn error_response_uses_explicit_code_without_message_override() {
         let response = ErrorResponse {
-            code: "CONFLICT".to_string(),
+            code: "FILE_STD_TRANSITION_FORBIDDEN".to_string(),
             message: "FILE_STD_TRANSITION_FORBIDDEN: invalid transition".to_string(),
             request_id: Some("req-kernel-embedded".to_string()),
         };

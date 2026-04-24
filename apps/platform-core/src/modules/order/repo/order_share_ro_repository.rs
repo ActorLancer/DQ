@@ -51,7 +51,7 @@ pub async fn transition_share_ro_order(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "SHARE_RO_TRANSITION_FORBIDDEN".to_string(),
                 message: format!(
                     "SHARE_RO_TRANSITION_FORBIDDEN: order sku_type `{sku_type}` is not SHARE_RO"
                 ),
@@ -67,7 +67,7 @@ pub async fn transition_share_ro_order(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "SHARE_RO_TRANSITION_FORBIDDEN".to_string(),
                 message: format!(
                     "SHARE_RO_TRANSITION_FORBIDDEN: action `{}` cannot apply on current_state `{current_state}`",
                     payload.action

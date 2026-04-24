@@ -9,7 +9,7 @@ use crate::modules::storage::domain::resolve_storage_object_location;
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient};
-use kernel::{ErrorCode, ErrorResponse};
+use kernel::ErrorResponse;
 use serde_json::{Value, json};
 
 const DELIVERY_TEMPLATE_QUERY_RUN_READ_EVENT: &str = "delivery.template_query.run.read";
@@ -365,7 +365,7 @@ fn forbidden(message: &str, request_id: Option<&str>) -> (StatusCode, Json<Error
     (
         StatusCode::FORBIDDEN,
         Json(ErrorResponse {
-            code: ErrorCode::IamUnauthorized.as_str().to_string(),
+            code: "QUERY_RUN_READ_FORBIDDEN".to_string(),
             message: message.to_string(),
             request_id: request_id.map(str::to_string),
         }),

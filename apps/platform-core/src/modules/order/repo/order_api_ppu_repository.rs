@@ -52,7 +52,7 @@ pub async fn transition_api_ppu_order(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "API_PPU_TRANSITION_FORBIDDEN".to_string(),
                 message: format!(
                     "API_PPU_TRANSITION_FORBIDDEN: order sku_type `{sku_type}` is not API_PPU"
                 ),
@@ -68,7 +68,7 @@ pub async fn transition_api_ppu_order(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "API_PPU_TRANSITION_FORBIDDEN".to_string(),
                 message: format!(
                     "API_PPU_TRANSITION_FORBIDDEN: action `{}` cannot apply on current_state `{current_state}`",
                     payload.action

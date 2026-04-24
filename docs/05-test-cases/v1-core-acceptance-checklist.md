@@ -153,30 +153,30 @@
 
 | Gate ID | 执行日期 | 执行人 | Commit | 命令 | 结果 | 关键 artifact / order_id |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ACC-CONTRACT` |  |  |  |  |  |  |
-| `ACC-MIGRATION` |  |  |  |  |  |  |
-| `ACC-LOCAL` |  |  |  |  |  |  |
-| `ACC-SCENARIO` |  |  |  |  |  |  |
-| `ACC-SKU-COVERAGE` |  |  |  |  |  |  |
-| `ACC-ORCH-20ORDERS` |  |  |  |  |  |  |
-| `ACC-SHARE-RO` |  |  |  |  |  |  |
-| `ACC-QRY-LITE` |  |  |  |  |  |  |
-| `ACC-PROVIDER` |  |  |  |  |  |  |
-| `ACC-OUTBOX` |  |  |  |  |  |  |
-| `ACC-NOTIFICATION` |  |  |  |  |  |  |
-| `ACC-AUDIT` |  |  |  |  |  |  |
-| `ACC-SEARCHREC` |  |  |  |  |  |  |
-| `ACC-PAYMENT` |  |  |  |  |  |  |
-| `ACC-DELIVERY` |  |  |  |  |  |  |
-| `ACC-DISPUTE` |  |  |  |  |  |  |
-| `ACC-REPLAY` |  |  |  |  |  |  |
-| `ACC-CI-MATRIX` |  |  |  |  |  |  |
-| `ACC-COMPOSE` |  |  |  |  |  |  |
-| `ACC-SCHEMA` |  |  |  |  |  |  |
-| `ACC-PERFORMANCE` |  |  |  |  |  |  |
-| `ACC-FAILURE` |  |  |  |  |  |  |
-| `ACC-RECOVERY` |  |  |  |  |  |  |
-| `ACC-CANONICAL` |  |  |  |  |  |  |
+| `ACC-CONTRACT` | 2026-04-24 | codex | `d4d67b95` | `./scripts/check-api-contract-baseline.sh` | pass | `fixtures/contracts/test-003/*`、`docs/开发任务/V1-Core-实施进度日志-P8.md`（`BATCH-310/BATCH-311`） |
+| `ACC-MIGRATION` | 2026-04-24 | codex | `fe5e5085` | `ENV_FILE=infra/docker/.env.local ./scripts/check-migration-smoke.sh` | pass | `target/test-artifacts/migration-smoke/*`、`P8/BATCH-291` |
+| `ACC-LOCAL` | 2026-04-24 | codex | `c9ad3d10` | `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh` | pass | `target/test-artifacts/smoke-local/*`、`P8/BATCH-292` |
+| `ACC-SCENARIO` | 2026-04-24 | codex | `cd9e2fce` | `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh` | pass | `target/test-artifacts/order-e2e/*`、`P8/BATCH-293` |
+| `ACC-SKU-COVERAGE` | 2026-04-24 | codex | `429bca79` | `ENV_FILE=infra/docker/.env.local ./scripts/check-standard-sku-coverage.sh` | pass | `target/test-artifacts/standard-sku-coverage/*`、`fixtures/demo/sku-coverage-matrix.json` |
+| `ACC-ORCH-20ORDERS` | 2026-04-24 | codex | `85283dd4` | `ENV_FILE=infra/docker/.env.local ./scripts/check-order-orchestration.sh` | pass | `target/test-artifacts/order-orchestration/*`、`P8/BATCH-305` |
+| `ACC-SHARE-RO` | 2026-04-24 | codex | `52dcf9f9` | `ENV_FILE=infra/docker/.env.local ./scripts/check-share-ro-e2e.sh` | pass | `target/test-artifacts/share-ro-e2e/*`、`P8/BATCH-306` |
+| `ACC-QRY-LITE` | 2026-04-24 | codex | `035215fe` | `ENV_FILE=infra/docker/.env.local ./scripts/check-qry-lite-e2e.sh` | pass | `target/test-artifacts/qry-lite-e2e/*`、`P8/BATCH-307` |
+| `ACC-PROVIDER` | 2026-04-24 | codex | `d8a763b6` | `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh` | pass | `target/test-artifacts/provider-switch/*`、`P8/BATCH-294` |
+| `ACC-OUTBOX` | 2026-04-24 | codex | `7857876f` | `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh` | pass | `target/test-artifacts/outbox-consistency/*`、`P8/BATCH-295` |
+| `ACC-NOTIFICATION` | 2026-04-24 | codex | `723e4820` | `ENV_FILE=infra/docker/.env.local ./scripts/check-notification-smoke.sh` | pass | `target/test-artifacts/notification-smoke/*`、`P8/BATCH-308` |
+| `ACC-AUDIT` | 2026-04-24 | codex | `8df9a7c9` | `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh` | pass | `target/test-artifacts/audit-completeness/*`、`P8/BATCH-296` |
+| `ACC-SEARCHREC` | 2026-04-24 | codex | `2c32198d` | `ENV_FILE=infra/docker/.env.local ./scripts/check-search-rec-pg-authority.sh` | pass | `target/test-artifacts/search-rec-pg-authority/*`、`P8/BATCH-297` |
+| `ACC-PAYMENT` | 2026-04-24 | codex | `722ee675` | `ENV_FILE=infra/docker/.env.local ./scripts/check-payment-webhook-idempotency.sh` | pass | `target/test-artifacts/payment-webhook-idempotency/*`、`P8/BATCH-298` |
+| `ACC-DELIVERY` | 2026-04-24 | codex | `66300ea7` | `ENV_FILE=infra/docker/.env.local ./scripts/check-delivery-revocation.sh` | pass | `target/test-artifacts/delivery-revocation/*`、`P8/BATCH-309` |
+| `ACC-DISPUTE` | 2026-04-24 | codex | `924a9525` | `ENV_FILE=infra/docker/.env.local ./scripts/check-dispute-settlement-linkage.sh` | pass | `target/test-artifacts/dispute-settlement-linkage/*`、`P8/BATCH-300` |
+| `ACC-REPLAY` | 2026-04-24 | codex | `c926b1f5` | `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-replay-dry-run.sh` | pass | `target/test-artifacts/audit-replay-dry-run/*`、`P8/BATCH-301` |
+| `ACC-CI-MATRIX` | 2026-04-24 | codex | `16fbc8fe` | `./scripts/check-ci-minimal-matrix.sh all` | pass | `P8/BATCH-302`、本轮复审重跑记录 |
+| `ACC-COMPOSE` | 2026-04-24 | codex | `62a9c944` | `ENV_FILE=infra/docker/.env.local ./scripts/check-compose-smoke.sh` | pass | `target/test-artifacts/compose-smoke/*`、`P8/BATCH-303` |
+| `ACC-SCHEMA` | 2026-04-24 | codex | `60fc916b` | `ENV_FILE=infra/docker/.env.local ./scripts/check-schema-drift.sh` | pass | `target/test-artifacts/schema-drift/*`、`P8/BATCH-304` |
+| `ACC-PERFORMANCE` | 2026-04-24 | codex | `c91e1f96` | `ENV_FILE=infra/docker/.env.local ./scripts/check-performance-smoke.sh` | pass | `target/test-artifacts/performance-smoke/*`、`P8/BATCH-305` |
+| `ACC-FAILURE` | 2026-04-24 | codex | `3043c9d8` | `ENV_FILE=infra/docker/.env.local ./scripts/check-failure-drill.sh` | pass | `target/test-artifacts/failure-drill/*`、`P8/BATCH-306` |
+| `ACC-RECOVERY` | 2026-04-24 | codex | `e6e12fc2` | `ENV_FILE=infra/docker/.env.local ./scripts/check-rollback-recovery.sh` | pass | `target/test-artifacts/rollback-recovery/*`、`P8/BATCH-307` |
+| `ACC-CANONICAL` | 2026-04-24 | codex | `68538196` | `CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh` | pass | `P8/BATCH-308`、`.github/workflows/canonical-contracts.yml` |
 
 ## Boundary
 

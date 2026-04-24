@@ -53,7 +53,7 @@ pub async fn transition_api_sub_order(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "API_SUB_TRANSITION_FORBIDDEN".to_string(),
                 message: format!(
                     "API_SUB_TRANSITION_FORBIDDEN: order sku_type `{sku_type}` is not API_SUB"
                 ),
@@ -69,7 +69,7 @@ pub async fn transition_api_sub_order(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "API_SUB_TRANSITION_FORBIDDEN".to_string(),
                 message: format!(
                     "API_SUB_TRANSITION_FORBIDDEN: action `{}` cannot apply on current_state `{current_state}`",
                     payload.action

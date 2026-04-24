@@ -256,7 +256,7 @@ async fn validate_order_create_preconditions(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CREATE_FORBIDDEN".to_string(),
                 message: "ORDER_CREATE_FORBIDDEN: product is not listed".to_string(),
                 request_id: None,
             }),
@@ -266,7 +266,7 @@ async fn validate_order_create_preconditions(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CREATE_FORBIDDEN".to_string(),
                 message: "ORDER_CREATE_FORBIDDEN: sku is not purchasable".to_string(),
                 request_id: None,
             }),
@@ -276,7 +276,7 @@ async fn validate_order_create_preconditions(
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CREATE_FORBIDDEN".to_string(),
                 message: "ORDER_CREATE_FORBIDDEN: product is blocked by risk policy".to_string(),
                 request_id: None,
             }),
@@ -305,7 +305,7 @@ async fn ensure_org_active(
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CREATE_FORBIDDEN".to_string(),
                 message: format!("ORDER_CREATE_FORBIDDEN: {org_label} organization not found"),
                 request_id: None,
             }),
@@ -316,7 +316,7 @@ async fn ensure_org_active(
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CREATE_FORBIDDEN".to_string(),
                 message: format!(
                     "ORDER_CREATE_FORBIDDEN: {org_label} organization status is not active"
                 ),

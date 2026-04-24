@@ -71,7 +71,7 @@ pub async fn cancel_order_with_state_machine(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse {
-                code: ErrorCode::TrdStateConflict.as_str().to_string(),
+                code: "ORDER_CANCEL_FORBIDDEN".to_string(),
                 message: format!(
                     "ORDER_CANCEL_FORBIDDEN: current state `{current_status}` is not cancelable"
                 ),

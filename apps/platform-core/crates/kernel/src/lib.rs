@@ -93,9 +93,8 @@ impl Serialize for ErrorResponse {
     where
         S: serde::Serializer,
     {
-        let emitted_code = embedded_error_code(&self.message).unwrap_or_else(|| self.code.clone());
         let mut state = serializer.serialize_struct("ErrorResponse", 4)?;
-        state.serialize_field("code", &emitted_code)?;
+        state.serialize_field("code", &self.code)?;
         state.serialize_field("message", &self.message)?;
         state.serialize_field(
             "request_id",
@@ -107,20 +106,6 @@ impl Serialize for ErrorResponse {
         state.serialize_field("details", &Value::Object(Map::new()))?;
         state.end()
     }
-}
-
-fn embedded_error_code(message: &str) -> Option<String> {
-    let candidate = message
-        .split_once(':')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or(message)
-        .trim();
-    let has_multiple_segments = candidate.contains('_');
-    let is_valid = has_multiple_segments
-        && candidate
-            .chars()
-            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_');
-    is_valid.then(|| candidate.to_string())
 }
 
 impl ErrorResponse {

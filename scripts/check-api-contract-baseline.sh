@@ -317,6 +317,102 @@ check_state_machine_contracts() {
   ok "state-machine contract baseline aligned"
 }
 
+check_runtime_error_code_contracts() {
+  python3 - <<'PY'
+from pathlib import Path
+import re
+import sys
+
+kernel_lib = Path("apps/platform-core/crates/kernel/src/lib.rs")
+kernel_text = kernel_lib.read_text(encoding="utf-8")
+if "embedded_error_code(" in kernel_text:
+    print(
+        f"[fail] {kernel_lib} still contains embedded_error_code fallback extraction",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+literal_mismatch_pattern = re.compile(r"ErrorResponse\s*\{([^{}]|\{[^{}]*\})*?\}", re.S)
+code_pattern = re.compile(r"code\s*:\s*([^,]+),")
+message_pattern = re.compile(r"message\s*:\s*([^,]+),")
+prefix_pattern = re.compile(r'"([A-Z][A-Z0-9_]+):')
+
+literal_mismatches = []
+for file in Path("apps/platform-core/src/modules").rglob("*.rs"):
+    text = file.read_text(encoding="utf-8")
+    for match in literal_mismatch_pattern.finditer(text):
+        block = match.group(0)
+        code_match = code_pattern.search(block)
+        message_match = message_pattern.search(block)
+        if code_match is None or message_match is None:
+            continue
+        code_expr = code_match.group(1).strip()
+        message_expr = message_match.group(1).strip()
+        prefix_match = prefix_pattern.search(message_expr)
+        if prefix_match is None:
+            continue
+        token = prefix_match.group(1)
+        if token in code_expr:
+            continue
+        line = text.count("\n", 0, match.start()) + 1
+        literal_mismatches.append((str(file), line, token, code_expr))
+
+if literal_mismatches:
+    for path, line, token, code_expr in literal_mismatches[:20]:
+        print(
+            f"[fail] {path}:{line} uses business message `{token}:...` with non-authoritative code `{code_expr}`",
+            file=sys.stderr,
+        )
+    if len(literal_mismatches) > 20:
+        print(
+            f"[fail] ... and {len(literal_mismatches) - 20} more runtime code/message mismatches",
+            file=sys.stderr,
+        )
+    sys.exit(1)
+
+helper_signature = re.compile(
+    r"fn\s+(\w+)\([^\)]*message:\s*&str[^\)]*\)\s*->\s*\(StatusCode,\s*Json<ErrorResponse>\)\s*\{",
+    re.S,
+)
+generic_code_pattern = re.compile(
+    r"code\s*:\s*(?:kernel::)?ErrorCode::[A-Za-z0-9_]+\.as_str\(\)\.to_string\(\)"
+)
+prefixed_call_pattern = re.compile(
+    r"\b(\w+)\s*\(\s*(?:&?format!\(\s*)?\"([A-Z][A-Z0-9_]+):"
+)
+
+helper_mismatches = []
+for file in Path("apps/platform-core/src/modules").rglob("*.rs"):
+    text = file.read_text(encoding="utf-8")
+    call_map: dict[str, set[str]] = {}
+    for fn_name, prefix in prefixed_call_pattern.findall(text):
+        call_map.setdefault(fn_name, set()).add(prefix)
+    for fn_match in helper_signature.finditer(text):
+        fn_name = fn_match.group(1)
+        if fn_name not in call_map:
+            continue
+        body = text[fn_match.end() :]
+        next_fn = body.find("\nfn ")
+        snippet = body if next_fn == -1 else body[:next_fn]
+        if generic_code_pattern.search(snippet):
+            helper_mismatches.append((str(file), fn_name, sorted(call_map[fn_name])))
+
+if helper_mismatches:
+    for path, fn_name, prefixes in helper_mismatches[:20]:
+        print(
+            f"[fail] {path}:{fn_name} handles prefixed business errors {prefixes} but still emits generic ErrorCode::*",
+            file=sys.stderr,
+        )
+    if len(helper_mismatches) > 20:
+        print(
+            f"[fail] ... and {len(helper_mismatches) - 20} more helper mismatch locations",
+            file=sys.stderr,
+        )
+    sys.exit(1)
+PY
+  ok "runtime error-code contracts aligned"
+}
+
 main() {
   log "running TEST-003 API contract baseline checker"
   ./scripts/check-openapi-schema.sh
@@ -325,6 +421,7 @@ main() {
   check_key_response_fields
   check_error_code_baseline
   check_state_machine_contracts
+  check_runtime_error_code_contracts
   ok "TEST-003 API contract baseline checker passed"
 }
 

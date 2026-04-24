@@ -409,7 +409,7 @@ fn conflict(message: &str, request_id: Option<&str>) -> (StatusCode, Json<ErrorR
     (
         StatusCode::CONFLICT,
         Json(ErrorResponse {
-            code: ErrorCode::TrdStateConflict.as_str().to_string(),
+            code: "ORDER_DELIVERABILITY_CHECK_FAILED".to_string(),
             message: message.to_string(),
             request_id: request_id.map(str::to_string),
         }),

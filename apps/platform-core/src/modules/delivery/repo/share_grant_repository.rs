@@ -17,7 +17,7 @@ use crate::modules::order::repo::{
 use axum::Json;
 use axum::http::StatusCode;
 use db::{Client, GenericClient, Row};
-use kernel::{ErrorCode, ErrorResponse};
+use kernel::ErrorResponse;
 use serde_json::{Map, Value, json};
 
 const DELIVERY_SHARE_MANAGE_EVENT: &str = "delivery.share.enable";
@@ -1443,7 +1443,7 @@ fn not_found(message: &str, request_id: Option<&str>) -> (StatusCode, Json<Error
     (
         StatusCode::NOT_FOUND,
         Json(ErrorResponse {
-            code: ErrorCode::TrdStateConflict.as_str().to_string(),
+            code: "SHARE_GRANT_FORBIDDEN".to_string(),
             message: message.to_string(),
             request_id: request_id.map(str::to_string),
         }),
@@ -1454,7 +1454,7 @@ fn bad_request(message: &str, request_id: Option<&str>) -> (StatusCode, Json<Err
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {
-            code: ErrorCode::CatValidationFailed.as_str().to_string(),
+            code: "SHARE_GRANT_FORBIDDEN".to_string(),
             message: message.to_string(),
             request_id: request_id.map(str::to_string),
         }),
@@ -1465,7 +1465,7 @@ fn conflict(message: &str, request_id: Option<&str>) -> (StatusCode, Json<ErrorR
     (
         StatusCode::CONFLICT,
         Json(ErrorResponse {
-            code: ErrorCode::TrdStateConflict.as_str().to_string(),
+            code: "SHARE_GRANT_FORBIDDEN".to_string(),
             message: message.to_string(),
             request_id: request_id.map(str::to_string),
         }),

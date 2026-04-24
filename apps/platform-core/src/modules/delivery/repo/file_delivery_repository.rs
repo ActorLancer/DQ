@@ -793,7 +793,7 @@ pub(crate) fn bad_request(
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {
-            code: ErrorCode::TrdStateConflict.as_str().to_string(),
+            code: "FILE_DELIVERY_COMMIT_FORBIDDEN".to_string(),
             message: message.to_string(),
             request_id: request_id.map(str::to_string),
         }),
@@ -807,7 +807,7 @@ pub(crate) fn conflict(
     (
         StatusCode::CONFLICT,
         Json(ErrorResponse {
-            code: ErrorCode::TrdStateConflict.as_str().to_string(),
+            code: "FILE_DELIVERY_COMMIT_FORBIDDEN".to_string(),
             message: message.to_string(),
             request_id: request_id.map(str::to_string),
         }),

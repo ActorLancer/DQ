@@ -58,7 +58,7 @@ pub async fn commit_order_delivery_api(
             return Err((
                 StatusCode::CONFLICT,
                 Json(ErrorResponse {
-                    code: kernel::ErrorCode::TrdStateConflict.as_str().to_string(),
+                    code: "DELIVERY_COMMIT_FORBIDDEN".to_string(),
                     message: format!(
                         "DELIVERY_COMMIT_FORBIDDEN: branch `{}` is not supported",
                         payload.branch

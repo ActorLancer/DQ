@@ -111,6 +111,45 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-311（待审批）
+- 任务：`TEST` 阶段复审收口：关闭 `TEST-003` 错误码 fallback 残留，补齐验收证据记录留痕
+- 状态：待审批
+- 当前任务编号：`TEST-003`（复审整改）
+- 前置依赖核对结果：`TEST-001~TEST-028` 在 `CSV + P8` 均已覆盖；`ENV-040`、`DB-032`、`CORE-024` 依赖链继续满足；本批次只做复审整改，不新增跨阶段依赖。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认当前复审重点是 `TEST` 阶段“完成判定一致性与残留收口”。
+  - `docs/开发任务/V1-Core-TODO与预留清单.md`：确认唯一 `TEST` 非阻塞残留为 `TODO-TEST-003-001`。
+  - `docs/05-test-cases/v1-core-acceptance-checklist.md`：确认 Evidence Record Template 仍为空白，需回填正式 gate 证据。
+  - `apps/platform-core/crates/kernel/src/lib.rs`、`apps/platform-core/src/modules/order/**`、`apps/platform-core/src/modules/delivery/**`：确认仍存在历史 `ErrorResponse { code=通用码, message=业务码前缀... }` 回退路径。
+  - `scripts/check-api-contract-baseline.sh`：确认原 checker 仅覆盖 OpenAPI / baseline 文件，缺失运行时代码与 message 一致性校验。
+- 实现要点：
+  - 移除 `kernel::ErrorResponse` 的序列化期 message 前缀兼容提取，`code` 字段回归“只信显式值”。
+  - 将 `order/delivery` 模块历史 fallback callsite 与 helper 统一改为直接写正式业务错误码（如 `*_FORBIDDEN` / `*_FAILED`），不再依赖隐式纠偏。
+  - 扩展 `scripts/check-api-contract-baseline.sh`：新增运行时 contract 静态检查（拒绝 `message` 前缀业务码与 `code` 不一致、拒绝 helper 继续发通用 `ErrorCode::*`）。
+  - 关闭 `TODO-TEST-003-001`；补齐 `docs/05-test-cases/v1-core-acceptance-checklist.md` 的 Evidence Record，回填 gate-commit-command-artifact 追溯链。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `cargo test -p platform-core`
+  4. `cargo sqlx prepare --workspace`
+  5. `./scripts/check-query-compile.sh`
+  6. `./scripts/check-api-contract-baseline.sh`
+  7. `CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh`
+  8. `./scripts/check-ci-minimal-matrix.sh all`
+- 验证结果：
+  - 上述命令全部通过。
+  - `TEST-003` checker 新增 `runtime error-code contracts aligned`，可机器化阻断“通用码 + 业务前缀 message”回退。
+  - `check-ci-minimal-matrix.sh all` 通过（Rust/TS/Go/migration/OpenAPI lanes 全绿），复审日志留存于 `target/test-artifacts/ci-matrix-rerun.log`。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST` 阶段复审判定
+  - `接口清单与OpenAPI-Schema冻结表.md`：错误响应 envelope 与业务错误码权威口径
+  - `docs/05-test-cases/v1-core-acceptance-checklist.md`
+- 覆盖的任务清单条目：`TEST-003`（复审整改），并对 `TEST-015`、`TEST-028` gate 进行了复审重跑验证。
+- 未覆盖项：
+  - 无新增未覆盖项；当前复审范围内问题已收口。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-325（计划中）
 - 任务：`TEST-028` 建立 canonical smoke / contract checker，强制校验正式 topic、正式接口、正式 consumer group、OpenAPI 示例、验收矩阵以及宿主机/容器内 Kafka 双地址边界
 - 状态：计划中
