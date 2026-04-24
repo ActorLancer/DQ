@@ -217,6 +217,87 @@ function inferQuantity(orderBlueprint, sku) {
   return "1";
 }
 
+function normalizeBillingMode(billingMode) {
+  return billingMode === "metered" ? "pay_per_use" : billingMode;
+}
+
+function deriveSettlementBasis(billingMode, pricingMode) {
+  switch (`${billingMode}:${pricingMode}`) {
+    case "one_time:one_time":
+    case "one_time:subscription":
+    case "one_time:pay_per_use":
+      return "one_time_final";
+    case "subscription:one_time":
+    case "subscription:subscription":
+    case "subscription:pay_per_use":
+      return "periodic_cycle";
+    case "pay_per_use:one_time":
+    case "pay_per_use:subscription":
+    case "pay_per_use:pay_per_use":
+      return "usage_metered";
+    case "unknown:subscription":
+      return "periodic_cycle";
+    case "unknown:pay_per_use":
+      return "usage_metered";
+    default:
+      return "manual_v1_default";
+  }
+}
+
+function buildScenarioSkuSnapshot(orderBlueprint, sku, scenarioTemplate) {
+  return {
+    scenario_code: orderBlueprint.scenario_code,
+    scenario_name: scenarioTemplate.scenario_name,
+    selected_sku_id: orderBlueprint.sku_id,
+    selected_sku_code: sku.sku_type,
+    selected_sku_type: sku.sku_type,
+    selected_sku_role: orderBlueprint.scenario_snapshot.selected_sku_role,
+    primary_sku: scenarioTemplate.primary_sku,
+    supplementary_skus: scenarioTemplate.supplementary_skus,
+    contract_template: orderBlueprint.template_codes.contract_template,
+    acceptance_template: orderBlueprint.template_codes.acceptance_template,
+    refund_template: orderBlueprint.template_codes.refund_template,
+    per_sku_snapshot_required: true,
+    multi_sku_requires_independent_contract_authorization_settlement: true,
+  };
+}
+
+function buildOrderPriceSnapshot(orderBlueprint, sku, scenarioTemplate, timeline) {
+  const quantity = Number(inferQuantity(orderBlueprint, sku));
+  const billingMode = normalizeBillingMode(sku.billing_mode);
+  const pricingMode = billingMode;
+  const unitPrice =
+    quantity > 1
+      ? (Number(orderBlueprint.order_amount) / quantity).toFixed(2)
+      : orderBlueprint.order_amount;
+
+  return {
+    seed_source: "fixtures/demo",
+    task_id: "TEST-002",
+    product_id: orderBlueprint.product_id,
+    sku_id: orderBlueprint.sku_id,
+    sku_code: sku.sku_type,
+    sku_type: sku.sku_type,
+    pricing_mode: pricingMode,
+    unit_price: unitPrice,
+    currency_code: orderBlueprint.currency_code,
+    billing_mode: billingMode,
+    refund_mode: sku.refund_mode,
+    settlement_terms: {
+      settlement_basis: deriveSettlementBasis(billingMode, pricingMode),
+      settlement_mode: "manual_v1",
+    },
+    tax_terms: {
+      tax_policy: "platform_default",
+      tax_code: "UNSPECIFIED",
+      tax_inclusive: false,
+    },
+    scenario_snapshot: buildScenarioSkuSnapshot(orderBlueprint, sku, scenarioTemplate),
+    captured_at: timeline.createdAt,
+    source: "fixtures/demo/TEST-002",
+  };
+}
+
 function inferGrantType(deliveryObjectKind) {
   switch (deliveryObjectKind) {
     case "api_access":
@@ -244,6 +325,7 @@ function inferGrantType(deliveryObjectKind) {
 function buildSeedPayloads(fixtures, subjectData, catalogData, baseProductRows) {
   const productMap = mapBy(baseProductRows, "product_id");
   const skuMap = mapBy(catalogData.official_display_skus, "sku_id");
+  const scenarioTemplateMap = mapBy(catalogData.scenario_templates, "scenario_code");
   const orderMap = mapBy(fixtures.orders.order_blueprints, "order_blueprint_id");
   const billingByOrder = new Map();
   for (const billingSample of fixtures.billing.billing_samples) {
@@ -431,10 +513,15 @@ function buildSeedPayloads(fixtures, subjectData, catalogData, baseProductRows) 
     const deliveryBlueprints = deliveryByOrder.get(orderBlueprint.order_blueprint_id) ?? [];
     const primaryDeliveryBlueprint = deliveryBlueprints[0];
     const timeline = buildTimeline(orderBlueprint);
+    const scenarioTemplate = scenarioTemplateMap.get(orderBlueprint.scenario_code);
     assert(sku, `missing sku for order ${orderBlueprint.order_blueprint_id}`);
     assert(baseProduct, `missing base product for order ${orderBlueprint.order_blueprint_id}`);
     assert(billingSample, `missing billing sample for order ${orderBlueprint.order_blueprint_id}`);
     assert(primaryDeliveryBlueprint, `missing delivery blueprint for order ${orderBlueprint.order_blueprint_id}`);
+    assert(
+      scenarioTemplate,
+      `missing scenario template for order ${orderBlueprint.order_blueprint_id}`
+    );
 
     orderRows.push({
       order_id: orderBlueprint.order_blueprint_id,
@@ -459,15 +546,12 @@ function buildSeedPayloads(fixtures, subjectData, catalogData, baseProductRows) 
         provider_key: providerKey,
         callback_topic: fixtures.billing.payment_provider.callback_topic,
       },
-      price_snapshot_json: {
-        seed_source: "fixtures/demo",
-        task_id: "TEST-002",
-        scenario_code: orderBlueprint.scenario_code,
-        scenario_role: orderBlueprint.scenario_role,
-        sku_type: sku.sku_type,
-        order_amount: orderBlueprint.order_amount,
-        template_codes: orderBlueprint.template_codes,
-      },
+      price_snapshot_json: buildOrderPriceSnapshot(
+        orderBlueprint,
+        sku,
+        scenarioTemplate,
+        timeline
+      ),
       trust_boundary_snapshot: {
         seed_source: "fixtures/demo",
         task_id: "TEST-002",

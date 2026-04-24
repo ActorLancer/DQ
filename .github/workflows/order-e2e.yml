@@ -1,0 +1,39 @@
+name: order-e2e
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  order-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq postgresql-client ripgrep chromium
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run TEST-006 order E2E
+        run: ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh
+
+      - name: Tear down local stack
+        if: always()
+        run: ./scripts/down-local.sh

@@ -146,12 +146,31 @@ export function createAcceptanceIdempotencyKey(action: "accept" | "reject"): str
   return `web-011-acceptance-${action}-${Date.now()}`;
 }
 
+function unwrapEnvelopeData<T>(
+  response:
+    | {
+        data?: T | { data?: T | null } | null;
+      }
+    | undefined,
+) {
+  const payload = response?.data;
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    (payload as { data?: T | null }).data !== undefined
+  ) {
+    return (payload as { data?: T | null }).data ?? null;
+  }
+  return (payload as T | null | undefined) ?? null;
+}
+
 export function unwrapAcceptOrder(response: AcceptOrderResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<AcceptanceDecisionResult>(response);
 }
 
 export function unwrapRejectOrder(response: RejectOrderResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<RejectionDecisionResult>(response);
 }
 
 export function canReadAcceptance(subject: SessionSubject | null | undefined) {

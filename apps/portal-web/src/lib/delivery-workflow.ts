@@ -596,54 +596,73 @@ export function createDeliveryIdempotencyKey(kind: string): string {
   return `web-010-delivery-${kind}-${Date.now()}`;
 }
 
+function unwrapEnvelopeData<T>(
+  response:
+    | {
+        data?: T | { data?: T | null } | null;
+      }
+    | undefined,
+) {
+  const payload = response?.data;
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    (payload as { data?: T | null }).data !== undefined
+  ) {
+    return (payload as { data?: T | null }).data ?? null;
+  }
+  return (payload as T | null | undefined) ?? null;
+}
+
 export function unwrapCommitDelivery(
   response: CommitOrderDeliveryResponse | undefined,
 ) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<CommitDeliveryResult>(response);
 }
 
 export function unwrapDownloadTicket(response: DownloadTicketResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<DownloadTicket>(response);
 }
 
 export function unwrapRevisionSubscription(
   response: RevisionSubscriptionResponse | undefined,
 ) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<RevisionSubscription>(response);
 }
 
 export function unwrapRevisionSubscriptionMutation(
   response: ManageRevisionSubscriptionResponse | undefined,
 ) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<RevisionSubscriptionMutationResult>(response);
 }
 
 export function unwrapShareGrantList(response: ShareGrantListResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<ShareGrantList>(response);
 }
 
 export function unwrapShareGrant(response: ManageShareGrantResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<ShareGrantResult>(response);
 }
 
 export function unwrapTemplateGrant(
   response: ManageTemplateGrantResponse | undefined,
 ) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<TemplateGrantResult>(response);
 }
 
 export function unwrapSandboxWorkspace(
   response: ManageSandboxWorkspaceResponse | undefined,
 ) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<SandboxWorkspaceResult>(response);
 }
 
 export function unwrapApiUsageLog(response: ApiUsageLogResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<ApiUsageLog>(response);
 }
 
 export function unwrapQueryRuns(response: QueryRunsResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<QueryRuns>(response);
 }
 
 export function formatDeliveryError(error: unknown) {

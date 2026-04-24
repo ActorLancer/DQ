@@ -8,6 +8,7 @@
 - `contract-tests.yml`：执行 `./scripts/check-api-contract-baseline.sh`，承接 `TEST-003` 正式 API contract baseline。
 - `migration-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-migration-smoke.sh`，承接 `TEST-004` migration smoke。
 - `local-environment-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`，承接 `TEST-005` 本地环境 smoke。
+- `order-e2e.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh`，承接 `TEST-006` 五条标准链路 order E2E。
 
 后续任务将继续补齐：
 

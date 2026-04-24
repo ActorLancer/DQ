@@ -507,3 +507,82 @@
   - 统一错误码字典在若干历史 runtime callsite 仍存在“消息前缀携带业务码、原始 fallback code 保留通用码”的兼容路径；本批通过统一序列化层优先发出消息前缀中的正式业务错误码，未在本任务中逐一重写全部历史调用点。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-303（计划中）
+- 任务：`TEST-006` 建立订单端到端测试，严格按五条标准链路命名与验收：工业设备运行指标 API 订阅、工业质量与产线日报文件包交付、供应链协同查询沙箱、零售门店经营分析 API / 报告订阅、商圈/门店选址查询服务
+- 状态：计划中
+- 说明：当前仓库已有 `apps/portal-web/e2e/web018-live.spec.ts`、`docs/05-test-cases/web-smoke-cases.md`、`fixtures/demo/*.json`、`apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/**` 和 `trade027 / dlv025` 等局部资产，但 live E2E 仍只真实打通单条门户链路与单条控制台链路，且没有把五条标准链路逐条收口成 `TEST-006` 官方 checker、验收文档与 CI。当前批次将以 `fixtures/demo/scenarios.json + orders.json` 为唯一场景真值源，新增五条标准链路 order E2E 基线：真实 Keycloak 登录、门户搜索/商品详情/下单/订单详情/场景交付页、后端 order detail / lifecycle / trace 回查，以及本地/CI 可重复运行的脚本与 workflow。
+- 前置依赖核对结果：`ENV-040` 已提供本地 PostgreSQL / Kafka / Redis / OpenSearch / MinIO / Keycloak / Mock Payment / observability 联调基线；`DB-032` 已通过 `TEST-004`/`TEST-005` 验证 migration/seed/local smoke；`CORE-024` 已提供 `platform-core` 主 API 与测试夹具。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-006` 的正式交付是五条标准链路 order E2E，不得停留在单条 live 示例或静态 smoke。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `5.3.2` 五条标准链路官方命名，以及 `5.3.2A` 到 `API_SUB / API_PPU / FILE_STD / FILE_SUB / SBX_STD / SHARE_RO / QRY_LITE / RPT_STD` 的正式映射。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段需要把链路演示固化为可重复验收，而不是局部 smoke。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`、`测试用例矩阵正式版.md`：确认 `PostgreSQL` 是真值源，浏览器不得直连 `Kafka / PostgreSQL / OpenSearch / Redis / Fabric`，订单 E2E 至少应覆盖 `CORE-003 ~ CORE-008` 的搜索/详情/下单/详情/交付入口与请求边界。
+  - `docs/05-test-cases/README.md`、`web-smoke-cases.md`、`order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`：确认现有 `WEB-018` live E2E 只覆盖单条链路；`TEST-006` 需要把五条标准链路逐条命名、逐条验收，并继续遵守宿主机 `127.0.0.1:9094` 与受控浏览器边界。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认门户链路至少涉及首页、搜索、商品详情、下单、订单详情、场景对应交付页和验收页的正式命名与权限提示。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/mock-payment.md`、`scripts/README.md`：确认 `TEST-006` 应复用 `smoke-local.sh`、`seed-demo.sh`、`check-demo-seed.sh`、`check-keycloak-realm.sh` 的正式入口，不自造临时环境脚本。
+  - `fixtures/demo/README.md`、`fixtures/demo/scenarios.json`、`fixtures/demo/orders.json`、`fixtures/demo/delivery.json`、`apps/platform-core/src/modules/delivery/tests/fixtures/dlv026/manifest.json`：确认五条标准链路的商品、SKU、订单蓝图和场景交付入口已有正式真值，可直接作为 E2E 数据基线。
+  - `apps/portal-web/playwright.config.ts`、`apps/portal-web/e2e/smoke-live.spec.ts`、`apps/portal-web/e2e/web018-live.spec.ts`、`apps/portal-web/src/lib/standard-demo.ts`、`apps/portal-web/src/lib/order-workflow.ts`、`apps/portal-web/src/lib/delivery-workflow.ts`：确认门户已有 live helper 和五场景引导骨架，但还没有五条标准链路逐条执行的 order E2E。
+- 当前完成标准理解：
+  - 形成 `TEST-006` 专属 order E2E checker，可在本地和 CI 重复运行，逐条覆盖 `S1 ~ S5` 五条标准链路的真实前后端联动。
+  - 每条链路至少要真实经过：Keycloak / IAM 登录、门户首页或场景页、搜索、商品详情、下单、订单详情、场景对应交付页，并回查后端 order detail / lifecycle 或 trace 证据。
+  - 测试命名、场景名、SKU 映射、产品/订单 fixture 必须完全复用 `fixtures/demo/*.json` 与冻结文档，不自创第二套场景矩阵。
+  - 浏览器请求必须继续满足 `restrictedRequests=[]`，所有真实 API 都通过 `portal-web -> /api/platform -> platform-core`。
+- 实施计划：
+  1. 追加 `TEST-006` 文档与官方 checker，冻结五条标准链路的 order E2E 执行入口、断言和失败回查方式。
+  2. 新增门户 live E2E spec / helper，按 `S1 ~ S5` 逐条执行真实搜索、详情、下单、订单详情和场景交付页访问，并补充后端回查。
+  3. 新增 CI workflow，把 `smoke-local + seed-demo + TEST-006 checker` 串成最小可重复链路。
+  4. 执行本地真实验证：`smoke-local`、`seed-demo`、新的 order E2E checker，以及 Rust/TS 通用校验，完成留痕与提交。
+
+### BATCH-303（待审批）
+- 任务：`TEST-006` 建立订单端到端测试，严格按五条标准链路命名与验收：工业设备运行指标 API 订阅、工业质量与产线日报文件包交付、供应链协同查询沙箱、零售门店经营分析 API / 报告订阅、商圈/门店选址查询服务
+- 状态：待审批
+- 当前任务编号：`TEST-006`
+- 前置依赖核对结果：`ENV-040` 已提供本地 PostgreSQL / Kafka / Redis / OpenSearch / MinIO / Keycloak / Mock Payment / observability 联调基线；`DB-032` 已通过 `TEST-004`/`TEST-005` 验证 migration/seed/local smoke；`CORE-024` 已提供 `platform-core` 主 API 与测试夹具。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-006` 的正式交付是五条标准链路 order E2E，不得停留在单条 live 示例。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核五条标准链路官方命名、`5.3.2A` SKU / 模板映射与 `TEST` 阶段“可重复验收”要求。
+  - `docs/05-test-cases/README.md`、`order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`、`docs/页面说明书/页面说明书-V1-完整版.md`：确认门户链路至少覆盖首页、搜索、商品详情、下单、订单详情、交付页、验收页与权限态。
+  - `docs/04-runbooks/local-startup.md`、`scripts/README.md`、`fixtures/demo/*.json`、`apps/portal-web/e2e/web018-live.spec.ts`、`apps/portal-web/src/lib/standard-demo.ts`：确认当前可复用正式入口、demo 真值源与 live E2E 基线。
+- 实现要点：
+  - 新增 `apps/portal-web/e2e/test006-standard-order-live.spec.ts`，按 `S1 ~ S5` 逐条执行真实 Keycloak password grant、门户首页 / 标准场景页、搜索、商品详情、下单页、订单详情页、交付页、验收页，并回查 `GET /api/v1/orders/{id}`、`GET /api/v1/orders/{id}/lifecycle-snapshots`、`GET /api/v1/developer/trace?order_id={id}`。
+  - 新增 `scripts/check-order-e2e.sh` 与 `.github/workflows/order-e2e.yml`，把 `smoke-local.sh`、`seed-local-iam-test-identities.sh`、`seed-demo.sh`、`check-demo-seed.sh` 和门户 live E2E 串成 `TEST-006` 正式 checker / CI 入口。
+  - 新增 `docs/05-test-cases/order-e2e-cases.md`，冻结五条标准链路执行路径、回查 API、宿主机边界与正式命令；同步更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`。
+  - 修正门户和 fixture 对接中的正式口径漂移：
+    - `scripts/seed-demo.mjs` 生成完整合法的 `price_snapshot_json`，消除 demo 订单详情因缺失 `product_id` 触发的 `TRD_STATE_CONFLICT`。
+    - `apps/portal-web/src/lib/standard-demo.ts` 搜索词收回到五条标准链路官方全名，避免本地 PG fallback 因短词命不中而误报无结果。
+    - `apps/portal-web/src/lib/order-workflow.ts`、`delivery-workflow.ts`、`acceptance-workflow.ts` 补齐对正式统一 envelope 的解包兼容，消除 `data.data` 残留导致的订单详情空态。
+    - 交付页断言按正式权限矩阵收口：`local-buyer-operator` 在 `S2(FILE_STD)` 显式验证 `主按钮权限不足`，而不是误断言文件交付可执行表单；验收页标题改为精确匹配，避免与加载态标题冲突。
+- 验证步骤：
+  1. `pnpm --filter @datab/portal-web typecheck`
+  2. `pnpm --filter @datab/portal-web lint`
+  3. `WEB_E2E_LIVE=1 WEB_E2E_PORTAL_USERNAME=local-buyer-operator WEB_E2E_PORTAL_PASSWORD=LocalBuyerOperator123! WEB_E2E_TRACE_USERNAME=local-tenant-developer WEB_E2E_TRACE_PASSWORD=LocalTenantDeveloper123! PLATFORM_CORE_BASE_URL=http://127.0.0.1:8094 pnpm --filter @datab/portal-web test:e2e:orders-live`
+  4. `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh`
+  5. `pnpm --filter @datab/portal-web build`
+  6. `cargo fmt --all`
+  7. `cargo check -p platform-core`
+  8. `cargo test -p platform-core`
+  9. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  10. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `pnpm --filter @datab/portal-web typecheck`、`lint` 通过。
+  - 门户 live E2E 通过：`5 passed (17.1s)`，五条标准链路均真实经过页面跳转与后端 `order detail / lifecycle / developer trace` 回查。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh` 通过：复用 `TEST-005` 本地 smoke、完成 Keycloak 本地身份对齐、demo importer / checker 回查，并再次跑通 `5 passed (21.9s)` 的门户 live E2E。
+  - `pnpm --filter @datab/portal-web build` 通过，Next.js 正式构建成功并生成订单 / 交付 / 验收相关动态路由。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 unused/dead-code warning，但无新增编译失败。
+  - `cargo test -p platform-core` 通过：`358` 个测试通过、`0` 失败、`1` ignored（仓库既有 live smoke 忽略项）。
+  - `cargo sqlx prepare --workspace` 通过，workspace `.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-006`
+  - `数据交易平台-全集成基线-V1.md`：`5.3.2`、`5.3.2A`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.2`
+  - `docs/05-test-cases/README.md`、`order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`
+  - `docs/页面说明书/页面说明书-V1-完整版.md`
+- 覆盖的任务清单条目：`TEST-006`
+- 未覆盖项：
+  - `TEST-023` 的 `8` 个标准 SKU 主路径 / 异常路径 / 退款争议矩阵不在本批范围，后续按任务顺序单独补齐。
+  - `TEST-022` 的五条标准链路独立验收文档将在后续任务继续展开；本批先落 `TEST-006` 的执行基线与 checker。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

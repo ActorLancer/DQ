@@ -298,20 +298,39 @@ export function createOrderIdempotencyKey(action: "create" | "cancel"): string {
   return `web-009-order-${action}-${Date.now()}`;
 }
 
+function unwrapEnvelopeData<T>(
+  response:
+    | {
+        data?: T | { data?: T | null } | null;
+      }
+    | undefined,
+) {
+  const payload = response?.data;
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    (payload as { data?: T | null }).data !== undefined
+  ) {
+    return (payload as { data?: T | null }).data ?? null;
+  }
+  return (payload as T | null | undefined) ?? null;
+}
+
 export function unwrapCreatedOrder(response: CreateOrderResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<CreatedOrder>(response);
 }
 
 export function unwrapOrderDetail(response: OrderDetailResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<OrderDetail>(response);
 }
 
 export function unwrapLifecycle(response: OrderLifecycleSnapshotsResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<OrderLifecycleSnapshots>(response);
 }
 
 export function unwrapCanceledOrder(response: CancelOrderResponse | undefined) {
-  return response?.data?.data ?? null;
+  return unwrapEnvelopeData<CanceledOrder>(response);
 }
 
 export function readSubjectOrgId(subject: SessionSubject | null | undefined) {
