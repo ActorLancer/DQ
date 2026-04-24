@@ -17,11 +17,11 @@ export type OrderTemplate = StandardOrderTemplatesResponse["data"][number];
 export type ProductDetail = ProductDetailResponse["data"];
 export type ProductSku = ProductDetail["skus"][number];
 export type SessionSubject = AuthMeResponse["data"];
-export type CreatedOrder = NonNullable<CreateOrderResponse["data"]>["data"];
-export type OrderDetail = NonNullable<OrderDetailResponse["data"]>["data"];
+export type CreatedOrder = NonNullable<CreateOrderResponse["data"]>;
+export type OrderDetail = NonNullable<OrderDetailResponse["data"]>;
 export type OrderLifecycleSnapshots =
-  NonNullable<OrderLifecycleSnapshotsResponse["data"]>["data"];
-export type CanceledOrder = NonNullable<CancelOrderResponse["data"]>["data"];
+  NonNullable<OrderLifecycleSnapshotsResponse["data"]>;
+export type CanceledOrder = NonNullable<CancelOrderResponse["data"]>;
 
 export const ORDER_CREATE_ALLOWED_ROLES = [
   "buyer_operator",
@@ -301,20 +301,11 @@ export function createOrderIdempotencyKey(action: "create" | "cancel"): string {
 function unwrapEnvelopeData<T>(
   response:
     | {
-        data?: T | { data?: T | null } | null;
+        data?: T | null;
       }
     | undefined,
 ) {
-  const payload = response?.data;
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    (payload as { data?: T | null }).data !== undefined
-  ) {
-    return (payload as { data?: T | null }).data ?? null;
-  }
-  return (payload as T | null | undefined) ?? null;
+  return response?.data ?? null;
 }
 
 export function unwrapCreatedOrder(response: CreateOrderResponse | undefined) {

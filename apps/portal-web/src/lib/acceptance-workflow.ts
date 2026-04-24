@@ -14,9 +14,9 @@ import { standardSkuOptions, type StandardSkuType } from "./seller-products-view
 export type SessionSubject = AuthMeResponse["data"];
 export type { OrderDetail, OrderLifecycleSnapshots } from "./order-workflow";
 export type AcceptanceDecisionResult =
-  NonNullable<AcceptOrderResponse["data"]>["data"];
+  NonNullable<AcceptOrderResponse["data"]>;
 export type RejectionDecisionResult =
-  NonNullable<RejectOrderResponse["data"]>["data"];
+  NonNullable<RejectOrderResponse["data"]>;
 
 export const MANUAL_ACCEPTANCE_SKUS = [
   "FILE_STD",
@@ -149,20 +149,11 @@ export function createAcceptanceIdempotencyKey(action: "accept" | "reject"): str
 function unwrapEnvelopeData<T>(
   response:
     | {
-        data?: T | { data?: T | null } | null;
+        data?: T | null;
       }
     | undefined,
 ) {
-  const payload = response?.data;
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    (payload as { data?: T | null }).data !== undefined
-  ) {
-    return (payload as { data?: T | null }).data ?? null;
-  }
-  return (payload as T | null | undefined) ?? null;
+  return response?.data ?? null;
 }
 
 export function unwrapAcceptOrder(response: AcceptOrderResponse | undefined) {

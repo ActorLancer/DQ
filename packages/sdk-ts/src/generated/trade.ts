@@ -330,8 +330,12 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         GetOrderTemplatesResponse: {
-            data: components["schemas"]["OrderTemplateView"][];
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["GetOrderTemplatesResponseData"];
         };
+        GetOrderTemplatesResponseData: components["schemas"]["OrderTemplateView"][];
         OrderTemplateView: {
             template_code: string;
             scenario_code: string;
@@ -395,9 +399,10 @@ export interface components {
             inquiry_id?: string;
         };
         CreateOrderResponse: {
-            data: {
-                data: components["schemas"]["CreateOrderResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["CreateOrderResponseData"];
         };
         CreateOrderResponseData: {
             /** Format: uuid */
@@ -410,18 +415,19 @@ export interface components {
             product_id: string;
             /** Format: uuid */
             sku_id: string;
-            status: string;
+            current_state: string;
             payment_status: string;
-            amount: string;
+            order_amount: string;
             currency_code: string;
             price_snapshot: components["schemas"]["OrderPriceSnapshot"];
             /** Format: date-time */
             created_at: string;
         };
         GetOrderDetailResponse: {
-            data: {
-                data: components["schemas"]["GetOrderDetailResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["GetOrderDetailResponseData"];
         };
         GetOrderDetailResponseData: {
             /** Format: uuid */
@@ -440,7 +446,7 @@ export interface components {
             acceptance_status: string;
             settlement_status: string;
             dispute_status: string;
-            amount: string;
+            order_amount: string;
             currency_code: string;
             price_snapshot?: components["schemas"]["OrderPriceSnapshot"];
             relations: components["schemas"]["OrderRelations"];
@@ -523,7 +529,7 @@ export interface components {
             event_source: string;
             amount: string;
             currency_code: string;
-            units?: string | null;
+            metered_quantity: string | null;
             /** Format: date-time */
             occurred_at: string;
             metadata: {
@@ -601,9 +607,10 @@ export interface components {
             updated_at: string;
         };
         GetOrderLifecycleSnapshotsResponse: {
-            data: {
-                data: components["schemas"]["GetOrderLifecycleSnapshotsResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["GetOrderLifecycleSnapshotsResponseData"];
         };
         GetOrderLifecycleSnapshotsResponseData: {
             order: components["schemas"]["OrderLifecycleSnapshot"];
@@ -631,7 +638,7 @@ export interface components {
         PaymentLifecycleSnapshot: {
             current_status: string;
             payment_mode: string;
-            amount: string;
+            order_amount: string;
             currency_code: string;
             /** Format: date-time */
             buyer_locked_at?: string | null;
@@ -758,9 +765,10 @@ export interface components {
             last_client_fingerprint?: string | null;
         };
         CancelOrderResponse: {
-            data: {
-                data: components["schemas"]["CancelOrderResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["CancelOrderResponseData"];
         };
         CancelOrderResponseData: {
             /** Format: uuid */
@@ -790,9 +798,10 @@ export interface components {
             signer_role: "buyer_signatory" | "buyer_operator" | "legal_reviewer";
         };
         ConfirmOrderContractResponse: {
-            data: {
-                data: components["schemas"]["ConfirmOrderContractResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["ConfirmOrderContractResponseData"];
         };
         ConfirmOrderContractResponseData: {
             /** Format: uuid */
@@ -806,7 +815,7 @@ export interface components {
             data_contract_id?: string | null;
             data_contract_digest?: string | null;
             contract_status: string;
-            order_status: string;
+            current_state: string;
             /** Format: uuid */
             signer_id: string;
             signer_type: string;
@@ -889,49 +898,58 @@ export interface components {
             };
         };
         FileStdTransitionResponse: {
-            data: {
-                data: components["schemas"]["FileStdTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["FileStdTransitionResponseData"];
         };
         FileSubTransitionResponse: {
-            data: {
-                data: components["schemas"]["FileSubTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["FileSubTransitionResponseData"];
         };
         ApiSubTransitionResponse: {
-            data: {
-                data: components["schemas"]["ApiSubTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["ApiSubTransitionResponseData"];
         };
         ApiPpuTransitionResponse: {
-            data: {
-                data: components["schemas"]["ApiPpuTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["ApiPpuTransitionResponseData"];
         };
         ShareRoTransitionResponse: {
-            data: {
-                data: components["schemas"]["ShareRoTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["ShareRoTransitionResponseData"];
         };
         QryLiteTransitionResponse: {
-            data: {
-                data: components["schemas"]["QryLiteTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["QryLiteTransitionResponseData"];
         };
         SbxStdTransitionResponse: {
-            data: {
-                data: components["schemas"]["SbxStdTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["SbxStdTransitionResponseData"];
         };
         RptStdTransitionResponse: {
-            data: {
-                data: components["schemas"]["RptStdTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["RptStdTransitionResponseData"];
         };
         OrderAuthorizationTransitionResponse: {
-            data: {
-                data: components["schemas"]["OrderAuthorizationTransitionResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["OrderAuthorizationTransitionResponseData"];
         };
         FileStdTransitionResponseData: {
             /** Format: uuid */
@@ -1137,9 +1155,10 @@ export interface components {
             exportable: boolean;
         };
         TradePreRequestResponse: {
-            data: {
-                data: components["schemas"]["TradePreRequestResponseData"];
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["TradePreRequestResponseData"];
         };
         TradePreRequestResponseData: {
             /** Format: uuid */
@@ -1151,7 +1170,7 @@ export interface components {
             /** Format: uuid */
             created_by?: string;
             /** @enum {string} */
-            status: "open" | "submitted" | "closed";
+            current_state: "open" | "submitted" | "closed";
             /** @enum {string} */
             request_kind: "rfq" | "sample_request" | "poc_request";
             details: components["schemas"]["TradePreRequestDetails"];
@@ -1207,13 +1226,15 @@ export interface components {
             source: string;
         };
         FreezeOrderPriceSnapshotResponse: {
-            data: {
-                data: {
-                    /** Format: uuid */
-                    order_id: string;
-                    snapshot: components["schemas"]["OrderPriceSnapshot"];
-                };
-            };
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["FreezeOrderPriceSnapshotResponseData"];
+        };
+        FreezeOrderPriceSnapshotResponseData: {
+            /** Format: uuid */
+            order_id: string;
+            snapshot: components["schemas"]["OrderPriceSnapshot"];
         };
         OrderPaymentOrchestrationTransition: {
             /** @enum {string} */

@@ -327,7 +327,7 @@ function DisputeOrderPanel({
         <InfoTile label="order_id" value={order.order_id} />
         <InfoTile label="current_state" value={orderStatusLabel(order.current_state)} />
         <InfoTile label="sku_type" value={skuOptionLabel(skuType)} />
-        <InfoTile label="amount" value={formatMoney(order.amount, order.currency_code)} />
+        <InfoTile label="amount" value={formatMoney(order.order_amount, order.currency_code)} />
         <InfoTile label="payment_status" value={order.payment_status} />
         <InfoTile label="settlement_status" value={order.settlement_status} />
         <InfoTile label="dispute_status" value={order.dispute_status} />

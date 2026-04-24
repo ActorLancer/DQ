@@ -143,7 +143,9 @@ describe("audit trace view model", () => {
 
   it("hides storage uri fields from package export results", () => {
     const safe = safePackageExportView({
-      success: true,
+      code: "OK",
+      message: "success",
+      request_id: "req-web-014",
       data: {
         audit_trace_count: 2,
         evidence_item_count: 3,

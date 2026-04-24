@@ -434,6 +434,18 @@ paths:
 components:
   schemas:
     GetOrderTemplatesResponse:
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/GetOrderTemplatesResponseData'
+    GetOrderTemplatesResponseData:
       type: array
       items:
         $ref: '#/components/schemas/OrderTemplateView'
@@ -567,7 +579,17 @@ components:
           type: string
           format: uuid
     CreateOrderResponse:
-      $ref: '#/components/schemas/CreateOrderResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/CreateOrderResponseData'
     CreateOrderResponseData:
       type: object
       required:
@@ -614,7 +636,17 @@ components:
           type: string
           format: date-time
     GetOrderDetailResponse:
-      $ref: '#/components/schemas/GetOrderDetailResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/GetOrderDetailResponseData'
     GetOrderDetailResponseData:
       type: object
       required:
@@ -1025,7 +1057,17 @@ components:
           type: string
           format: date-time
     GetOrderLifecycleSnapshotsResponse:
-      $ref: '#/components/schemas/GetOrderLifecycleSnapshotsResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/GetOrderLifecycleSnapshotsResponseData'
     GetOrderLifecycleSnapshotsResponseData:
       type: object
       required: [order]
@@ -1349,7 +1391,17 @@ components:
           type: string
           nullable: true
     CancelOrderResponse:
-      $ref: '#/components/schemas/CancelOrderResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/CancelOrderResponseData'
     CancelOrderResponseData:
       type: object
       required:
@@ -1407,7 +1459,17 @@ components:
           type: string
           enum: [buyer_signatory, buyer_operator, legal_reviewer]
     ConfirmOrderContractResponse:
-      $ref: '#/components/schemas/ConfirmOrderContractResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/ConfirmOrderContractResponseData'
     ConfirmOrderContractResponseData:
       type: object
       required:
@@ -1658,23 +1720,113 @@ components:
           type: object
           additionalProperties: true
     FileStdTransitionResponse:
-      $ref: '#/components/schemas/FileStdTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/FileStdTransitionResponseData'
     FileSubTransitionResponse:
-      $ref: '#/components/schemas/FileSubTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/FileSubTransitionResponseData'
     ApiSubTransitionResponse:
-      $ref: '#/components/schemas/ApiSubTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/ApiSubTransitionResponseData'
     ApiPpuTransitionResponse:
-      $ref: '#/components/schemas/ApiPpuTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/ApiPpuTransitionResponseData'
     ShareRoTransitionResponse:
-      $ref: '#/components/schemas/ShareRoTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/ShareRoTransitionResponseData'
     QryLiteTransitionResponse:
-      $ref: '#/components/schemas/QryLiteTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/QryLiteTransitionResponseData'
     SbxStdTransitionResponse:
-      $ref: '#/components/schemas/SbxStdTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/SbxStdTransitionResponseData'
     RptStdTransitionResponse:
-      $ref: '#/components/schemas/RptStdTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/RptStdTransitionResponseData'
     OrderAuthorizationTransitionResponse:
-      $ref: '#/components/schemas/OrderAuthorizationTransitionResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/OrderAuthorizationTransitionResponseData'
     FileStdTransitionResponseData:
       type: object
       required:
@@ -2174,7 +2326,17 @@ components:
         exportable:
           type: boolean
     TradePreRequestResponse:
-      $ref: '#/components/schemas/TradePreRequestResponseData'
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/TradePreRequestResponseData'
     TradePreRequestResponseData:
       type: object
       required:
@@ -2338,6 +2500,18 @@ components:
         source:
           type: string
     FreezeOrderPriceSnapshotResponse:
+      type: object
+      required: [code, message, request_id, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/FreezeOrderPriceSnapshotResponseData'
+    FreezeOrderPriceSnapshotResponseData:
       type: object
       required: [order_id, snapshot]
       properties:

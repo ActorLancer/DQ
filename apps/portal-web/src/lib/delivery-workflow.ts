@@ -26,28 +26,28 @@ import { z } from "zod";
 import { standardSkuOptions, type StandardSkuType } from "./seller-products-view";
 
 export type SessionSubject = AuthMeResponse["data"];
-export type OrderDetail = NonNullable<OrderDetailResponse["data"]>["data"];
+export type OrderDetail = NonNullable<OrderDetailResponse["data"]>;
 export type OrderLifecycleSnapshots =
-  NonNullable<OrderLifecycleSnapshotsResponse["data"]>["data"];
+  NonNullable<OrderLifecycleSnapshotsResponse["data"]>;
 export type CommitDeliveryResult =
-  NonNullable<CommitOrderDeliveryResponse["data"]>["data"];
+  NonNullable<CommitOrderDeliveryResponse["data"]>;
 export type DownloadTicket =
-  NonNullable<DownloadTicketResponse["data"]>["data"];
+  NonNullable<DownloadTicketResponse["data"]>;
 export type RevisionSubscription =
-  NonNullable<RevisionSubscriptionResponse["data"]>["data"];
+  NonNullable<RevisionSubscriptionResponse["data"]>;
 export type RevisionSubscriptionMutationResult =
-  NonNullable<ManageRevisionSubscriptionResponse["data"]>["data"];
-export type ShareGrantList = NonNullable<ShareGrantListResponse["data"]>["data"];
+  NonNullable<ManageRevisionSubscriptionResponse["data"]>;
+export type ShareGrantList = NonNullable<ShareGrantListResponse["data"]>;
 export type ShareGrantResult =
-  NonNullable<ManageShareGrantResponse["data"]>["data"];
+  NonNullable<ManageShareGrantResponse["data"]>;
 export type TemplateGrantResult =
-  NonNullable<ManageTemplateGrantResponse["data"]>["data"];
+  NonNullable<ManageTemplateGrantResponse["data"]>;
 export type TemplateRunResult =
-  NonNullable<ExecuteTemplateRunResponse["data"]>["data"];
+  NonNullable<ExecuteTemplateRunResponse["data"]>;
 export type SandboxWorkspaceResult =
-  NonNullable<ManageSandboxWorkspaceResponse["data"]>["data"];
-export type ApiUsageLog = NonNullable<ApiUsageLogResponse["data"]>["data"];
-export type QueryRuns = NonNullable<QueryRunsResponse["data"]>["data"];
+  NonNullable<ManageSandboxWorkspaceResponse["data"]>;
+export type ApiUsageLog = NonNullable<ApiUsageLogResponse["data"]>;
+export type QueryRuns = NonNullable<QueryRunsResponse["data"]>;
 
 export type DeliveryRouteKind =
   | "file"
@@ -709,20 +709,11 @@ export function createDeliveryIdempotencyKey(kind: string): string {
 function unwrapEnvelopeData<T>(
   response:
     | {
-        data?: T | { data?: T | null } | null;
+        data?: T | null;
       }
     | undefined,
 ) {
-  const payload = response?.data;
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    (payload as { data?: T | null }).data !== undefined
-  ) {
-    return (payload as { data?: T | null }).data ?? null;
-  }
-  return (payload as T | null | undefined) ?? null;
+  return response?.data ?? null;
 }
 
 export function unwrapCommitDelivery(

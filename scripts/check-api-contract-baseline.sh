@@ -81,24 +81,164 @@ assert_absent_field() {
 }
 
 check_success_envelopes() {
-  local file schema block
-  for file in "${OPENAPI_DIR}"/*.yaml; do
-    while IFS= read -r schema; do
-      [[ -n "${schema}" ]] || continue
-      schema="${schema%:}"
-      block="$(schema_block "${file}" "${schema}")"
-      [[ -n "${block}" ]] || fail "${file} missing schema block ${schema}"
-      for field in code message request_id data; do
-        assert_required_field "${block}" "${field}" "${file}:${schema}"
-        printf '%s\n' "${block}" | rg -q "^[[:space:]]+${field}:$" \
-          || fail "${file}:${schema} missing success envelope field ${field}"
-      done
-      printf '%s\n' "${block}" | rg -q "^[[:space:]]+success:$" \
-        && fail "${file}:${schema} should not expose legacy success flag"
-      printf '%s\n' "${block}" | rg -Fq "required: [data]" \
-        && fail "${file}:${schema} still contains legacy data.data wrapper"
-    done < <(awk '/^    (ApiResponse|ApiEnvelope)[A-Za-z0-9_]+:/{print $1}' "${file}")
-  done
+  python3 - "${OPENAPI_DIR}" <<'PY'
+import glob
+import sys
+from typing import Any
+
+import yaml
+
+openapi_dir = sys.argv[1]
+http_methods = {"get", "post", "put", "patch", "delete", "options", "head"}
+errors: list[str] = []
+
+
+def ref_name(ref: Any) -> str | None:
+    if not isinstance(ref, str):
+        return None
+    prefix = "#/components/schemas/"
+    if not ref.startswith(prefix):
+        return None
+    return ref[len(prefix):]
+
+
+def looks_like_legacy_data_wrapper(schema: Any, components: dict[str, Any], seen: set[str]) -> bool:
+    if not isinstance(schema, dict):
+        return False
+    if "$ref" in schema:
+        name = ref_name(schema["$ref"])
+        if name is None or name in seen:
+            return False
+        target = components.get(name)
+        if target is None:
+            return False
+        return looks_like_legacy_data_wrapper(target, components, seen | {name})
+    for key in ("oneOf", "allOf"):
+        if key in schema and isinstance(schema[key], list):
+            return any(looks_like_legacy_data_wrapper(item, components, seen) for item in schema[key])
+    props = schema.get("properties")
+    if not isinstance(props, dict):
+        return False
+    keys = set(props.keys())
+    required = schema.get("required")
+    required_set = set(required) if isinstance(required, list) else set()
+    return "data" in keys and not ({"code", "message", "request_id"} & keys) and (
+        keys == {"data"} or required_set == {"data"}
+    )
+
+
+def validate_envelope(
+    schema: Any,
+    components: dict[str, Any],
+    label: str,
+    seen_refs: set[str],
+) -> list[str]:
+    if not isinstance(schema, dict):
+        return [f"{label} schema is not an object"]
+
+    if "$ref" in schema:
+        name = ref_name(schema["$ref"])
+        if name is None:
+            return [f"{label} has unsupported schema ref {schema['$ref']}"]
+        if name in seen_refs:
+            return []
+        target = components.get(name)
+        if target is None:
+            return [f"{label} references missing schema {name}"]
+        return validate_envelope(target, components, f"{label}->{name}", seen_refs | {name})
+
+    for key in ("oneOf", "allOf"):
+        if key in schema:
+            variants = schema.get(key)
+            if not isinstance(variants, list) or not variants:
+                return [f"{label} has empty {key}"]
+            collected: list[str] = []
+            for idx, variant in enumerate(variants):
+                variant_errors = validate_envelope(
+                    variant, components, f"{label}[{key}[{idx}]]", seen_refs
+                )
+                if not variant_errors:
+                    return []
+                collected.extend(variant_errors)
+            head = f"{label} has no envelope-valid {key} variants"
+            return [head, *collected[:1]]
+
+    props = schema.get("properties")
+    if not isinstance(props, dict):
+        return [f"{label} missing object properties"]
+
+    required = schema.get("required")
+    required_set = set(required) if isinstance(required, list) else set()
+
+    local_errors: list[str] = []
+    for field in ("code", "message", "request_id", "data"):
+        if field not in required_set:
+            local_errors.append(f"{label} missing required field {field}")
+        if field not in props:
+            local_errors.append(f"{label} missing envelope field {field}")
+    if "success" in props:
+        local_errors.append(f"{label} should not expose legacy success flag")
+    data_schema = props.get("data")
+    if looks_like_legacy_data_wrapper(data_schema, components, set()):
+        local_errors.append(f"{label} still contains nested data.data wrapper")
+    return local_errors
+
+
+for file in sorted(glob.glob(f"{openapi_dir}/*.yaml")):
+    with open(file, "r", encoding="utf-8") as fp:
+        doc = yaml.safe_load(fp)
+    if not isinstance(doc, dict):
+        errors.append(f"{file} is not a valid OpenAPI document")
+        continue
+    components = ((doc.get("components") or {}).get("schemas") or {})
+    if not isinstance(components, dict):
+        errors.append(f"{file} components.schemas is invalid")
+        continue
+    paths = doc.get("paths") or {}
+    if not isinstance(paths, dict):
+        continue
+    for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        for method, operation in path_item.items():
+            if method.lower() not in http_methods:
+                continue
+            if not isinstance(operation, dict):
+                continue
+            responses = operation.get("responses") or {}
+            if not isinstance(responses, dict):
+                continue
+            response_200 = responses.get("200")
+            if response_200 is None:
+                response_200 = responses.get(200)
+            if not isinstance(response_200, dict):
+                continue
+            content = response_200.get("content") or {}
+            if not isinstance(content, dict):
+                continue
+            json_content = content.get("application/json")
+            if not isinstance(json_content, dict):
+                continue
+            schema = json_content.get("schema")
+            if schema is None:
+                continue
+            label = f"{file}:{method.upper()} {path}:200"
+            errors.extend(validate_envelope(schema, components, label, set()))
+
+if errors:
+    seen: set[str] = set()
+    unique_errors: list[str] = []
+    for err in errors:
+        if err in seen:
+            continue
+        seen.add(err)
+        unique_errors.append(err)
+    for err in unique_errors[:20]:
+        print(f"[fail] {err}", file=sys.stderr)
+    if len(unique_errors) > 20:
+        print(f"[fail] ... and {len(unique_errors) - 20} more", file=sys.stderr)
+    sys.exit(1)
+PY
   ok "success envelopes aligned"
 }
 

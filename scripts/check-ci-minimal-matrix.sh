@@ -89,8 +89,14 @@ run_migration() {
 
 run_openapi() {
   require_cmd bash
+  require_cmd git
+  require_cmd pnpm
 
   log "running OpenAPI check lane"
+  pnpm install --frozen-lockfile
+  pnpm --filter @datab/sdk-ts openapi:generate
+  git diff --exit-code -- packages/sdk-ts/src/generated \
+    || fail "sdk generated files drift from packages/openapi; run pnpm --filter @datab/sdk-ts openapi:generate"
   bash ./scripts/check-openapi-schema.sh
   ok "OpenAPI check lane passed"
 }

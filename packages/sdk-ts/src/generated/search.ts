@@ -600,7 +600,10 @@ export interface components {
         ErrorResponse: {
             code: string;
             message: string;
-            request_id?: string | null;
+            request_id: string;
+            details: {
+                [key: string]: unknown;
+            };
         };
         SearchResultItem: {
             /** @enum {string} */
@@ -758,38 +761,59 @@ export interface components {
             status?: string | null;
         };
         ApiResponseSearchResponse: {
-            /** @constant */
-            success: true;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["SearchResponse"];
         };
         ApiResponseSearchSyncTasks: {
-            /** @constant */
-            success: true;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["SearchSyncTaskView"][];
         };
         ApiResponseReindexResponse: {
-            /** @constant */
-            success: true;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["ReindexResponse"];
         };
         ApiResponseAliasSwitchResponse: {
-            /** @constant */
-            success: true;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["AliasSwitchResponse"];
         };
         ApiResponseCacheInvalidateResponse: {
-            /** @constant */
-            success: true;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["CacheInvalidateResponse"];
         };
         ApiResponseRankingProfiles: {
-            /** @constant */
-            success: true;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["RankingProfileView"][];
         };
         ApiResponseRankingProfile: {
-            /** @constant */
-            success: true;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["RankingProfileView"];
         };
     };

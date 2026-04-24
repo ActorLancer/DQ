@@ -370,7 +370,7 @@ export function OrderContractConfirmShell({
                 <InlineError error={mutation.error} fallback="合同确认失败" />
               ) : null}
               {mutation.data ? (
-                <JsonCard title="确认结果" value={mutation.data.data?.data ?? mutation.data} />
+                <JsonCard title="确认结果" value={mutation.data.data ?? mutation.data} />
               ) : null}
             </Card>
           </div>
@@ -424,7 +424,7 @@ export function OrderPaymentLockShell({
       provider_key: "mock_payment_provider",
       payer_subject_type: "organization",
       payer_subject_id: inferredPayerId,
-      payment_amount: order?.amount ?? "0",
+      payment_amount: order?.order_amount ?? "0",
       payment_method: "bank_transfer",
       currency_code: order?.currency_code ?? "CNY",
       idempotency_key: createWebIdempotencyKey("payment-intent"),
@@ -443,7 +443,7 @@ export function OrderPaymentLockShell({
   useEffect(() => {
     intentForm.setValue("payer_subject_id", inferredPayerId, { shouldDirty: false });
     if (order) {
-      intentForm.setValue("payment_amount", order.amount, { shouldDirty: false });
+      intentForm.setValue("payment_amount", order.order_amount, { shouldDirty: false });
       intentForm.setValue("currency_code", order.currency_code, { shouldDirty: false });
     }
   }, [inferredPayerId, intentForm, order]);
@@ -525,7 +525,7 @@ export function OrderPaymentLockShell({
                   ["order_id", order.order_id],
                   ["order_status", orderStatusLabel(order.current_state)],
                   ["payment_status", order.payment_status],
-                  ["amount", `${order.amount} ${order.currency_code}`],
+                  ["amount", `${order.order_amount} ${order.currency_code}`],
                   ["settlement_status", order.settlement_status],
                   [
                     "billing_event_count",
@@ -723,7 +723,7 @@ export function SellerQuerySurfaceShell({
         },
       ),
     onSuccess: (response) => {
-      const querySurfaceId = response.data?.data?.query_surface_id;
+      const querySurfaceId = response.data?.query_surface_id;
       if (querySurfaceId) {
         templateForm.setValue("query_surface_id", querySurfaceId, { shouldDirty: true });
       }
@@ -808,7 +808,7 @@ export function SellerQuerySurfaceShell({
                 </Button>
               </form>
               {createSurfaceMutation.isError ? <InlineError error={createSurfaceMutation.error} fallback="提交 QuerySurface 失败" /> : null}
-              {createSurfaceMutation.data ? <JsonCard title="QuerySurface 响应" value={createSurfaceMutation.data.data?.data ?? createSurfaceMutation.data} /> : null}
+              {createSurfaceMutation.data ? <JsonCard title="QuerySurface 响应" value={createSurfaceMutation.data.data ?? createSurfaceMutation.data} /> : null}
             </Card>
             <Card className="xl:col-span-2">
               <CardTitle>创建/更新 QueryTemplate</CardTitle>
@@ -837,7 +837,7 @@ export function SellerQuerySurfaceShell({
                 </div>
               </form>
               {createTemplateMutation.isError ? <InlineError error={createTemplateMutation.error} fallback="提交 QueryTemplate 失败" /> : null}
-              {createTemplateMutation.data ? <JsonCard title="QueryTemplate 响应" value={createTemplateMutation.data.data?.data ?? createTemplateMutation.data} /> : null}
+              {createTemplateMutation.data ? <JsonCard title="QueryTemplate 响应" value={createTemplateMutation.data.data ?? createTemplateMutation.data} /> : null}
             </Card>
           </div>
         )}
@@ -1092,7 +1092,7 @@ export function AssetRawIngestShell({
         },
       ),
     onSuccess: (response) => {
-      const batchId = response.raw_ingest_batch_id;
+      const batchId = response.data.raw_ingest_batch_id;
       if (batchId) {
         manifestForm.setValue("raw_ingest_batch_id", batchId, { shouldDirty: true });
       }

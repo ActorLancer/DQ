@@ -1739,66 +1739,99 @@ export interface components {
         ErrorResponse: {
             code: string;
             message: string;
-            request_id?: string | null;
+            request_id: string;
+            details: {
+                [key: string]: unknown;
+            };
         };
         ApiEnvelopeJurisdictionList: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["JurisdictionProfile"][];
         };
         ApiEnvelopeJurisdiction: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["JurisdictionProfile"];
         };
         ApiEnvelopeCorridorList: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["CorridorPolicy"][];
         };
         ApiEnvelopeCorridor: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["CorridorPolicy"];
         };
         ApiEnvelopePayoutPreferenceList: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["PayoutPreference"][];
         };
         ApiEnvelopePayoutPreference: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["PayoutPreference"];
         };
         ApiEnvelopePaymentIntent: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["PaymentIntent"];
         };
         ApiEnvelopePaymentIntentDetail: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["PaymentIntentDetail"];
         };
         ApiEnvelopeBillingOrderDetail: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["BillingOrderDetail"];
         };
         ApiEnvelopeBillingBridgeProcess: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["BillingBridgeProcess"];
         };
         ApiEnvelopeShareRoCycleCharge: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ShareRoCycleCharge"];
         };
         ApiEnvelopeOrderLock: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["OrderLock"];
         };
         ApiEnvelopePaymentWebhookResult: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["PaymentWebhookResult"];
         };
         ApiEnvelopePaymentPolledResult: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["PaymentPolledResult"];
         };
         ApiEnvelopeMockPaymentSimulation: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["MockPaymentSimulation"];
         };
         JurisdictionProfile: {
@@ -1979,7 +2012,7 @@ export interface components {
             event_source: string;
             amount: string;
             currency_code: string;
-            units?: string | null;
+            metered_quantity: string | null;
             occurred_at: string;
             metadata: {
                 [key: string]: unknown;
@@ -2035,8 +2068,9 @@ export interface components {
             };
         };
         RefundExecutionResponse: {
-            code: number;
+            code: string;
             message: string;
+            request_id: string;
             data: components["schemas"]["RefundExecution"];
         };
         CreateCompensationRequest: {
@@ -2074,8 +2108,9 @@ export interface components {
             };
         };
         CompensationExecutionResponse: {
-            code: number;
+            code: string;
             message: string;
+            request_id: string;
             data: components["schemas"]["CompensationExecution"];
         };
         CreateManualPayoutRequest: {
@@ -2146,8 +2181,9 @@ export interface components {
             split_placeholder: components["schemas"]["BillingSplitInstruction"];
         };
         ManualPayoutExecutionResponse: {
-            code: number;
+            code: string;
             message: string;
+            request_id: string;
             data: components["schemas"]["ManualPayoutExecution"];
         };
         ReconciliationImportMultipartRequest: {
@@ -2197,8 +2233,9 @@ export interface components {
             step_up_bound: boolean;
         };
         ReconciliationImportResponse: {
-            code: number;
+            code: string;
             message: string;
+            request_id: string;
             data: components["schemas"]["ReconciliationImport"];
         };
         CreateDisputeCaseRequest: {
@@ -2228,8 +2265,9 @@ export interface components {
             evidence_count: number;
         };
         DisputeCaseResponse: {
-            code: number;
+            code: string;
             message: string;
+            request_id: string;
             data: components["schemas"]["DisputeCase"];
         };
         UploadDisputeEvidenceMultipartRequest: {
@@ -2252,8 +2290,9 @@ export interface components {
             idempotent_replay: boolean;
         };
         DisputeEvidenceResponse: {
-            code: number;
+            code: string;
             message: string;
+            request_id: string;
             data: components["schemas"]["DisputeEvidence"];
         };
         ResolveDisputeCaseRequest: {
@@ -2283,8 +2322,9 @@ export interface components {
             idempotent_replay: boolean;
         };
         DisputeResolutionResponse: {
-            code: number;
+            code: string;
             message: string;
+            request_id: string;
             data: components["schemas"]["DisputeResolution"];
         };
         BillingRefund: {
@@ -2333,7 +2373,7 @@ export interface components {
         };
         BillingOrderDetail: {
             order_id: string;
-            order_status: string;
+            current_state: string;
             payment_status: string;
             settlement_status: string;
             dispute_status: string;
@@ -2418,7 +2458,7 @@ export interface components {
         OrderLock: {
             order_id: string;
             payment_intent_id: string;
-            order_status: string;
+            current_state: string;
             payment_status: string;
             buyer_locked_at: string;
         };

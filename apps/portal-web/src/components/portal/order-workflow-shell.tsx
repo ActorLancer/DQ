@@ -788,7 +788,7 @@ function CreatedOrderCard({
         description="关键输出：order_id / buyer_deposit / price_snapshot。"
       />
       <InfoTile label="order_id" value={result.order.order_id} />
-      <InfoTile label="buyer_deposit 估算" value={estimateBuyerDeposit(result.order.amount, result.order.currency_code)} />
+      <InfoTile label="buyer_deposit 估算" value={estimateBuyerDeposit(result.order.order_amount, result.order.currency_code)} />
       <InfoTile label="Idempotency-Key" value={result.idempotencyKey} />
       <InfoTile label="price_snapshot.sku_type" value={result.order.price_snapshot.sku_type} />
       <InfoTile label="scenario_snapshot" value={scenario ? `${scenario.scenario_code} / ${scenario.selected_sku_role}` : "未返回"} />
@@ -814,7 +814,7 @@ function OrderSummaryCard({ order }: { order: OrderDetail }) {
         <InfoTile label="order_id" value={order.order_id} />
         <InfoTile label="current_state" value={`${order.current_state} / ${orderStatusLabel(order.current_state)}`} />
         <InfoTile label="payment_status" value={order.payment_status} />
-        <InfoTile label="金额" value={formatMoney(order.amount, order.currency_code)} />
+        <InfoTile label="金额" value={formatMoney(order.order_amount, order.currency_code)} />
       </div>
       <div className="grid gap-3 md:grid-cols-4">
         <InfoTile label="buyer_org_id" value={order.buyer_org_id} />

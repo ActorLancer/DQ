@@ -1,17 +1,17 @@
 use crate::AppState;
 use crate::modules::delivery::repo::write_storage_gateway_read_audit;
 use crate::modules::order::dto::{
-    ApiPpuTransitionRequest, ApiPpuTransitionResponse, ApiSubTransitionRequest,
-    ApiSubTransitionResponse, CancelOrderResponse, ConfirmOrderContractRequest,
-    ConfirmOrderContractResponse, CreateOrderRequest, CreateOrderResponse, CreateOrderResponseData,
-    CreateTradePreRequestRequest, FileStdTransitionRequest, FileStdTransitionResponse,
-    FileSubTransitionRequest, FileSubTransitionResponse, FreezeOrderPriceSnapshotResponse,
-    FreezeOrderPriceSnapshotResponseData, GetOrderDetailResponse,
-    GetOrderLifecycleSnapshotsResponse, OrderAuthorizationTransitionRequest,
-    OrderAuthorizationTransitionResponse, OrderTemplateView, QryLiteTransitionRequest,
-    QryLiteTransitionResponse, RptStdTransitionRequest, RptStdTransitionResponse,
-    SbxStdTransitionRequest, SbxStdTransitionResponse, ShareRoTransitionRequest,
-    ShareRoTransitionResponse, TradePreRequestResponse, TradePreRequestResponseData,
+    ApiPpuTransitionRequest, ApiPpuTransitionResponseData, ApiSubTransitionRequest,
+    ApiSubTransitionResponseData, CancelOrderResponseData, ConfirmOrderContractRequest,
+    ConfirmOrderContractResponseData, CreateOrderRequest, CreateOrderResponseData,
+    CreateTradePreRequestRequest, FileStdTransitionRequest, FileStdTransitionResponseData,
+    FileSubTransitionRequest, FileSubTransitionResponseData, FreezeOrderPriceSnapshotResponseData,
+    GetOrderDetailResponseData, GetOrderLifecycleSnapshotsResponseData,
+    OrderAuthorizationTransitionRequest, OrderAuthorizationTransitionResponseData,
+    OrderTemplateView, QryLiteTransitionRequest, QryLiteTransitionResponseData,
+    RptStdTransitionRequest, RptStdTransitionResponseData, SbxStdTransitionRequest,
+    SbxStdTransitionResponseData, ShareRoTransitionRequest, ShareRoTransitionResponseData,
+    TradePreRequestResponseData,
 };
 use crate::modules::order::order_templates::standard_order_templates;
 use crate::modules::order::repo::{
@@ -37,7 +37,7 @@ pub async fn create_order_api(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateOrderRequest>,
-) -> Result<Json<ApiResponse<CreateOrderResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<CreateOrderResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::CreateOrder, "order create")?;
     enforce_order_create_scope(&headers, &payload.buyer_org_id)?;
     let mut client = state.db.client().map_err(map_db_connect)?;
@@ -59,7 +59,7 @@ pub async fn create_order_api(
                 trace_id.as_deref(),
             )
             .await?;
-            return Ok(ApiResponse::ok(CreateOrderResponse { data: existing }));
+            return Ok(ApiResponse::ok(existing));
         }
     }
 
@@ -80,7 +80,7 @@ pub async fn create_order_api(
         sku_id = %created.sku_id,
         "order created"
     );
-    Ok(ApiResponse::ok(CreateOrderResponse { data: created }))
+    Ok(ApiResponse::ok(created))
 }
 
 pub async fn get_order_templates_api(
@@ -114,7 +114,7 @@ pub async fn get_order_detail_api(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
-) -> Result<Json<ApiResponse<GetOrderDetailResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<GetOrderDetailResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::ReadOrder, "order read")?;
     let client = state.db.client().map_err(map_db_connect)?;
 
@@ -166,15 +166,17 @@ pub async fn get_order_detail_api(
         "order detail queried"
     );
 
-    Ok(ApiResponse::ok(GetOrderDetailResponse { data: order }))
+    Ok(ApiResponse::ok(order))
 }
 
 pub async fn get_order_lifecycle_snapshots_api(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
-) -> Result<Json<ApiResponse<GetOrderLifecycleSnapshotsResponse>>, (StatusCode, Json<ErrorResponse>)>
-{
+) -> Result<
+    Json<ApiResponse<GetOrderLifecycleSnapshotsResponseData>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
     require_permission(
         &headers,
         TradePermission::ReadOrder,
@@ -235,16 +237,14 @@ pub async fn get_order_lifecycle_snapshots_api(
         "order lifecycle snapshots queried"
     );
 
-    Ok(ApiResponse::ok(GetOrderLifecycleSnapshotsResponse {
-        data: snapshot,
-    }))
+    Ok(ApiResponse::ok(snapshot))
 }
 
 pub async fn cancel_order_api(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
-) -> Result<Json<ApiResponse<CancelOrderResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<CancelOrderResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(&headers, TradePermission::CancelOrder, "order cancel")?;
     let mut client = state.db.client().map_err(map_db_connect)?;
 
@@ -281,7 +281,7 @@ pub async fn cancel_order_api(
         refund_branch = %canceled.refund_branch,
         "order canceled"
     );
-    Ok(ApiResponse::ok(CancelOrderResponse { data: canceled }))
+    Ok(ApiResponse::ok(canceled))
 }
 
 pub async fn confirm_order_contract_api(
@@ -289,7 +289,8 @@ pub async fn confirm_order_contract_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ConfirmOrderContractRequest>,
-) -> Result<Json<ApiResponse<ConfirmOrderContractResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<ConfirmOrderContractResponseData>>, (StatusCode, Json<ErrorResponse>)>
+{
     require_permission(
         &headers,
         TradePermission::ConfirmContract,
@@ -340,9 +341,7 @@ pub async fn confirm_order_contract_api(
         signer_role = %confirmed.signer_role,
         "order contract confirmed"
     );
-    Ok(ApiResponse::ok(ConfirmOrderContractResponse {
-        data: confirmed,
-    }))
+    Ok(ApiResponse::ok(confirmed))
 }
 
 pub async fn transition_order_authorization_api(
@@ -351,7 +350,7 @@ pub async fn transition_order_authorization_api(
     Path(order_id): Path<String>,
     Json(payload): Json<OrderAuthorizationTransitionRequest>,
 ) -> Result<
-    Json<ApiResponse<OrderAuthorizationTransitionResponse>>,
+    Json<ApiResponse<OrderAuthorizationTransitionResponseData>>,
     (StatusCode, Json<ErrorResponse>),
 > {
     require_permission(
@@ -396,9 +395,7 @@ pub async fn transition_order_authorization_api(
         current_status = %transitioned.current_status,
         "order authorization transitioned"
     );
-    Ok(ApiResponse::ok(OrderAuthorizationTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_file_std_order_api(
@@ -406,7 +403,7 @@ pub async fn transition_file_std_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<FileStdTransitionRequest>,
-) -> Result<Json<ApiResponse<FileStdTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<FileStdTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionFileStd,
@@ -447,9 +444,7 @@ pub async fn transition_file_std_order_api(
         current_state = %transitioned.current_state,
         "file std order state transitioned"
     );
-    Ok(ApiResponse::ok(FileStdTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_file_sub_order_api(
@@ -457,7 +452,7 @@ pub async fn transition_file_sub_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<FileSubTransitionRequest>,
-) -> Result<Json<ApiResponse<FileSubTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<FileSubTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionFileSub,
@@ -498,9 +493,7 @@ pub async fn transition_file_sub_order_api(
         current_state = %transitioned.current_state,
         "file sub order state transitioned"
     );
-    Ok(ApiResponse::ok(FileSubTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_api_sub_order_api(
@@ -508,7 +501,7 @@ pub async fn transition_api_sub_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ApiSubTransitionRequest>,
-) -> Result<Json<ApiResponse<ApiSubTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<ApiSubTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionApiSub,
@@ -549,9 +542,7 @@ pub async fn transition_api_sub_order_api(
         current_state = %transitioned.current_state,
         "api sub order state transitioned"
     );
-    Ok(ApiResponse::ok(ApiSubTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_api_ppu_order_api(
@@ -559,7 +550,7 @@ pub async fn transition_api_ppu_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ApiPpuTransitionRequest>,
-) -> Result<Json<ApiResponse<ApiPpuTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<ApiPpuTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionApiPpu,
@@ -600,9 +591,7 @@ pub async fn transition_api_ppu_order_api(
         current_state = %transitioned.current_state,
         "api ppu order state transitioned"
     );
-    Ok(ApiResponse::ok(ApiPpuTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_share_ro_order_api(
@@ -610,7 +599,7 @@ pub async fn transition_share_ro_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<ShareRoTransitionRequest>,
-) -> Result<Json<ApiResponse<ShareRoTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<ShareRoTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionShareRo,
@@ -651,9 +640,7 @@ pub async fn transition_share_ro_order_api(
         current_state = %transitioned.current_state,
         "share ro order state transitioned"
     );
-    Ok(ApiResponse::ok(ShareRoTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_qry_lite_order_api(
@@ -661,7 +648,7 @@ pub async fn transition_qry_lite_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<QryLiteTransitionRequest>,
-) -> Result<Json<ApiResponse<QryLiteTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<QryLiteTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionQryLite,
@@ -702,9 +689,7 @@ pub async fn transition_qry_lite_order_api(
         current_state = %transitioned.current_state,
         "qry lite order state transitioned"
     );
-    Ok(ApiResponse::ok(QryLiteTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_sbx_std_order_api(
@@ -712,7 +697,7 @@ pub async fn transition_sbx_std_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<SbxStdTransitionRequest>,
-) -> Result<Json<ApiResponse<SbxStdTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<SbxStdTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionSbxStd,
@@ -753,9 +738,7 @@ pub async fn transition_sbx_std_order_api(
         current_state = %transitioned.current_state,
         "sbx std order state transitioned"
     );
-    Ok(ApiResponse::ok(SbxStdTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn transition_rpt_std_order_api(
@@ -763,7 +746,7 @@ pub async fn transition_rpt_std_order_api(
     headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(payload): Json<RptStdTransitionRequest>,
-) -> Result<Json<ApiResponse<RptStdTransitionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<RptStdTransitionResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::TransitionRptStd,
@@ -804,16 +787,14 @@ pub async fn transition_rpt_std_order_api(
         current_state = %transitioned.current_state,
         "rpt std order state transitioned"
     );
-    Ok(ApiResponse::ok(RptStdTransitionResponse {
-        data: transitioned,
-    }))
+    Ok(ApiResponse::ok(transitioned))
 }
 
 pub async fn create_trade_pre_request(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateTradePreRequestRequest>,
-) -> Result<Json<ApiResponse<TradePreRequestResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<TradePreRequestResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::CreatePreRequest,
@@ -841,16 +822,14 @@ pub async fn create_trade_pre_request(
         "trade pre-request created"
     );
 
-    Ok(ApiResponse::ok(TradePreRequestResponse {
-        data: TradePreRequestResponseData::from(created),
-    }))
+    Ok(ApiResponse::ok(TradePreRequestResponseData::from(created)))
 }
 
 pub async fn get_trade_pre_request(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
-) -> Result<Json<ApiResponse<TradePreRequestResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ApiResponse<TradePreRequestResponseData>>, (StatusCode, Json<ErrorResponse>)> {
     require_permission(
         &headers,
         TradePermission::ReadPreRequest,
@@ -886,17 +865,17 @@ pub async fn get_trade_pre_request(
         "trade pre-request queried"
     );
 
-    Ok(ApiResponse::ok(TradePreRequestResponse {
-        data: TradePreRequestResponseData::from(found),
-    }))
+    Ok(ApiResponse::ok(TradePreRequestResponseData::from(found)))
 }
 
 pub async fn freeze_order_price_snapshot_api(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(order_id): Path<String>,
-) -> Result<Json<ApiResponse<FreezeOrderPriceSnapshotResponse>>, (StatusCode, Json<ErrorResponse>)>
-{
+) -> Result<
+    Json<ApiResponse<FreezeOrderPriceSnapshotResponseData>>,
+    (StatusCode, Json<ErrorResponse>),
+> {
     require_permission(
         &headers,
         TradePermission::CreatePreRequest,
@@ -932,8 +911,9 @@ pub async fn freeze_order_price_snapshot_api(
         billing_mode = %snapshot.billing_mode,
         "order price snapshot frozen"
     );
-    Ok(ApiResponse::ok(FreezeOrderPriceSnapshotResponse {
-        data: FreezeOrderPriceSnapshotResponseData { order_id, snapshot },
+    Ok(ApiResponse::ok(FreezeOrderPriceSnapshotResponseData {
+        order_id,
+        snapshot,
     }))
 }
 

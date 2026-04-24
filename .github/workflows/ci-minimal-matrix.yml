@@ -43,7 +43,7 @@ jobs:
           - lane: openapi
             timeout_minutes: 15
             setup_rust: false
-            setup_node: false
+            setup_node: true
             setup_go: false
             apt_packages: ""
 

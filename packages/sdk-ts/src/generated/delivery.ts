@@ -1346,12 +1346,12 @@ export interface components {
             } | null;
         };
         ManageQuerySurfaceResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageQuerySurfaceResponse"];
         };
-        ManageQuerySurfaceResponse: {
-            data: components["schemas"]["QuerySurfaceResponseData"];
-        };
+        ManageQuerySurfaceResponse: components["schemas"]["QuerySurfaceResponseData"];
         QuerySurfaceResponseData: {
             /** Format: uuid */
             query_surface_id: string;
@@ -1414,12 +1414,12 @@ export interface components {
             status?: "draft" | "active" | "disabled" | null;
         };
         ManageQueryTemplateResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageQueryTemplateResponse"];
         };
-        ManageQueryTemplateResponse: {
-            data: components["schemas"]["QueryTemplateResponseData"];
-        };
+        ManageQueryTemplateResponse: components["schemas"]["QueryTemplateResponseData"];
         QueryTemplateResponseData: {
             /** Format: uuid */
             query_template_id: string;
@@ -1548,47 +1548,47 @@ export interface components {
             } | null;
         };
         ManageTemplateGrantResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageTemplateGrantResponse"];
         };
         ManageSandboxWorkspaceResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageSandboxWorkspaceResponse"];
         };
         ManageSensitiveExecutionPolicyResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageSensitiveExecutionPolicyResponse"];
         };
         ReviewResultDisclosureResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ReviewResultDisclosureResponse"];
         };
         GetOrderAttestationsResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["GetOrderAttestationsResponse"];
         };
         ManageDestructionAttestationResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageDestructionAttestationResponse"];
         };
-        ManageTemplateGrantResponse: {
-            data: components["schemas"]["TemplateGrantResponseData"];
-        };
-        ManageSandboxWorkspaceResponse: {
-            data: components["schemas"]["SandboxWorkspaceResponseData"];
-        };
-        ManageSensitiveExecutionPolicyResponse: {
-            data: components["schemas"]["SensitiveExecutionPolicyResponseData"];
-        };
-        ReviewResultDisclosureResponse: {
-            data: components["schemas"]["ResultDisclosureReviewResponseData"];
-        };
-        GetOrderAttestationsResponse: {
-            data: components["schemas"]["OrderAttestationListResponseData"];
-        };
-        ManageDestructionAttestationResponse: {
-            data: components["schemas"]["DestructionAttestationResponseData"];
-        };
+        ManageTemplateGrantResponse: components["schemas"]["TemplateGrantResponseData"];
+        ManageSandboxWorkspaceResponse: components["schemas"]["SandboxWorkspaceResponseData"];
+        ManageSensitiveExecutionPolicyResponse: components["schemas"]["SensitiveExecutionPolicyResponseData"];
+        ReviewResultDisclosureResponse: components["schemas"]["ResultDisclosureReviewResponseData"];
+        GetOrderAttestationsResponse: components["schemas"]["OrderAttestationListResponseData"];
+        ManageDestructionAttestationResponse: components["schemas"]["DestructionAttestationResponseData"];
         TemplateGrantResponseData: {
             /** Format: uuid */
             template_query_grant_id: string;
@@ -1856,19 +1856,19 @@ export interface components {
             } | null;
         };
         ExecuteTemplateRunResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ExecuteTemplateRunResponse"];
         };
-        ExecuteTemplateRunResponse: {
-            data: components["schemas"]["QueryRunResponseData"];
-        };
+        ExecuteTemplateRunResponse: components["schemas"]["QueryRunResponseData"];
         GetQueryRunsResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["GetQueryRunsResponse"];
         };
-        GetQueryRunsResponse: {
-            data: components["schemas"]["QueryRunListResponseData"];
-        };
+        GetQueryRunsResponse: components["schemas"]["QueryRunListResponseData"];
         QueryRunListResponseData: {
             /** Format: uuid */
             order_id: string;
@@ -2055,12 +2055,12 @@ export interface components {
             updated_at: string;
         };
         ApiUsageLogResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ApiUsageLogResponse"];
         };
-        ApiUsageLogResponse: {
-            data: components["schemas"]["ApiUsageLogListResponseData"];
-        };
+        ApiUsageLogResponse: components["schemas"]["ApiUsageLogListResponseData"];
         ApiUsageLogListResponseData: {
             /** Format: uuid */
             order_id: string;
@@ -2128,19 +2128,19 @@ export interface components {
             } | null;
         };
         ManageShareGrantResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageShareGrantResponse"];
         };
-        ManageShareGrantResponse: {
-            data: components["schemas"]["ShareGrantResponseData"];
-        };
+        ManageShareGrantResponse: components["schemas"]["ShareGrantResponseData"];
         GetShareGrantResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["GetShareGrantResponse"];
         };
-        GetShareGrantResponse: {
-            data: components["schemas"]["ShareGrantListResponseData"];
-        };
+        GetShareGrantResponse: components["schemas"]["ShareGrantListResponseData"];
         ShareGrantListResponseData: {
             /** Format: uuid */
             order_id: string;
@@ -2200,19 +2200,19 @@ export interface components {
             } | null;
         };
         ManageRevisionSubscriptionResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ManageRevisionSubscriptionResponse"];
         };
-        ManageRevisionSubscriptionResponse: {
-            data: components["schemas"]["RevisionSubscriptionResponseData"];
-        };
+        ManageRevisionSubscriptionResponse: components["schemas"]["RevisionSubscriptionResponseData"];
         GetRevisionSubscriptionResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["GetRevisionSubscriptionResponse"];
         };
-        GetRevisionSubscriptionResponse: {
-            data: components["schemas"]["RevisionSubscriptionResponseData"];
-        };
+        GetRevisionSubscriptionResponse: components["schemas"]["RevisionSubscriptionResponseData"];
         RevisionSubscriptionResponseData: {
             /** Format: uuid */
             revision_subscription_id: string;
@@ -2298,19 +2298,19 @@ export interface components {
             } | null;
         };
         AcceptOrderResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AcceptOrderResponse"];
         };
-        AcceptOrderResponse: {
-            data: components["schemas"]["OrderAcceptanceResponseData"];
-        };
+        AcceptOrderResponse: components["schemas"]["OrderAcceptanceResponseData"];
         RejectOrderResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["RejectOrderResponse"];
         };
-        RejectOrderResponse: {
-            data: components["schemas"]["OrderAcceptanceResponseData"];
-        };
+        RejectOrderResponse: components["schemas"]["OrderAcceptanceResponseData"];
         OrderAcceptanceResponseData: {
             /** Format: uuid */
             order_id: string;
@@ -2335,12 +2335,12 @@ export interface components {
             operation?: string | null;
         };
         CommitOrderDeliveryResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["CommitOrderDeliveryResponse"];
         };
-        CommitOrderDeliveryResponse: {
-            data: components["schemas"]["CommitOrderDeliveryResponseData"];
-        };
+        CommitOrderDeliveryResponse: components["schemas"]["CommitOrderDeliveryResponseData"];
         CommitOrderDeliveryResponseData: {
             /** Format: uuid */
             order_id: string;
@@ -2396,12 +2396,12 @@ export interface components {
             report_hash?: string | null;
         };
         DownloadTicketResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["DownloadTicketResponse"];
         };
-        DownloadTicketResponse: {
-            data: components["schemas"]["DownloadTicketResponseData"];
-        };
+        DownloadTicketResponse: components["schemas"]["DownloadTicketResponseData"];
         DownloadTicketResponseData: {
             /** Format: uuid */
             order_id: string;
@@ -2425,12 +2425,12 @@ export interface components {
             delivery_commit_hash: string;
         };
         DownloadFileResponseEnvelope: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["DownloadFileResponse"];
         };
-        DownloadFileResponse: {
-            data: components["schemas"]["DownloadFileResponseData"];
-        };
+        DownloadFileResponse: components["schemas"]["DownloadFileResponseData"];
         DownloadFileResponseData: {
             /** Format: uuid */
             order_id: string;

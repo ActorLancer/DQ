@@ -5,7 +5,7 @@ packages/openapi/trade.yaml|TradePreRequestResponseData|current_state|status
 packages/openapi/trade.yaml|ConfirmOrderContractResponseData|current_state|order_status
 packages/openapi/trade.yaml|PaymentLifecycleSnapshot|order_amount|amount
 packages/openapi/trade.yaml|OrderBillingEventRelation|metered_quantity|units
-packages/openapi/trade.yaml|FreezeOrderPriceSnapshotResponse|order_id,snapshot|data
+packages/openapi/trade.yaml|FreezeOrderPriceSnapshotResponseData|order_id,snapshot|data
 packages/openapi/billing.yaml|BillingEvent|metered_quantity|units
 packages/openapi/billing.yaml|BillingOrderDetail|current_state,order_amount|order_status
 packages/openapi/billing.yaml|OrderLock|current_state|order_status

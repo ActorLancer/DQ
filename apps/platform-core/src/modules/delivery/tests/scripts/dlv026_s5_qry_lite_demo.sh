@@ -27,7 +27,7 @@ grant_response="$(curl --fail-with-body -sS -X POST "${BASE_URL}/api/v1/orders/$
 JSON
 )"
 
-template_query_grant_id="$(printf '%s' "${grant_response}" | jq -r '.data.data.template_query_grant_id')"
+template_query_grant_id="$(printf '%s' "${grant_response}" | jq -r '.data.template_query_grant_id')"
 
 curl --fail-with-body -sS -X POST "${BASE_URL}/api/v1/orders/${ORDER_ID}/template-runs" \
   -H 'content-type: application/json' \

@@ -781,11 +781,15 @@ export interface components {
             updated_at: string;
         };
         ApiResponseOrganizationAggregateView: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["OrganizationAggregateView"];
         };
         ApiResponseOrganizationAggregateViewList: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["OrganizationAggregateView"][];
         };
         ApplicationView: {
@@ -821,11 +825,15 @@ export interface components {
             client_secret_hash?: string | null;
         };
         ApiResponseApplicationView: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ApplicationView"];
         };
         ApiResponseApplicationViewList: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ApplicationView"][];
         };
         SessionContextView: {
@@ -846,13 +854,18 @@ export interface components {
             auth_context_level: string;
         };
         ApiResponseSessionContextView: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["SessionContextView"];
         };
         ErrorResponse: {
             code: string;
             message: string;
-            request_id?: string | null;
+            request_id: string;
+            details: {
+                [key: string]: unknown;
+            };
         };
     };
     responses: never;

@@ -80,44 +80,45 @@ describe("order workflow helpers", () => {
     });
   });
 
-  it("unwraps nested trade create response shaped by platform-core", () => {
+  it("unwraps standard trade create envelope shaped by platform-core", () => {
     expect(
       unwrapCreatedOrder({
+        code: "OK",
+        message: "success",
+        request_id: "req-order-create-test",
         data: {
-          data: {
-            order_id: "30000000-0000-0000-0000-000000000901",
-            buyer_org_id: "10000000-0000-0000-0000-000000000201",
-            seller_org_id: "10000000-0000-0000-0000-000000000202",
+          order_id: "30000000-0000-0000-0000-000000000901",
+          buyer_org_id: "10000000-0000-0000-0000-000000000201",
+          seller_org_id: "10000000-0000-0000-0000-000000000202",
+          product_id: "20000000-0000-0000-0000-000000000901",
+          sku_id: "30000000-0000-0000-0000-000000000902",
+          current_state: "created",
+          payment_status: "unpaid",
+          order_amount: "88.80",
+          currency_code: "CNY",
+          price_snapshot: {
             product_id: "20000000-0000-0000-0000-000000000901",
             sku_id: "30000000-0000-0000-0000-000000000902",
-            status: "created",
-            payment_status: "unpaid",
-            amount: "88.80",
+            sku_code: "FILE_STD-BASIC",
+            sku_type: "FILE_STD",
+            pricing_mode: "one_time",
+            unit_price: "88.80",
             currency_code: "CNY",
-            price_snapshot: {
-              product_id: "20000000-0000-0000-0000-000000000901",
-              sku_id: "30000000-0000-0000-0000-000000000902",
-              sku_code: "FILE_STD-BASIC",
-              sku_type: "FILE_STD",
-              pricing_mode: "one_time",
-              unit_price: "88.80",
-              currency_code: "CNY",
-              billing_mode: "one_time",
-              refund_mode: "manual_refund",
-              settlement_terms: {
-                settlement_basis: "acceptance",
-                settlement_mode: "platform_escrow",
-              },
-              tax_terms: {
-                tax_policy: "platform_default",
-                tax_code: "VAT",
-                tax_inclusive: false,
-              },
-              captured_at: "2026-04-23T00:00:00Z",
-              source: "catalog.product_sku",
+            billing_mode: "one_time",
+            refund_mode: "manual_refund",
+            settlement_terms: {
+              settlement_basis: "acceptance",
+              settlement_mode: "platform_escrow",
             },
-            created_at: "2026-04-23T00:00:00Z",
+            tax_terms: {
+              tax_policy: "platform_default",
+              tax_code: "VAT",
+              tax_inclusive: false,
+            },
+            captured_at: "2026-04-23T00:00:00Z",
+            source: "catalog.product_sku",
           },
+          created_at: "2026-04-23T00:00:00Z",
         },
       })?.price_snapshot.sku_type,
     ).toBe("FILE_STD");

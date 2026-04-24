@@ -1355,48 +1355,142 @@ export interface components {
             };
         };
         ApiResponseStandardScenarioTemplateList: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["StandardScenarioTemplate"][];
         };
         ApiResponseProductDetail: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ProductDetail"];
         };
         ApiResponseProductList: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ProductList"];
         };
         ApiResponseDataProduct: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["DataProduct"];
         };
         ApiResponseSellerProfile: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["SellerProfile"];
         };
         ApiResponseProductSku: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ProductSku"];
         };
         ApiResponseTemplateBinding: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["TemplateBinding"];
         };
         ApiResponseProductMetadataProfile: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ProductMetadataProfile"];
         };
         ApiResponseAssetQualityReport: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AssetQualityReport"];
         };
         ApiResponseProductSubmit: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ProductSubmit"];
         };
         ApiResponseReviewDecision: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["ReviewDecision"];
+        };
+        ApiResponseProductLifecycle: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["ProductLifecycle"];
+        };
+        ApiResponseUsagePolicy: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["UsagePolicy"];
+        };
+        ApiResponseDataContract: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["DataContract"];
+        };
+        ApiResponseRawIngestBatch: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["RawIngestBatch"];
+        };
+        ApiResponseRawObjectManifest: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["RawObjectManifest"];
+        };
+        ApiResponseFormatDetectionResult: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["FormatDetectionResult"];
+        };
+        ApiResponseExtractionJob: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["ExtractionJob"];
+        };
+        ApiResponsePreviewArtifact: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["PreviewArtifact"];
+        };
+        ApiResponseAssetObject: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["AssetObject"];
+        };
+        ApiResponseAssetReleasePolicy: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["AssetReleasePolicy"];
+        };
+        ApiResponseAssetFieldDefinition: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["AssetFieldDefinition"];
+        };
+        ApiResponseAssetProcessingJob: {
+            code: string;
+            message: string;
+            request_id: string;
+            data: components["schemas"]["AssetProcessingJob"];
         };
         ProductSubmit: {
             /** Format: uuid */
@@ -1785,7 +1879,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductLifecycle"];
+                    "application/json": components["schemas"]["ApiResponseProductLifecycle"];
                 };
             };
         };
@@ -2014,7 +2108,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UsagePolicy"];
+                    "application/json": components["schemas"]["ApiResponseUsagePolicy"];
                 };
             };
         };
@@ -2040,7 +2134,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DataContract"];
+                    "application/json": components["schemas"]["ApiResponseDataContract"];
                 };
             };
         };
@@ -2063,7 +2157,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DataContract"];
+                    "application/json": components["schemas"]["ApiResponseDataContract"];
                 };
             };
         };
@@ -2089,7 +2183,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RawIngestBatch"];
+                    "application/json": components["schemas"]["ApiResponseRawIngestBatch"];
                 };
             };
         };
@@ -2115,7 +2209,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RawObjectManifest"];
+                    "application/json": components["schemas"]["ApiResponseRawObjectManifest"];
                 };
             };
         };
@@ -2141,7 +2235,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FormatDetectionResult"];
+                    "application/json": components["schemas"]["ApiResponseFormatDetectionResult"];
                 };
             };
         };
@@ -2167,7 +2261,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExtractionJob"];
+                    "application/json": components["schemas"]["ApiResponseExtractionJob"];
                 };
             };
         };
@@ -2196,7 +2290,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PreviewArtifact"];
+                    "application/json": components["schemas"]["ApiResponsePreviewArtifact"];
                 };
             };
         };
@@ -2225,7 +2319,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssetObject"];
+                    "application/json": components["schemas"]["ApiResponseAssetObject"];
                 };
             };
         };
@@ -2251,7 +2345,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssetReleasePolicy"];
+                    "application/json": components["schemas"]["ApiResponseAssetReleasePolicy"];
                 };
             };
         };
@@ -2277,7 +2371,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssetFieldDefinition"];
+                    "application/json": components["schemas"]["ApiResponseAssetFieldDefinition"];
                 };
             };
         };
@@ -2332,7 +2426,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AssetProcessingJob"];
+                    "application/json": components["schemas"]["ApiResponseAssetProcessingJob"];
                 };
             };
         };

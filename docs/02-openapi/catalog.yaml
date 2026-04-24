@@ -250,7 +250,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProductLifecycle"
+                $ref: "#/components/schemas/ApiResponseProductLifecycle"
   /api/v1/products/{id}/metadata-profile:
     put:
       summary: Upsert metadata profile for product
@@ -484,7 +484,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UsagePolicy"
+                $ref: "#/components/schemas/ApiResponseUsagePolicy"
   /api/v1/skus/{id}/data-contracts:
     post:
       summary: Create data contract for SKU
@@ -508,7 +508,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DataContract"
+                $ref: "#/components/schemas/ApiResponseDataContract"
   /api/v1/skus/{id}/data-contracts/{contractId}:
     get:
       summary: Get data contract by id for SKU
@@ -532,7 +532,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DataContract"
+                $ref: "#/components/schemas/ApiResponseDataContract"
   /api/v1/assets/{assetId}/raw-ingest-batches:
     post:
       summary: Create raw ingest batch
@@ -556,7 +556,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RawIngestBatch"
+                $ref: "#/components/schemas/ApiResponseRawIngestBatch"
   /api/v1/raw-ingest-batches/{id}/manifests:
     post:
       summary: Create raw object manifest
@@ -580,7 +580,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RawObjectManifest"
+                $ref: "#/components/schemas/ApiResponseRawObjectManifest"
   /api/v1/raw-object-manifests/{id}/detect-format:
     post:
       summary: Detect format for raw object manifest
@@ -604,7 +604,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FormatDetectionResult"
+                $ref: "#/components/schemas/ApiResponseFormatDetectionResult"
   /api/v1/raw-object-manifests/{id}/extraction-jobs:
     post:
       summary: Create extraction job for raw object manifest
@@ -628,7 +628,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExtractionJob"
+                $ref: "#/components/schemas/ApiResponseExtractionJob"
   /api/v1/assets/{versionId}/preview-artifacts:
     post:
       summary: Create preview artifact for asset version
@@ -658,7 +658,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PreviewArtifact"
+                $ref: "#/components/schemas/ApiResponsePreviewArtifact"
   /api/v1/assets/{versionId}/objects:
     post:
       summary: Create asset object for asset version
@@ -688,7 +688,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssetObject"
+                $ref: "#/components/schemas/ApiResponseAssetObject"
   /api/v1/assets/{assetId}/release-policy:
     patch:
       summary: Patch release policy for asset
@@ -712,7 +712,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssetReleasePolicy"
+                $ref: "#/components/schemas/ApiResponseAssetReleasePolicy"
   /api/v1/assets/{versionId}/field-definitions:
     post:
       summary: Create field definition for asset version
@@ -736,7 +736,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssetFieldDefinition"
+                $ref: "#/components/schemas/ApiResponseAssetFieldDefinition"
   /api/v1/assets/{versionId}/quality-reports:
     post:
       summary: Create quality report for asset version
@@ -790,7 +790,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssetProcessingJob"
+                $ref: "#/components/schemas/ApiResponseAssetProcessingJob"
 components:
   schemas:
     CreateDataProductRequest:
@@ -2848,6 +2848,198 @@ components:
           type: string
         data:
           $ref: "#/components/schemas/ReviewDecision"
+    ApiResponseProductLifecycle:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/ProductLifecycle"
+    ApiResponseUsagePolicy:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/UsagePolicy"
+    ApiResponseDataContract:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/DataContract"
+    ApiResponseRawIngestBatch:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/RawIngestBatch"
+    ApiResponseRawObjectManifest:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/RawObjectManifest"
+    ApiResponseFormatDetectionResult:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/FormatDetectionResult"
+    ApiResponseExtractionJob:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/ExtractionJob"
+    ApiResponsePreviewArtifact:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/PreviewArtifact"
+    ApiResponseAssetObject:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/AssetObject"
+    ApiResponseAssetReleasePolicy:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/AssetReleasePolicy"
+    ApiResponseAssetFieldDefinition:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/AssetFieldDefinition"
+    ApiResponseAssetProcessingJob:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+        - data
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        data:
+          $ref: "#/components/schemas/AssetProcessingJob"
     ProductSubmit:
       type: object
       properties:

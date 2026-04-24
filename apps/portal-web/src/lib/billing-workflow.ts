@@ -254,7 +254,7 @@ export function formatMoney(amount: string | undefined, currency: string | undef
 
 export function billingStatusTiles(detail: BillingOrderDetail) {
   return [
-    ["order_status", detail.order_status],
+    ["current_state", detail.current_state],
     ["payment_status", detail.payment_status],
     ["settlement_status", detail.settlement_status],
     ["dispute_status", detail.dispute_status],

@@ -657,11 +657,15 @@ export interface components {
             traces: components["schemas"]["AuditTrace"][];
         };
         AuditTracePageResponse: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AuditTracePage"];
         };
         OrderAuditResponse: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["OrderAuditView"];
         };
         EvidenceManifest: {
@@ -715,7 +719,9 @@ export interface components {
             step_up_bound: boolean;
         };
         AuditPackageExportResponse: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AuditPackageExportView"];
         };
         AuditReplayJobCreateRequest: {
@@ -783,7 +789,9 @@ export interface components {
             results: components["schemas"]["ReplayResult"][];
         };
         AuditReplayJobDetailResponse: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AuditReplayJobDetail"];
         };
         LegalHold: {
@@ -838,7 +846,9 @@ export interface components {
             step_up_bound: boolean;
         };
         AuditLegalHoldActionResponse: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AuditLegalHoldActionView"];
         };
         AnchorBatch: {
@@ -875,7 +885,9 @@ export interface components {
             items: components["schemas"]["AnchorBatch"][];
         };
         AuditAnchorBatchPageResponse: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AuditAnchorBatchPage"];
         };
         AuditAnchorBatchRetryRequest: {
@@ -889,7 +901,9 @@ export interface components {
             step_up_bound: boolean;
         };
         AuditAnchorBatchRetryResponse: {
-            success: boolean;
+            code: string;
+            message: string;
+            request_id: string;
             data: components["schemas"]["AuditAnchorBatchRetryView"];
         };
     };

@@ -2518,3 +2518,55 @@
   - `TEST-013` 的争议冻结结算与裁决退款/赔付尚未开始。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-310（待审批）
+- 任务：`TEST-003` 契约回收复核整改（A/A 口径）：统一 success/failure envelope、去除 `data.data`、回收 `current_state/order_amount/metered_quantity`
+- 状态：待审批
+- 当前任务编号：`TEST-003`
+- 前置依赖核对结果：`ENV-040`、`DB-032`、`CORE-024` 依赖继续满足；本批不新增依赖项。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-003` 的正式交付仍是 contract baseline + checker，且以冻结文档口径为 authority。
+  - `docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认响应 envelope 与关键字段名冻结口径。
+  - `docs/05-test-cases/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`：确认 `TEST-003` 官方 checker 与 `ACC-CONTRACT` gate 的证据边界。
+  - `packages/openapi/*.yaml`、`docs/02-openapi/*.yaml`、`scripts/check-api-contract-baseline.sh`、`scripts/check-ci-minimal-matrix.sh`：确认当前实现与 checker/CI 存在待回收漂移。
+- 实现要点：
+  - OpenAPI 契约回收：
+    - 回收 `packages/openapi/trade.yaml`：去除 `data.data`，统一到 `code/message/request_id/data`，并把关键字段对齐为 `current_state/order_amount/metered_quantity`。
+    - 回收 `packages/openapi/billing.yaml`：统一 `code` 为字符串、补 `request_id`，修正 `BillingOrderDetail/OrderLock` 为 `current_state`，事件计量字段为 `metered_quantity`。
+    - 回收 `packages/openapi/catalog.yaml`：把仍直接返回 payload 的接口切换为正式 envelope response schema（含新增 `ApiResponseProductLifecycle/UsagePolicy/DataContract/...` 等）。
+    - 同步 `docs/02-openapi/{trade,billing,catalog}.yaml`。
+  - 运行时响应回收：
+    - 调整 `apps/platform-core/src/modules/order/api/handlers.rs`，把 `ApiResponse<...{data:...}>` 统一改为 `ApiResponse<...Data>`，真实消除 `data.data`。
+  - 前端与脚本回收：
+    - 更新 `portal-web` 订单/交付/验收/争议/高级路由与 E2E 读取逻辑，去掉旧双层 envelope 兼容路径。
+    - 更新 `apps/platform-core/src/modules/delivery/tests/scripts/dlv026_s5_qry_lite_demo.sh` 的 jq 路径为单层 `data`。
+  - checker/CI 回收：
+    - 重写 `scripts/check-api-contract-baseline.sh` 的 success envelope 校验逻辑，改为按 `paths.*.responses.200` 实际 schema（含 inline schema 与 `$ref/oneOf/allOf`）做结构化校验，避免旧 awk 误判/漏判。
+    - `scripts/check-ci-minimal-matrix.sh` 的 openapi lane 新增 SDK 生成漂移校验；`.github/workflows/ci-minimal-matrix.yml` 对应启用 node setup。
+- 验证步骤：
+  1. `bash ./scripts/check-openapi-schema.sh`
+  2. `bash ./scripts/check-api-contract-baseline.sh`
+  3. `pnpm --filter @datab/sdk-ts openapi:generate`
+  4. `pnpm typecheck`
+  5. `pnpm --filter @datab/portal-web test -- --run`
+  6. `cargo fmt --all`
+  7. `cargo check -p platform-core`
+  8. `cargo test -p platform-core trade -- --nocapture`
+  9. `cargo test -p platform-core`
+  10. `cargo sqlx prepare --workspace`
+  11. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `check-openapi-schema`、`check-api-contract-baseline` 均通过；`TEST-003` 四类基线（envelope/关键字段/错误码/状态机）均为绿色。
+  - `pnpm typecheck` 通过；`portal-web` 单测 + smoke e2e 通过。
+  - `cargo check -p platform-core`、`cargo test -p platform-core trade`、`cargo test -p platform-core` 全部通过（`iam_party_access_flow_live` 维持仓库既有 ignored）。
+  - `cargo sqlx prepare --workspace` 与 `check-query-compile` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-003`
+  - `接口清单与OpenAPI-Schema冻结表.md`
+  - `数据交易平台-全集成基线-V1.md`
+  - `docs/05-test-cases/README.md`
+- 覆盖的任务清单条目：`TEST-003`
+- 未覆盖项：
+  - 本批聚焦 `TEST-003` 契约回收与 checker/CI 收口，不扩展到后续 `TEST-004+` 的链路验收内容。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

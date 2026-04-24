@@ -1081,8 +1081,9 @@ paths:
               examples:
                 recorded:
                   value:
-                    code: 0
-                    message: ok
+                    code: "OK"
+                    message: "success"
+                    request_id: "req-share-ro-cycle-charge"
                     data:
                       order_id: "7c7d39f8-20af-4f5b-9c54-793c5f04fd65"
                       billing_cycle_code: "2026-04"
@@ -2355,11 +2356,13 @@ components:
           additionalProperties: true
     RefundExecutionResponse:
       type: object
-      required: [code, message, data]
+      required: [code, message, request_id, data]
       properties:
         code:
-          type: integer
+          type: string
         message:
+          type: string
+        request_id:
           type: string
         data:
           $ref: "#/components/schemas/RefundExecution"
@@ -2450,11 +2453,13 @@ components:
           additionalProperties: true
     CompensationExecutionResponse:
       type: object
-      required: [code, message, data]
+      required: [code, message, request_id, data]
       properties:
         code:
-          type: integer
+          type: string
         message:
+          type: string
+        request_id:
           type: string
         data:
           $ref: "#/components/schemas/CompensationExecution"
@@ -2645,11 +2650,13 @@ components:
           $ref: "#/components/schemas/BillingSplitInstruction"
     ManualPayoutExecutionResponse:
       type: object
-      required: [code, message, data]
+      required: [code, message, request_id, data]
       properties:
         code:
-          type: integer
+          type: string
         message:
+          type: string
+        request_id:
           type: string
         data:
           $ref: "#/components/schemas/ManualPayoutExecution"
@@ -2782,11 +2789,13 @@ components:
           type: boolean
     ReconciliationImportResponse:
       type: object
-      required: [code, message, data]
+      required: [code, message, request_id, data]
       properties:
         code:
-          type: integer
+          type: string
         message:
+          type: string
+        request_id:
           type: string
         data:
           $ref: "#/components/schemas/ReconciliationImport"
@@ -2858,11 +2867,13 @@ components:
           format: int64
     DisputeCaseResponse:
       type: object
-      required: [code, message, data]
+      required: [code, message, request_id, data]
       properties:
         code:
-          type: integer
+          type: string
         message:
+          type: string
+        request_id:
           type: string
         data:
           $ref: "#/components/schemas/DisputeCase"
@@ -2905,11 +2916,13 @@ components:
           type: boolean
     DisputeEvidenceResponse:
       type: object
-      required: [code, message, data]
+      required: [code, message, request_id, data]
       properties:
         code:
-          type: integer
+          type: string
         message:
+          type: string
+        request_id:
           type: string
         data:
           $ref: "#/components/schemas/DisputeEvidence"
@@ -2984,11 +2997,13 @@ components:
           type: boolean
     DisputeResolutionResponse:
       type: object
-      required: [code, message, data]
+      required: [code, message, request_id, data]
       properties:
         code:
-          type: integer
+          type: string
         message:
+          type: string
+        request_id:
           type: string
         data:
           $ref: "#/components/schemas/DisputeResolution"

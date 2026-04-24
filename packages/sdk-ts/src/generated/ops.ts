@@ -29,7 +29,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": "ok"
                          *     }
                          */
@@ -71,7 +73,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": "ready"
                          *     }
                          */
@@ -268,7 +272,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "subject": {
                          *           "lookup_mode": "tx_hash",
@@ -518,7 +524,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "event_id": "2d2a5fe9-97c7-42d8-96cb-1fc1c8cbb2a1",
                          *         "aggregate_id": "11111111-1111-1111-1111-111111111111",
@@ -664,7 +672,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "event_id": "0b752495-6bd3-4f5b-9cbc-c54b0a0f04dc",
                          *         "event_type": "notification.requested",
@@ -757,7 +767,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "request_id": "req-notif013-lookup",
                          *         "trace_id": "trace-notif013-lookup",
@@ -929,7 +941,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "dead_letter_event_id": "695646ea-35e6-4fd3-955e-a4336f455bb6",
                          *         "original_event_id": "5335bc1d-c10e-496f-8123-a2c5a2cca5fc",
@@ -1051,7 +1065,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "request_id": "req-notif013-lookup",
                          *         "trace_id": "trace-notif013-lookup",
@@ -1236,7 +1252,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "dead_letter_event_id": "695646ea-35e6-4fd3-955e-a4336f455bb6",
                          *         "original_event_id": "5335bc1d-c10e-496f-8123-a2c5a2cca5fc",
@@ -1354,7 +1372,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -1485,7 +1505,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -1621,7 +1643,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "dead_letter": {
                          *           "dead_letter_event_id": "3e1cbc5f-1dc9-4135-a68a-a9442eaad874",
@@ -1781,7 +1805,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -1901,7 +1927,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "external_fact_receipt": {
                          *           "external_fact_receipt_id": "991f69a0-ae84-4c5e-89f4-d764354e955d",
@@ -2028,7 +2056,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -2149,7 +2179,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "fairness_incident": {
                          *           "fairness_incident_id": "0de23c6d-6dc9-49d6-bb13-c31182093210",
@@ -2275,7 +2307,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -2395,7 +2429,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "projection_gap": {
                          *           "chain_projection_gap_id": "7bd129c4-12aa-4f75-89d0-9efd456b4ca8",
@@ -2516,7 +2552,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "ref_type": "order",
                          *         "ref_id": "0b66431d-9437-4cb3-b5f7-e8ff522aa111",
@@ -2739,7 +2777,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "ref_type": "order",
                          *         "ref_id": "0b66431d-9437-4cb3-b5f7-e8ff522aa111",
@@ -2883,7 +2923,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "order_id": "0b66431d-9437-4cb3-b5f7-e8ff522aa111",
                          *         "request_id": "req-aud018-overview",
@@ -3038,7 +3080,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "order_id": "0b66431d-9437-4cb3-b5f7-e8ff522aa111",
                          *         "total": 1,
@@ -3141,7 +3185,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "backend_statuses": [
                          *           {
@@ -3335,7 +3381,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 2,
                          *         "page": 1,
@@ -3530,7 +3578,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "export_id": "f8dcb956-11df-44c3-aa5e-1b4d88981ee0",
                          *         "bucket_name": "report-results",
@@ -3624,7 +3674,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "trace": {
                          *           "trace_index_id": "22084516-bd16-4657-aece-3dbff6b32e0c",
@@ -3766,7 +3818,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -3875,7 +3929,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -3980,7 +4036,9 @@ export interface paths {
                     content: {
                         /**
                          * @example {
-                         *       "success": true,
+                         *       "code": "OK",
+                         *       "message": "success",
+                         *       "request_id": "req_example",
                          *       "data": {
                          *         "total": 1,
                          *         "page": 1,
@@ -4054,138 +4112,219 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ApiResponseString: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: string;
         };
         ApiResponseDependenciesReport: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["DependenciesReport"];
         };
         ApiResponseSendNotificationResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["SendNotificationResponse"];
         };
         ApiResponsePreviewTemplateResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["PreviewTemplateResponse"];
         };
         ApiResponseReplayDeadLetterResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["ReplayDeadLetterResponse"];
         };
         ApiResponseNotificationAuditSearchResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["NotificationAuditSearchResponse"];
         };
         ApiResponseOpsOutboxPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsOutboxPageResponse"];
         };
         ApiResponseOpsDeadLetterPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsDeadLetterPageResponse"];
         };
         ApiResponseOpsDeadLetterReprocessResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsDeadLetterReprocessResponse"];
         };
         ApiResponseOpsConsistencyResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsConsistencyResponse"];
         };
         ApiResponseOpsConsistencyReconcileResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsConsistencyReconcileResponse"];
         };
         ApiResponseTradeMonitorOverviewResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["TradeMonitorOverviewResponse"];
         };
         ApiResponseTradeMonitorCheckpointPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["TradeMonitorCheckpointPageResponse"];
         };
         ApiResponseExternalFactReceiptPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["ExternalFactReceiptPageResponse"];
         };
         ApiResponseOpsExternalFactConfirmResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsExternalFactConfirmResponse"];
         };
         ApiResponseFairnessIncidentPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["FairnessIncidentPageResponse"];
         };
         ApiResponseOpsFairnessIncidentHandleResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsFairnessIncidentHandleResponse"];
         };
         ApiResponseChainProjectionGapPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["ChainProjectionGapPageResponse"];
         };
         ApiResponseOpsProjectionGapResolveResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsProjectionGapResolveResponse"];
         };
         ApiResponseOpsObservabilityOverviewResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsObservabilityOverviewResponse"];
         };
         ApiResponseOpsLogMirrorPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsLogMirrorPageResponse"];
         };
         ApiResponseOpsLogExportResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsLogExportResponse"];
         };
         ApiResponseOpsTraceLookupResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsTraceLookupResponse"];
         };
         ApiResponseDeveloperTraceLookupResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["DeveloperTraceLookupResponse"];
         };
         ApiResponseOpsAlertPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsAlertPageResponse"];
         };
         ApiResponseOpsIncidentPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsIncidentPageResponse"];
         };
         ApiResponseOpsSloPageResponse: {
-            /** @example true */
-            success: boolean;
+            /** @example OK */
+            code: string;
+            /** @example success */
+            message: string;
+            request_id: string;
             data: components["schemas"]["OpsSloPageResponse"];
         };
         DependenciesReport: {
@@ -5231,7 +5370,10 @@ export interface components {
         ErrorResponse: {
             code: string;
             message: string;
-            request_id?: string | null;
+            request_id: string;
+            details: {
+                [key: string]: unknown;
+            };
         };
     };
     responses: never;

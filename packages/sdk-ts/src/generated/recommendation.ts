@@ -40,7 +40,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["RecommendationResponse"];
                         };
                     };
@@ -136,7 +138,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["BehaviorTrackResponse"];
                         };
                     };
@@ -230,7 +234,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["BehaviorTrackResponse"];
                         };
                     };
@@ -315,7 +321,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["PlacementView"][];
                         };
                     };
@@ -392,7 +400,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["PlacementView"];
                         };
                     };
@@ -473,7 +483,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["RecommendationRankingProfileView"][];
                         };
                     };
@@ -550,7 +562,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["RecommendationRankingProfileView"];
                         };
                     };
@@ -642,7 +656,9 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            success: boolean;
+                            code: string;
+                            message: string;
+                            request_id: string;
                             data: components["schemas"]["RecommendationRebuildResponse"];
                         };
                     };
@@ -707,7 +723,10 @@ export interface components {
         ErrorResponse: {
             code: string;
             message: string;
-            request_id?: string | null;
+            request_id: string;
+            details: {
+                [key: string]: unknown;
+            };
         };
         RecommendationItem: {
             /** Format: uuid */
