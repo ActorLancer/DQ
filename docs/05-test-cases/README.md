@@ -15,6 +15,7 @@
 - `./scripts/check-api-contract-baseline.sh` 是 `TEST-003` 的正式 checker：它只校验 API/OpenAPI 相关冻结契约，包括成功/失败 envelope、关键响应字段、错误码基线与订单状态机 action enum / 禁止错误码绑定，不替代 `TEST-028` 的 canonical smoke。
 - `./scripts/check-migration-smoke.sh` 是 `TEST-004` 的正式 checker：它会启动当前 local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core` 做健康与运行态回查；`./scripts/validate_database_migrations.sh` 仅作为兼容入口转发到该 checker。
 - `./scripts/smoke-local.sh` 是 `TEST-005` 的正式 checker：它会自动确保 `core + observability + mocks` compose profile、执行基础 `migrate-up + seed-up`、初始化 MinIO buckets，并在宿主机 `127.0.0.1:8094` 启动或复用 `platform-core`，再回查 `check-local-stack full`、Keycloak realm、Grafana datasource、canonical topics、Kafka 双地址边界与关键 ops 控制面入口。
+- `./scripts/check-ci-minimal-matrix.sh` 是 `TEST-015` 的正式 checker：支持 `rust / ts / go / migration / openapi / all` 六个入口，本地与 CI 都必须复用它，不允许在 workflow 里另写第二套命令。
 - 当前仓库已分别由以下文件承接三条事件的正式验收清单：
   - `notification.requested -> docs/05-test-cases/notification-cases.md`
   - `audit.anchor_requested / fabric.proof_submit_requested -> docs/05-test-cases/audit-consistency-cases.md`
@@ -31,6 +32,7 @@
 - `delivery-revocation-cases.md`：`TEST-012` 交付与断权正式清单，冻结文件票据撤权、share/API/sandbox 断权后的正式入口失败、`Redis / PostgreSQL / audit` 联查。
 - `dispute-settlement-linkage-cases.md`：`TEST-013` 争议与结算联动正式清单，冻结 `POST /api/v1/cases` 触发的结算冻结，以及裁决后 `refund / compensation` 的正式入账、结算重算、审计与 outbox 联查。
 - `audit-replay-dry-run-cases.md`：`TEST-014` 审计回放 dry-run 正式清单，冻结订单 replay job 的差异报告输出、MinIO report、`replay_result.diff_summary`、权限 / step-up / dry-run-only 约束与审计留痕。
+- `ci-minimal-matrix-cases.md`：`TEST-015` CI 最小矩阵正式清单，冻结 Rust / TS / Go / migration / OpenAPI 五条 lane 的命令、失败定位与边界说明。
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
 - `migration-smoke-cases.md`：`TEST-004` 的正式 migration smoke 清单，固定 core stack、migration/seed roundtrip、seed_history 回查与 `platform-core` 启动验证入口。

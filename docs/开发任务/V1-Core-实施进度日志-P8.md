@@ -369,6 +369,87 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-312（计划中）
+- 任务：`TEST-015` 建立 CI 流水线最小矩阵：Rust lint/test、TS lint/test、Go build/test、migration check、OpenAPI check
+- 状态：计划中
+- 当前任务编号：`TEST-015`
+- 前置依赖核对结果：`ENV-040` 已提供 `infra/docker/.env.local` 与 compose 本地基线，`TEST-004/005` 已形成 migration smoke 和 local stack smoke；`DB-032` 已提供 migration / seed / `.sqlx` 生成回归链路；`CORE-024` 已提供 `platform-core` 主应用与正式 OpenAPI / health / runtime 入口。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-015` 的正式交付不是占位 workflow，而是最小 CI 矩阵，至少覆盖 Rust、TS、Go、migration 与 OpenAPI。
+  - `docs/data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`：复核 `14.4`，确认后端服务必须通过 CI/CD 自动构建、自动测试，数据库变更必须走迁移脚本治理。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.1 / 15.2`，确认 `TEST` 阶段 CI 应覆盖单元/集成基础面并支撑阶段验收收敛。
+  - `.github/workflows/README.md`、现有 `.github/workflows/*.yml`：确认 `migration-smoke.yml`、`canonical-contracts.yml`、`contract-tests.yml` 等 task 专属 workflow 已存在，但 `build.yml / lint.yml / test.yml` 仍是 placeholder，当前仓库缺正式“最小矩阵”入口。
+  - `scripts/README.md`、`scripts/check-migration-smoke.sh`、`scripts/check-openapi-schema.sh`、`scripts/fabric-*-test.sh`、`scripts/go-env.sh`：确认 migration / OpenAPI / Go 模块已有正式脚本可复用，不应新造临时命令。
+  - `package.json`、`pnpm-workspace.yaml`、`apps/portal-web/package.json`、`apps/console-web/package.json`、`packages/sdk-ts/package.json`：确认 TS 工作区正式命令是 `pnpm lint`、`pnpm typecheck`、各包 `test:unit` / `test`，其中门户与控制台的根 `test` 含 E2E，不适合作为最小矩阵的默认单元验证。
+  - `services/fabric-adapter/go.mod`、`services/fabric-event-listener/go.mod`、`services/fabric-ca-admin/go.mod`、`infra/fabric/chaincode/datab-audit-anchor/go.mod`：确认一方 Go 模块共有 4 个，`go 1.26`，应纳入 `go build/test` 最小矩阵。
+- 当前完成标准理解：
+  - 形成 `TEST-015` 专属本地/CI 共用 checker，能够按子目标执行 `rust / ts / go / migration / openapi`。
+  - 新增正式 workflow，把最小矩阵拆成可读 job，失败时能直接定位到语言栈或检查项。
+  - 移除或替换现有 `build.yml / lint.yml / test.yml` placeholder，避免继续给出“假绿灯”。
+  - 文档同步收口到新的正式入口，并说明 TS 最小矩阵为什么只跑 unit test 而不复用 WEB 阶段 live E2E。
+- 实施计划：
+  1. 新增 `scripts/check-ci-minimal-matrix.sh`，支持 `rust / ts / go / migration / openapi / all` 子命令并复用现有正式 checker。
+  2. 新增 `docs/05-test-cases/ci-minimal-matrix-cases.md`，冻结 `TEST-015` 的矩阵范围、命令、失败定位口径与边界说明。
+  3. 新增 `.github/workflows/ci-minimal-matrix.yml`，将 5 类检查拆成最小矩阵 job，并清理 `build.yml / lint.yml / test.yml` placeholder。
+  4. 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`，明确 `TEST-015` 官方入口。
+  5. 执行本地真实验证、回写 `BATCH-312（待审批）`、本地提交，然后继续下一个 `TEST` task。
+
+### BATCH-312（待审批）
+- 任务：`TEST-015` 建立 CI 流水线最小矩阵：Rust lint/test、TS lint/test、Go build/test、migration check、OpenAPI check
+- 状态：待审批
+- 当前任务编号：`TEST-015`
+- 实现要点：
+  - 新增 `scripts/check-ci-minimal-matrix.sh`，形成 `TEST-015` 的正式 checker，并支持 6 个入口：
+    - `rust`：`cargo fmt --all --check`、`cargo check -p platform-core`、`cargo test -p platform-core`
+    - `ts`：`pnpm lint`、`pnpm typecheck`、`sdk-ts / portal-web / console-web` 的 unit test
+    - `go`：`services/fabric-adapter`、`services/fabric-event-listener`、`services/fabric-ca-admin`、`infra/fabric/chaincode/datab-audit-anchor` 的 `go build ./...` + `go test ./...`
+    - `migration`：复用 `ENV_FILE=infra/docker/.env.local ./scripts/check-migration-smoke.sh`
+    - `openapi`：复用 `./scripts/check-openapi-schema.sh`
+    - `all`：顺序串行跑完整最小矩阵
+  - 新增 `docs/05-test-cases/ci-minimal-matrix-cases.md`，冻结 `TEST-015` 的 5 条 lane、正式命令、失败定位与边界说明，显式说明 TS 最小矩阵只跑 unit test，不把 `WEB-018/TEST-006` 的 live E2E 混入本 lane。
+  - 新增 `.github/workflows/ci-minimal-matrix.yml`：
+    - 使用单个 workflow + matrix lane 拆分 `rust / ts / go / migration / openapi`
+    - Rust lane 显式安装 `rustfmt`
+    - Go lane 从 `services/fabric-adapter/go.mod` 读取 Go 版本
+    - migration lane 失败后统一执行 `down-local.sh`
+  - 删除 `.github/workflows/build.yml`、`lint.yml`、`test.yml` 三个 placeholder，避免继续输出无真实校验的假绿灯。
+  - 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`，把 `TEST-015` 入口与 placeholder 收口说明纳入正式索引。
+- 验证步骤：
+  1. `./scripts/check-ci-minimal-matrix.sh all`
+  2. `cargo fmt --all`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+  7. `bash -n scripts/check-ci-minimal-matrix.sh`
+  8. `python - <<'PY' ... yaml.safe_load('.github/workflows/ci-minimal-matrix.yml') ... PY`
+- 验证结果：
+  - `./scripts/check-ci-minimal-matrix.sh all` 通过；真实覆盖：
+    - Rust lane：`cargo fmt --all --check`、`cargo check -p platform-core`、`cargo test -p platform-core`
+    - TS lane：`pnpm lint`、`pnpm typecheck`、`sdk-ts` 41 条单测、`portal-web` 59 条 unit test、`console-web` 31 条 unit test
+    - Go lane：4 个一方 Go 模块/链码的 `go build ./...` 与 `go test ./...`
+    - migration lane：`TEST-004` 正式 migration smoke 全链路通过
+    - openapi lane：`check-openapi-schema.sh` 通过
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅保留仓库既有 `unused_* / dead_code` warning，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed；`iam_party_access_flow_live` 维持仓库既有 ignored。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 查询缓存可重建，无新增漂移文件残留。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `bash -n scripts/check-ci-minimal-matrix.sh` 通过。
+  - `python + PyYAML` 解析 `.github/workflows/ci-minimal-matrix.yml` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-015`
+  - `14-部署架构、容量规划与持续交付.md`：`14.4`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1 / 15.2`
+  - `docs/05-test-cases/README.md`
+  - `scripts/README.md`
+  - `.github/workflows/README.md`
+- 覆盖的任务清单条目：`TEST-015`
+- 未覆盖项：
+  - `TEST-016` 的 compose 级 smoke 与 schema drift CI 细化尚未开始。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-301（计划中）
 - 任务：`TEST-004` 建立 migration smoke test，验证空库升级、种子导入、应用启动、重置回滚与重新升级
 - 状态：计划中

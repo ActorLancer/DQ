@@ -17,8 +17,9 @@
 - `delivery-revocation.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-delivery-revocation.sh`，承接 `TEST-012` 文件票据 / share / API / sandbox 断权与正式入口拒绝验收。
 - `dispute-settlement-linkage.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-dispute-settlement-linkage.sh`，承接 `TEST-013` 争议冻结结算与裁决后退款 / 赔付重算验收。
 - `audit-replay-dry-run.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-replay-dry-run.sh`，承接 `TEST-014` 审计 replay dry-run 差异报告、MinIO report 与权限 / step-up 验收。
+- `ci-minimal-matrix.yml`：执行 `./scripts/check-ci-minimal-matrix.sh` 的 5 个 lane，承接 `TEST-015` 最小 CI 矩阵：Rust lint/test、TS lint/test、Go build/test、migration check、OpenAPI check。
 
-后续任务将继续补齐：
+说明：
 
-- smoke test
-- lint/test 工作流
+- 早期 `BOOT-011` 留下的 `build.yml / lint.yml / test.yml` placeholder 已由 `TEST-015` 移除，避免继续给出无实际校验的假绿灯。
+- 后续 `TEST` task 仍可继续追加专项 smoke / failure drill / compose 级 workflow，但都不应回退 `ci-minimal-matrix.yml` 的最小基线。

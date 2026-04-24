@@ -1,0 +1,89 @@
+name: ci-minimal-matrix
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  minimal-matrix:
+    name: ci-${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: rust
+            timeout_minutes: 35
+            setup_rust: true
+            setup_node: false
+            setup_go: false
+            apt_packages: ""
+          - lane: ts
+            timeout_minutes: 35
+            setup_rust: false
+            setup_node: true
+            setup_go: false
+            apt_packages: ""
+          - lane: go
+            timeout_minutes: 35
+            setup_rust: false
+            setup_node: false
+            setup_go: true
+            apt_packages: ""
+          - lane: migration
+            timeout_minutes: 45
+            setup_rust: true
+            setup_node: false
+            setup_go: false
+            apt_packages: "postgresql-client ripgrep"
+          - lane: openapi
+            timeout_minutes: 15
+            setup_rust: false
+            setup_node: false
+            setup_go: false
+            apt_packages: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        if: ${{ matrix.setup_rust }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Set up Node.js
+        if: ${{ matrix.setup_node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Set up pnpm
+        if: ${{ matrix.setup_node }}
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.1
+
+      - name: Set up Go
+        if: ${{ matrix.setup_go }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/fabric-adapter/go.mod
+
+      - name: Install Linux dependencies
+        if: ${{ matrix.apt_packages != '' }}
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt_packages }}
+
+      - name: Run TEST-015 lane
+        env:
+          CI: "1"
+        run: ./scripts/check-ci-minimal-matrix.sh ${{ matrix.lane }}
+
+      - name: Tear down local stack
+        if: ${{ always() && matrix.lane == 'migration' }}
+        run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true
