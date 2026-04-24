@@ -11,6 +11,7 @@
 - `schema-drift.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-schema-drift.sh`，承接 `TEST-017` 的 migration / `.sqlx` / `db::entity` / OpenAPI drift gate，并上传实体 / 表清单 artifact。
 - `performance-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-performance-smoke.sh`，承接 `TEST-018` 搜索 / 下单 / 交付 / 审计联查四条正式 API 的基础性能守门，并上传耗时汇总、Prometheus / metrics 快照与 `platform-core` 请求日志。
 - `failure-drills.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-failure-drills.sh`，承接 `TEST-019` 的 Kafka / OpenSearch / Fabric Adapter / Mock Payment 四类故障演练，并上传 group lag、响应快照、compose 日志与 live smoke 输出。
+- `rollback-recovery.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-rollback-recovery.sh`，承接 `TEST-020` 的业务库 reset、基础 seed replay、环境重启与 demo 数据恢复演练，并上传 rollback/recovery 汇总与 compose 日志。
 - `order-e2e.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh`，承接 `TEST-006` 五条标准链路 order E2E。
 - `provider-switch.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`，承接 `TEST-007` 支付 / 签章 / 链写 provider 切换验收。
 - `outbox-consistency.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh`，承接 `TEST-008` 事务写入 / outbox 发布 / consumer 幂等验收。

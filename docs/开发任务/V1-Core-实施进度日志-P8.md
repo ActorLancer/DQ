@@ -415,6 +415,94 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-317（计划中）
+- 任务：`TEST-020` 补充回滚演练脚本：重置本地库、重放 seed、重新启动环境、恢复演示数据
+- 状态：计划中
+- 说明：`TEST-020` 的目标不是再写一个“删除 volume 后重新 up”的便捷脚本，而是把正式回滚恢复路径固化为一个可重复 checker：在真实本地环境上先确认 demo/seed 基线存在，再停止环境、重启依赖、执行正式 `migrate-reset -> seed-up -> smoke-local -> seed-demo` 流程，最后证明 demo 订单/支付/交付和关键控制面都被恢复。当前仓库已有 `migrate-reset.sh`、`seed-up.sh`、`seed-demo.sh`、`check-demo-seed.sh`、`smoke-local.sh`、`down-local.sh`、`reset-local.sh` 等资产，但还没有把“回滚 -> 重建 -> 恢复”收成一个正式 `TEST` 入口。
+- 前置依赖核对结果：`ENV-040` 已提供本地 compose / Keycloak / Kafka / MinIO / OpenSearch / observability 基线；`DB-032` 已提供 `migrate-reset / migrate-up / seed-up / verify-migration-roundtrip` 等 migration 回归链路；`CORE-024` 已提供 `platform-core` 本地正式运行态与 demo seed/importer。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-020` 交付是正式回滚演练脚本，可在本地/CI 重复执行。
+  - `docs/数据库设计/数据库设计总说明.md`：复核 `7. 迁移执行顺序`，确认 rollback/rebuild 后仍必须遵守正式 migration 顺序。
+  - `docs/开发准备/技术选型正式版.md`：复核 `6. 本地与联调环境`，确认 rollback drill 必须继续运行在 Docker Compose 本地正式栈上。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认容灾/恢复验证需要是自动化入口。
+  - `docs/04-runbooks/local-startup.md`、`scripts/prune-local.sh`、`scripts/reset-local.sh`、`db/scripts/migrate-reset.sh`、`db/scripts/seed-up.sh`、`db/scripts/verify-migration-roundtrip.sh`、`scripts/check-migration-smoke.sh`、`scripts/check-demo-seed.sh`：确认当前可复用的停机、重置、回种、运行态 smoke 与 demo 校验资产。
+- 当前完成标准理解：
+  - 必须新增 `TEST-020` 正式 checker，统一覆盖：
+    1. 已运行的本地环境能够先证明 demo seed 当前存在。
+    2. 停止环境后，重新拉起依赖并执行正式 `migrate-reset`，不破坏 Keycloak 独立服务数据库。
+    3. 正式 `seed-up + smoke-local + seed-demo` 后，五条标准链路 demo 数据、关键运行态入口和 append-only 之外的业务对象被恢复。
+    4. 结果要留下 reset/reseed/recovery 的 artifact，失败时能定位是 DB reset、seed、demo import 还是 runtime restart 失败。
+  - 当前批次还需要补 `docs/05-test-cases/**`、workflow 与索引文档，冻结回滚演练入口和边界。
+- 实施计划：
+  1. 新增 `scripts/check-rollback-recovery.sh`，复用 `smoke-local.sh`、`down-local.sh`、`migrate-reset.sh`、`seed-demo.sh`、`check-demo-seed.sh`，落盘 rollback/recovery artifact。
+  2. 新增 `docs/05-test-cases/rollback-recovery-cases.md` 与 `.github/workflows/rollback-recovery.yml`，并更新 README 索引。
+  3. 执行真实验证、回写 `BATCH-317（待审批）`、本地提交，然后继续 `TEST-021`。
+
+### BATCH-317（待审批）
+- 任务：`TEST-020` 补充回滚演练脚本：重置本地库、重放 seed、重新启动环境、恢复演示数据
+- 状态：待审批
+- 当前任务编号：`TEST-020`
+- 前置依赖核对结果：`ENV-040` 的本地 compose / Keycloak / Kafka / MinIO / OpenSearch / observability 基线继续可用；`DB-032` 的 `migrate-reset / migrate-up / seed-up` 回归链路继续可用；`CORE-024` 的 `platform-core` 本地正式运行态与 demo importer 继续可用。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-020` 的交付是正式 rollback/recovery checker，而不是手工 runbook。
+  - `docs/数据库设计/数据库设计总说明.md`：复核 `7. 迁移执行顺序`，确认必须继续复用 `migrate-reset -> migrate-up` 正式路径。
+  - `docs/开发准备/技术选型正式版.md`：复核 `6. 本地与联调环境`，确认演练对象仍是本地正式 compose 栈。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认恢复演练需要自动化且可重复。
+  - `docs/04-runbooks/local-startup.md`、`scripts/prune-local.sh`、`scripts/reset-local.sh`、`db/scripts/migrate-reset.sh`、`db/scripts/seed-up.sh`、`scripts/check-demo-seed.sh`：确认停机、重置、回种、demo 回查的正式入口与边界。
+- 实现要点：
+  - 新增 `scripts/check-rollback-recovery.sh`：
+    - 统一复用 `smoke-local.sh`、`down-local.sh`、`up-local.sh`、`db/scripts/migrate-reset.sh`、`seed-local-iam-test-identities.sh`、`seed-demo.sh` 与 `check-demo-seed.sh`
+    - 回滚前先通过 `check-demo-seed.sh` 证明正式 demo fixture 已存在，并把输出落盘到 `baseline-demo-seed.txt`
+    - 停止 host `platform-core` 与 compose stack 后，真实执行业务库 `migrate-reset`
+    - `post-reset` 显式回查 `trade.order_main=0`，并把 `seed_history` 缺表视为 `0`，符合纯 migration 之后尚未 replay seed 的真实状态
+    - 重放 `smoke-local.sh` 恢复正式 runtime / base seed，再恢复 IAM test principals 与 demo 数据
+    - 最终再次通过 `check-demo-seed.sh` 与 buyer operator Keycloak grant 证明系统恢复到正式 demo 基线
+    - 全量 artifact 落盘到 `target/test-artifacts/rollback-recovery/`
+  - 新增 `docs/05-test-cases/rollback-recovery-cases.md`，冻结 `RBR-001~004` 四个子场景、正式动作、回查和清理边界。
+  - 新增 `.github/workflows/rollback-recovery.yml`，把 `TEST-020` 接入 GitHub Actions。
+  - 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`，登记 `TEST-020` 官方入口。
+- 实现修正：
+  - 初版以 `trade.order_main / payment.payment_intent / delivery.delivery_record` 全库总数断言 demo 基线，但连续 task 运行后库里可能已有额外业务测试数据；已改为解析 `check-demo-seed.sh` 的 demo fixture 专项计数，避免把非 demo 数据误计入验收。
+  - 初版在 `migrate-reset` 后直接查询 `public.seed_history`，但该表在未 replay seed 前可能不存在；已改为 shell 层 `query_optional_table_count`，把缺表视为 `0`，与正式 reset 路径一致。
+- 验证步骤：
+  1. `bash -n scripts/check-rollback-recovery.sh`
+  2. `ENV_FILE=infra/docker/.env.local bash ./scripts/check-rollback-recovery.sh`
+  3. `cargo fmt --all`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `bash -n scripts/check-rollback-recovery.sh` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-rollback-recovery.sh` 通过；`target/test-artifacts/rollback-recovery/summary.json` 固化结果：
+    - `baseline.demo_order_count=10`
+    - `baseline.demo_payment_intent_count=10`
+    - `baseline.demo_delivery_record_count=11`
+    - `baseline.demo_seed_history_count=1`
+    - `post_reset.total_order_count=0`
+    - `post_reset.total_seed_history_count=0`
+    - `restored.demo_order_count=10`
+    - `restored.demo_payment_intent_count=10`
+    - `restored.demo_delivery_record_count=11`
+    - `restored.demo_seed_history_count=1`
+  - 本地恢复结束后，业务库当前全量对象计数为：`trade.order_main=23`、`payment.payment_intent=10`、`delivery.delivery_record=11`、`public.seed_history(version=demo-v1-core-standard-scenarios)=1`；其中订单全量计数包含 base seed + demo，不再用于 `TEST-020` 的正式 demo 验收。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 warning（如 `recommendation::ContextEntity.product_type`、`SERVICE_NAME` 未使用）。
+  - `cargo test -p platform-core` 通过；当前结果为 `0` 失败、`1` ignored（`iam_party_access_flow_live` 仓库既有 live ignore）。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 元数据可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-020`
+  - `数据库设计总说明.md`：`7. 迁移执行顺序`
+  - `技术选型正式版.md`：`6. 本地与联调环境`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1 / 15.2`
+  - `docs/04-runbooks/local-startup.md`
+- 覆盖的任务清单条目：`TEST-020`
+- 未覆盖项：
+  - 当前批次不做跨机房级别的容灾切换、对象存储冷备恢复或 Keycloak 独立数据库灾备演练；这些不属于 `TEST-020` 的本地 rollback/recovery 边界。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-310（待审批）
 - 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
 - 状态：待审批
