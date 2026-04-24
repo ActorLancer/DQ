@@ -2540,35 +2540,102 @@ async fn recommendation_filters_frozen_product_db_smoke() {
             )
             .await
             .map_err(|err| format!("call post-freeze recommendation endpoint failed: {err}"))?;
+        let after_status = after_response.status();
         let after_json = response_json(after_response).await?;
-        if after_json["data"]["items"]
-            .as_array()
-            .is_some_and(|items| items
-                .iter()
-                .any(|item| item["entity_id"].as_str() == Some(ids.product_ids[1].as_str())))
-        {
-            return Err(format!(
-                "frozen product should be filtered out of recommendation results: {after_json}"
-            ));
-        }
-        let recommendation_result_id = after_json["data"]["recommendation_result_id"]
-            .as_str()
-            .ok_or_else(|| format!("post-freeze recommendation_result_id missing: {after_json}"))?;
-        let frozen_item_count = client
-            .query_one(
-                "SELECT COUNT(*)::bigint
-                 FROM recommend.recommendation_result_item
-                 WHERE recommendation_result_id = $1::text::uuid
-                   AND entity_id = $2::text::uuid",
-                &[&recommendation_result_id, &ids.product_ids[1]],
-            )
-            .await
-            .map_err(|err| format!("count frozen recommendation_result_item failed: {err}"))?
-            .get::<_, i64>(0);
-        if frozen_item_count != 0 {
-            return Err(format!(
-                "frozen product should not be written into recommendation_result_item rows: count={frozen_item_count}"
-            ));
+        match after_status {
+            StatusCode::OK => {
+                if after_json["data"]["items"]
+                    .as_array()
+                    .is_some_and(|items| items
+                        .iter()
+                        .any(|item| item["entity_id"].as_str() == Some(ids.product_ids[1].as_str())))
+                {
+                    return Err(format!(
+                        "frozen product should be filtered out of recommendation results: {after_json}"
+                    ));
+                }
+                let recommendation_result_id = after_json["data"]["recommendation_result_id"]
+                    .as_str()
+                    .ok_or_else(|| {
+                        format!("post-freeze recommendation_result_id missing: {after_json}")
+                    })?;
+                let frozen_item_count = client
+                    .query_one(
+                        "SELECT COUNT(*)::bigint
+                         FROM recommend.recommendation_result_item
+                         WHERE recommendation_result_id = $1::text::uuid
+                           AND entity_id = $2::text::uuid",
+                        &[&recommendation_result_id, &ids.product_ids[1]],
+                    )
+                    .await
+                    .map_err(|err| format!("count frozen recommendation_result_item failed: {err}"))?
+                    .get::<_, i64>(0);
+                if frozen_item_count != 0 {
+                    return Err(format!(
+                        "frozen product should not be written into recommendation_result_item rows: count={frozen_item_count}"
+                    ));
+                }
+            }
+            StatusCode::NOT_FOUND => {
+                if after_json["code"].as_str() != Some("RECOMMENDATION_RESULT_UNAVAILABLE") {
+                    return Err(format!(
+                        "post-freeze recommendation should map empty final candidates to RECOMMENDATION_RESULT_UNAVAILABLE: {after_json}"
+                    ));
+                }
+                if !after_json["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("no recommendation candidates available"))
+                {
+                    return Err(format!(
+                        "post-freeze recommendation unavailable message mismatch: {after_json}"
+                    ));
+                }
+                if after_json["request_id"].as_str() != Some(request_id_after.as_str()) {
+                    return Err(format!(
+                        "post-freeze recommendation unavailable request_id mismatch: {after_json}"
+                    ));
+                }
+                let frozen_request_count = client
+                    .query_one(
+                        "SELECT COUNT(*)::bigint
+                         FROM recommend.recommendation_request
+                         WHERE request_id = $1",
+                        &[&request_id_after],
+                    )
+                    .await
+                    .map_err(|err| format!("count unavailable recommendation_request failed: {err}"))?
+                    .get::<_, i64>(0);
+                if frozen_request_count != 0 {
+                    return Err(format!(
+                        "empty final candidate set should not persist recommendation_request rows: count={frozen_request_count}"
+                    ));
+                }
+                let frozen_item_count = client
+                    .query_one(
+                        "SELECT COUNT(*)::bigint
+                         FROM recommend.recommendation_result_item item
+                         JOIN recommend.recommendation_result res
+                           ON res.recommendation_result_id = item.recommendation_result_id
+                         JOIN recommend.recommendation_request req
+                           ON req.recommendation_request_id = res.recommendation_request_id
+                         WHERE req.request_id = $1
+                           AND item.entity_id = $2::text::uuid",
+                        &[&request_id_after, &ids.product_ids[1]],
+                    )
+                    .await
+                    .map_err(|err| format!("count unavailable recommendation_result_item failed: {err}"))?
+                    .get::<_, i64>(0);
+                if frozen_item_count != 0 {
+                    return Err(format!(
+                        "post-freeze unavailable response should not persist frozen recommendation_result_item rows: count={frozen_item_count}"
+                    ));
+                }
+            }
+            status => {
+                return Err(format!(
+                    "unexpected post-freeze recommendation status={status}: {after_json}"
+                ));
+            }
         }
         Ok(())
     }

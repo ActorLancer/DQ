@@ -22,6 +22,8 @@
 - 成功写操作会真实写入 `audit.audit_event + audit.access_audit + ops.system_log`
 - 读操作会真实写入 `audit.access_audit + ops.system_log`
 
+`TEST-010` 对搜索读链的正式回归入口为 `ENV_FILE=infra/docker/.env.local ./scripts/check-searchrec-pg-authority.sh`。该 checker 会复用本 runbook 对应的 alias 切换能力，并额外证明：即使 `OpenSearch` read alias 仍能命中旧文档，只要 `PostgreSQL` 权威状态已变为 `delisted`，最终搜索结果仍会把该商品过滤掉。
+
 ## 本地前置
 
 以下运维链路对应 `staging` 正式搜索路径；`local / demo` 的 PostgreSQL fallback 只用于前台搜索读路径验证，不替代本 runbook 中的 `OpenSearch` 运维能力。

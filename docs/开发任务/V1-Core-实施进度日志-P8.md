@@ -810,3 +810,82 @@
   - 本批的审计完备性主样本复用 `audit_trace_api_db_smoke`；如果后续冻结任务要求扩大到更多高风险动作，将在后续任务追加到官方 checker。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-307（计划中）
+- 任务：`TEST-010` 建立搜索与推荐回 PG 校验测试：下架/冻结商品不可在结果中漏校验出现
+- 状态：计划中
+- 说明：当前仓库已经在 `search_visibility_and_alias_consistency_db_smoke`、`recommendation_filters_frozen_product_db_smoke`、`recommendation_get_api_db_smoke` 和 `search-rec-cases.md` 中落实了“OpenSearch / Redis 只是候选与缓存，最终仍需回 PostgreSQL 校验”的规则，但这些资产尚未形成 `TEST-010` 官方 checker / 文档 / CI。当前批次将把搜索和推荐两侧的回 PG 过滤正式收口，重点证明下架/冻结商品即使仍残留在读模型中，也不会越过 PostgreSQL 最终业务校验返回给调用方。
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / OpenSearch / Redis / Kafka / Keycloak / observability 联调基线；`DB-032` 已通过 migration 与本地 smoke；`CORE-024` 已提供 `platform-core.search`、`platform-core.recommendation`、`search-indexer`、`recommendation-aggregator` 运行骨架。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-010` 的正式交付是搜索与推荐回 PG 校验，不是单独搜索 smoke。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`：确认 `V1` 搜索正式方案是 `PostgreSQL 主库 + OpenSearch 读模型 + Redis 缓存`，且支持 PostgreSQL fallback 搜索。
+  - `docs/原始PRD/商品推荐与个性化发现设计.md`：确认推荐正式架构结论是 `PostgreSQL 主数据权威 + OpenSearch 候选召回 + Redis 缓存 + PostgreSQL 最终业务校验`。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`、`docs/05-test-cases/search-rec-cases.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`：确认 `TEST` 阶段必须以真实搜索 / 推荐 API、OpenSearch / Redis / Kafka / PostgreSQL 回查收口 SEARCHREC 闭环。
+  - `apps/platform-core` 与 worker 现有 smoke：确认已具备搜索 alias 切换后 PG 最终过滤，以及推荐冻结商品过滤的测试基座，可优先复用。
+- 当前完成标准理解：
+  - 至少要证明：
+    1. 搜索 alias 切换后，即使 OpenSearch 仍有旧文档，PostgreSQL 下架 / 冻结状态仍会把商品过滤掉。
+    2. 推荐候选召回后，PostgreSQL 最终业务校验会过滤冻结 / 不可售商品。
+    3. 需要形成 `TEST-010` 专属文档、checker 和 CI 入口，不允许继续把 OpenSearch 命中或 Redis 缓存命中误报为正式通过。
+- 实施计划：
+  1. 评估现有 `search_visibility_and_alias_consistency_db_smoke`、`recommendation_filters_frozen_product_db_smoke`、相关 SEARCHREC smoke 是否已覆盖 `TEST-010` 核心断言；若缺口存在，再补最小必要测试。
+  2. 新增 `TEST-010` 官方文档与 checker，串联搜索回 PG 过滤和推荐回 PG 过滤两类正式样本。
+  3. 新增最小 CI workflow，保证 `TEST-010` 在 GitHub Actions 上可重复执行。
+  4. 执行真实验证、回写 `P8` 待审批日志并提交，然后继续 `TEST-011`。
+
+### BATCH-307（待审批）
+- 任务：`TEST-010` 建立搜索与推荐回 PG 校验测试：下架/冻结商品不可在结果中漏校验出现
+- 状态：待审批
+- 当前任务编号：`TEST-010`
+- 前置依赖核对结果：`ENV-040` 提供的本地 core + observability + mocks 基线已继续通过 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh` 复用；`DB-032` 的 migration / seed baseline 与 `.sqlx` 重建链路仍可复用；`CORE-024` 的 `platform-core.search` / `platform-core.recommendation` 运行骨架、`search-indexer` / `recommendation-aggregator` 读写边界已齐备。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-010` 只承接“搜索 / 推荐回 PostgreSQL 最终校验”正式验收，不把 worker / DLQ / 推荐行为流误并入本批。
+  - `docs/原始PRD/商品搜索、排序与索引同步设计.md`、`docs/原始PRD/商品推荐与个性化发现设计.md`：确认 `OpenSearch` 只承担候选召回，`Redis` 只承担缓存，`PostgreSQL` 才是搜索与推荐最终权威源。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`、`docs/05-test-cases/search-rec-cases.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`：确认 `TEST` 阶段要把 alias 切换、候选召回、PG 过滤、fallback 与结果落库正式收口到 checker / runbook / CI。
+  - `apps/platform-core/src/modules/search/tests/search_api_db.rs`、`apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs`：复核现有 smoke 已覆盖搜索 alias 切换后 PG 过滤、推荐冻结商品过滤和本地 PG fallback，但此前缺少 `TEST-010` 官方入口，且推荐冻结 smoke 对“候选被 PG 全量过滤后返回 unavailable”分支断言不稳。
+- 实现要点：
+  - 新增 `docs/05-test-cases/search-rec-pg-authority-cases.md`，把 `TEST-010` 的正式闭环、正式命令、关键 SQL 回查与禁止误报边界落盘。
+  - 新增 `scripts/check-searchrec-pg-authority.sh`，统一复用：
+    - `smoke-local.sh`
+    - `search_visibility_and_alias_consistency_db_smoke`
+    - `search_catalog_pg_fallback_db_smoke`
+    - `recommendation_get_api_db_smoke`
+    - `recommendation_filters_frozen_product_db_smoke`
+  - 新增 `.github/workflows/search-rec-pg-authority.yml`，将 `TEST-010` 纳入 GitHub Actions 最小矩阵。
+  - 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`、`docs/04-runbooks/search-reindex.md`、`docs/04-runbooks/recommendation-runtime.md`，明确 `TEST-010` 官方 checker 与 runbook 边界。
+  - 修正 `apps/platform-core/src/modules/recommendation/tests/recommendation_api_db.rs` 中 `recommendation_filters_frozen_product_db_smoke` 的验收口径：冻结后既接受“成功返回但已过滤冻结商品”，也接受“PG 最终过滤后候选集为空，返回 `RECOMMENDATION_RESULT_UNAVAILABLE`”；无论哪种分支，都必须证明没有继续写入冻结商品的 `recommendation_result_item`，且空候选分支不会落新的 `recommendation_request` 脏记录。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; RECOMMEND_DB_SMOKE=1 cargo test -p platform-core recommendation_filters_frozen_product_db_smoke -- --nocapture`
+  4. `ENV_FILE=infra/docker/.env.local ./scripts/check-searchrec-pg-authority.sh`
+  5. `cargo test -p platform-core`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `RECOMMEND_DB_SMOKE=1 cargo test -p platform-core recommendation_filters_frozen_product_db_smoke -- --nocapture` 通过；冻结商品路径已能稳定接受 `RECOMMENDATION_RESULT_UNAVAILABLE` 分支，并继续断言无脏 `recommendation_request / recommendation_result_item`。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-searchrec-pg-authority.sh` 通过；真实覆盖：
+    - `smoke-local.sh` core stack / Keycloak / Kafka canonical topics / observability / mock payment 基线
+    - `search_visibility_and_alias_consistency_db_smoke`：alias 切换后仍走 `backend=opensearch`，但 `PostgreSQL` 已下架商品会被最终过滤
+    - `search_catalog_pg_fallback_db_smoke`：`OpenSearch` 不可用时退化到 `backend=postgresql`，并观察到 Redis 搜索缓存 `cache_hit=false -> true`
+    - `recommendation_get_api_db_smoke`：推荐请求 / 结果 / 结果项、`audit.access_audit`、`ops.system_log` 真实落库
+    - `recommendation_filters_frozen_product_db_smoke`：冻结商品不会继续出现在返回中，也不会继续写入新的 `recommendation_result_item`
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`0` ignored；另有 `iam_party_access_flow_live` 维持仓库既有 ignored。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-010`
+  - `商品搜索、排序与索引同步设计.md`：`5. V1 正式方案`
+  - `商品推荐与个性化发现设计.md`：`3. 架构结论`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1`
+  - `docs/05-test-cases/search-rec-cases.md`
+  - `docs/04-runbooks/search-reindex.md`
+  - `docs/04-runbooks/recommendation-runtime.md`
+- 覆盖的任务清单条目：`TEST-010`
+- 未覆盖项：
+  - `TEST-011` 的支付 webhook 幂等与乱序保护未开始，本批不涉及 `mock-payment` webhook 顺序断言。
+  - `SEARCHREC` 行为流 consumer / DLQ / reprocess 仍以既有 `search-rec-cases.md` 和后续任务为准，本批不把 `TEST-010` 扩张为 worker 可靠性验收。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

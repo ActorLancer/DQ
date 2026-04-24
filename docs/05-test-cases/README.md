@@ -26,6 +26,7 @@
 - `provider-switch-cases.md`：`TEST-007` provider 切换正式清单，冻结支付 / 签章 / 链写三类 provider 的 mock/real 切换断言、Fabric live smoke 与官方 checker。
 - `outbox-consistency-cases.md`：`TEST-008` outbox 一致性正式清单，冻结事务成功写主对象 + 审计 + outbox、事务失败无脏 outbox，以及 `notification-worker` 重复消费不重复副作用的验收路径。
 - `audit-completeness-cases.md`：`TEST-009` 审计完备性正式清单，冻结关键审计动作留痕、证据导出 step-up 约束、非法导出拒绝和 MinIO 导出对象回查。
+- `search-rec-pg-authority-cases.md`：`TEST-010` 搜索 / 推荐回 PostgreSQL 校验正式清单，冻结 alias 切换后回 PG 过滤、OpenSearch 不可用 fallback，以及冻结 / 下架商品不得继续落入结果集或 `recommendation_result_item`。
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
 - `migration-smoke-cases.md`：`TEST-004` 的正式 migration smoke 清单，固定 core stack、migration/seed roundtrip、seed_history 回查与 `platform-core` 启动验证入口。

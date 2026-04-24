@@ -12,6 +12,7 @@
 - `provider-switch.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`，承接 `TEST-007` 支付 / 签章 / 链写 provider 切换验收。
 - `outbox-consistency.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh`，承接 `TEST-008` 事务写入 / outbox 发布 / consumer 幂等验收。
 - `audit-completeness.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh`，承接 `TEST-009` 审计留痕 / step-up / 证据导出验收。
+- `search-rec-pg-authority.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-searchrec-pg-authority.sh`，承接 `TEST-010` 搜索 / 推荐回 PostgreSQL 最终校验验收。
 
 后续任务将继续补齐：
 

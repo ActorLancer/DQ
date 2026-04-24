@@ -7,6 +7,8 @@
 - `recommendation-aggregator` 负责消费 `dtp.recommend.behavior`，更新信号聚合、关系边、搜索投影重刷和推荐缓存失效。
 - `search-indexer` 继续负责消费 `dtp.search.sync`，将重刷后的搜索投影写入 OpenSearch。
 
+`TEST-010` 对推荐读链的正式回归入口为 `ENV_FILE=infra/docker/.env.local ./scripts/check-searchrec-pg-authority.sh`。该 checker 会复用本 runbook 的推荐读取路径，并额外证明：即使候选召回仍能命中旧商品文档，只要 `PostgreSQL` 权威状态已变为 `frozen`，最终返回和新的 `recommendation_result_item` 都不能继续包含该商品。
+
 ## 本地启动
 
 ```bash
