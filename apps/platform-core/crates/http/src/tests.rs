@@ -56,12 +56,12 @@ mod tests {
     #[test]
     fn trace_links_use_default_ports() {
         let links = build_trace_links();
-        assert_eq!(links.grafana, "http://localhost:3000");
-        assert_eq!(links.loki, "http://localhost:3100");
-        assert_eq!(links.tempo, "http://localhost:3200");
-        assert_eq!(links.keycloak, "http://localhost:8081");
-        assert_eq!(links.minio_console, "http://localhost:9001");
-        assert_eq!(links.opensearch, "http://localhost:9200");
+        assert_eq!(links.grafana, "http://127.0.0.1:3000");
+        assert_eq!(links.loki, "http://127.0.0.1:3100");
+        assert_eq!(links.tempo, "http://127.0.0.1:3200");
+        assert_eq!(links.keycloak, "http://127.0.0.1:8081");
+        assert_eq!(links.minio_console, "http://127.0.0.1:9001");
+        assert_eq!(links.opensearch, "http://127.0.0.1:9200");
     }
 
     #[test]

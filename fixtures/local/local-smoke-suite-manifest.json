@@ -1,16 +1,23 @@
 {
-  "suite": "local-smoke-v1",
-  "entrypoint": "scripts/smoke-local.sh",
+  "suite": "local-smoke-v2",
+  "entrypoint": "ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh",
   "required_checks": [
+    "compose_profiles_started",
     "database_migration_probe",
+    "base_schema_seed_ready",
+    "platform_core_ready",
     "minio_buckets_exist",
     "keycloak_realm_imported",
+    "observability_datasources_available",
+    "topic_topology_aligned",
     "kafka_topics_exist",
-    "grafana_login_available",
+    "kafka_host_container_boundary",
+    "ops_control_plane_entrypoints",
     "mock_payment_callback_available"
   ],
   "prerequisites": [
-    "make up-demo",
-    "ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh full"
+    "docker daemon reachable",
+    "cargo available for host platform-core smoke process",
+    "infra/docker/.env.local present"
   ]
 }

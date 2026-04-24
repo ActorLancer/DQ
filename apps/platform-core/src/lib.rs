@@ -104,7 +104,7 @@ impl Module for CoreModule {
 
     async fn start(&self, ctx: &ModuleContext) -> AppResult<()> {
         let dsn = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://local:local@localhost:5432/platform".to_string());
+            .unwrap_or_else(|_| "postgres://local:local@127.0.0.1:5432/platform".to_string());
         let app_db = Arc::new(
             AppDb::connect(
                 DbPoolConfig {
@@ -340,7 +340,7 @@ async fn startup_self_check(cfg: &RuntimeConfig) -> AppResult<()> {
 fn verify_kafka_topics_exist(required_topics: &[String]) -> AppResult<()> {
     let brokers = std::env::var("KAFKA_BROKERS")
         .or_else(|_| std::env::var("KAFKA_BOOTSTRAP_SERVERS"))
-        .unwrap_or_else(|_| "localhost:9092".to_string());
+        .unwrap_or_else(|_| "127.0.0.1:9094".to_string());
     let consumer: BaseConsumer = rdkafka::ClientConfig::new()
         .set("bootstrap.servers", &brokers)
         .set("group.id", "platform-core-startup-self-check")
@@ -363,7 +363,7 @@ fn verify_kafka_topics_exist(required_topics: &[String]) -> AppResult<()> {
 
 async fn verify_minio_buckets_exist(required_buckets: &[String]) -> AppResult<()> {
     let endpoint =
-        std::env::var("MINIO_ENDPOINT").unwrap_or_else(|_| "http://localhost:9000".to_string());
+        std::env::var("MINIO_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:9000".to_string());
     let client = reqwest::Client::new();
     for bucket in required_buckets {
         let url = format!("{}/{}", endpoint.trim_end_matches('/'), bucket);
@@ -447,7 +447,7 @@ pub async fn run() -> AppResult<()> {
             AppDb::connect(
                 DbPoolConfig {
                     dsn: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-                        "postgres://local:local@localhost:5432/platform".to_string()
+                        "postgres://local:local@127.0.0.1:5432/platform".to_string()
                     }),
                     max_connections: 16,
                 }

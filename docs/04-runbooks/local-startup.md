@@ -90,8 +90,9 @@
 ## 阶段 6：配置快照与 Smoke
 
 35. 导出当前本地配置快照：`./scripts/export-local-config.sh`
-36. 运行本地 smoke 套件（建议在 `make up-demo` 后执行；若不用 `demo`，至少需要 `core + observability + mocks` 组合）：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
-    - 该 smoke 会按 `infra/kafka/topics.v1.json` 检查 canonical topics 是否真实存在，防止 auto-create 掩盖 topic 漂移。
+36. 运行本地 smoke 套件：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+    - `TEST-005` 起该 checker 会自动确保 `core + observability + mocks` compose profile、执行 `db/scripts/migrate-up.sh + seed-up.sh`、初始化 MinIO buckets，并在宿主机 `127.0.0.1:8094` 启动或复用 `platform-core` 后再回查 `realm / datasource / canonical topics / ops` 控制面入口。
+    - 该 smoke 会按 `infra/kafka/topics.v1.json` 检查 canonical topics 是否真实存在，防止 auto-create 掩盖 topic 漂移；同时显式校验宿主机 `127.0.0.1:9094` 与容器内 `kafka:9092` / `localhost:9092` 的双地址边界。
 
 ## Kafka 局域网访问验证
 
@@ -108,7 +109,7 @@ docker exec datab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localh
 kcat -b 192.168.1.20:9094 -L
 ```
 
-如果远端 `kcat -L` 返回的 broker 地址仍是 `localhost:9094`，说明 `KAFKA_EXTERNAL_ADVERTISED_HOST` 没有改成局域网可达地址，需修改后重启 Kafka。
+如果远端 `kcat -L` 返回的 broker 地址仍是 `127.0.0.1:9094`，说明 `KAFKA_EXTERNAL_ADVERTISED_HOST` 没有改成局域网可达地址，需修改后重启 Kafka。
 
 ## 迁移兼容说明（ENV-001 / ENV-057）
 

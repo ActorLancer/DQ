@@ -296,6 +296,119 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-302（计划中）
+- 任务：`TEST-005` 建立本地环境 smoke test，验证 compose 启动、核心服务 ready、Grafana 数据源可连、Keycloak realm 导入成功，并校验 canonical topics 与关键控制面入口不再回退到旧口径
+- 状态：计划中
+- 说明：当前仓库已有 `scripts/check-local-stack.sh`、`scripts/check-keycloak-realm.sh`、`scripts/check-observability-stack.sh`、`scripts/check-topic-topology.sh` 与 `scripts/smoke-local.sh`，但它们仍是分散校验：`smoke-local.sh` 不负责 compose 启动、Grafana 只校验登录、不启动宿主机 `platform-core`，也没有把 `127.0.0.1:9094` / `kafka:9092|localhost:9092` 的双地址边界和活跃 test-case 一起冻结。当前批次将把 `smoke-local.sh` 收口成 `TEST-005` 正式 checker：真实拉起 `core + observability + mocks`、启动或复用宿主机 `platform-core:8094`、回查 realm/datasource/topic/控制面入口，并同步补齐 smoke case、fixture 与 CI。
+- 前置依赖核对结果：`ENV-040` 已提供正式 `infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`up-local/check-local-stack` 基线；`DB-032` 已通过 `TEST-004` 验证 migration/seed/app startup smoke；`CORE-024` 已提供 `platform-core` 健康端点与运行态入口。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-005` 正式交付是本地环境 smoke，而不是复用旧 `ENV` 阶段 healthcheck；宿主机/容器 Kafka 双地址边界必须写入公共前置条件与活跃 test-case。
+  - `docs/开发准备/技术选型正式版.md`、`docs/原始PRD/日志、可观测性与告警设计.md`、`docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认本地环境正式观测栈为 `Prometheus/Alertmanager/Grafana/Loki/Tempo`，TEST 阶段 smoke 必须真实触达 compose、观测与控制面入口。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`docs/开发准备/事件模型与Topic清单正式版.md`、`docs/开发准备/接口清单与OpenAPI-Schema冻结表.md`、`docs/开发准备/测试用例矩阵正式版.md`、`docs/开发准备/本地开发环境与中间件部署清单.md`、`docs/开发准备/配置项与密钥管理清单.md`、`docs/开发准备/平台总体架构设计草案.md`、`docs/全集成文档/数据交易平台-全集成基线-V1.md`：确认 `PostgreSQL` 仍是业务真值，Kafka 不是真相源，宿主机进程默认 Kafka 必须走 `127.0.0.1:9094`，compose 网络内部继续走 `kafka:9092` / `localhost:9092`，且 smoke 需要真实覆盖 Keycloak / Grafana / topic / ops 入口。
+  - `docs/05-test-cases/README.md`、`order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`、`notification-cases.md`、`search-rec-cases.md`、`audit-consistency-cases.md`、`canonical-event-authority-cases.md`：确认 `smoke-local.sh` 只是 local/canonical 验收基线的一部分，不能误报为全量业务闭环；通知、搜索、审计等 test-case 也都统一使用宿主机 `127.0.0.1:9094`。
+  - `docs/04-runbooks/local-startup.md`、`port-matrix.md`、`kafka-topics.md`、`keycloak-local.md`、`observability-local.md`、`compose-boundary.md`、`mock-payment.md`、`troubleshooting.md`：确认 current local startup、Kafka dual-listener、realm import、Grafana datasource 与 compose 边界的正式 runbook 口径。
+  - `infra/kafka/topics.v1.json`、`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/docker/monitoring/prometheus.yml`：确认 canonical topic catalog、compose profile、Kafka advertised listeners、Prometheus 抓取 `host.docker.internal:8094` 的真实入口。
+  - `scripts/README.md`、`scripts/up-local.sh`、`scripts/check-local-env.sh`、`scripts/check-local-stack.sh`、`scripts/verify-local-stack.sh`、`scripts/check-keycloak-realm.sh`、`scripts/check-observability-stack.sh`、`scripts/check-topic-topology.sh`、`scripts/smoke-local.sh`：确认现有脚本可复用，但 smoke 仍缺少 compose 启动、platform-core 启动、Grafana datasource / ops 入口联动与固定的 Kafka 边界校验。
+  - `.github/workflows/*.yml`、`.github/workflows/README.md`、`fixtures/local/*.json`：确认 `TEST-005` 仍缺少正式 CI workflow，且现有 local smoke / keycloak fixture 口径存在老的前置条件与角色命名残留。
+- 当前完成标准理解：
+  - `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh` 成为 `TEST-005` 正式 checker，会真实启动 `core + observability + mocks`、topic init、MinIO buckets 与宿主机 `platform-core`，并输出可定位的失败信息。
+  - smoke 至少回查：`check-local-stack full`、`check-keycloak-realm.sh`、`check-observability-stack.sh`、`check-topic-topology.sh`、全量 canonical topic 存在、`/health/live|ready|deps`、`/internal/runtime`、`/api/v1/ops/observability/overview`、`/api/v1/ops/outbox` 等关键控制面入口。
+  - 宿主机 Kafka 边界固定为 `127.0.0.1:9094`，容器内 / compose 网络边界固定为 `kafka:9092` 与容器内 `localhost:9092`；脚本、fixture、runbook、活跃 smoke case 与 CI 同步对齐，不再保留 `localhost:9094` 或 host-side `localhost:9092` 漂移默认值。
+  - GitHub Actions 补齐独立 `TEST-005` smoke workflow，并在文档中明确 `check-topic-topology.sh` 与 `smoke-local.sh` 的职责边界。
+- 实施计划：
+  1. 升级 `scripts/smoke-local.sh` 为 `TEST-005` 正式 checker：整合 compose 启动、MinIO/topic/bootstrap、宿主机 `platform-core` 启动、realm/datasource/topic/ops 入口回查与 Kafka 双地址校验。
+  2. 收口残留默认值与 fixture：修正 `platform-core` host-side Kafka 默认值、`docker-compose` 的 external advertised host fallback、`fixtures/local` 中过时的 smoke / keycloak baseline，并新增 `fixtures/smoke/test-005/**`。
+  3. 新增 `docs/05-test-cases/local-environment-smoke-cases.md`，更新 `docs/05-test-cases/README.md`、`docs/04-runbooks/local-startup.md`、`docs/04-runbooks/troubleshooting.md`、`scripts/README.md`、`.github/workflows/README.md`。
+  4. 新增 `.github/workflows/local-environment-smoke.yml`，再执行本地真实验证：`smoke-local.sh`、Rust 通用校验、`sqlx prepare`、query compile check。
+
+### BATCH-302（待审批）
+- 任务：`TEST-005` 建立本地环境 smoke test，验证 compose 启动、核心服务 ready、Grafana 数据源可连、Keycloak realm 导入成功，并校验 canonical topics 与关键控制面入口不再回退到旧口径
+- 状态：待审批
+- 当前任务编号：`TEST-005`
+- 前置依赖核对结果：`ENV-040`、`DB-032`、`CORE-024` 继续满足；当前批次直接复用 `infra/docker/.env.local`、`infra/docker/docker-compose.local.yml`、`TEST-004` 的 migration/seed/app startup 基线，以及 `platform-core` 现有健康端点与 ops 入口。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-005` 的正式输出是可重复运行的本地环境 smoke checker，且需显式校验宿主机/容器 Kafka 双地址边界与关键控制面入口。
+  - `docs/开发准备/技术选型正式版.md`、`docs/原始PRD/日志、可观测性与告警设计.md`、`docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认本地 smoke 必须真实覆盖 `Prometheus / Alertmanager / Grafana / Loki / Tempo`、Keycloak、mock payment 与 `platform-core`，不能只做页面或端口探活。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`、`测试用例矩阵正式版.md`、`本地开发环境与中间件部署清单.md`、`配置项与密钥管理清单.md`、`平台总体架构设计草案.md`、`数据交易平台-全集成基线-V1.md`：确认 `PostgreSQL` 仍是业务真值，宿主机 Kafka 默认必须是 `127.0.0.1:9094`，compose 网络内部继续使用 `kafka:9092` / `localhost:9092`，且 smoke 需要覆盖 canonical topics、realm import、Grafana datasource 和正式 ops 入口。
+  - `docs/05-test-cases/README.md`、`order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`、`notification-cases.md`、`search-rec-cases.md`、`audit-consistency-cases.md`、`canonical-event-authority-cases.md`：确认 `smoke-local.sh` 只是 `TEST` 阶段 local baseline，不得误报为全量业务验收；通知、搜索、审计等后续 test-case 将继续复用统一 Kafka host/container 边界。
+  - `docs/04-runbooks/local-startup.md`、`port-matrix.md`、`kafka-topics.md`、`keycloak-local.md`、`observability-local.md`、`compose-boundary.md`、`mock-payment.md`、`troubleshooting.md`：确认 current local startup、Prometheus 抓取 host app、realm import 与 Kafka dual-listener 的正式 runbook 口径。
+  - `infra/kafka/topics.v1.json`、`infra/docker/docker-compose.local.yml`、`infra/docker/.env.local`、`infra/docker/monitoring/prometheus.yml`：确认 canonical topic catalog、compose profiles、Prometheus host scrape 目标与 Kafka advertised listeners 的 current authority。
+  - `scripts/README.md`、`scripts/up-local.sh`、`scripts/check-local-env.sh`、`scripts/check-local-stack.sh`、`scripts/check-keycloak-realm.sh`、`scripts/check-observability-stack.sh`、`scripts/check-topic-topology.sh`、`scripts/smoke-local.sh`、`.github/workflows/*.yml`、`fixtures/local/*.json`：确认现有脚本与 fixture 可复用，但需要正式收口为单一 `TEST-005` checker 并补 CI。
+- 实现要点：
+  - 重写 `scripts/smoke-local.sh` 为 `TEST-005` 正式 checker：
+    - 统一加载 `infra/docker/.env.local` 与 `fixtures/smoke/test-005/runtime-baseline.env`
+    - 启动 `core + observability + mocks` compose profile
+    - 执行 `db/scripts/migrate-up.sh`、`db/scripts/seed-up.sh` 与 `infra/minio/init-minio.sh`
+    - 启动或复用宿主机 `platform-core`，绑定 `APP_HOST=0.0.0.0`，对外检查入口固定为 `http://127.0.0.1:8094`
+    - 真实回查 `check-local-stack full`、数据库 migration probe、MinIO buckets、Keycloak realm、`/health/live|ready|deps`、`/internal/runtime`、`check-topic-topology.sh`、全量 canonical topic 存在、Grafana/Prometheus/Alertmanager/mock payment，以及 `ops/observability/overview` 和 `ops/outbox`
+    - 显式校验 Kafka 双地址边界：宿主机 `127.0.0.1:9094`，容器/compose 网络 `kafka:9092` 与容器内 `localhost:9092`
+  - 收口 host-side 默认值漂移：
+    - `apps/platform-core/src/lib.rs`、`apps/platform-core/crates/http/src/lib.rs`、对应测试、`infra/docker/docker-compose.local.yml`、`infra/kafka/docker-compose.kafka.local.yml`
+    - 去掉 host-side `localhost:9092/9094` 残留，统一对齐 `127.0.0.1:9094`
+  - 修正 smoke fixture 与控制面基线：
+    - 更新 `fixtures/local/local-smoke-suite-manifest.json`
+    - 更新 `fixtures/local/keycloak-realm-manifest.json`
+    - 新增 `fixtures/smoke/test-005/README.md`
+    - 新增 `fixtures/smoke/test-005/runtime-baseline.env`
+    - 新增 `fixtures/smoke/test-005/required-control-plane-endpoints.json`
+    - 去掉会触发审计 FK 失败的伪 `x-user-id`，统一由 `platform_audit_security` 角色检查 ops 入口
+  - 新增与更新文档/CI：
+    - 新增 `docs/05-test-cases/local-environment-smoke-cases.md`
+    - 更新 `docs/05-test-cases/README.md`
+    - 更新 `docs/04-runbooks/local-startup.md`
+    - 更新 `docs/04-runbooks/troubleshooting.md`
+    - 更新 `scripts/README.md`
+    - 更新 `.github/workflows/README.md`
+    - 新增 `.github/workflows/local-environment-smoke.yml`
+- 验证步骤：
+  1. `ENV_FILE=infra/docker/.env.local bash ./scripts/smoke-local.sh`
+  2. `cargo fmt --all`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/smoke-local.sh` 通过，真实完成并回查：
+    - compose 启动 `core + observability + mocks`
+    - PostgreSQL migration probe
+    - `db/scripts/seed-up.sh` 基线导入
+    - MinIO buckets 初始化与对象健康检查
+    - Keycloak realm 导入与 password grant
+    - `platform-core` `/health/live`、`/health/ready`、`/health/deps`、`/internal/runtime`
+    - `check-topic-topology.sh`
+    - `infra/kafka/topics.v1.json` 中 `required_in_smoke=true` 的 canonical topics 存在
+    - Kafka host/container 双地址边界：`127.0.0.1:9094`、`kafka:9092`、`localhost:9092`
+    - `check-observability-stack.sh`
+    - `check-mock-payment.sh`
+    - `http://127.0.0.1:8081/realms/platform-local/.well-known/openid-configuration`
+    - `Prometheus /-/ready`
+    - `Alertmanager /-/ready`
+    - `Grafana /api/health`
+    - `GET /api/v1/ops/observability/overview`
+    - `GET /api/v1/ops/outbox?page=1&page_size=1&target_topic=dtp.notification.dispatch`
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅输出仓库既有 warning，本批改动未新增编译错误。
+  - `cargo test -p platform-core` 通过：`358` 个测试通过、`0` 失败、`1` ignored（仓库既有 live smoke 忽略项）。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 查询元数据可重建，本批未引入额外 `.sqlx` 漂移。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-005`
+  - `技术选型正式版.md`
+  - `日志、可观测性与告警设计.md`
+  - `15-测试策略、验收标准与实施里程碑.md`
+  - `docs/04-runbooks/local-startup.md`
+  - `docs/04-runbooks/port-matrix.md`
+  - `docs/04-runbooks/kafka-topics.md`
+  - `docs/04-runbooks/keycloak-local.md`
+  - `docs/04-runbooks/observability-local.md`
+  - `docs/05-test-cases/README.md`
+- 覆盖的任务清单条目：`TEST-005`
+- 未覆盖项：
+  - `TEST-005` 只负责本地环境 smoke 基线，不替代后续 `TEST-006+` 的五条标准链路 E2E、通知闭环、搜索推荐闭环、审计回放与 compose 级全量验收。
+  - `check-topic-topology.sh` 仍只承担通知 / Fabric / audit-anchor 相关静态 topology 与 route seed 校验；若需验证 `infra/kafka/topics.v1.json` 全量 canonical topics 是否真实存在，仍以 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh` 为正式入口。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-300（计划中）
 - 任务：`TEST-003` 建立 contract test 目录，覆盖 OpenAPI schema、错误码、状态机枚举、关键响应字段
 - 状态：计划中

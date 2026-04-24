@@ -1,0 +1,74 @@
+{
+  "endpoints": [
+    {
+      "name": "keycloak oidc discovery",
+      "target": "keycloak",
+      "path": "/realms/platform-local/.well-known/openid-configuration",
+      "expected_status": "^200$",
+      "contains": [
+        "\"issuer\":\"http://127.0.0.1:8081/realms/platform-local\""
+      ]
+    },
+    {
+      "name": "prometheus ready",
+      "target": "prometheus",
+      "path": "/-/ready",
+      "expected_status": "^200$"
+    },
+    {
+      "name": "alertmanager ready",
+      "target": "alertmanager",
+      "path": "/-/ready",
+      "expected_status": "^200$"
+    },
+    {
+      "name": "grafana health",
+      "target": "grafana",
+      "path": "/api/health",
+      "expected_status": "^200$",
+      "contains": [
+        "\"database\":\"ok\""
+      ]
+    },
+    {
+      "name": "mock payment ready",
+      "target": "mock-payment",
+      "path": "/health/ready",
+      "expected_status": "^200$"
+    },
+    {
+      "name": "platform-core ops observability overview",
+      "target": "platform-core",
+      "path": "/api/v1/ops/observability/overview",
+      "expected_status": "^200$",
+      "headers": {
+        "x-role": "platform_audit_security",
+        "x-request-id": "req-test-005-ops-observability",
+        "x-trace-id": "trace-test-005-ops-observability"
+      },
+      "envelope": "success",
+      "contains": [
+        "\"backend_statuses\":",
+        "\"alert_summary\":",
+        "\"key_services\":"
+      ]
+    },
+    {
+      "name": "platform-core ops outbox",
+      "target": "platform-core",
+      "path": "/api/v1/ops/outbox?page=1&page_size=1&target_topic=dtp.notification.dispatch",
+      "expected_status": "^200$",
+      "headers": {
+        "x-role": "platform_audit_security",
+        "x-request-id": "req-test-005-ops-outbox",
+        "x-trace-id": "trace-test-005-ops-outbox"
+      },
+      "envelope": "success",
+      "contains": [
+        "\"items\":",
+        "\"page\":1",
+        "\"page_size\":1"
+      ]
+    }
+  ]
+}

@@ -26,7 +26,7 @@
 
 ## Kafka 启动失败
 
-- 常见症状：9092/9094 不可达、topic 初始化报 `connection refused`、远端机器能连端口但 Kafka metadata 返回 `localhost:9094`。
+- 常见症状：9092/9094 不可达、topic 初始化报 `connection refused`、远端机器能连端口但 Kafka metadata 返回 `127.0.0.1:9094`。
 - 诊断步骤：
   1. 查看 broker 日志：`docker logs datab-kafka --tail 300`
   2. 检查 listener 配置：`KAFKA_ADVERTISED_LISTENERS`、`KAFKA_EXTERNAL_PORT` 与 `KAFKA_EXTERNAL_ADVERTISED_HOST` 是否一致

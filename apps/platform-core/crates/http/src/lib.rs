@@ -223,21 +223,21 @@ async fn metrics_handler() -> Result<impl IntoResponse, (StatusCode, Json<ErrorR
 
 async fn check_dependencies() -> Vec<DependencyStatus> {
     let targets = vec![
-        dep_target("db", "DB_HOST", "localhost", "DB_PORT", "5432"),
-        dep_target("redis", "REDIS_HOST", "localhost", "REDIS_PORT", "6379"),
-        dep_target("kafka", "KAFKA_HOST", "localhost", "KAFKA_PORT", "9092"),
-        dep_target("minio", "MINIO_HOST", "localhost", "MINIO_PORT", "9000"),
+        dep_target("db", "DB_HOST", "127.0.0.1", "DB_PORT", "5432"),
+        dep_target("redis", "REDIS_HOST", "127.0.0.1", "REDIS_PORT", "6379"),
+        dep_target("kafka", "KAFKA_HOST", "127.0.0.1", "KAFKA_PORT", "9094"),
+        dep_target("minio", "MINIO_HOST", "127.0.0.1", "MINIO_PORT", "9000"),
         dep_target(
             "keycloak",
             "KEYCLOAK_HOST",
-            "localhost",
+            "127.0.0.1",
             "KEYCLOAK_PORT",
             "8081",
         ),
         dep_target(
             "fabric-adapter",
             "FABRIC_ADAPTER_HOST",
-            "localhost",
+            "127.0.0.1",
             "FABRIC_ADAPTER_PORT",
             "10080",
         ),
@@ -274,7 +274,7 @@ fn dep_target(
 }
 
 fn build_trace_links() -> TraceLinks {
-    let host = std::env::var("DEV_LINK_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let host = std::env::var("DEV_LINK_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let grafana = std::env::var("GRAFANA_PORT").unwrap_or_else(|_| "3000".to_string());
     let loki = std::env::var("LOKI_PORT").unwrap_or_else(|_| "3100".to_string());
     let tempo = std::env::var("TEMPO_PORT").unwrap_or_else(|_| "3200".to_string());
