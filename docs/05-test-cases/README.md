@@ -11,7 +11,7 @@
   - 容器内 / compose 网络：`kafka:9092` 或容器内 `localhost:9092`
 - 宿主机示例优先使用 `set -a; source infra/docker/.env.local; set +a` 载入运行时入口，避免手工散落 Kafka / DB / MinIO 地址后再次漂移。
 - `./scripts/check-topic-topology.sh` 只用于通知 / Fabric / audit-anchor 相关关键静态 topology 与 route seed 校验；若要验证 `infra/kafka/topics.v1.json` 中全部 canonical topics 是否真实存在，应执行 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`。
-- `./scripts/check-canonical-contracts.sh` 是 `TEST-028` 的正式 checker：本地默认 `full` 模式会串行执行 `check-openapi-schema.sh + check-topic-topology.sh + smoke-local.sh`，并额外校验 canonical consumer group、宿主机/容器 Kafka 边界与正式运行态文档中不存在旧 topic / 旧命名默认值；CI 则使用 `CANONICAL_CHECK_MODE=static` 跑静态子集。
+- `./scripts/check-canonical-contracts.sh` 是 `TEST-028` 的正式 checker：本地默认 `full` 模式会串行执行 `check-openapi-schema.sh + check-topic-topology.sh + smoke-local.sh`，并额外校验 canonical consumer group、宿主机/容器 Kafka 边界、host-run worker 默认值、正式运行态文档中不存在旧 topic / 旧命名默认值，以及不存在第二份本地 topic manifest；CI 则使用 `CANONICAL_CHECK_MODE=static` 跑静态子集，并上传 `target/test-artifacts/canonical-contracts/summary.json`。
 - `./scripts/check-api-contract-baseline.sh` 是 `TEST-003` 的正式 checker：它只校验 API/OpenAPI 相关冻结契约，包括成功/失败 envelope、关键响应字段、错误码基线与订单状态机 action enum / 禁止错误码绑定，不替代 `TEST-028` 的 canonical smoke。
 - `./scripts/check-migration-smoke.sh` 是 `TEST-004` 的正式 checker：它会启动当前 local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core` 做健康与运行态回查；`./scripts/validate_database_migrations.sh` 仅作为兼容入口转发到该 checker。
 - `./scripts/smoke-local.sh` 是 `TEST-005` 的正式 checker：它会自动确保 `core + observability + mocks` compose profile、执行基础 `migrate-up + seed-up`、初始化 MinIO buckets，并在宿主机 `127.0.0.1:8094` 启动或复用 `platform-core`，再回查 `check-local-stack full`、Keycloak realm、Grafana datasource、canonical topics、Kafka 双地址边界与关键 ops 控制面入口。
@@ -53,9 +53,11 @@
 - `search-rec-cases.md`：`SEARCHREC-017` 正式冻结的 Search/Recommendation 验收矩阵，覆盖投影延迟、回 PostgreSQL 最终校验、推荐曝光/点击幂等、零结果兜底、统一鉴权 / step-up / 审计 / 错误码，以及 consumer 幂等、双层 DLQ 与 dry-run reprocess。
 - `notification-cases.md`：通知链路验收清单，覆盖 `notification.requested -> dtp.notification.dispatch -> notification-worker`、`mock-log`、幂等、重试、DLQ、人工补发与审计联查。
 - `notification-smoke.md`：`TEST-027` 的正式通知 smoke 清单，冻结 `notif004 / notif005 / notif006 / notif007` 四类业务事件、`platform-core` 通知联查 facade、`notif012_notification_worker_live_smoke` 与 `summary.json` 汇总边界。
+- `canonical-contracts-cases.md`：`TEST-028` 的正式 canonical checker 清单，冻结 `check-canonical-contracts.sh` 的 `full/static` 模式、topic catalog / consumer group / OpenAPI / 验收矩阵联动、宿主机/容器 Kafka 双地址边界、宿主机 Kafka 误用拦截，以及 `check-topic-topology.sh` 与 `smoke-local.sh` 的职责边界。
 - `web-smoke-cases.md`：`WEB-020` 冻结的 portal / console 最小页面 smoke 基线，覆盖页面路由、状态态面、浏览器受控 API 边界与 `WEB-018` live E2E 入口。
 - `audit-consistency-cases.md`：已落地 `AUD-003~AUD-026` 与 `AUD-031` 的审计联查、证据包导出、replay dry-run、legal hold、anchor batch、canonical outbox / dead letter 查询、outbox publisher、Billing bridge published-only 边界、SEARCHREC dead letter dry-run 重处理、一致性联查、一致性修复 dry-run、`fabric-adapter` 四类摘要 handler与重复投递隔离、`fabric-event-listener` callback、`fabric-ca-admin` 证书治理、trade monitor 总览 / checkpoints、external facts 查询 / confirm、公平性事件查询 / handle、projection gaps 查询 / resolve、观测总览 / 日志镜像查询导出 / trace 联查 / 告警与 incident / SLO，以及 `GET /api/v1/developer/trace` 开发者状态联查验收矩阵；`AUD-028` 已把“链下成功链上失败、链上成功链下未更新、回调乱序 / 晚到、重复事件、修复演练”五类一致性场景正式映射到该文件，后续 `AUD-029+` 的剩余高风险控制面继续在同文件追加。
 - `canonical-event-authority-cases.md`：`AUD-030` canonical envelope / route authority 验收清单，固定 `trade003 / cat022 / dlv002 / dlv029 / audit anchor retry` 五条 smoke 与 `tg_write_outbox` 退役静态回查。
 - `TEST-028` checker：
   - 本地全量：`ENV_FILE=infra/docker/.env.local ./scripts/check-canonical-contracts.sh`
   - CI 静态：`CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh`
+  - artifact：`target/test-artifacts/canonical-contracts/summary.json`

@@ -4,7 +4,7 @@
 
 当前已落地：
 
-- `canonical-contracts.yml`：执行 `CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh`，用于拦截 canonical topic / OpenAPI / consumer group / 文档边界漂移。
+- `canonical-contracts.yml`：执行 `CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh`，用于拦截 canonical topic / OpenAPI / consumer group / 文档边界漂移，并上传 `TEST-028` 的 `target/test-artifacts/canonical-contracts/summary.json`。
 - `contract-tests.yml`：执行 `./scripts/check-api-contract-baseline.sh`，承接 `TEST-003` 正式 API contract baseline。
 - `migration-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-migration-smoke.sh`，承接 `TEST-004` migration smoke。
 - `local-environment-smoke.yml`：执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-compose-smoke.sh`；CI 内承接 `TEST-016` compose smoke，并复用 `TEST-005` 的 `smoke-local.sh` 运行态检查与 canonical 静态漂移拦截。

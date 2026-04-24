@@ -196,7 +196,7 @@
 | `dtp.payment.callbacks` | `mock-payment-provider` | `platform-core.billing` | `cg-payment-callback-handler` | 支付回调事实 |
 | `dtp.audit.anchor` | `platform-core.audit` | `fabric-adapter` | `cg-fabric-adapter` | 审计锚定请求 |
 | `dtp.consistency.reconcile` | `platform-core.consistency` | `consistency-reconcile-worker` | `cg-consistency-reconcile` | 一致性修复请求 |
-| `dtp.dead-letter` | 各 consumer | `dead-letter-replayer` | `cg-dead-letter-replayer` | 死信隔离 |
+| `dtp.dead-letter` | `all-consumers` | `dead-letter-replayer` | `cg-dead-letter-replayer` | 死信隔离 |
 
 ## 5.2 补充说明
 

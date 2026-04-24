@@ -111,6 +111,115 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-325（计划中）
+- 任务：`TEST-028` 建立 canonical smoke / contract checker，强制校验正式 topic、正式接口、正式 consumer group、OpenAPI 示例、验收矩阵以及宿主机/容器内 Kafka 双地址边界
+- 状态：计划中
+- 当前任务编号：`TEST-028`
+- 说明：当前仓库已经存在 `check-canonical-contracts.sh`、`check-topic-topology.sh`、`smoke-local.sh`、`canonical-contracts.yml` 与 `README/runbook` 中的边界说明，且 `TEST-005`、`TEST-016`、`AUD-028`、`SEARCHREC-017`、`NOTIF-014` 已分别冻结本地运行态 smoke、CI compose smoke、审计一致性矩阵、搜索推荐矩阵与通知矩阵。但 `TEST-028` 仍缺正式 case 文档、artifact summary、CI 上传和更严格的误用拦截；当前 checker 也尚未把“宿主机误用 `127.0.0.1:9092`”“把 `check-topic-topology.sh` 误报成全量 canonical smoke”“验收矩阵未指向官方 checker”这些历史误报风险冻结成正式失败条件。当前批次将把现有散落能力收口为一个带 artifact、带 CI、带显式误用拦截的 `TEST-028` 官方 gate。
+- 前置依赖核对结果：
+  - `TEST-005`：`smoke-local.sh` 已冻结 `core + observability + mocks` 正式本地 smoke，并真实校验 canonical topics、Grafana datasource、Keycloak realm 与宿主机/容器 Kafka 双地址边界。
+  - `TEST-016`：`check-compose-smoke.sh` 与 `local-environment-smoke.yml` 已把 `smoke-local.sh` 与 canonical 静态子集接入 CI compose 作业。
+  - `AUD-028`：`docs/05-test-cases/audit-consistency-cases.md` 已冻结 canonical outbox / dead letter / consistency / Fabric callback 等一致性验收矩阵。
+  - `SEARCHREC-017`：`docs/05-test-cases/search-rec-cases.md` 已冻结 `dtp.search.sync / dtp.recommend.behavior / dtp.dead-letter` 的正式验收矩阵与 PG 权威边界。
+  - `NOTIF-014`：`docs/05-test-cases/notification-cases.md` 已冻结 `notification.requested -> dtp.notification.dispatch -> notification-worker` 的正式通知闭环与 checker 边界。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-028` 要求的是 canonical checker 正式收口，不允许把旧 topic、骨架接口或局部 topology checker 误报为通过。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段必须用可重复 checker 证明接口、事件、服务边界与验收矩阵已冻结。
+  - `docs/05-test-cases/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`：确认 `TEST-028` 必须成为 `ACC-CANONICAL` 的官方入口，并与 `TEST-005/016` 保持职责边界。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/port-matrix.md`、`docs/04-runbooks/kafka-topics.md`：确认宿主机 Kafka 正式边界是 `127.0.0.1:9094`，容器/compose 网络继续使用 `kafka:9092` 与容器内 `localhost:9092`，且 `check-topic-topology.sh` 不替代全量 topic existence smoke。
+  - `docs/开发任务/问题修复任务/A01-Kafka-Topic-口径统一.md`、`A11-测试与Smoke口径误报风险.md`：确认 `TEST-028` 必须继续拦截历史 topic、局部 outbox/拓扑误报、OpenAPI 骨架误报与 host-side Kafka 误用。
+  - `infra/kafka/topics.v1.json`、`scripts/check-canonical-contracts.sh`、`scripts/check-topic-topology.sh`、`scripts/smoke-local.sh`、`.github/workflows/canonical-contracts.yml`、`.github/workflows/local-environment-smoke.yml`、`scripts/README.md`、`.github/workflows/README.md`：复核当前可复用实现与缺失的 artifact/doc/CI 收口点。
+- 当前完成标准理解：
+  - 必须形成 `TEST-028` 的正式 checker、专属用例文档、workflow 与 artifact，至少证明：
+    1. `check-canonical-contracts.sh` 是唯一 `ACC-CANONICAL` 入口，本地 `full` 模式负责 `check-openapi-schema + check-topic-topology + smoke-local`，CI `static` 模式负责静态漂移拦截。
+    2. checker 会显式拒绝正式 docs / scripts / workflow / host-run worker 默认值中出现宿主机 `127.0.0.1:9092`、`localhost:9094`、历史 runtime topic、旧服务命名或把 `check-topic-topology.sh` 误写成全量 topic smoke。
+    3. 验收矩阵、runbook、脚本说明与 CI workflow 都指向同一官方 checker，不再分裂成多套说法。
+    4. checker 会产出可上传 artifact，能够明确区分 `static` 与 `full` 两种执行面，并在失败时定位到 OpenAPI、consumer group、host/container Kafka 边界、旧 topic 漂移或 `smoke-local` 断裂。
+- 实施计划：
+  1. 扩展 `scripts/check-canonical-contracts.sh`，新增 `TEST-028` artifact summary 与更严格的边界/误用拦截，并补齐对验收矩阵、官方文档与 host-run worker 默认值的校验。
+  2. 把 host-run Rust worker 的 Kafka 默认地址统一回收到 `127.0.0.1:9094`，消除宿主机误用 `127.0.0.1:9092` 的默认来源。
+  3. 新增 `docs/05-test-cases/canonical-contracts-cases.md`，更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`，冻结 `TEST-028` 官方入口与职责边界。
+  4. 改造 `.github/workflows/canonical-contracts.yml`，上传 `TEST-028` artifact，保持 CI `static` 模式与本地 `full` 模式的明确分层。
+  5. 执行真实验证、回写 `BATCH-325（待审批）`、本地提交，然后继续下一个 `TEST` task。
+
+### BATCH-325（待审批）
+- 任务：`TEST-028` 建立 canonical smoke / contract checker，强制校验正式 topic、正式接口、正式 consumer group、OpenAPI 示例、验收矩阵以及宿主机/容器内 Kafka 双地址边界
+- 状态：待审批
+- 当前任务编号：`TEST-028`
+- 前置依赖核对结果：
+  - `TEST-005` 的 `smoke-local.sh` 继续作为 full canonical runtime authority，已在本批次中被真实执行并通过。
+  - `TEST-016` 的 compose smoke / CI 静态收口继续通过 `check-canonical-contracts.sh` 的 `static` 模式承接，没有再分裂出第二套 checker。
+  - `AUD-028`、`SEARCHREC-017`、`NOTIF-014` 的审计/搜索推荐/通知矩阵继续作为 canonical topic / consumer group / route authority 文档输入，并已被本批次静态 checker 回查引用。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-028` 要收口 canonical checker，并显式拦截旧 topic、骨架接口、局部 topology checker 误报。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段必须形成可重复的正式 checker 与验收 artifact。
+  - `docs/05-test-cases/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`：确认 `ACC-CANONICAL` 唯一官方入口必须是 `check-canonical-contracts.sh`。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/port-matrix.md`、`docs/04-runbooks/kafka-topics.md`、`docs/开发准备/事件模型与Topic清单正式版.md`：确认 `127.0.0.1:9094` / `kafka:9092` / `localhost:9092` 双地址边界、全量 topic catalog 与 consumer group authority。
+  - `docs/开发任务/问题修复任务/A01-Kafka-Topic-口径统一.md`、`A11-测试与Smoke口径误报风险.md`：确认本批次必须继续清掉第二份 topic 真相源，并把 host-side Kafka 误用和局部 checker 误报收口为正式失败条件。
+- 实现要点：
+  - 扩展 `scripts/check-canonical-contracts.sh`，把 `TEST-028` 正式收口为单一 checker：
+    - 新增 `target/test-artifacts/canonical-contracts/summary.json`
+    - 区分 `static` 与 `full` 两种执行面，并记录最后通过的检查阶段
+    - 静态校验新增：
+      - `topics.v1.json -> 事件模型文档 -> kafka runbook -> port-matrix` 的全量 topic / consumer group / env binding 对齐
+      - `ACC-CANONICAL`、`docs/05-test-cases/README.md`、`scripts/README.md`、workflow README、`canonical-contracts.yml` 的官方入口对齐
+      - 宿主机/容器 Kafka 边界与 host-run worker 默认值对齐
+      - 正式 artifacts 中旧 topic / 旧服务命名 / 宿主机 Kafka 误用拦截
+      - `fixtures/local/kafka-topics-manifest.json` 第二份 topic authority 清理校验
+  - 删除 `fixtures/local/kafka-topics-manifest.json`，避免仓库继续保留旧 topic 列表作为第二套本地真相源。
+  - 把 `workers/outbox-publisher`、`workers/search-indexer`、`workers/recommendation-aggregator` 的 host-run Kafka 默认值统一回收到 `127.0.0.1:9094`。
+  - 对齐 `docs/开发准备/事件模型与Topic清单正式版.md` 中 `dtp.dead-letter` 的 producer 表述到 `all-consumers`，消除文档与 `topics.v1.json` 的残余漂移。
+  - 新增 `docs/05-test-cases/canonical-contracts-cases.md`，并更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`，把 `TEST-028` 的正式命令、artifact、边界和失败条件冻结下来。
+  - 更新 `.github/workflows/canonical-contracts.yml`，让 CI `static` 模式上传 `canonical-contracts-artifacts`。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `bash -n scripts/check-canonical-contracts.sh`
+  3. `CANONICAL_CHECK_MODE=static bash ./scripts/check-canonical-contracts.sh`
+  4. `cargo check -p platform-core -p outbox-publisher -p search-indexer -p recommendation-aggregator`
+  5. `cargo test -p outbox-publisher -p search-indexer -p recommendation-aggregator`
+  6. `cargo test -p platform-core`
+  7. `cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. `ENV_FILE=infra/docker/.env.local bash ./scripts/check-canonical-contracts.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `bash -n scripts/check-canonical-contracts.sh` 通过。
+  - `CANONICAL_CHECK_MODE=static bash ./scripts/check-canonical-contracts.sh` 通过；真实验证了：
+    - `topics.v1.json` 与 `事件模型 / kafka-topics / port-matrix` 的全量 topic / consumer group / env binding 对齐
+    - `ACC-CANONICAL`、`README`、workflow 与官方 checker 入口一致
+    - host-run worker Kafka 默认值固定为 `127.0.0.1:9094`
+    - 正式 artifacts 中不存在宿主机 Kafka 误用、旧 topic 默认值和第二份 topic manifest
+  - `cargo check -p platform-core -p outbox-publisher -p search-indexer -p recommendation-aggregator` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `cargo test -p outbox-publisher -p search-indexer -p recommendation-aggregator` 通过：
+    - `outbox_publisher_db_smoke`
+    - `search_indexer_db_smoke`
+    - `recommendation_aggregator_db_smoke`
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`1` ignored（仓库既有 `iam_party_access_flow_live`）。
+  - `cargo sqlx prepare --workspace` 通过，workspace `.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-canonical-contracts.sh` 通过；真实覆盖：
+    - `check-openapi-schema.sh`
+    - `check-topic-topology.sh`
+    - `smoke-local.sh` 的 local stack startup、migration/seed、MinIO buckets、Keycloak realm、Grafana datasource、canonical topics existence、host/container Kafka boundary、`platform-core` 运行态与正式 ops 入口回查
+    - `target/test-artifacts/canonical-contracts/summary.json` 已落盘，`mode=full`、`status=passed`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-028`
+  - `15-测试策略、验收标准与实施里程碑.md`
+  - `A01-Kafka-Topic-口径统一.md`
+  - `A11-测试与Smoke口径误报风险.md`
+  - `docs/04-runbooks/kafka-topics.md`
+  - `docs/04-runbooks/local-startup.md`
+  - `docs/04-runbooks/port-matrix.md`
+  - `docs/05-test-cases/README.md`
+  - `docs/05-test-cases/v1-core-acceptance-checklist.md`
+- 覆盖的任务清单条目：`TEST-028`
+- 未覆盖项：
+  - GitHub Actions 托管 runner 未在本批次内真实触发；已通过相同命令本地跑通 `static` 与 `full` 两种执行面，并补齐 workflow artifact 上传路径。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-323（计划中）
 - 任务：`TEST-026` 建立 `QRY_LITE` 端到端测试：模板授权、参数校验、执行成功、结果可取、验收关闭、退款/拒绝非法重复执行
 - 状态：计划中

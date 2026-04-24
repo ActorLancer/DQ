@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  canonical-contracts:
+  test-028-canonical-contracts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,3 +13,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq ripgrep
       - name: Run canonical static checker
         run: CANONICAL_CHECK_MODE=static bash ./scripts/check-canonical-contracts.sh
+      - name: Upload canonical checker artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-contracts-artifacts
+          path: target/test-artifacts/canonical-contracts
+          if-no-files-found: warn
+      - name: Tear down local stack
+        if: always()
+        run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true

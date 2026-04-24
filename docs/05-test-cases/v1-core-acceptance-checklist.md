@@ -97,7 +97,7 @@
 | `ACC-PERFORMANCE` | `TEST-018` | `ENV_FILE=infra/docker/.env.local ./scripts/check-performance-smoke.sh` | 搜索、下单、交付、审计联查基础延迟门槛全部通过 | summary、Prometheus / metrics / request log artifact |
 | `ACC-FAILURE` | `TEST-019` | `ENV_FILE=infra/docker/.env.local ./scripts/check-failure-drills.sh` | Kafka / OpenSearch / Fabric Adapter / Mock Payment 故障注入与恢复全部通过 | summary、lag、receipt、fallback artifact |
 | `ACC-RECOVERY` | `TEST-020` | `ENV_FILE=infra/docker/.env.local ./scripts/check-rollback-recovery.sh` | 业务库 reset、base seed replay、runtime 重建、demo 数据恢复全部通过 | `summary.json`、demo seed artifact、post-reset zero-state evidence |
-| `ACC-CANONICAL` | `TEST-028` | `ENV_FILE=infra/docker/.env.local ./scripts/check-canonical-contracts.sh` | canonical topic / route / consumer group / OpenAPI / 文档 authority 全部通过 | full canonical checker artifact |
+| `ACC-CANONICAL` | `TEST-028` | `ENV_FILE=infra/docker/.env.local ./scripts/check-canonical-contracts.sh` | canonical topic / route / consumer group / OpenAPI / 文档 authority 全部通过 | `target/test-artifacts/canonical-contracts/summary.json` + full canonical checker artifact |
 
 ## Final Sign-Off Sequence
 

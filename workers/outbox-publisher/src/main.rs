@@ -159,7 +159,7 @@ impl WorkerConfig {
             }),
             kafka_brokers: std::env::var("KAFKA_BROKERS")
                 .or_else(|_| std::env::var("KAFKA_BOOTSTRAP_SERVERS"))
-                .unwrap_or_else(|_| "127.0.0.1:9092".to_string()),
+                .unwrap_or_else(|_| "127.0.0.1:9094".to_string()),
             dead_letter_topic: std::env::var("TOPIC_DEAD_LETTER_EVENTS")
                 .unwrap_or_else(|_| "dtp.dead-letter".to_string()),
             app_host: std::env::var("APP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
