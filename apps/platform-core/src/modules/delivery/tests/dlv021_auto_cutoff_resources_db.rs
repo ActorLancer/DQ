@@ -117,6 +117,7 @@ mod tests {
             "download ticket cache should be removed after cutoff"
         );
 
+        let download_after_cutoff_req_id = format!("req-dlv021-{suffix}-download-after-cutoff");
         let download_resp = call(
             &app,
             "GET",
@@ -125,20 +126,15 @@ mod tests {
                 seed.file_order_id, download_token
             ),
             &seed.buyer_org_id,
-            &format!("req-dlv021-{suffix}-download-after-cutoff"),
+            &download_after_cutoff_req_id,
             None,
         )
         .await;
-        assert_eq!(
-            download_resp.status,
+        assert_error_response(
+            &download_resp,
             StatusCode::CONFLICT,
-            "{}",
-            download_resp.body
-        );
-        assert!(
-            download_resp
-                .body
-                .contains("ticket cache not found or expired")
+            &download_after_cutoff_req_id,
+            "ticket cache not found or expired",
         );
 
         let share_expire_req_id = format!("req-dlv021-{suffix}-share-expire");
@@ -161,6 +157,47 @@ mod tests {
             share_expire_resp.body
         );
         assert_share_status(&client, &seed.share_expire_order_id, "expired", "expired").await;
+        let share_expire_list_req_id = format!("req-dlv021-{suffix}-share-expire-list");
+        let share_expire_list_resp = call(
+            &app,
+            "GET",
+            format!("/api/v1/orders/{}/share-grants", seed.share_expire_order_id),
+            &seed.buyer_org_id,
+            &share_expire_list_req_id,
+            None,
+        )
+        .await;
+        assert_eq!(
+            share_expire_list_resp.status,
+            StatusCode::OK,
+            "{}",
+            share_expire_list_resp.body
+        );
+        let share_expire_list_json = parse_json(&share_expire_list_resp.body);
+        assert_eq!(response_request_id(&share_expire_list_json).is_some(), true);
+        assert_eq!(
+            share_expire_list_json["data"]["grants"][0]["grant_status"].as_str(),
+            Some("expired")
+        );
+        let share_expire_retry_req_id = format!("req-dlv021-{suffix}-share-expire-retry");
+        let share_expire_retry_resp = call(
+            &app,
+            "POST",
+            format!(
+                "/api/v1/orders/{}/share-ro/transition",
+                seed.share_expire_order_id
+            ),
+            &seed.buyer_org_id,
+            &share_expire_retry_req_id,
+            Some(r#"{"action":"grant_read_access"}"#),
+        )
+        .await;
+        assert_error_response(
+            &share_expire_retry_resp,
+            StatusCode::CONFLICT,
+            &share_expire_retry_req_id,
+            "SHARE_RO_TRANSITION_FORBIDDEN",
+        );
 
         let share_dispute_req_id = format!("req-dlv021-{suffix}-share-dispute");
         let share_dispute_resp = call(
@@ -188,6 +225,44 @@ mod tests {
             "suspended",
         )
         .await;
+        let share_dispute_list_req_id = format!("req-dlv021-{suffix}-share-dispute-list");
+        let share_dispute_list_resp = call(
+            &app,
+            "GET",
+            format!(
+                "/api/v1/orders/{}/share-grants",
+                seed.share_dispute_order_id
+            ),
+            &seed.buyer_org_id,
+            &share_dispute_list_req_id,
+            None,
+        )
+        .await;
+        assert_error_response(
+            &share_dispute_list_resp,
+            StatusCode::CONFLICT,
+            &share_dispute_list_req_id,
+            "SHARE_GRANT_FORBIDDEN",
+        );
+        let share_dispute_retry_req_id = format!("req-dlv021-{suffix}-share-dispute-retry");
+        let share_dispute_retry_resp = call(
+            &app,
+            "POST",
+            format!(
+                "/api/v1/orders/{}/share-ro/transition",
+                seed.share_dispute_order_id
+            ),
+            &seed.buyer_org_id,
+            &share_dispute_retry_req_id,
+            Some(r#"{"action":"grant_read_access"}"#),
+        )
+        .await;
+        assert_error_response(
+            &share_dispute_retry_resp,
+            StatusCode::CONFLICT,
+            &share_dispute_retry_req_id,
+            "SHARE_RO_TRANSITION_FORBIDDEN",
+        );
 
         let api_req_id = format!("req-dlv021-{suffix}-api-risk");
         let api_resp = call(
@@ -223,6 +298,44 @@ mod tests {
             .await
             .expect("api delivery row");
         assert_eq!(api_delivery_row.get::<_, String>(0), "suspended");
+        let api_usage_req_id = format!("req-dlv021-{suffix}-api-usage-after-cutoff");
+        let api_usage_resp = call(
+            &app,
+            "GET",
+            format!("/api/v1/orders/{}/usage-log", seed.api_order_id),
+            &seed.buyer_org_id,
+            &api_usage_req_id,
+            None,
+        )
+        .await;
+        assert_eq!(
+            api_usage_resp.status,
+            StatusCode::OK,
+            "{}",
+            api_usage_resp.body
+        );
+        let api_usage_json = parse_json(&api_usage_resp.body);
+        assert_eq!(response_request_id(&api_usage_json).is_some(), true);
+        assert_eq!(
+            api_usage_json["data"]["app"]["credential_status"].as_str(),
+            Some("suspended")
+        );
+        let api_retry_req_id = format!("req-dlv021-{suffix}-api-retry-after-cutoff");
+        let api_retry_resp = call(
+            &app,
+            "POST",
+            format!("/api/v1/orders/{}/api-ppu/transition", seed.api_order_id),
+            &seed.buyer_org_id,
+            &api_retry_req_id,
+            Some(r#"{"action":"settle_success_call"}"#),
+        )
+        .await;
+        assert_error_response(
+            &api_retry_resp,
+            StatusCode::CONFLICT,
+            &api_retry_req_id,
+            "API_PPU_TRANSITION_FORBIDDEN",
+        );
 
         let sandbox_req_id = format!("req-dlv021-{suffix}-sandbox-expire");
         let sandbox_resp = call(
@@ -269,6 +382,25 @@ mod tests {
             .await
             .expect("sandbox delivery row");
         assert_eq!(sandbox_delivery_row.get::<_, String>(0), "expired");
+        let sandbox_retry_req_id = format!("req-dlv021-{suffix}-sandbox-retry-after-cutoff");
+        let sandbox_retry_resp = call(
+            &app,
+            "POST",
+            format!(
+                "/api/v1/orders/{}/sbx-std/transition",
+                seed.sandbox_order_id
+            ),
+            &seed.buyer_org_id,
+            &sandbox_retry_req_id,
+            Some(r#"{"action":"execute_sandbox_query"}"#),
+        )
+        .await;
+        assert_error_response(
+            &sandbox_retry_resp,
+            StatusCode::CONFLICT,
+            &sandbox_retry_req_id,
+            "SBX_STD_TRANSITION_FORBIDDEN",
+        );
 
         assert_audit_count(
             &client,
@@ -312,6 +444,45 @@ mod tests {
     struct CallResponse {
         status: StatusCode,
         body: String,
+    }
+
+    fn parse_json(body: &str) -> Value {
+        serde_json::from_str(body).expect("json body")
+    }
+
+    fn response_request_id(json: &Value) -> Option<&str> {
+        json["request_id"]
+            .as_str()
+            .or_else(|| json["error"]["request_id"].as_str())
+    }
+
+    fn response_message(json: &Value) -> String {
+        json["message"]
+            .as_str()
+            .or_else(|| json["error"]["message"].as_str())
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    fn assert_error_response(
+        response: &CallResponse,
+        expected_status: StatusCode,
+        expected_request_id: &str,
+        expected_message_fragment: &str,
+    ) {
+        assert_eq!(response.status, expected_status, "{}", response.body);
+        let json = parse_json(&response.body);
+        assert_eq!(
+            response_request_id(&json),
+            Some(expected_request_id),
+            "{}",
+            response.body
+        );
+        assert!(
+            response_message(&json).contains(expected_message_fragment),
+            "{}",
+            response.body
+        );
     }
 
     async fn call(

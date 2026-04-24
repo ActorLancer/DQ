@@ -1,5 +1,7 @@
 # Delivery Cases (DLV-028)
 
+`TEST-012` 的正式回归入口为 `ENV_FILE=infra/docker/.env.local ./scripts/check-delivery-revocation.sh`。该 checker 会复用本文件 `4.4 撤权后访问` 的冻结口径，并继续验证旧下载 token 失效、share/API/sandbox 正式入口被拒绝，以及 `Redis / PostgreSQL / audit` 的同步断权证据。
+
 ## 1. 目标与范围
 
 本矩阵用于冻结 `Delivery / Storage Gateway / Query Execution` 子域在 V1 阶段的五类关键异常/边界用例，并把现有自动化 smoke、仓储保护逻辑和真实接口验证映射到统一回归基线：

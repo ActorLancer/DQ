@@ -972,3 +972,91 @@
   - `TEST-012` 的撤权、票据失效、API key 失效、共享授权不可用、沙箱会话终止尚未开始。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-309（计划中）
+- 任务：`TEST-012` 建立交付与断权测试：撤权后下载票据失效、API key 失效、共享授权不可用、沙箱会话终止
+- 状态：计划中
+- 说明：当前仓库已有 `dlv021_auto_cutoff_resources_db_smoke`，它已经覆盖文件票据、共享授权、API credential、沙箱工作区/会话四类资源在退款、到期、争议和风控冻结下的状态与审计回查，但还没有形成 `TEST-012` 的官方 checker / 文档 / CI 资产，而且“撤权后再次访问正式入口失败”的断言还不够完整。当前批次将以 `delivery-cases.md` 和交付聚合/异常流程冻结文档为 authority，把交付断权从“状态存在”提升到“正式入口不可继续使用 + DB / Redis / 审计同步证明”。
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / Redis / MinIO / Kafka / Keycloak 与 `smoke-local.sh` 本地基线；`DB-032` 已提供 migration / seed 与 `.sqlx` 回归链路；`CORE-024` 已提供 delivery / order 集成测试夹具。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-012` 必须证明四类资源撤权后的正式失效，不是只写 smoke 名称或 README。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `5.2 交付异常处理`，明确下载令牌失败、share grant 无法访问、模板/沙箱输出越界都需要进入断权/争议路径。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：复核 `4.5 交付与执行聚合`，确认 `Delivery / DataShareGrant / DeliveryTicket / StorageObject` 是当前任务的正式对象边界。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段需要把安全边界变成可重复的集成 smoke，而不是仅凭日志或手工说明。
+  - `docs/05-test-cases/delivery-cases.md`：确认 V1 冻结口径已经明确四类资源的断权结果分别为 `revoked / expired / suspended`，且下载/API/共享/沙箱入口再次访问必须返回冲突或失效。
+  - `docs/04-runbooks/local-startup.md`、`scripts/README.md`：确认 `TEST-012` 正式 checker 应在当前 local stack 与正式脚本入口下运行。
+  - `apps/platform-core/src/modules/delivery/tests/dlv021_auto_cutoff_resources_db.rs`、`dlv004_download_validation_db.rs`、`dlv007_api_delivery_db.rs`、`dlv011_template_grant_db.rs`、`dlv014_sandbox_workspace_db.rs`、`apps/platform-core/src/modules/order/tests/trade011_api_ppu_state_machine_db.rs`、`trade012_share_ro_state_machine_db.rs`、`trade014_sbx_std_state_machine_db.rs`：复核现有可复用的断权状态机、交付入口与缺少的“撤权后二次访问失败”断言。
+- 当前完成标准理解：
+  - `TEST-012` 必须至少证明：
+    1. 文件退款/关闭后旧下载票据不可继续下载，且无法重新签发 ticket。
+    2. 共享授权到期或争议中断后，不再存在可继续使用的 active grant，正式入口继续访问返回冲突/失效。
+    3. API credential 被 disable 后状态切为 `suspended`，订单/API 正式入口不可继续推进使用。
+    4. 沙箱到期后 `workspace/session` 同步终止，正式入口不可继续恢复或执行。
+    5. 以上每条都要同时回查 `PostgreSQL / Redis / 审计`，并形成文档、checker、CI。
+- 实施计划：
+  1. 扩展 `dlv021_auto_cutoff_resources_db.rs`，补齐四类资源撤权后的正式入口失败断言。
+  2. 新增 `TEST-012` 官方用例文档、checker 与 GitHub Actions workflow。
+  3. 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md` 及相关 runbook 索引，明确 `TEST-012` 官方入口。
+  4. 执行真实验证、回写 `BATCH-309（待审批）`、本地提交，然后继续 `TEST-013`。
+
+### BATCH-309（待审批）
+- 任务：`TEST-012` 建立交付与断权测试：撤权后下载票据失效、API key 失效、共享授权不可用、沙箱会话终止
+- 状态：待审批
+- 当前任务编号：`TEST-012`
+- 前置依赖核对结果：`ENV-040` 的 `smoke-local.sh`、PostgreSQL / Redis / MinIO / Kafka / Keycloak / observability 本地基线继续可用；`DB-032` 的 migration / seed 与 `.sqlx` 回归链路继续可用；`CORE-024` 的 delivery / order 集成测试夹具齐备。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-012` 必须真实证明四类资源断权后的正式入口失效，不是只保留状态定义。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `5.2 交付异常处理`，确认下载令牌失败、share grant 无法访问、模板/沙箱异常都必须进入断权/争议处理。
+  - `docs/领域模型/全量领域模型与对象关系说明.md`：复核 `4.5 交付与执行聚合`，确认 `Delivery / DataShareGrant / DeliveryTicket / StorageObject` 是本 task 的正式对象边界。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段要把安全边界变成真实可重复 smoke。
+  - `docs/05-test-cases/delivery-cases.md`：确认四类资源的断权结果分别冻结为 `revoked / expired / suspended`，且撤权后正式入口必须返回冲突或失效。
+  - `docs/04-runbooks/local-startup.md`、`scripts/README.md`：确认 `TEST-012` 必须走当前 local stack 与正式脚本入口。
+  - `apps/platform-core/src/modules/delivery/tests/dlv021_auto_cutoff_resources_db.rs`、`dlv004_download_validation_db.rs`、`dlv008_api_usage_log_db.rs`、`apps/platform-core/src/modules/order/tests/trade011_api_ppu_state_machine_db.rs`、`trade012_share_ro_state_machine_db.rs`、`trade014_sbx_std_state_machine_db.rs`：复核现有交付断权和状态机基座，以及正式入口失败断言应如何落位。
+- 实现要点：
+  - 扩展 `apps/platform-core/src/modules/delivery/tests/dlv021_auto_cutoff_resources_db.rs`：
+    - 文件链路继续验证旧 `download_token` 在退款/断权后返回 `409`，并校验错误消息与 `request_id`
+    - `SHARE_RO expire_share` 后补 `GET /share-grants` 返回 `expired` grant，并断言再次 `grant_read_access` 返回 `409 SHARE_RO_TRANSITION_FORBIDDEN`
+    - `SHARE_RO interrupt_dispute` 后补 `GET /share-grants` 直接返回 `409 SHARE_GRANT_FORBIDDEN`，并断言再次 `grant_read_access` 返回 `409`
+    - `API_PPU disable_access` 后补 `GET /usage-log` 暴露 `credential_status=suspended`，并断言再次 `settle_success_call` 返回 `409 API_PPU_TRANSITION_FORBIDDEN`
+    - `SBX_STD expire_sandbox` 后补再次 `execute_sandbox_query` 返回 `409 SBX_STD_TRANSITION_FORBIDDEN`
+    - 新增统一错误响应 helper，校验 `status / message / request_id`
+  - 新增 `docs/05-test-cases/delivery-revocation-cases.md`，冻结 `TEST-012` 正式命令、关键不变量、DB/Redis/audit 回查与禁止误报边界。
+  - 新增 `scripts/check-delivery-revocation.sh`，统一复用：
+    - `smoke-local.sh`
+    - `TRADE_DB_SMOKE=1 cargo test -p platform-core dlv021_auto_cutoff_resources_db_smoke -- --nocapture`
+  - 新增 `.github/workflows/delivery-revocation.yml`，将 `TEST-012` 纳入 GitHub Actions 最小矩阵。
+  - 更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/delivery-cases.md`、`scripts/README.md`、`.github/workflows/README.md`，明确 `TEST-012` 官方入口。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; TRADE_DB_SMOKE=1 cargo test -p platform-core dlv021_auto_cutoff_resources_db_smoke -- --nocapture'`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-delivery-revocation.sh`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `TRADE_DB_SMOKE=1 cargo test -p platform-core dlv021_auto_cutoff_resources_db_smoke -- --nocapture` 通过；新增断言已真实覆盖：
+    - 文件旧 token 失效
+    - share 到期后只能读到 `expired` grant，share dispute 后读接口直接拒绝
+    - API usage-log 暴露 `credential_status=suspended`
+    - share/API/sandbox 正式 transition 入口在断权后均返回 `409`
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-delivery-revocation.sh` 通过；真实覆盖：
+    - `smoke-local.sh` core stack / MinIO buckets / Keycloak realm / Grafana datasource / canonical topics / Kafka 双地址边界
+    - `dlv021_auto_cutoff_resources_db_smoke` 对 `delivery.delivery_ticket`、Redis download ticket cache、`delivery.data_share_grant`、`delivery.api_credential`、`delivery.sandbox_workspace / sandbox_session`、`delivery.delivery_record`、`audit.audit_event` 的联查
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`0` ignored；另有 `iam_party_access_flow_live` 维持仓库既有 ignored。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-012`
+  - `业务流程图-V1-完整版.md`：`5.2 交付异常处理`
+  - `全量领域模型与对象关系说明.md`：`4.5 交付与执行聚合`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1`
+  - `docs/05-test-cases/delivery-cases.md`
+- 覆盖的任务清单条目：`TEST-012`
+- 未覆盖项：
+  - 真实外部 share recipient 访问和真实 API 网关鉴权消费面不在当前仓库交付接口范围内；本批次按冻结文档口径，以正式管理/执行入口被拒绝、对象状态断权、Redis/DB/审计联查作为 `TEST-012` 官方闭环。
+  - `TEST-013` 的争议冻结结算与裁决退款/赔付尚未开始。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
