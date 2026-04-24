@@ -889,3 +889,86 @@
   - `SEARCHREC` 行为流 consumer / DLQ / reprocess 仍以既有 `search-rec-cases.md` 和后续任务为准，本批不把 `TEST-010` 扩张为 worker 可靠性验收。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-308（计划中）
+- 任务：`TEST-011` 建立支付 webhook 幂等测试：重复 success 回调、success 后 fail 回调、timeout 后 success 回调
+- 状态：计划中
+- 说明：当前仓库已有 `bil005_payment_webhook_db_smoke` 覆盖 `duplicate / out_of_order_ignored / rejected_signature / rejected_replay`，`bil022_payment_result_processor_db_smoke` 覆盖 `success 后 fail` 与 `timeout 后 success` 的处理器乱序保护，但这两块资产尚未形成 `TEST-011` 官方 checker / 文档 / CI，而且 webhook 主路径还缺少“先 timeout webhook，再收到 success webhook”这一条专属断言。当前批次将把支付 webhook 幂等口径正式收口，并保证 late success 不会把已超时订单和支付意图错误回退。
+- 前置依赖核对结果：`ENV-040` 已提供本地 PostgreSQL / Keycloak / Mock Payment / observability 基线；`DB-032` 已通过 migration / seed 与 `smoke-local.sh` 验证；`CORE-024` 已提供支付、订单与 billing 集成测试骨架。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-011` 的正式交付是支付 webhook 幂等测试，不是泛化的 billing 集成回归。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：确认所有 webhook 处理都必须幂等，且支付成功前不得放行交付、回调未验签不得改订单状态。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：确认支付域与交易域解耦，乱序、重放、Mock/真实 provider 抽象统一收口到支付编排层。
+  - `docs/05-test-cases/payment-billing-cases.md`、`docs/04-runbooks/mock-payment.md`：确认 `PWB-002/003/004` 已冻结 duplicate、success 后 fail、timeout 语义和本地 mock provider 边界。
+  - `apps/platform-core/src/modules/billing/tests/bil005_payment_webhook_db.rs`、`apps/platform-core/src/modules/billing/tests/bil022_payment_result_processor_db.rs`、`apps/platform-core/src/modules/order/tests/trade030_payment_result_orchestrator_db.rs`：确认现有可复用基座与缺口。
+- 当前完成标准理解：
+  - 至少要证明：
+    1. 相同 `provider_event_id` 的重复 success webhook 只产生一次业务副作用。
+    2. 先 success 再到旧 fail 时，`payment_intent.status` 与 `trade.order_main` 均不回退。
+    3. 先 timeout 再到 late success 时，状态仍保持 `expired / payment_timeout_pending_compensation_cancel`，不得被晚到成功事件回退。
+    4. 需要形成 `TEST-011` 专属文档、checker 与 CI 入口。
+- 实施计划：
+  1. 补齐 webhook 主路径对 `timeout 后 success` 的断言，必要时直接扩展 `bil005_payment_webhook_db_smoke`。
+  2. 新增 `TEST-011` 官方文档与 checker，串联 duplicate success、success 后 fail、timeout 后 success 三条正式分支。
+  3. 新增最小 CI workflow，保证 `TEST-011` 在 GitHub Actions 上可重复执行。
+  4. 执行真实验证、回写 `P8` 待审批日志并提交，然后继续 `TEST-012`。
+
+### BATCH-308（待审批）
+- 任务：`TEST-011` 建立支付 webhook 幂等测试：重复 success 回调、success 后 fail 回调、timeout 后 success 回调
+- 状态：待审批
+- 当前任务编号：`TEST-011`
+- 前置依赖核对结果：`ENV-040` 的 `smoke-local.sh`、Mock Payment、Keycloak、Kafka、observability 本地基线继续可用；`DB-032` 的 migration / seed 与 `.sqlx` 重建链路继续可用；`CORE-024` 的支付、订单与 billing 测试骨架齐备。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-011` 的正式验收是支付 webhook 幂等，不是泛化的 billing 全域集成。
+  - `docs/数据库设计/接口协议/支付域接口协议正式版.md`：确认所有 webhook 回调处理都必须幂等，且成功前不得放行交付、旧结果不得回退主状态。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：确认支付域通过统一 provider 适配层与交易域解耦，Mock/真实渠道统一抽象。
+  - `docs/05-test-cases/payment-billing-cases.md`、`docs/04-runbooks/mock-payment.md`：确认 `PWB-002/003/004` 的 duplicate、`success -> fail`、timeout 语义与本地 mock provider 边界。
+  - `apps/platform-core/src/modules/billing/tests/bil005_payment_webhook_db.rs`、`apps/platform-core/src/modules/billing/tests/bil022_payment_result_processor_db.rs`、`apps/platform-core/src/modules/order/tests/trade030_payment_result_orchestrator_db.rs`：复核现有 webhook / 结果处理器 / 订单编排 smoke；最终确认 `TEST-011` 官方 checker 以 webhook 主路径 `bil005` 为准，`bil022 / trade030` 仅作支持性参考，不作为本 task 的 gate。
+- 实现要点：
+  - 扩展 `apps/platform-core/src/modules/billing/tests/bil005_payment_webhook_db.rs`：
+    - 新增 `timeout_then_success` 场景
+    - 先处理 `payment.timeout`
+    - 再处理晚到 `payment.succeeded`
+    - 断言 late success 返回 `out_of_order_ignored`
+    - 断言 `payment.payment_intent.status` 继续保持 `expired`
+    - 断言 `trade.order_main.status/payment_status` 继续保持 `payment_timeout_pending_compensation_cancel / expired`
+    - 断言 `payment.payment_transaction` 仍只保留单条副作用
+    - 断言审计继续命中 `payment.webhook.processed / payment.webhook.out_of_order_ignored`
+  - 新增 `docs/05-test-cases/payment-webhook-idempotency-cases.md`，冻结 `TEST-011` 正式命令、PWB 映射、关键 SQL 回查与禁止误报边界。
+  - 新增 `scripts/check-payment-webhook-idempotency.sh`，统一复用：
+    - `smoke-local.sh`
+    - `check-mock-payment.sh`
+    - `TRADE_DB_SMOKE=1 cargo test -p platform-core bil005_payment_webhook_db_smoke -- --nocapture`
+  - 新增 `.github/workflows/payment-webhook-idempotency.yml`，将 `TEST-011` 纳入 GitHub Actions 最小矩阵。
+  - 更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`、`docs/04-runbooks/mock-payment.md`，明确 `TEST-011` 官方 checker 入口。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; TRADE_DB_SMOKE=1 cargo test -p platform-core bil005_payment_webhook_db_smoke -- --nocapture`
+  3. `cargo check -p platform-core`
+  4. `ENV_FILE=infra/docker/.env.local ./scripts/check-payment-webhook-idempotency.sh`
+  5. `cargo test -p platform-core`
+  6. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  7. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `TRADE_DB_SMOKE=1 cargo test -p platform-core bil005_payment_webhook_db_smoke -- --nocapture` 通过；新增 `timeout -> late success` 分支已稳定返回 `out_of_order_ignored`，且不回退 `payment_intent / order_main`。
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-payment-webhook-idempotency.sh` 通过；真实覆盖：
+    - `smoke-local.sh` core stack / Kafka canonical topics / Keycloak / observability / mock payment 基线
+    - `check-mock-payment.sh` mock provider readiness 与 `/mock/payment/charge/success|fail|timeout`
+    - `bil005_payment_webhook_db_smoke`：duplicate success、`success -> fail`、`timeout -> success` 三条 webhook 主路径均通过，并真实回查 `payment.payment_transaction / payment.payment_webhook_event / payment.payment_intent / trade.order_main / audit.audit_event`
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`0` ignored；另有 `iam_party_access_flow_live` 维持仓库既有 ignored。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-011`
+  - `支付域接口协议正式版.md`：`6. 幂等与一致性`
+  - `支付、资金流与轻结算设计.md`：`4. 分层架构`
+  - `docs/05-test-cases/payment-billing-cases.md`
+  - `docs/04-runbooks/mock-payment.md`
+- 覆盖的任务清单条目：`TEST-011`
+- 未覆盖项：
+  - `BIL-022` 的 mixed polling/webhook 结果处理器旧 live smoke 已复核，但不属于 `TEST-011` 的正式 gate；本批不把 webhook 幂等任务扩张为 polling 结果处理器回归清单。
+  - `TEST-012` 的撤权、票据失效、API key 失效、共享授权不可用、沙箱会话终止尚未开始。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

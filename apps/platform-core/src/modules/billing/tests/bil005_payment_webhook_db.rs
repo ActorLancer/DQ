@@ -53,6 +53,14 @@ mod tests {
             "out_of_order",
         )
         .await;
+        let timeout_then_success_order = seed_order(
+            &client,
+            &buyer_org_id,
+            &seller_org_id,
+            &suffix,
+            "timeout_then_success",
+        )
+        .await;
 
         let app = crate::with_live_test_state(router()).await;
 
@@ -104,6 +112,18 @@ mod tests {
             &format!("req-bil005-create-ooo-{suffix}"),
         )
         .await;
+        let timeout_then_success_intent_id = create_payment_intent(
+            &app,
+            &buyer_org_id,
+            &seller_org_id,
+            &provider_account_id,
+            &corridor_policy_id,
+            &timeout_then_success_order.order_id,
+            &suffix,
+            "timeout_then_success",
+            &format!("req-bil005-create-timeout-then-success-{suffix}"),
+        )
+        .await;
 
         lock_order(
             &app,
@@ -135,6 +155,14 @@ mod tests {
             &out_of_order_order.order_id,
             &out_of_order_intent_id,
             &format!("req-bil005-lock-ooo-{suffix}"),
+        )
+        .await;
+        lock_order(
+            &app,
+            &buyer_org_id,
+            &timeout_then_success_order.order_id,
+            &timeout_then_success_intent_id,
+            &format!("req-bil005-lock-timeout-then-success-{suffix}"),
         )
         .await;
 
@@ -338,6 +366,71 @@ mod tests {
         );
         assert!(out_of_order_json["data"]["payment_transaction_id"].is_null());
 
+        let timeout_processed_request_id = format!("req-bil005-webhook-timeout-processed-{suffix}");
+        let timeout_ts = now_utc_ms() + 5_000;
+        let timeout_processed_json = post_webhook(
+            &app,
+            "mock_payment",
+            Some("mock-signature"),
+            Some(timeout_ts),
+            &timeout_processed_request_id,
+            json!({
+                "provider_event_id": format!("evt-bil005-timeout-{suffix}"),
+                "event_type": "payment.timeout",
+                "provider_transaction_no": format!("txn-bil005-timeout-{suffix}"),
+                "payment_intent_id": timeout_then_success_intent_id,
+                "transaction_amount": "88.00000000",
+                "currency_code": "SGD",
+                "provider_status": "timeout",
+                "occurred_at_ms": timeout_ts,
+                "raw_payload": {
+                    "source": "bil005-db-smoke-timeout-processed"
+                }
+            }),
+        )
+        .await;
+        assert_eq!(
+            timeout_processed_json["data"]["processed_status"].as_str(),
+            Some("processed")
+        );
+        assert_eq!(
+            timeout_processed_json["data"]["applied_payment_status"].as_str(),
+            Some("expired")
+        );
+
+        let timeout_late_success_request_id =
+            format!("req-bil005-webhook-timeout-late-success-{suffix}");
+        let timeout_late_success_json = post_webhook(
+            &app,
+            "mock_payment",
+            Some("mock-signature"),
+            Some(timeout_ts + 1_000),
+            &timeout_late_success_request_id,
+            json!({
+                "provider_event_id": format!("evt-bil005-timeout-late-success-{suffix}"),
+                "event_type": "payment.succeeded",
+                "provider_transaction_no": format!("txn-bil005-timeout-late-success-{suffix}"),
+                "payment_intent_id": timeout_then_success_intent_id,
+                "transaction_amount": "88.00000000",
+                "currency_code": "SGD",
+                "provider_status": "succeeded",
+                "occurred_at_ms": timeout_ts + 1_000,
+                "raw_payload": {
+                    "source": "bil005-db-smoke-timeout-late-success"
+                }
+            }),
+        )
+        .await;
+        assert_eq!(
+            timeout_late_success_json["data"]["processed_status"].as_str(),
+            Some("out_of_order_ignored")
+        );
+        assert_eq!(
+            timeout_late_success_json["data"]["out_of_order_ignored"].as_bool(),
+            Some(true)
+        );
+        assert!(timeout_late_success_json["data"]["payment_transaction_id"].is_null());
+
         let success_tx_row = client
             .query_one(
                 "SELECT
@@ -465,6 +558,37 @@ mod tests {
         assert_eq!(out_of_order_order_row.get::<_, String>(0), "buyer_locked");
         assert_eq!(out_of_order_order_row.get::<_, String>(1), "paid");
 
+        let timeout_status_row = client
+            .query_one(
+                "SELECT status, order_id::text FROM payment.payment_intent WHERE payment_intent_id = $1::text::uuid",
+                &[&timeout_then_success_intent_id],
+            )
+            .await
+            .expect("query timeout intent status");
+        assert_eq!(timeout_status_row.get::<_, String>(0), "expired");
+        assert_eq!(
+            timeout_status_row.get::<_, String>(1),
+            timeout_then_success_order.order_id
+        );
+        assert_eq!(
+            count_transactions(&client, &timeout_then_success_intent_id).await,
+            1
+        );
+        let timeout_order_row = client
+            .query_one(
+                "SELECT status, payment_status
+                 FROM trade.order_main
+                 WHERE order_id = $1::text::uuid",
+                &[&timeout_then_success_order.order_id],
+            )
+            .await
+            .expect("query timeout order status");
+        assert_eq!(
+            timeout_order_row.get::<_, String>(0),
+            "payment_timeout_pending_compensation_cancel"
+        );
+        assert_eq!(timeout_order_row.get::<_, String>(1), "expired");
+
         let audit_row = client
             .query_one(
                 "SELECT
@@ -472,13 +596,17 @@ mod tests {
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $2 AND action_name = 'payment.webhook.duplicate'),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $3 AND action_name = 'payment.webhook.rejected_signature'),
                    (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $4 AND action_name = 'payment.webhook.rejected_replay'),
-                   (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $5 AND action_name = 'payment.webhook.out_of_order_ignored')",
+                   (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $5 AND action_name = 'payment.webhook.out_of_order_ignored'),
+                   (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $6 AND action_name = 'payment.webhook.processed'),
+                   (SELECT COUNT(*)::bigint FROM audit.audit_event WHERE request_id = $7 AND action_name = 'payment.webhook.out_of_order_ignored')",
                 &[
                     &success_request_id,
                     &duplicate_request_id,
                     &invalid_request_id,
                     &replay_request_id,
                     &out_of_order_request_id,
+                    &timeout_processed_request_id,
+                    &timeout_late_success_request_id,
                 ],
             )
             .await
@@ -488,6 +616,8 @@ mod tests {
         assert_eq!(audit_row.get::<_, i64>(2), 1);
         assert_eq!(audit_row.get::<_, i64>(3), 1);
         assert_eq!(audit_row.get::<_, i64>(4), 1);
+        assert_eq!(audit_row.get::<_, i64>(5), 1);
+        assert_eq!(audit_row.get::<_, i64>(6), 1);
 
         cleanup(
             &client,
@@ -499,28 +629,34 @@ mod tests {
                 &invalid_intent_id,
                 &replay_intent_id,
                 &out_of_order_intent_id,
+                &timeout_then_success_intent_id,
             ],
             &[
                 &success_order,
                 &invalid_order,
                 &replay_order,
                 &out_of_order_order,
+                &timeout_then_success_order,
             ],
             &[
                 format!("req-bil005-create-success-{suffix}"),
                 format!("req-bil005-create-invalid-{suffix}"),
                 format!("req-bil005-create-replay-{suffix}"),
                 format!("req-bil005-create-ooo-{suffix}"),
+                format!("req-bil005-create-timeout-then-success-{suffix}"),
                 format!("req-bil005-lock-success-{suffix}"),
                 format!("req-bil005-lock-invalid-{suffix}"),
                 format!("req-bil005-lock-replay-{suffix}"),
                 format!("req-bil005-lock-ooo-{suffix}"),
+                format!("req-bil005-lock-timeout-then-success-{suffix}"),
                 success_request_id,
                 duplicate_request_id,
                 invalid_request_id,
                 replay_request_id,
                 out_of_order_processed_request_id,
                 out_of_order_request_id,
+                timeout_processed_request_id,
+                timeout_late_success_request_id,
             ],
         )
         .await;

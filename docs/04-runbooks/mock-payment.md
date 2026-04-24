@@ -11,6 +11,8 @@
   - `ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh mocks`
   - `./scripts/check-mock-payment.sh`
 
+`TEST-011` 的正式支付 webhook 幂等回归入口为 `ENV_FILE=infra/docker/.env.local ./scripts/check-payment-webhook-idempotency.sh`。该 checker 会在确认 mock provider 健康后，继续执行 duplicate success、`success -> fail` 与 `timeout -> success` 三条 webhook / payment result 保护 smoke。
+
 ## 健康检查
 
 - 管理接口：`GET http://127.0.0.1:8089/__admin`
