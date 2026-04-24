@@ -503,6 +503,83 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-318（计划中）
+- 任务：`TEST-021` 输出 `docs/05-test-cases/v1-core-acceptance-checklist.md`，把 V1 退出标准转化为可执行验收用例
+- 状态：计划中
+- 说明：`TEST-021` 不是写一份抽象“验收说明”，而是把 `CTX-015` 的 V1 退出门槛、全集成文档里的五条标准链路 / 8 SKU 映射，以及当前 `TEST-003~020 / TEST-028` 的官方 checker 收口成一张正式验收 checklist，明确每个 gate 的执行命令、通过判定、证据来源、依赖任务与最终签收顺序。
+- 前置依赖核对结果：`ENV-040` 的 local stack / smoke / Keycloak / observability 入口可用；`DB-032` 的 migration / seed / rollback 兼容性链路可用；`CORE-024` 的 `platform-core` 正式运行态、demo fixture、order/billing/delivery/audit 主链路可用。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-021` 的交付是正式 acceptance checklist。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `5.3.2` 五条标准链路和 `5.3.2A` 场景到 SKU / 模板映射。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.2` Phase 1 验收标准，确认需要把“交易闭环 / 仲裁闭环 / 评分闭环 / 审计闭环”转成可执行 gate。
+  - `docs/00-context/v1-exit-criteria.md`、`docs/00-context/v1-closed-loop-matrix.md`、`fixtures/demo/scenarios.json`、`fixtures/demo/orders.json`：确认五条标准链路、8 SKU、主/补充挂点和退出门槛的 authority。
+  - `docs/05-test-cases/README.md` 与 `TEST-003~020` 各专项 case 文档：抽取当前官方 checker、正式命令、通过判定与证据边界。
+- 当前完成标准理解：
+  - 必须新增 `docs/05-test-cases/v1-core-acceptance-checklist.md`，覆盖：
+    1. V1 退出门槛与“一票否决”条件
+    2. 五条标准链路与 8 SKU 的正式验收映射
+    3. `TEST-003~020 / TEST-028` 官方 checker 的统一执行顺序、通过判定、artifact 与 evidence 要求
+    4. 最终 sign-off 时如何证明“连续演示 20 笔以上订单无关键错误”
+  - checklist 必须被 `docs/05-test-cases/README.md` 索引，不得另起第二套命名。
+- 实施计划：
+  1. 新增 `docs/05-test-cases/v1-core-acceptance-checklist.md`，收口 exit criteria、scenario/SKU matrix、官方 checker 与 sign-off 规则。
+  2. 更新 `docs/05-test-cases/README.md`，登记 `TEST-021` 官方入口。
+  3. 执行本地验证、回写 `BATCH-318（待审批）`、本地提交，然后继续 `TEST-022`。
+
+### BATCH-318（待审批）
+- 任务：`TEST-021` 输出 `docs/05-test-cases/v1-core-acceptance-checklist.md`，把 V1 退出标准转化为可执行验收用例
+- 状态：待审批
+- 当前任务编号：`TEST-021`
+- 前置依赖核对结果：`ENV-040` 的 local stack / smoke / Keycloak / observability 入口继续可用；`DB-032` 的 migration / seed / rollback 兼容性链路继续可用；`CORE-024` 的 `platform-core` 正式运行态、demo fixture 与主交易链路继续可用。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-021` 交付是正式 acceptance checklist，而不是 README 概览。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`：复核 `5.3.2` 五条标准链路与 `5.3.2A` 场景到 SKU / 模板映射。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.2`，确认 `Phase 1` 最终签收需要 `20+` 订单连续演示与四类闭环。
+  - `docs/00-context/v1-exit-criteria.md`、`docs/00-context/v1-closed-loop-matrix.md`、`fixtures/demo/scenarios.json`、`fixtures/demo/orders.json`：确认退出门槛、五条场景、8 SKU、主/补充挂点与 demo authority。
+  - `docs/05-test-cases/README.md` 与 `TEST-003~020` 各 case 文档：抽取官方 checker、正式命令、artifact 与通过判定。
+- 实现要点：
+  - 新增 `docs/05-test-cases/v1-core-acceptance-checklist.md`，统一收口：
+    - authority、exit rule、一票否决边界
+    - 交易闭环 / 仲裁闭环 / 评分闭环 / 审计闭环 到正式 gate 的映射
+    - 五条标准链路 `S1~S5` 的主 SKU / 补充 SKU / demo authority / 必须证明的验收事实
+    - 8 个标准 SKU 的主路径、异常/阻断、退款/争议三类证据规则
+    - `TEST-003~020 / TEST-028` 官方 checker 的统一 gate 表与 final sign-off 顺序
+    - `20+ order` 最终签收口径与 evidence record template
+  - checklist 中显式补入未来 gate：
+    - `ACC-SKU-COVERAGE -> TEST-023`
+    - `ACC-ORCH-20ORDERS -> TEST-024`
+    - 避免 `TEST-021` 自己出现未定义 gate 引用。
+  - 更新 `docs/05-test-cases/README.md`，把 `v1-core-acceptance-checklist.md` 纳入正式索引。
+- 验证步骤：
+  1. `rg -n "ACC-CONTRACT|ACC-SKU-COVERAGE|ACC-ORCH-20ORDERS|ACC-CANONICAL|工业设备运行指标 API 订阅|商圈/门店选址查询服务|check-order-e2e.sh|check-canonical-contracts.sh" docs/05-test-cases/v1-core-acceptance-checklist.md docs/05-test-cases/README.md`
+  2. `cargo fmt --all`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - checklist linkage 检查通过；`target/test-artifacts/test-021/checklist-linkage.log` 已回查到：
+    - `ACC-CONTRACT / ACC-SKU-COVERAGE / ACC-ORCH-20ORDERS / ACC-CANONICAL`
+    - `S1`、`S5` 正式场景名
+    - `check-order-e2e.sh`、`check-canonical-contracts.sh`
+    - `docs/05-test-cases/README.md` 中的正式索引项
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 warning（`product_type`、`SERVICE_NAME` 未使用）。
+  - `cargo test -p platform-core` 通过；当前结果为 `0` 失败、`1` ignored（`iam_party_access_flow_live` 仓库既有 live ignore）。
+  - `cargo sqlx prepare --workspace` 通过，`.sqlx` 元数据可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-021`
+  - `数据交易平台-全集成基线-V1.md`：`5.3.2 / 5.3.2A`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.2`
+  - `v1-exit-criteria.md`
+  - `v1-closed-loop-matrix.md`
+- 覆盖的任务清单条目：`TEST-021`
+- 未覆盖项：
+  - `TEST-021` 只冻结最终验收 checklist，不替代 `TEST-022~024 / 028` 之后的专门场景文档和 checker；这些 gate 已在 checklist 中显式预留到对应任务。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-310（待审批）
 - 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
 - 状态：待审批
