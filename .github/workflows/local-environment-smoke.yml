@@ -1,19 +1,33 @@
-name: local-environment-smoke
+name: compose-smoke
 
 on:
   push:
   pull_request:
 
 jobs:
-  test-005-local-environment-smoke:
+  test-016-compose-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Install checker deps
         run: sudo apt-get update && sudo apt-get install -y jq postgresql-client ripgrep
-      - name: Run TEST-005 local environment smoke
-        run: ENV_FILE=infra/docker/.env.local bash ./scripts/smoke-local.sh
+      - name: Run TEST-016 compose smoke
+        run: ENV_FILE=infra/docker/.env.local bash ./scripts/check-compose-smoke.sh
+      - name: Collect compose smoke artifacts
+        if: always()
+        run: |
+          mkdir -p target/test-artifacts/compose-smoke
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml ps -a > target/test-artifacts/compose-smoke/docker-compose-ps.txt || true
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml logs --no-color > target/test-artifacts/compose-smoke/docker-compose.log || true
+          docker ps -a > target/test-artifacts/compose-smoke/docker-ps.txt || true
+      - name: Upload compose smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-smoke-artifacts
+          path: target/test-artifacts
+          if-no-files-found: warn
       - name: Tear down local stack
         if: always()
         run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true

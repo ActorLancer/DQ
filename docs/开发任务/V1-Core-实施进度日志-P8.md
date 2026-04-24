@@ -450,6 +450,88 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-313（计划中）
+- 任务：`TEST-016` compose 级别 CI smoke 作业
+- 状态：计划中
+- 当前任务编号：`TEST-016`
+- 前置依赖核对结果：`ENV-040` 已提供 `infra/docker/.env.local` 与 compose 本地基线，`TEST-005` 已通过 `smoke-local.sh` 固化 compose 启动、Keycloak realm、Grafana datasource、canonical topics 与 Kafka 双地址边界；`DB-032` 已提供 migration / seed smoke；`CORE-024` 已提供 `platform-core` 健康检查与 runtime probe 基座。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-016` 要落的是 CI 里的 compose 级 smoke 作业，不是再次补一条本地 smoke 脚本。
+  - `docs/data_trading_blockchain_system_design_split/14-部署架构、容量规划与持续交付.md`：复核 `14.4`，确认后端服务要通过 CI/CD 自动构建与自动测试收口。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.1 / 15.2`，确认 `TEST` 阶段必须把集成验证真实接入验收路径。
+  - `docs/开发任务/问题修复任务/A11-测试与Smoke口径误报风险.md`：确认 compose smoke 必须同时拦截 canonical topic、consumer group / route authority 与业务 OpenAPI 漂移，不能只看端口或旧 topic。
+  - `.github/workflows/local-environment-smoke.yml`、`.github/workflows/canonical-contracts.yml`、`.github/workflows/README.md`：确认当前 CI 仍把运行态 smoke 与 canonical 静态收口拆散在不同 workflow，缺少 `TEST-016` 的聚合入口与失败定位产物。
+  - `scripts/smoke-local.sh`、`scripts/check-canonical-contracts.sh`、`scripts/check-topic-topology.sh`、`scripts/README.md`：确认现有正式 checker 已具备 compose 启动、健康检查、canonical topics、consumer_group catalog、OpenAPI schema 与旧命名静态校验能力，当前任务应优先复用，不另写第二套命令。
+  - `docs/05-test-cases/README.md`、`docs/05-test-cases/local-environment-smoke-cases.md`：确认 `TEST-005` 已冻结本地运行态 smoke 边界，但仍缺 `TEST-016` 的 compose CI smoke 专属 case 文档。
+- 当前完成标准理解：
+  - 新增统一的 `TEST-016` checker，串联 compose 级运行态 smoke 与 canonical 静态漂移拦截；本地与 CI 都复用该入口。
+  - 至少一条 GitHub Actions workflow 会真实拉起 `core + observability + mocks`，执行健康与控制面回查，并继续校验 canonical topic、consumer group catalog 与关键 OpenAPI 归档不回退到旧命名或骨架接口。
+  - workflow 失败时能留下 compose / `platform-core` 日志等 artifact，满足“失败可定位”。
+  - `docs/05-test-cases/**`、`scripts/README.md`、`.github/workflows/README.md` 与 `P8` 留痕同步更新，明确 `TEST-005` 和 `TEST-016` 的职责边界。
+- 实施计划：
+  1. 新增 `scripts/check-compose-smoke.sh`，统一编排 `smoke-local.sh` 与 `check-canonical-contracts.sh` 的静态子集，形成 `TEST-016` 单一入口。
+  2. 改造 `.github/workflows/local-environment-smoke.yml`，使其承接 `TEST-016` compose smoke：执行统一 checker、在 `always()` 分支收集 compose / app artifacts，并保持 `down-local.sh` 清理。
+  3. 新增 `docs/05-test-cases/compose-smoke-cases.md`，同时更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/local-environment-smoke-cases.md`、`scripts/README.md` 与 `.github/workflows/README.md`，冻结正式入口与边界说明。
+  4. 执行本地真实验证、回写 `BATCH-313（待审批）`、本地提交，然后继续下一个 `TEST` task。
+
+### BATCH-313（待审批）
+- 任务：`TEST-016` compose 级别 CI smoke 作业
+- 状态：待审批
+- 当前任务编号：`TEST-016`
+- 实现要点：
+  - 新增 `scripts/check-compose-smoke.sh`，作为 `TEST-016` 的正式单一入口：
+    - 先复用 `ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+    - 再执行 `CANONICAL_CHECK_MODE=static ENV_FILE=infra/docker/.env.local ./scripts/check-canonical-contracts.sh`
+    - 统一把 compose 运行态 smoke 与 canonical topic / consumer group / OpenAPI 静态漂移拦截收口到一条命令，不在 workflow 内散落第二套命令。
+  - 改造 `.github/workflows/local-environment-smoke.yml`：
+    - workflow 名称切为 `compose-smoke`
+    - job 切为 `test-016-compose-smoke`
+    - CI 内执行 `ENV_FILE=infra/docker/.env.local bash ./scripts/check-compose-smoke.sh`
+    - 在 `always()` 分支收集 `docker compose ps`、compose log、`docker ps` 与 `target/test-artifacts/**`
+    - 保持 `COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true` 清理。
+  - 新增 `docs/05-test-cases/compose-smoke-cases.md`，冻结 `TEST-016` 的正式目标、统一入口、收口路径、五条验收 case 与 artifact / 职责边界说明。
+  - 更新：
+    - `docs/05-test-cases/README.md`
+    - `docs/05-test-cases/local-environment-smoke-cases.md`
+    - `scripts/README.md`
+    - `.github/workflows/README.md`
+    明确 `TEST-005` 仍负责运行态 smoke，`TEST-016` 则把这条运行态路径正式接入 CI，并追加 canonical 静态漂移拦截。
+- 验证步骤：
+  1. `ENV_FILE=infra/docker/.env.local ./scripts/check-compose-smoke.sh`
+  2. `cargo fmt --all`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+  7. `bash -n scripts/check-compose-smoke.sh`
+  8. `python - <<'PY' ... yaml.safe_load('.github/workflows/local-environment-smoke.yml') ... PY`
+- 验证结果：
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-compose-smoke.sh` 通过；真实覆盖：
+    - `smoke-local.sh` 已拉起 `core + observability + mocks`
+    - `platform-core` live / ready / deps / runtime probe 通过
+    - Keycloak realm、Grafana datasource、canonical topics、Kafka 双地址边界与关键 ops 控制面入口通过
+    - `CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh` 继续通过，确认 consumer_group catalog、host/container Kafka 文档边界、关键 OpenAPI / 运行态文档无旧命名漂移。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仅保留仓库既有 `unused_* / dead_code` warning。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`1` ignored（仓库既有 `iam_party_access_flow_live`）。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 查询缓存可重建，无新增漂移文件残留。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `bash -n scripts/check-compose-smoke.sh` 通过。
+  - `python + PyYAML` 解析 `.github/workflows/local-environment-smoke.yml` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-016`
+  - `14-部署架构、容量规划与持续交付.md`：`14.4`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1 / 15.2`
+  - `问题修复任务/A11-测试与Smoke口径误报风险.md`
+  - `docs/05-test-cases/README.md`
+  - `docs/05-test-cases/local-environment-smoke-cases.md`
+  - `.github/workflows/README.md`
+- 覆盖的任务清单条目：`TEST-016`
+- 未覆盖项：
+  - `TEST-017` 的 schema drift checker 与 runtime schema 归档校验尚未开始；当前批次只交付 compose 级 CI smoke 与 artifact 留存。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-301（计划中）
 - 任务：`TEST-004` 建立 migration smoke test，验证空库升级、种子导入、应用启动、重置回滚与重新升级
 - 状态：计划中

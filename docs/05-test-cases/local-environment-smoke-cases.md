@@ -68,4 +68,6 @@ curl -fsS http://127.0.0.1:8081/realms/platform-local/.well-known/openid-configu
 ## CI 入口
 
 - `.github/workflows/local-environment-smoke.yml`
-- 本地与 CI 统一执行：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+- 本地正式运行态 smoke：`ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh`
+- CI compose smoke wrapper：`ENV_FILE=infra/docker/.env.local ./scripts/check-compose-smoke.sh`
+- `TEST-016` 的 wrapper 会先执行 `smoke-local.sh`，再执行 `CANONICAL_CHECK_MODE=static ./scripts/check-canonical-contracts.sh`；`smoke-local.sh` 仍然是 `TEST-005` 的正式运行态 checker，不被 wrapper 替代。
