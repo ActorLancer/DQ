@@ -255,12 +255,63 @@ mod tests {
         assert_eq!(dispute_row.get::<_, String>(3), "frozen");
         assert_eq!(dispute_row.get::<_, i64>(4), 1);
 
+        crate::write_test025_artifact(
+            "bil026-share-ro-billing.json",
+            &serde_json::json!({
+                "test_id": "bil026_share_ro_billing_db_smoke",
+                "focus": ["share_ro_billing_cycle", "share_revoke_refund_placeholder", "share_dispute_freeze"],
+                "cycle_order": {
+                    "order_id": cycle_seed.order_id.clone(),
+                    "buyer_org_id": cycle_seed.buyer_org_id.clone(),
+                    "seller_org_id": cycle_seed.seller_org_id.clone(),
+                    "asset_object_id": cycle_seed.asset_object_id.clone(),
+                    "opening_event_id": opening_event_id,
+                    "cycle_event_id": cycle_event_id,
+                    "enable_request_id": enable_request_id,
+                    "grant_request_id": grant_request_id,
+                    "cycle_request_id": cycle_request_id,
+                    "revoke_request_id": revoke_request_id,
+                    "enable_current_state": enable["data"]["current_state"],
+                    "grant_current_state": grant["data"]["current_state"],
+                    "cycle_event_type": cycle["data"]["billing_event_type"],
+                    "cycle_replayed": cycle["data"]["billing_event_replayed"],
+                    "cycle_replay_event_id": cycle_replay["data"]["billing_event_id"],
+                    "cycle_replay_replayed": cycle_replay["data"]["billing_event_replayed"],
+                    "revoke_current_state": revoke["data"]["current_state"],
+                    "billing_event_count": after["data"]["billing_events"].as_array().map(Vec::len).unwrap_or_default(),
+                    "refund_adjustment_amount": after["data"]["settlement_summary"]["refund_adjustment_amount"],
+                    "db_counts": {
+                        "one_time_charge": cycle_counts.get::<_, i64>(0),
+                        "recurring_charge": cycle_counts.get::<_, i64>(1),
+                        "refund_adjustment": cycle_counts.get::<_, i64>(2),
+                        "refund_adjustment_sum": cycle_counts.get::<_, String>(3),
+                        "settlement_status": cycle_counts.get::<_, String>(4),
+                        "enable_audit_count": cycle_counts.get::<_, i64>(5),
+                        "cycle_audit_count": cycle_counts.get::<_, i64>(6),
+                        "revoke_audit_count": cycle_counts.get::<_, i64>(7),
+                    }
+                },
+                "dispute_order": {
+                    "order_id": dispute_seed.order_id.clone(),
+                    "buyer_org_id": dispute_seed.buyer_org_id.clone(),
+                    "buyer_user_id": dispute_seed.buyer_user_id.clone(),
+                    "create_case_request_id": create_case_request_id,
+                    "case_id": dispute_case["data"]["case_id"],
+                    "current_status": dispute_case["data"]["current_status"],
+                    "settlement_status": dispute_row.get::<_, String>(0),
+                    "dispute_status": dispute_row.get::<_, String>(1),
+                    "dispute_hold_event_count": dispute_row.get::<_, i64>(2),
+                    "settlement_record_status": dispute_row.get::<_, String>(3),
+                    "provisional_hold_audit_count": dispute_row.get::<_, i64>(4),
+                }
+            }),
+        );
+
         cleanup_share_order(&client, &cycle_seed, None).await;
         let case_id = dispute_case["data"]["case_id"]
             .as_str()
             .expect("dispute case id");
         cleanup_share_order(&client, &dispute_seed, Some(case_id)).await;
-        let _ = opening_event_id;
     }
 
     async fn get_billing_order(

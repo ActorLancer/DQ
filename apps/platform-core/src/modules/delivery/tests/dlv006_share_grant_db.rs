@@ -363,6 +363,75 @@ mod tests {
             Some("bill_once_on_grant_effective")
         );
 
+        crate::write_test025_artifact(
+            "dlv006-share-grant.json",
+            &serde_json::json!({
+                "test_id": "dlv006_share_grant_db_smoke",
+                "focus": ["share_grant_manage", "share_grant_read", "share_grant_revoke"],
+                "order": {
+                    "order_id": seed.order_id.clone(),
+                    "buyer_org_id": seed.buyer_org_id.clone(),
+                    "seller_org_id": seed.seller_org_id.clone(),
+                    "asset_object_id": seed.asset_object_id.clone(),
+                },
+                "grant_response": {
+                    "request_id": grant_request_id,
+                    "grant_status": grant_json["data"]["grant_status"],
+                    "operation": grant_json["data"]["operation"],
+                    "current_state": grant_json["data"]["current_state"],
+                    "delivery_status": grant_json["data"]["delivery_status"],
+                    "subscriber_ref": grant_json["data"]["subscriber_ref"],
+                },
+                "read_response": {
+                    "request_id": get_request_id,
+                    "grant_count": get_json["data"]["grants"].as_array().map(Vec::len).unwrap_or_default(),
+                    "grant_status": get_json["data"]["grants"][0]["grant_status"],
+                },
+                "revoke_response": {
+                    "request_id": revoke_request_id,
+                    "grant_status": revoke_json["data"]["grant_status"],
+                    "operation": revoke_json["data"]["operation"],
+                    "current_state": revoke_json["data"]["current_state"],
+                },
+                "final_order": {
+                    "current_state": order_row.get::<_, String>(0),
+                    "payment_status": order_row.get::<_, String>(1),
+                    "delivery_status": order_row.get::<_, String>(2),
+                    "acceptance_status": order_row.get::<_, String>(3),
+                    "settlement_status": order_row.get::<_, String>(4),
+                },
+                "latest_grant": {
+                    "grant_status": grant_row.get::<_, String>(0),
+                    "recipient_ref": grant_row.get::<_, String>(1),
+                    "share_protocol": grant_row.get::<_, String>(2),
+                    "access_locator": grant_row.get::<_, Option<String>>(3),
+                    "receipt_hash": grant_row.get::<_, Option<String>>(4),
+                    "subscriber_ref": grant_row.get::<_, Option<String>>(5),
+                },
+                "latest_delivery_record": {
+                    "status": delivery_row.get::<_, String>(0),
+                    "delivery_type": delivery_row.get::<_, String>(1),
+                    "delivery_route": delivery_row.get::<_, String>(2),
+                    "receipt_hash": delivery_row.get::<_, Option<String>>(3),
+                },
+                "audit_counts": {
+                    "delivery_share_enable": manage_audit_count,
+                    "delivery_share_read": read_audit_count,
+                    "trade_order_share_ro_transition": trade_audit_count,
+                },
+                "outbox": {
+                    "delivery_committed_topic": outbox_row.get::<_, Option<String>>(0),
+                    "delivery_branch": outbox_row.get::<_, Option<String>>(1),
+                    "order_id": outbox_row.get::<_, Option<String>>(2),
+                    "receipt_hash": outbox_row.get::<_, Option<String>>(3),
+                    "billing_bridge_topic": billing_bridge_row.get::<_, Option<String>>(0),
+                    "billing_bridge_branch": billing_bridge_row.get::<_, Option<String>>(1),
+                    "billing_bridge_trigger_stage": billing_bridge_row.get::<_, Option<String>>(2),
+                    "billing_trigger": billing_bridge_row.get::<_, Option<String>>(3),
+                }
+            }),
+        );
+
         cleanup_seed_graph(&client, &seed).await;
     }
 

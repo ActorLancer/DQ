@@ -57,7 +57,7 @@
 | --- | --- | --- | --- | --- |
 | `FILE_STD` | `S2` | `TEST-006` + `TEST-022` | `TEST-012` 断权 / 票据失效 | `TEST-013` 或 `TEST-024` |
 | `FILE_SUB` | `S2` 补充 | `TEST-023` | `TEST-012` | `TEST-013` 或 `TEST-024` |
-| `SHARE_RO` | `S3` 补充 | `TEST-023` | `TEST-012` share revoke | `TEST-013` 或 `TEST-024` |
+| `SHARE_RO` | `S3` 补充 | `TEST-025` | `TEST-012` share revoke | `TEST-013`、`TEST-024` 或 `TEST-025` |
 | `API_SUB` | `S1`、`S4` | `TEST-006` | `TEST-011` webhook / provider / step-up 异常 | `TEST-013` 或 `TEST-024` |
 | `API_PPU` | `S1` 补充 | `TEST-023` | `TEST-011` timeout / out-of-order | `TEST-013` 或 `TEST-024` |
 | `QRY_LITE` | `S5` | `TEST-023` | `TEST-010` PG authority / `TEST-012` revoke | `TEST-013` 或 `TEST-024` |
@@ -79,6 +79,7 @@
 | `ACC-SCENARIO` | `TEST-006` | `ENV_FILE=infra/docker/.env.local ./scripts/check-order-e2e.sh` | 五条标准链路门户 E2E、后端 `order detail / lifecycle / developer trace` 全部通过 | Playwright artifact、后端 API 回查、order ids |
 | `ACC-SKU-COVERAGE` | `TEST-023` | `ENV_FILE=infra/docker/.env.local ./scripts/check-standard-sku-coverage.sh` | 8 个标准 SKU 都至少具备主路径、异常/阻断、退款/争议三类证据，且与五条标准链路映射一致 | SKU matrix artifact、场景/SKU 映射、order ids |
 | `ACC-ORCH-20ORDERS` | `TEST-024` | `ENV_FILE=infra/docker/.env.local ./scripts/check-order-orchestration.sh` | `支付成功 -> 待交付 -> 交付完成 -> 待验收 -> 验收通过/拒收 -> 结算/退款` 编排链路成立，并支撑最终 `20+ order` sign-off | 编排链路 artifact、webhook/交付/验收/结算 order ids |
+| `ACC-SHARE-RO` | `TEST-025` | `ENV_FILE=infra/docker/.env.local ./scripts/check-share-ro-e2e.sh` | `SHARE_RO` 的 seller grant/revoke、buyer read、账单退款占位、争议冻结与 `audit / outbox / DB` 联查全部通过 | `summary.json`、portal live artifact、`trade012 / dlv006 / bil026` raw artifacts |
 | `ACC-PROVIDER` | `TEST-007` | `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh` | 支付 / 签章 / 链写 provider mock/real 切换均不改业务代码 | live smoke 输出、provider config / artifact |
 | `ACC-OUTBOX` | `TEST-008` | `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh` | 事务成功有 outbox、失败无脏副作用、重复消费不重复副作用 | `trade.order_main`、`ops.outbox_event`、通知消费证据 |
 | `ACC-AUDIT` | `TEST-009` | `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh` | 高风险动作必留痕，证据导出必须 step-up，非法导出被拒绝 | 审计事件、导出对象、拒绝结果 |
@@ -105,21 +106,22 @@
 4. `ACC-SCENARIO`
 5. `ACC-SKU-COVERAGE`
 6. `ACC-ORCH-20ORDERS`
-7. `ACC-PROVIDER`
-8. `ACC-OUTBOX`
-9. `ACC-AUDIT`
-10. `ACC-SEARCHREC`
-11. `ACC-PAYMENT`
-12. `ACC-DELIVERY`
-13. `ACC-DISPUTE`
-14. `ACC-REPLAY`
-15. `ACC-CI-MATRIX`
-16. `ACC-COMPOSE`
-17. `ACC-SCHEMA`
-18. `ACC-PERFORMANCE`
-19. `ACC-FAILURE`
-20. `ACC-RECOVERY`
-21. `ACC-CANONICAL`
+7. `ACC-SHARE-RO`
+8. `ACC-PROVIDER`
+9. `ACC-OUTBOX`
+10. `ACC-AUDIT`
+11. `ACC-SEARCHREC`
+12. `ACC-PAYMENT`
+13. `ACC-DELIVERY`
+14. `ACC-DISPUTE`
+15. `ACC-REPLAY`
+16. `ACC-CI-MATRIX`
+17. `ACC-COMPOSE`
+18. `ACC-SCHEMA`
+19. `ACC-PERFORMANCE`
+20. `ACC-FAILURE`
+21. `ACC-RECOVERY`
+22. `ACC-CANONICAL`
 
 ## 20+ Orders Sign-Off Rule
 

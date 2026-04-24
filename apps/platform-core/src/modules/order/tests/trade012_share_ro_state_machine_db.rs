@@ -43,6 +43,7 @@ mod tests {
             .expect("seed order graph");
 
         let app = crate::with_live_test_state(router()).await;
+        let mut transition_results = Vec::new();
         for action in [
             "enable_share",
             "grant_read_access",
@@ -88,6 +89,16 @@ mod tests {
                     )
                 );
             }
+            transition_results.push(serde_json::json!({
+                "action": action,
+                "request_id": request_id,
+                "current_state": json["data"]["current_state"],
+                "payment_status": json["data"]["payment_status"],
+                "delivery_status": json["data"]["delivery_status"],
+                "acceptance_status": json["data"]["acceptance_status"],
+                "settlement_status": json["data"]["settlement_status"],
+                "dispute_status": json["data"]["dispute_status"]
+            }));
         }
 
         let final_row = client
@@ -134,6 +145,31 @@ mod tests {
             .unwrap_or_default()
             .to_string();
         assert!(msg.contains("SHARE_RO_TRANSITION_FORBIDDEN"));
+
+        crate::write_test025_artifact(
+            "trade012-share-ro-state-machine.json",
+            &serde_json::json!({
+                "test_id": "trade012_share_ro_state_machine_db_smoke",
+                "focus": ["share_ro_state_machine", "dispute_interrupt", "revoke_conflict_guard"],
+                "order": {
+                    "order_id": seed.order_id.clone(),
+                    "buyer_org_id": seed.buyer_org_id.clone(),
+                    "seller_org_id": seed.seller_org_id.clone(),
+                    "current_state": final_row.get::<_, String>(0),
+                    "payment_status": final_row.get::<_, String>(1),
+                    "delivery_status": final_row.get::<_, String>(2),
+                    "acceptance_status": final_row.get::<_, String>(3),
+                    "settlement_status": final_row.get::<_, String>(4),
+                    "dispute_status": final_row.get::<_, String>(5),
+                },
+                "transitions": transition_results,
+                "conflict": {
+                    "request_id": format!("req-trade012-{suffix}-invalid"),
+                    "http_status": StatusCode::CONFLICT.as_u16(),
+                    "message": msg,
+                }
+            }),
+        );
 
         cleanup_seed_graph(&client, &seed).await;
     }

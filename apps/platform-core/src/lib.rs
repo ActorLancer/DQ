@@ -84,15 +84,25 @@ pub async fn with_live_test_state(router: axum::Router<AppState>) -> axum::Route
 }
 
 #[cfg(test)]
-pub fn write_test024_artifact(file_name: &str, artifact: &serde_json::Value) {
-    let Ok(dir) = std::env::var("TEST024_ARTIFACT_DIR") else {
+fn write_test_artifact(env_key: &str, file_name: &str, artifact: &serde_json::Value) {
+    let Ok(dir) = std::env::var(env_key) else {
         return;
     };
     let artifact_dir = std::path::PathBuf::from(dir);
-    std::fs::create_dir_all(&artifact_dir).expect("test024 artifact dir should exist");
+    std::fs::create_dir_all(&artifact_dir).expect("test artifact dir should exist");
     let artifact_path = artifact_dir.join(file_name);
-    let payload = serde_json::to_vec_pretty(artifact).expect("test024 artifact json");
-    std::fs::write(artifact_path, payload).expect("test024 artifact should write");
+    let payload = serde_json::to_vec_pretty(artifact).expect("test artifact json");
+    std::fs::write(artifact_path, payload).expect("test artifact should write");
+}
+
+#[cfg(test)]
+pub fn write_test024_artifact(file_name: &str, artifact: &serde_json::Value) {
+    write_test_artifact("TEST024_ARTIFACT_DIR", file_name, artifact);
+}
+
+#[cfg(test)]
+pub fn write_test025_artifact(file_name: &str, artifact: &serde_json::Value) {
+    write_test_artifact("TEST025_ARTIFACT_DIR", file_name, artifact);
 }
 
 struct CoreModule {

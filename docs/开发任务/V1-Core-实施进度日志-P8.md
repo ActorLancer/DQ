@@ -6,6 +6,120 @@
 - 当前活动分卷以入口页为准
 - 若后续切换到新的 `P{N}` 分卷，必须先更新入口页，再开始续写新分卷
 
+### BATCH-322（计划中）
+- 任务：`TEST-025` 建立 `SHARE_RO` 端到端测试：共享开通、访问授权、撤销、争议冻结、恢复或退款，确保该 SKU 不是只停留在状态机定义
+- 状态：计划中
+- 当前任务编号：`TEST-025`
+- 说明：当前仓库已经分别具备 `trade012_share_ro_state_machine_db_smoke`、`dlv006_share_grant_db_smoke` 与 `bil026_share_ro_billing_db_smoke`，它们覆盖了 `SHARE_RO` 的状态机、共享授权管理、撤权退款占位和争议冻结，但还没有形成一个把门户 share 页、正式 buyer/seller 角色、真实 grant/revoke 提交、审计/outbox 回查与 billing/dispute 证据汇总到一起的官方 gate。当前批次将以冻结文档为 authority，把 `SHARE_RO` 从“有单测的 SKU”提升到“有正式门户 E2E + 后端 artifact + checker + CI + 验收索引”的完整闭环。
+- 前置依赖核对结果：
+  - `TRADE-012`：`trade012_share_ro_state_machine_db_smoke` 已冻结 `enable_share / grant_read_access / confirm_first_query / interrupt_dispute` 与禁止 `revoked -> grant_read_access` 的状态机边界。
+  - `DLV-006`：`dlv006_share_grant_db_smoke` 已冻结 `POST/GET /api/v1/orders/{id}/share-grants` 的 grant/read/revoke 流程、审计与 outbox 证明。
+  - `BIL-026`：`bil026_share_ro_billing_db_smoke` 已冻结 `enable_share -> cycle_charge -> revoke -> refund placeholder` 与 `create dispute -> settlement frozen` 两条账单/争议联动路径。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-025` 的正式目标、依赖、交付与 DoD。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `4.4.1B 只读共享交付`，确认共享对象、接收方、授权范围、撤权和争议中断是该 SKU 的正式业务闭环。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：复核 `7.3 只读共享开通页`，确认门户页必须承接 `recipient_ref / subscriber_ref / share_protocol / scope / expiry / revoke history` 等正式字段。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：复核 `15.1`，确认 `TEST` 阶段必须把单模块实现提升为可重复的端到端验收 gate。
+  - `docs/05-test-cases/README.md`、`order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`、`delivery-revocation-cases.md`、`v1-core-acceptance-checklist.md`：确认 `SHARE_RO` 正式覆盖面必须同时包含 state machine、授权管理、撤权、争议冻结与退款/恢复路径。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/keycloak-local.md`、`scripts/README.md`：确认 `TEST-025` 必须运行在当前 local stack 与 Keycloak 正式本地身份之上，而不是使用本地伪会话或手工模拟结果。
+  - `fixtures/demo/orders.json`、`fixtures/demo/delivery.json`、`fixtures/demo/subjects.json`：确认 `S3` 补充 SKU `SHARE_RO` 的正式 demo 挂点、固定 buyer/seller 租户与正式本地用户映射。
+  - `apps/platform-core/src/modules/order/tests/trade012_share_ro_state_machine_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv006_share_grant_db.rs`、`apps/platform-core/src/modules/billing/tests/bil026_share_ro_billing_db.rs`：确认可复用的后端正式 smoke 与当前缺少 artifact 汇总的问题。
+  - `apps/portal-web/src/app/delivery/orders/[orderId]/share/page.tsx`、`apps/portal-web/src/components/portal/delivery-workflow-shell.tsx`、`apps/portal-web/src/lib/delivery-workflow.ts`、`apps/portal-web/e2e/test006-standard-order-live.spec.ts`：确认门户 share 页已具备正式表单与 buyer/seller 角色边界，但尚未存在专门的 `TEST-025` live E2E。
+- 当前完成标准理解：
+  - 必须形成 `TEST-025` 的正式 checker、文档、CI 与 artifact，至少证明：
+    1. `SHARE_RO` 在门户页可以由正式 `seller_operator` 真实执行 grant/revoke，而 `buyer_operator` 可以真实读取 grant 列表。
+    2. grant/revoke 不是只看页面按钮成功；还要回查 `delivery.data_share_grant / delivery.delivery_record / trade.order_main / audit.audit_event / ops.outbox_event`。
+    3. 争议冻结与撤权退款/恢复不只停留在状态机，要由 `bil026` 正式 smoke 和 artifact 给出 `settlement frozen / refund_adjustment / refunded` 证据。
+    4. checker 能把门户 live E2E 与后端 smoke 汇总为单个 `TEST-025` sign-off summary，并在失败时定位到 portal/state-machine/share-grant/billing 哪一段断裂。
+- 实施计划：
+  1. 给 `trade012 / dlv006 / bil026` 增加可选 `TEST025_ARTIFACT_DIR` JSON 证据输出，沉淀状态机、授权、审计、outbox、账单与争议冻结结果。
+  2. 新增 `TEST-025` 门户 live fixture 准备/清理脚本与 `apps/portal-web/e2e/test025-share-ro-live.spec.ts`，使用正式 Keycloak `local-seller-operator / local-buyer-operator` 对一笔临时 `SHARE_RO` 订单执行 grant/revoke/read。
+  3. 新增 `scripts/check-share-ro-e2e.sh` / `.mjs`、`docs/05-test-cases/share-ro-e2e.md` 与 `.github/workflows/share-ro-e2e.yml`，汇总门户证据与后端 artifact，并更新 acceptance checklist / README 索引。
+  4. 执行真实验证、回写 `BATCH-322（待审批）`、本地提交，然后继续 `TEST-026`。
+
+### BATCH-322（待审批）
+- 任务：`TEST-025` 建立 `SHARE_RO` 端到端测试：共享开通、访问授权、撤销、争议冻结、恢复或退款，确保该 SKU 不是只停留在状态机定义
+- 状态：待审批
+- 当前任务编号：`TEST-025`
+- 前置依赖核对结果：
+  - `TRADE-012`：`trade012_share_ro_state_machine_db_smoke` 已继续作为 `SHARE_RO` 状态机 authority，并新增 `TEST025_ARTIFACT_DIR` 输出，沉淀 `enable_share / grant_read_access / confirm_first_query / interrupt_dispute / forbidden replay` 的正式证据。
+  - `DLV-006`：`dlv006_share_grant_db_smoke` 已继续作为 `POST/GET /api/v1/orders/{id}/share-grants` authority，并新增 `TEST025_ARTIFACT_DIR` 输出，沉淀 grant/read/revoke、审计、outbox 与 billing trigger evidence。
+  - `BIL-026`：`bil026_share_ro_billing_db_smoke` 已继续作为 `share cycle charge / revoke refund placeholder / dispute freeze` authority，并新增 `TEST025_ARTIFACT_DIR` 输出，沉淀 `refund_adjustment / settlement frozen / replay idempotency` 证据。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-025` 顺序、交付、DoD 与 authority。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `4.4.1B 只读共享交付`，确认 seller grant、buyer 访问、撤权和争议中断是该 SKU 的正式闭环。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：复核 `7.3 只读共享开通页`，确认门户 share 页必须承接 `recipient_ref / subscriber_ref / share_protocol / scope / expiry / revoke` 正式字段。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段需要把单模块 smoke 提升为可重复 E2E gate。
+  - `docs/05-test-cases/README.md`、`order-state-machine.md`、`delivery-cases.md`、`payment-billing-cases.md`、`delivery-revocation-cases.md`、`v1-core-acceptance-checklist.md`：确认 `SHARE_RO` 必须同时覆盖 state machine、授权/撤权、争议冻结、退款占位、门户 live 与 acceptance 索引。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/keycloak-local.md`、`scripts/README.md`：确认正式入口必须运行在当前 local stack 与 Keycloak password grant 身份上。
+  - `fixtures/demo/orders.json`、`fixtures/demo/delivery.json`、`fixtures/demo/subjects.json`：确认 `S3` 补充 SKU `SHARE_RO` 的正式 demo product / tenant / user 真值。
+  - `apps/platform-core/src/modules/order/tests/trade012_share_ro_state_machine_db.rs`、`apps/platform-core/src/modules/delivery/tests/dlv006_share_grant_db.rs`、`apps/platform-core/src/modules/billing/tests/bil026_share_ro_billing_db.rs`、`apps/portal-web/src/components/portal/delivery-workflow-shell.tsx`、`apps/portal-web/src/lib/delivery-workflow.ts`、`apps/portal-web/e2e/test006-standard-order-live.spec.ts`：复核可复用基座与 `TEST-025` 缺失的门户 / artifact / checker 闭环。
+- 实现要点：
+  - 扩展后端 smoke artifact：
+    - `apps/platform-core/src/lib.rs` 增加通用 `write_test_artifact(...)` 与 `write_test025_artifact(...)`。
+    - `trade012_share_ro_state_machine_db.rs` 输出状态机最终状态、禁止 replay 冲突与 transition evidence。
+    - `dlv006_share_grant_db.rs` 输出 grant/read/revoke、`audit.audit_event`、`ops.outbox_event`、`delivery.delivery_record` 证据。
+    - `bil026_share_ro_billing_db.rs` 输出 cycle charge、refund placeholder、争议冻结与 replay idempotency 证据。
+  - 新增 `scripts/share-ro-live-fixture.sh`：
+    - 复用 `fixtures/demo/orders.json` / `subjects.json` 作为 authority。
+    - 不再手写简化 `price_snapshot_json`，而是复用正式 demo order 的完整 snapshot / trust boundary / delivery route。
+    - 为 live order 临时插入 `catalog.asset_object_binding(object_kind='share_object')`，确保 seller grant 走真实 `share_object` 前置条件；cleanup 同步回收 order + contract + billing/delivery rows + 临时 share object，审计保持 append-only。
+  - 新增 `apps/portal-web/e2e/test025-share-ro-live.spec.ts` 与 `apps/portal-web/package.json` 脚本：
+    - seller/buyer 都通过 Keycloak password grant 建立 bearer 会话。
+    - 门户真正访问 `/delivery/orders/{id}/share`，seller 执行 grant/revoke，buyer 读取 grant list。
+    - 浏览器请求只允许 `/api/platform/**`，禁止直连 DB/Kafka/Redis/OpenSearch/Fabric/platform-core 端口。
+    - 调整 Playwright 断言与 artifact 逻辑：角色 badge 使用精确匹配；buyer read 改为“等待页面正式 GET 成功 + 再用同一 buyer token 直连正式 API 读取 payload”；artifact 里 buyer-read / revoke 后状态分离记录，避免阶段变量串写。
+  - 新增 `scripts/check-share-ro-e2e.sh` / `scripts/check-share-ro-e2e.mjs`、`docs/05-test-cases/share-ro-e2e.md`、`.github/workflows/share-ro-e2e.yml`：
+    - checker 串联 `smoke-local.sh`、Keycloak identity seed、demo seed、`trade012 / dlv006 / bil026` backend smoke、live fixture、portal Playwright、`summary.json` 汇总。
+    - summary 强制校验 `trade/order/delivery/billing/audit/outbox/portal` 五段证据和 5 个 sign-off order。
+  - 更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`、`scripts/README.md`、`.github/workflows/README.md`，把 `TEST-025` 官方入口纳入索引与 acceptance gate。
+- 验证步骤：
+  1. `bash -n scripts/share-ro-live-fixture.sh`
+  2. `bash -n scripts/check-share-ro-e2e.sh`
+  3. `node --check scripts/check-share-ro-e2e.mjs`
+  4. `pnpm --filter @datab/portal-web typecheck`
+  5. `pnpm --filter @datab/portal-web build`
+  6. `cargo fmt --all`
+  7. `cargo check -p platform-core`
+  8. `cargo test -p platform-core`
+  9. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  10. `./scripts/check-query-compile.sh`
+  11. `ENV_FILE=infra/docker/.env.local bash ./scripts/check-share-ro-e2e.sh`
+- 验证结果：
+  - `bash -n scripts/share-ro-live-fixture.sh`、`bash -n scripts/check-share-ro-e2e.sh`、`node --check scripts/check-share-ro-e2e.mjs` 均通过。
+  - `pnpm --filter @datab/portal-web typecheck` 通过。
+  - `pnpm --filter @datab/portal-web build` 通过；Next.js 正式构建覆盖 `/delivery/orders/[orderId]/share` 动态路由。
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed、`1` ignored（仓库既有 `iam_party_access_flow_live` ignored）。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 编译期查询缓存可重建。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-share-ro-e2e.sh` 通过；真实覆盖：
+    - `smoke-local.sh`：PostgreSQL / Kafka / Redis / OpenSearch / MinIO / Keycloak / observability / mock payment / canonical topics / host-container Kafka boundary
+    - `trade012_share_ro_state_machine_db_smoke`：状态机最终 `dispute_interrupted + settlement frozen` 与 `SHARE_RO_TRANSITION_FORBIDDEN`
+    - `dlv006_share_grant_db_smoke`：grant/read/revoke、`audit.audit_event`、`ops.outbox_event(target_topic=dtp.outbox.domain-events)`、`billing.trigger.bridge=bill_once_on_grant_effective`
+    - `bil026_share_ro_billing_db_smoke`：`recurring_charge / refund_adjustment / refunded / dispute opened / settlement frozen`
+    - `apps/portal-web/e2e/test025-share-ro-live.spec.ts`：seller grant/revoke、buyer read、浏览器只经 `/api/platform/**`
+    - `scripts/check-share-ro-e2e.mjs`：汇总 5 个 sign-off order，并回查 `trade.order_main / delivery.data_share_grant / delivery.delivery_record / audit.audit_event / ops.outbox_event`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-025`
+  - `业务流程图-V1-完整版.md`：`4.4.1B 只读共享交付`
+  - `页面说明书-V1-完整版.md`：`7.3 只读共享开通页`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1`
+  - `docs/05-test-cases/order-state-machine.md`
+  - `docs/05-test-cases/delivery-cases.md`
+  - `docs/05-test-cases/payment-billing-cases.md`
+  - `docs/05-test-cases/delivery-revocation-cases.md`
+  - `docs/05-test-cases/v1-core-acceptance-checklist.md`
+- 覆盖的任务清单条目：`TEST-025`
+- 未覆盖项：
+  - `TEST-026` 的 `QRY_LITE` 端到端模板查询授权 / 执行 / 撤销尚未开始。
+  - 真实外部第三方 share recipient 系统不在当前仓库正式交付边界内；本 task 按冻结口径，以 seller/buyer 正式入口、share object、授权记录、审计、outbox、账单冻结/退款占位为闭环 authority。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-298（计划中）
 - 任务：`TEST-001` 五条标准链路完整演示数据包
 - 状态：计划中
