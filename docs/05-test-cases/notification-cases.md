@@ -106,6 +106,12 @@
 
 最小可信验收至少跑完下面两组动作，不能只做其中一半：
 
+0. `TEST-027` 官方 gate：
+   ```bash
+   ENV_FILE=infra/docker/.env.local ./scripts/check-notification-smoke.sh
+   ```
+   该 checker 会把 `notif004 / notif005 / notif006 / notif007` 的业务事件通知、`platform-core` 控制面联查和 `notif012_notification_worker_live_smoke` 收口到单个 `summary.json`。
+
 1. 运行 live smoke，证明正式进程、正式 topic、`mock-log` 渠道、幂等、重试、DLQ、数据库 / Redis / audit / metrics 留痕真实存在：
    ```bash
    NOTIF_WORKER_DB_SMOKE=1 \

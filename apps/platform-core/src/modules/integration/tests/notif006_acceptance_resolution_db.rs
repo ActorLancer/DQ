@@ -1,3 +1,4 @@
+use super::notification_test_support::wait_for_mock_log_chain_if_enabled;
 use crate::modules::integration::application::{
     AcceptanceOutcomeNotificationDispatchInput, BillingResolutionNotificationDispatchInput,
     queue_acceptance_outcome_notifications, queue_billing_resolution_notifications,
@@ -194,6 +195,62 @@ async fn notif006_acceptance_outcome_notifications_db_smoke() {
         Some(true)
     );
 
+    let passed_live_chain = wait_for_mock_log_chain_if_enabled(
+        &client,
+        &seed.passed.request_id,
+        &[
+            "acceptance.passed",
+            "acceptance.passed",
+            "acceptance.passed",
+        ],
+    )
+    .await;
+    let rejected_live_chain = wait_for_mock_log_chain_if_enabled(
+        &client,
+        &seed.rejected.request_id,
+        &[
+            "acceptance.rejected",
+            "acceptance.rejected",
+            "acceptance.rejected",
+        ],
+    )
+    .await;
+    crate::write_test027_artifact(
+        "notif006-acceptance-outcome.json",
+        &json!({
+            "passed": {
+                "request_id": &seed.passed.request_id,
+                "trace_id": &seed.passed.trace_id,
+                "order_id": &seed.passed.order_id,
+                "acceptance_record_id": &seed.passed.delivery_id,
+                "notification_codes": passed_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                    .collect::<Vec<_>>(),
+                "template_codes": passed_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["template_code"].as_str())
+                    .collect::<Vec<_>>(),
+                "live_chain": passed_live_chain,
+            },
+            "rejected": {
+                "request_id": &seed.rejected.request_id,
+                "trace_id": &seed.rejected.trace_id,
+                "order_id": &seed.rejected.order_id,
+                "acceptance_record_id": &seed.rejected.delivery_id,
+                "notification_codes": rejected_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                    .collect::<Vec<_>>(),
+                "template_codes": rejected_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["template_code"].as_str())
+                    .collect::<Vec<_>>(),
+                "live_chain": rejected_live_chain,
+            },
+        }),
+    );
+
     cleanup_acceptance_graph(&client, &seed).await;
 }
 
@@ -349,6 +406,34 @@ async fn notif006_billing_resolution_notifications_db_smoke() {
     assert_eq!(
         ops["payload"]["variables"]["show_ops_context"].as_bool(),
         Some(true)
+    );
+
+    crate::write_test027_artifact(
+        "notif006-billing-resolution.json",
+        &json!({
+            "refund": {
+                "request_id": &seed.refund.request_id,
+                "trace_id": &seed.refund.trace_id,
+                "order_id": &seed.refund.order_id,
+                "case_id": &seed.refund.case_id,
+                "billing_event_id": &seed.refund.billing_event_id,
+                "notification_codes": refund_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                    .collect::<Vec<_>>(),
+            },
+            "compensation": {
+                "request_id": &seed.compensation.request_id,
+                "trace_id": &seed.compensation.trace_id,
+                "order_id": &seed.compensation.order_id,
+                "case_id": &seed.compensation.case_id,
+                "billing_event_id": &seed.compensation.billing_event_id,
+                "notification_codes": compensation_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                    .collect::<Vec<_>>(),
+            },
+        }),
     );
 
     cleanup_billing_graph(&client, &seed).await;

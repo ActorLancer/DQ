@@ -37,6 +37,7 @@
 | 闭环 | 正式含义 | 必须落到的 gate |
 | --- | --- | --- |
 | 交易闭环 | 下单、合同、授权、交付、验收、计费、结算主链路完整闭合 | `ACC-CONTRACT`、`ACC-MIGRATION`、`ACC-LOCAL`、`ACC-SCENARIO`、`ACC-PROVIDER`、`ACC-OUTBOX`、`ACC-PAYMENT`、`ACC-DELIVERY` |
+| 通知闭环 | 支付成功、交付完成、验收通过、争议升级等正式事件经 canonical outbox / topic / worker 形成真实通知、副作用与控制面联查 | `ACC-NOTIFICATION`、`ACC-OUTBOX` |
 | 仲裁闭环 | 争议打开后冻结结算，裁决后退款或赔付重算入账 | `ACC-DISPUTE`、`ACC-ORCH-20ORDERS` |
 | 评分闭环 | `S5` 查询评分 / 结果包场景与搜索推荐最终回 PostgreSQL 放行 | `ACC-SEARCHREC`、`ACC-SCENARIO`、`ACC-SKU-COVERAGE` |
 | 审计闭环 | 审计留痕、导出、replay、canonical authority、恢复可追溯 | `ACC-AUDIT`、`ACC-REPLAY`、`ACC-CANONICAL`、`ACC-RECOVERY` |
@@ -83,6 +84,7 @@
 | `ACC-QRY-LITE` | `TEST-026` | `ENV_FILE=infra/docker/.env.local ./scripts/check-qry-lite-e2e.sh` | `QRY_LITE` 的 seller grant、buyer execute/read、acceptance close、risk refund，以及 `DB / audit / outbox / billing bridge` 联查全部通过，且非法重复执行被正式阻断 | `summary.json`、portal live artifact、`trade013 / dlv011 / dlv012 / dlv013 / bil024` raw artifacts |
 | `ACC-PROVIDER` | `TEST-007` | `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh` | 支付 / 签章 / 链写 provider mock/real 切换均不改业务代码 | live smoke 输出、provider config / artifact |
 | `ACC-OUTBOX` | `TEST-008` | `ENV_FILE=infra/docker/.env.local ./scripts/check-outbox-consistency.sh` | 事务成功有 outbox、失败无脏副作用、重复消费不重复副作用 | `trade.order_main`、`ops.outbox_event`、通知消费证据 |
+| `ACC-NOTIFICATION` | `TEST-027` | `ENV_FILE=infra/docker/.env.local ./scripts/check-notification-smoke.sh` | 支付成功、交付完成、验收通过、争议升级四类业务事件都经过 `notification.requested -> dtp.notification.dispatch -> notification-worker -> mock-log`，并能通过 `platform-core` 通知联查 facade 回查 | `summary.json`、`notif004 / notif005 / notif006 / notif007 / notif012` raw artifacts、控制面联查响应 |
 | `ACC-AUDIT` | `TEST-009` | `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh` | 高风险动作必留痕，证据导出必须 step-up，非法导出被拒绝 | 审计事件、导出对象、拒绝结果 |
 | `ACC-SEARCHREC` | `TEST-010` | `ENV_FILE=infra/docker/.env.local ./scripts/check-searchrec-pg-authority.sh` | 搜索 / 推荐最终回 PostgreSQL 放行，OpenSearch/Redis 不能充当真相源 | PG fallback、alias / visibility / recommendation evidence |
 | `ACC-PAYMENT` | `TEST-011` | `ENV_FILE=infra/docker/.env.local ./scripts/check-payment-webhook-idempotency.sh` | duplicate success、`success -> fail`、`timeout -> success` 不得回退状态 | webhook artifact、`payment_intent / order_main / audit` 联查 |
@@ -111,19 +113,20 @@
 8. `ACC-QRY-LITE`
 9. `ACC-PROVIDER`
 10. `ACC-OUTBOX`
-11. `ACC-AUDIT`
-12. `ACC-SEARCHREC`
-13. `ACC-PAYMENT`
-14. `ACC-DELIVERY`
-15. `ACC-DISPUTE`
-16. `ACC-REPLAY`
-17. `ACC-CI-MATRIX`
-18. `ACC-COMPOSE`
-19. `ACC-SCHEMA`
-20. `ACC-PERFORMANCE`
-21. `ACC-FAILURE`
-22. `ACC-RECOVERY`
-23. `ACC-CANONICAL`
+11. `ACC-NOTIFICATION`
+12. `ACC-AUDIT`
+13. `ACC-SEARCHREC`
+14. `ACC-PAYMENT`
+15. `ACC-DELIVERY`
+16. `ACC-DISPUTE`
+17. `ACC-REPLAY`
+18. `ACC-CI-MATRIX`
+19. `ACC-COMPOSE`
+20. `ACC-SCHEMA`
+21. `ACC-PERFORMANCE`
+22. `ACC-FAILURE`
+23. `ACC-RECOVERY`
+24. `ACC-CANONICAL`
 
 ## 20+ Orders Sign-Off Rule
 
@@ -160,6 +163,7 @@
 | `ACC-QRY-LITE` |  |  |  |  |  |  |
 | `ACC-PROVIDER` |  |  |  |  |  |  |
 | `ACC-OUTBOX` |  |  |  |  |  |  |
+| `ACC-NOTIFICATION` |  |  |  |  |  |  |
 | `ACC-AUDIT` |  |  |  |  |  |  |
 | `ACC-SEARCHREC` |  |  |  |  |  |  |
 | `ACC-PAYMENT` |  |  |  |  |  |  |

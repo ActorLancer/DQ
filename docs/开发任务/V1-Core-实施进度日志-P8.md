@@ -6,6 +6,111 @@
 - 当前活动分卷以入口页为准
 - 若后续切换到新的 `P{N}` 分卷，必须先更新入口页，再开始续写新分卷
 
+### BATCH-324（计划中）
+- 任务：`TEST-027` 建立通知链路 smoke test，验证支付成功、交付完成、验收通过、争议升级至少四类事件会通过 `notification.requested -> dtp.notification.dispatch -> notification-worker` 触发 `mock-log` 通知并留下审计记录
+- 状态：计划中
+- 当前任务编号：`TEST-027`
+- 说明：当前仓库已经分别具备 `notif004_payment_success_notifications_db_smoke`、`notif005_delivery_completion_notifications_db_smoke`、`notif006_acceptance_outcome_notifications_db_smoke`、`notif007_dispute_settlement_notifications_db_smoke` 与 `notif012_notification_worker_live_smoke`，也已冻结 `notification-worker` runbook、`ops` OpenAPI 和 `notification-cases.md`，但这些能力仍分散在 `platform-core` DB smoke、`notification-worker` live smoke 与文档中，尚未形成一个把四类正式业务事件、canonical outbox、`dtp.notification.dispatch`、`notification-worker`、`mock-log`、控制面联查与 CI 收口到一起的 `TEST-027` 官方 gate。当前批次将以冻结文档为 authority，把通知域从“已有若干单点 smoke”提升为“有正式 checker + raw artifact + summary + workflow + acceptance gate”的完整闭环。
+- 前置依赖核对结果：
+  - `NOTIF-004`：`notif004_payment_success_notifications_db_smoke` 已冻结支付成功后 buyer/seller/ops 通知模板、`notification.requested` outbox 与审计边界。
+  - `NOTIF-005`：`notif005_delivery_completion_notifications_db_smoke` 已冻结文件包、共享、API、查询结果、沙箱、报告六类交付结果的通知模板与 `dtp.notification.dispatch` 路由。
+  - `NOTIF-006`：`notif006_acceptance_outcome_notifications_db_smoke` 已冻结验收通过/拒收通知；`notif006_billing_resolution_notifications_db_smoke` 已冻结退款/赔付完成通知。
+  - `NOTIF-009`：`notif012_notification_worker_live_smoke` 与 `notification-worker` runbook 已冻结幂等、重试、DLQ、replay 与控制面联查入口。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-027` 顺序、交付、DoD 与 authority。
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`：复核 `12.2/12.3`，确认通知必须以正式事件和专用 topic 形成异步闭环。
+  - `docs/原始PRD/审计、证据链与回放设计.md`：复核 `4. 审计事件模型`，确认通知发送、联查、补发等动作都必须进入独立审计域。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段必须把已有运行时能力收口成可重复 smoke。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`：确认 `notification-worker` 只消费 `dtp.notification.dispatch`、`platform-core /api/v1/ops/notifications/*` 是对外 facade、`notification-worker /internal/notifications/*` 仅是内部执行契约。
+  - `docs/05-test-cases/README.md`、`notification-cases.md`、`audit-consistency-cases.md`、`canonical-event-authority-cases.md`、`v1-core-acceptance-checklist.md`：确认通知验收必须同时证明 canonical route、`mock-log`、幂等、重试、DLQ 与控制面联查，而不是只看 outbox 行。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`docs/开发任务/V1-Core-TODO与预留清单.md`、`docs/开发任务/问题修复任务/A11-测试与Smoke口径误报风险.md`、`scripts/README.md`：确认 `TEST-027` 必须运行在当前 local stack、canonical topic、host/container Kafka 边界和正式 worker 控制面口径上，并显式消除“旧 smoke 误报已跑通”的风险。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`：复核 `POST /api/v1/ops/notifications/audit/search` 与 replay facade 正式契约。
+  - `apps/platform-core/src/modules/integration/tests/notif004_payment_success_db.rs`、`notif005_delivery_completion_db.rs`、`notif006_acceptance_resolution_db.rs`、`notif007_dispute_settlement_db.rs`、`apps/notification-worker/src/main.rs`、`workers/outbox-publisher/src/main.rs`：确认可复用的业务事件 seed、worker live smoke、publisher 运行基座与当前缺失的 artifact/checker 收口点。
+- 当前完成标准理解：
+  - 必须形成 `TEST-027` 的正式 checker、文档、CI 与 artifact，至少证明：
+    1. 支付成功、交付完成、验收通过、争议升级四类业务事件会真实生成 `notification.requested` canonical outbox，并经 `outbox-publisher -> dtp.notification.dispatch -> notification-worker -> mock-log` 形成完整副作用。
+    2. `notification-worker` 不是只打印日志；要真实回查 `ops.outbox_event(status=published)`、`ops.system_log(message_text='notification sent via mock-log')`、`audit.audit_event(action_name='notification.dispatch.sent')`。
+    3. 控制面联查必须走 `platform-core /api/v1/ops/notifications/audit/search` 正式 facade，并留下 `notification.dispatch.lookup` 审计，不允许只调用内部 `/internal/notifications/*` 证明。
+    4. worker live smoke 仍需继续证明 duplicate、retry、DLQ 和 dead-letter 不是假闭环，但不能与业务通知四类主路径割裂。
+    5. checker 能把 raw artifact、worker live smoke、控制面联查和 summary 收口为单个 `TEST-027` sign-off 结果，并在失败时定位到 business-event/outbox/publisher/worker/mock-log/audit-search 哪一段断裂。
+- 实施计划：
+  1. 给 `notif004 / notif005 / notif006 / notif007` 增加 `TEST027_ARTIFACT_DIR` 证据输出，并在 `TEST027_LIVE_CHAIN=1` 下等待 `published + mock-log + notification.dispatch.sent` 真实副作用后再清理数据。
+  2. 扩展 `notification-worker` live smoke 输出 `TEST-027` artifact，补齐 `acceptance.passed` 在 worker 级正式成功场景中的覆盖。
+  3. 新增 `scripts/check-notification-smoke.sh` / `.mjs`、`docs/05-test-cases/notification-smoke.md` 与 `.github/workflows/notification-smoke.yml`，用正式本地栈启动 `outbox-publisher + notification-worker`，串联四类业务事件、控制面联查与 worker live smoke。
+  4. 更新 `docs/05-test-cases/v1-core-acceptance-checklist.md`、`docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`，把 `TEST-027` 收口为正式 `ACC-NOTIFICATION` gate。
+  5. 执行真实验证、回写 `BATCH-324（待审批）`、本地提交，然后继续 `TEST-028`。
+
+### BATCH-324（待审批）
+- 任务：`TEST-027` 建立通知链路 smoke test，验证支付成功、交付完成、验收通过、争议升级至少四类事件会通过 `notification.requested -> dtp.notification.dispatch -> notification-worker` 触发 `mock-log` 通知并留下审计记录
+- 状态：待审批
+- 当前任务编号：`TEST-027`
+- 前置依赖核对结果：
+  - `NOTIF-004`：`notif004_payment_success_notifications_db_smoke` 已继续作为支付成功通知 authority，并新增 `TEST027_ARTIFACT_DIR` 输出，沉淀 buyer/seller/ops 三条通知的 outbox/mock-log/audit 证据。
+  - `NOTIF-005`：`notif005_delivery_completion_notifications_db_smoke` 已继续作为六类交付完成通知 authority，并新增 `TEST027_ARTIFACT_DIR` 输出，沉淀每个 delivery branch 的 buyer/seller/ops 三条 live-chain 证据。
+  - `NOTIF-006`：`notif006_acceptance_outcome_notifications_db_smoke` 已继续作为验收通过/拒绝 authority，并新增 `TEST027_ARTIFACT_DIR` 输出；`notif006_billing_resolution_notifications_db_smoke` 继续保留退款/赔付通知 authority。
+  - `NOTIF-009`：`notif012_notification_worker_live_smoke` 已扩展为 `TEST-027` 正式 artifact 输出，继续证明 duplicate / retry / DLQ / metrics 不是假闭环。
+  当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-027` 顺序、DoD、authority 与验收边界。
+  - `docs/data_trading_blockchain_system_design_split/12-API 设计、事件模型与消息总线.md`、`docs/原始PRD/审计、证据链与回放设计.md`、`docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认通知域必须以正式 topic、审计动作和可重复 smoke 形成完整闭环。
+  - `docs/开发准备/服务清单与服务边界正式版.md`、`事件模型与Topic清单正式版.md`、`接口清单与OpenAPI-Schema冻结表.md`：确认 `platform-core /api/v1/ops/notifications/audit/search` 是对外 facade，`notification-worker /internal/notifications/*` 仅是内部执行边界。
+  - `docs/05-test-cases/README.md`、`notification-cases.md`、`audit-consistency-cases.md`、`canonical-event-authority-cases.md`、`v1-core-acceptance-checklist.md`：确认通知验收必须同时证明 canonical route、`mock-log`、`notification.dispatch.lookup` 审计、duplicate / retry / DLQ 与 acceptance gate。
+  - `docs/04-runbooks/local-startup.md`、`docs/04-runbooks/kafka-topics.md`、`docs/04-runbooks/notification-worker.md`、`scripts/README.md`：确认 checker 必须运行在正式 local stack、canonical topic、host/container Kafka 边界和 `notification-worker` 运行手册口径上。
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`：复核 `POST /api/v1/ops/notifications/audit/search` 正式契约与 step-up 要求。
+  - `apps/platform-core/src/modules/integration/tests/notif004_payment_success_db.rs`、`notif005_delivery_completion_db.rs`、`notif006_acceptance_resolution_db.rs`、`notif007_dispute_settlement_db.rs`、`apps/notification-worker/src/main.rs`、`workers/outbox-publisher/src/main.rs`：复核可复用 seed / worker live smoke / publisher runtime，与 `TEST-027` 需要补齐的 artifact/checker 收口点。
+- 实现要点：
+  - 扩展 `platform-core` 通知业务 smoke artifact：
+    - `apps/platform-core/src/lib.rs` 新增 `write_test027_artifact(...)`。
+    - `apps/platform-core/src/modules/integration/tests/notification_test_support.rs` 新增 live-chain helper，统一等待 `ops.outbox_event(status=published)`、`ops.system_log(message_text='notification sent via mock-log')` 与 `audit.audit_event(action_name='notification.dispatch.sent')` 成套落盘。
+    - `notif004 / notif005 / notif006 / notif007` 新增 `TEST027_LIVE_CHAIN=1` + `TEST027_ARTIFACT_DIR` 输出，沉淀支付成功、交付完成、验收通过、争议升级/结算恢复的 raw evidence。
+    - 修正 `NOTIF-007 settlement.resumed` buyer/seller payload，补齐模板必需的 `billing_event_source`，避免 live-chain 在 `notification-worker` 侧被误打入 DLQ。
+  - 扩展 `notification-worker` 正式 live smoke：
+    - `apps/notification-worker/src/main.rs` 的 `notif012_notification_worker_live_smoke` 新增 `acceptance.passed` 正式成功场景，并输出 `notif012-worker-live-smoke.json`，收口 duplicate / retry / dead-letter / metrics 证据。
+  - 新增 `TEST-027` 官方 checker / summary / CI：
+    - `scripts/check-notification-smoke.sh` 串联 `smoke-local.sh`、host `platform-core`、`outbox-publisher`、`notification-worker`、四个 `platform-core` 通知 DB smoke、`platform-core /api/v1/ops/notifications/audit/search` facade lookup、isolated `notif012` live smoke，并在业务事件跑完后回采 worker metrics。
+    - `scripts/check-notification-smoke.mjs` 汇总 raw artifact、facade lookup、lookup 审计与 runtime health/metrics，输出 `target/test-artifacts/notification-smoke/summary.json`。
+    - `.github/workflows/notification-smoke.yml` 新增 `TEST-027` CI 最小入口，运行官方 checker 并上传 artifact。
+  - 文档与验收索引更新：
+    - 新增 `docs/05-test-cases/notification-smoke.md`。
+    - 更新 `docs/05-test-cases/notification-cases.md`、`docs/04-runbooks/notification-worker.md`、`docs/05-test-cases/README.md`、`docs/05-test-cases/v1-core-acceptance-checklist.md`、`scripts/README.md`、`.github/workflows/README.md`，把 `ACC-NOTIFICATION` 与官方 checker 收入口径。
+- 验证步骤：
+  1. `bash -n scripts/check-notification-smoke.sh`
+  2. `node --check scripts/check-notification-smoke.mjs`
+  3. `cargo fmt --all`
+  4. `cargo check -p platform-core`
+  5. `cargo test -p platform-core`
+  6. `cargo test -p notification-worker`
+  7. `cargo sqlx prepare --workspace`
+  8. `./scripts/check-query-compile.sh`
+  9. `ENV_FILE=infra/docker/.env.local bash ./scripts/check-notification-smoke.sh`
+- 验证结果：
+  - `bash -n scripts/check-notification-smoke.sh`、`node --check scripts/check-notification-smoke.mjs` 均通过。
+  - `cargo fmt --all`、`cargo check -p platform-core` 通过；仓库既有 warning 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过；`360` 个测试通过，`notif004 / notif005 / notif006 / notif007` 与全库既有 smoke/route test 回归通过。
+  - `cargo test -p notification-worker` 通过；`18` 个测试通过，包含 `notif012_notification_worker_live_smoke`。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 查询缓存已刷新。
+  - `./scripts/check-query-compile.sh` 通过。
+  - `ENV_FILE=infra/docker/.env.local bash ./scripts/check-notification-smoke.sh` 通过；真实覆盖：
+    - `smoke-local.sh`：PostgreSQL / Kafka / Redis / OpenSearch / MinIO / Keycloak / mock payment / observability / canonical topics / host-container Kafka boundary
+    - `notif004 / notif005 / notif006 / notif007`：四类正式业务事件在 `notification.requested -> dtp.notification.dispatch -> notification-worker -> mock-log` 闭环中真实落地，并回查 `ops.outbox_event / ops.system_log / audit.audit_event`
+    - `platform-core /api/v1/ops/notifications/audit/search`：payment/dispute facade lookup 成功，并新增 `notification.dispatch.lookup` 审计各 `1` 条
+    - `notif012_notification_worker_live_smoke`：duplicate / retry / dead-letter / metrics 正式收口
+    - `scripts/check-notification-smoke.mjs`：输出 `target/test-artifacts/notification-smoke/summary.json`
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-027`
+  - `docs/05-test-cases/notification-cases.md`
+  - `docs/05-test-cases/audit-consistency-cases.md`
+  - `docs/05-test-cases/canonical-event-authority-cases.md`
+  - `docs/04-runbooks/notification-worker.md`
+  - `packages/openapi/ops.yaml`、`docs/02-openapi/ops.yaml`
+- 覆盖的任务清单条目：`TEST-027`
+- 未覆盖项：
+  - `TEST-028` 的 canonical contracts / checker 尚未开始；本 task 仅覆盖通知链路 smoke gate、facade lookup 与 worker duplicate/retry/DLQ 收口。
+  - Email/webhook real provider 不在当前 `V1 local/mock` 正式交付边界内；本 task 按冻结口径，以 `mock-log` channel 为 authority。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-323（计划中）
 - 任务：`TEST-026` 建立 `QRY_LITE` 端到端测试：模板授权、参数校验、执行成功、结果可取、验收关闭、退款/拒绝非法重复执行
 - 状态：计划中

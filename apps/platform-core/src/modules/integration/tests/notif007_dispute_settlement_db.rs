@@ -1,3 +1,4 @@
+use super::notification_test_support::wait_for_mock_log_chain_if_enabled;
 use crate::modules::integration::application::{
     DisputeLifecycleNotificationDispatchInput, SettlementResumeNotificationDispatchInput,
     queue_dispute_lifecycle_notifications, queue_settlement_resume_notifications,
@@ -205,10 +206,19 @@ async fn notif007_dispute_settlement_notifications_db_smoke() {
             .as_str()
         )
     );
+    assert_eq!(
+        buyer_resumed["payload"]["variables"]["billing_event_source"].as_str(),
+        Some("settlement_dispute_release")
+    );
     assert!(
         buyer_resumed["payload"]["variables"]
             .get("resolution_ref_id")
             .is_none()
+    );
+    let seller_resumed = find_payload(&resumed_payloads, "settlement.resumed", "seller");
+    assert_eq!(
+        seller_resumed["payload"]["variables"]["billing_event_source"].as_str(),
+        Some("settlement_dispute_release")
     );
     let ops_resumed = find_payload(&resumed_payloads, "settlement.resumed", "ops");
     assert_eq!(
@@ -228,6 +238,60 @@ async fn notif007_dispute_settlement_notifications_db_smoke() {
     assert_eq!(
         ops_resumed["payload"]["variables"]["resolution_ref_id"].as_str(),
         Some(seed.release_ref_id.as_str())
+    );
+
+    let dispute_live_chain = wait_for_mock_log_chain_if_enabled(
+        &client,
+        &seed.dispute_request_id,
+        &[
+            "dispute.escalated",
+            "dispute.escalated",
+            "dispute.escalated",
+            "settlement.frozen",
+            "settlement.frozen",
+            "settlement.frozen",
+        ],
+    )
+    .await;
+    let resumed_live_chain = wait_for_mock_log_chain_if_enabled(
+        &client,
+        &seed.resume_request_id,
+        &[
+            "settlement.resumed",
+            "settlement.resumed",
+            "settlement.resumed",
+        ],
+    )
+    .await;
+    crate::write_test027_artifact(
+        "notif007-dispute-settlement.json",
+        &json!({
+            "dispute": {
+                "request_id": &seed.dispute_request_id,
+                "trace_id": &seed.dispute_trace_id,
+                "order_id": &seed.order_id,
+                "case_id": &seed.case_id,
+                "hold_event_id": &seed.hold_event_id,
+                "notification_codes": dispute_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                    .collect::<Vec<_>>(),
+                "live_chain": dispute_live_chain,
+            },
+            "settlement_resumed": {
+                "request_id": &seed.resume_request_id,
+                "trace_id": &seed.resume_trace_id,
+                "order_id": &seed.order_id,
+                "case_id": &seed.case_id,
+                "release_event_id": &seed.release_event_id,
+                "release_ref_id": &seed.release_ref_id,
+                "notification_codes": resumed_payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                    .collect::<Vec<_>>(),
+                "live_chain": resumed_live_chain,
+            },
+        }),
     );
 
     cleanup_graph(&client, &seed).await;

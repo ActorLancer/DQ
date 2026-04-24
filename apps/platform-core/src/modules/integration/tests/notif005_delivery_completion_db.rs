@@ -1,3 +1,4 @@
+use super::notification_test_support::wait_for_mock_log_chain_if_enabled;
 use crate::modules::integration::application::{
     DeliveryCompletionNotificationDispatchInput, queue_delivery_completion_notifications,
 };
@@ -149,6 +150,7 @@ async fn notif005_delivery_completion_notifications_db_smoke() {
         .as_millis()
         .to_string();
     let seed = seed_graph(&client, &suffix).await;
+    let mut branch_artifacts = Vec::new();
 
     for seeded_order in &seed.orders {
         let first = queue_delivery_completion_notifications(&client, dispatch_input(seeded_order))
@@ -295,7 +297,45 @@ async fn notif005_delivery_completion_notifications_db_smoke() {
             ops["payload"]["metadata"]["delivery_commit_hash"].as_str(),
             Some(seeded_order.delivery_commit_hash.as_str())
         );
+
+        let live_chain = wait_for_mock_log_chain_if_enabled(
+            &client,
+            &seeded_order.request_id,
+            &[
+                seeded_order.case.expected_buyer_code,
+                "delivery.completed",
+                "delivery.completed",
+            ],
+        )
+        .await;
+        branch_artifacts.push(json!({
+            "delivery_branch": seeded_order.case.delivery_branch,
+            "sku_type": seeded_order.case.sku_type,
+            "request_id": seeded_order.request_id.as_str(),
+            "trace_id": seeded_order.trace_id.as_str(),
+            "order_id": seeded_order.order_id.as_str(),
+            "result_ref_id": seeded_order.result_ref_id.as_str(),
+            "expected_buyer_code": seeded_order.case.expected_buyer_code,
+            "outbox_count": rows.len(),
+            "notification_codes": payloads
+                .iter()
+                .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                .collect::<Vec<_>>(),
+            "template_codes": payloads
+                .iter()
+                .filter_map(|payload| payload["payload"]["template_code"].as_str())
+                .collect::<Vec<_>>(),
+            "live_chain": live_chain,
+        }));
     }
+
+    crate::write_test027_artifact(
+        "notif005-delivery-completion.json",
+        &json!({
+            "order_count": seed.orders.len(),
+            "branches": branch_artifacts,
+        }),
+    );
 
     cleanup_seed_graph(&client, &seed).await;
 }

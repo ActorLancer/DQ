@@ -110,6 +110,11 @@ pub fn write_test026_artifact(file_name: &str, artifact: &serde_json::Value) {
     write_test_artifact("TEST026_ARTIFACT_DIR", file_name, artifact);
 }
 
+#[cfg(test)]
+pub fn write_test027_artifact(file_name: &str, artifact: &serde_json::Value) {
+    write_test_artifact("TEST027_ARTIFACT_DIR", file_name, artifact);
+}
+
 struct CoreModule {
     provider_backend: ProviderBackend,
 }

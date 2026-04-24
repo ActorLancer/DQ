@@ -1,3 +1,4 @@
+use super::notification_test_support::wait_for_mock_log_chain_if_enabled;
 use crate::modules::billing::api::router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
@@ -178,6 +179,42 @@ async fn notif004_payment_success_notifications_db_smoke() {
         .expect("count webhook audit")
         .get(0);
     assert_eq!(audit_count, 1);
+
+    let live_chain = wait_for_mock_log_chain_if_enabled(
+        &client,
+        &request_id,
+        &[
+            "payment.succeeded",
+            "order.pending_delivery",
+            "order.pending_delivery",
+        ],
+    )
+    .await;
+
+    crate::write_test027_artifact(
+        "notif004-payment-success.json",
+        &json!({
+            "request_id": &request_id,
+            "seed": {
+                "order_id": &seed.order_id,
+                "payment_intent_id": &seed.payment_intent_id,
+            },
+            "response": json,
+            "webhook_audit_count": audit_count,
+            "outbox": {
+                "count": rows.len(),
+                "notification_codes": payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["notification_code"].as_str())
+                    .collect::<Vec<_>>(),
+                "template_codes": payloads
+                    .iter()
+                    .filter_map(|payload| payload["payload"]["template_code"].as_str())
+                    .collect::<Vec<_>>(),
+            },
+            "live_chain": live_chain,
+        }),
+    );
 
     cleanup_seed_graph(&client, &seed, &request_id).await;
 }

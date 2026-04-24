@@ -2854,6 +2854,14 @@ mod tests {
             subject_ref_types: &["order"],
         },
         LiveSceneCase {
+            notification_code: "acceptance.passed",
+            template_code: "NOTIFY_ACCEPTANCE_PASSED_V1",
+            audience_scope: "buyer",
+            source_event_aggregate_type: "trade.acceptance_record",
+            source_event_event_type: "acceptance.passed",
+            subject_ref_types: &["order"],
+        },
+        LiveSceneCase {
             notification_code: "acceptance.rejected",
             template_code: "NOTIFY_ACCEPTANCE_REJECTED_V1",
             audience_scope: "buyer",
@@ -3166,6 +3174,17 @@ mod tests {
         std::env::var("NOTIF_WORKER_DB_SMOKE").ok().as_deref() == Some("1")
     }
 
+    fn write_test027_artifact(file_name: &str, artifact: &Value) {
+        let Ok(dir) = std::env::var("TEST027_ARTIFACT_DIR") else {
+            return;
+        };
+        let artifact_dir = std::path::PathBuf::from(dir);
+        std::fs::create_dir_all(&artifact_dir).expect("TEST-027 artifact dir should exist");
+        let artifact_path = artifact_dir.join(file_name);
+        let payload = serde_json::to_vec_pretty(artifact).expect("TEST-027 worker artifact json");
+        std::fs::write(artifact_path, payload).expect("TEST-027 worker artifact should write");
+    }
+
     struct LiveWorkerHarness {
         state: Arc<WorkerState>,
         consumer_task: JoinHandle<AppResult<()>>,
@@ -3248,6 +3267,7 @@ mod tests {
 
         let harness = LiveWorkerHarness::start().await;
         let client = harness.state.db.client().expect("acquire db client");
+        let mut success_artifacts = Vec::new();
 
         for case in NOTIF012_SUCCESS_CASES {
             assert_active_template_version(&client, case.template_code, 2).await;
@@ -3271,6 +3291,17 @@ mod tests {
             )
             .await;
             assert_live_success_record(&record, &envelope, *case);
+            success_artifacts.push(json!({
+                "notification_code": case.notification_code,
+                "template_code": case.template_code,
+                "audience_scope": case.audience_scope,
+                "event_id": envelope.event_id,
+                "request_id": &envelope.request_id,
+                "trace_id": envelope.effective_trace_id(),
+                "current_status": record.current_status,
+                "attempt": record.current_attempt,
+                "subject_ref_types": case.subject_ref_types,
+            }));
         }
 
         let duplicate_case = NOTIF012_SUCCESS_CASES[0];
@@ -3438,6 +3469,49 @@ mod tests {
                 .await
                 .is_none(),
             "dead letter flow must clear retry payload state",
+        );
+
+        write_test027_artifact(
+            "notif012-worker-live-smoke.json",
+            &json!({
+                "consumer_group": harness.state.cfg.consumer_group.as_str(),
+                "redis_namespace": harness.state.cfg.redis_namespace.as_str(),
+                "success_cases": success_artifacts,
+                "duplicate": {
+                    "event_id": duplicate_envelope.event_id,
+                    "request_id": &duplicate_envelope.request_id,
+                    "trace_id": duplicate_envelope.effective_trace_id(),
+                    "notification_code": duplicate_case.notification_code,
+                    "current_status": duplicate_record.current_status,
+                    "duplicate_metric": metric_value(&harness.state.metrics.event_results, &["duplicate"]),
+                },
+                "retry": {
+                    "event_id": retry_envelope.event_id,
+                    "request_id": &retry_envelope.request_id,
+                    "trace_id": retry_envelope.effective_trace_id(),
+                    "current_status": retry_record.current_status,
+                    "attempt": retry_record.current_attempt,
+                    "short_state": retry_state,
+                },
+                "dead_letter": {
+                    "event_id": dead_letter_envelope.event_id,
+                    "request_id": &dead_letter_envelope.request_id,
+                    "trace_id": dead_letter_envelope.effective_trace_id(),
+                    "current_status": dead_letter_record.current_status,
+                    "attempt": dead_letter_record.current_attempt,
+                    "dead_letter_topic": harness.state.cfg.dead_letter_topic.as_str(),
+                    "short_state": dlq_state,
+                    "message": dead_letter_message,
+                },
+                "metrics": {
+                    "processed": metric_value(&harness.state.metrics.event_results, &["processed"]),
+                    "duplicate": metric_value(&harness.state.metrics.event_results, &["duplicate"]),
+                    "retrying": metric_value(&harness.state.metrics.event_results, &["retrying"]),
+                    "dead_lettered": metric_value(&harness.state.metrics.event_results, &["dead_lettered"]),
+                    "mock_log_success": metric_value(&harness.state.metrics.send_results, &["mock-log", "success"]),
+                    "mock_log_failed": metric_value(&harness.state.metrics.send_results, &["mock-log", "failed"]),
+                },
+            }),
         );
 
         harness.shutdown().await;

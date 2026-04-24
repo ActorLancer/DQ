@@ -1,0 +1,54 @@
+name: notification-smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-027-notification-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq postgresql-client ripgrep
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run TEST-027 notification smoke
+        run: ENV_FILE=infra/docker/.env.local bash ./scripts/check-notification-smoke.sh
+
+      - name: Collect TEST-027 artifacts
+        if: always()
+        run: |
+          mkdir -p target/test-artifacts/notification-smoke
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml ps -a > target/test-artifacts/notification-smoke/docker-compose-ps.txt || true
+          docker compose --env-file infra/docker/.env.local -f infra/docker/docker-compose.local.yml logs --no-color > target/test-artifacts/notification-smoke/docker-compose.log || true
+
+      - name: Upload TEST-027 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notification-smoke-artifacts
+          path: target/test-artifacts/notification-smoke
+          if-no-files-found: warn
+
+      - name: Tear down local stack
+        if: always()
+        run: COMPOSE_ENV_FILE=infra/docker/.env.local bash ./scripts/down-local.sh || true

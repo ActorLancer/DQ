@@ -82,6 +82,12 @@
      - retry success
      - DLQ + `dtp.dead-letter`
      - PostgreSQL / Redis / audit / metrics 留痕
+8. `TEST-027` 官方通知 gate：
+   ```bash
+   ENV_FILE=infra/docker/.env.local ./scripts/check-notification-smoke.sh
+   ```
+   - 该 checker 会先拉起宿主机 `outbox-publisher + notification-worker`，再运行 `notif004 / notif005 / notif006 / notif007` 四类业务通知 smoke，随后通过 `platform-core /api/v1/ops/notifications/audit/search` 做正式联查，最后停掉背景 worker 并独立运行 `notif012_notification_worker_live_smoke`。
+   - 输出：`target/test-artifacts/notification-smoke/summary.json`
 
 ## 正式发送策略
 
