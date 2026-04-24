@@ -207,6 +207,91 @@
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
 
+### BATCH-310（计划中）
+- 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
+- 状态：计划中
+- 当前任务编号：`TEST-013`
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / Kafka / Redis / MinIO / Keycloak 与 `smoke-local.sh` 本地基线；`DB-032` 已提供 migration / seed / `.sqlx` 回归链路；`CORE-024` 已提供 billing / dispute / order / delivery 集成测试与 live test router。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-013` 的正式目标不是只测退款或赔付接口，而是证明争议开启后的冻结结算与裁决后正式入账链路。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `5.3 争议处理流程`，确认争议链路应经历 `提交证据 -> 平台介入 -> 裁决 -> 退款/赔付/罚没`，且结算冻结属于处理中间态。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：复核 `7. 平台收费规则设计` 与退款/赔付口径，确认 `billing.settlement_record` 为结算权威汇总，退款与赔付都应经过正式记录与汇总重算。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段要把争议/结算联动变成可重复 smoke，而不是只保留状态定义或手工说明。
+  - `docs/05-test-cases/payment-billing-cases.md`：确认正式基线已冻结为：
+    - `PWB-008` 争议升级冻结结算
+    - `PWB-009` 裁决退款后结算重算
+    - `PWB-010` 裁决赔付后结算重算
+  - `apps/platform-core/src/modules/billing/tests/bil014_dispute_linkage_db.rs`、`bil009_refund_db.rs`、`bil010_compensation_db.rs`、`bil019_payment_billing_integration_db.rs`、`bil025_billing_adjustment_freeze_db.rs`、`bil026_share_ro_billing_db.rs`：复核现有 dispute / settlement / refund / compensation 集成基线，确认 `bil019` 已具备“创建争议 -> 裁决 -> 执行退款/赔付”的主链路，但仍需补强争议打开时的冻结中间态断言与官方化 checker/CI。
+- 当前完成标准理解：
+  - `TEST-013` 必须至少证明：
+    1. `POST /api/v1/cases` 打开争议后，`trade.order_main` 与 `billing.settlement_record` 真实进入冻结口径。
+    2. 争议裁决 `refund_full / compensation_full` 后，正式 `POST /api/v1/refunds`、`POST /api/v1/compensations` 能正确入账。
+    3. `billing.billing_event` 必须留下 `settlement_dispute_hold / settlement_dispute_release` 调整事件。
+    4. `GET /api/v1/billing/{order_id}` 必须返回与 DB 聚合一致的 `refund_adjustment_amount / compensation_adjustment_amount`。
+    5. 审计与 outbox 必须保留 `dispute.case.create / dispute.case.resolve / billing.refund.execute / billing.compensation.execute` 的正式痕迹。
+- 实施计划：
+  1. 扩展 `apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs`，补齐争议打开后的冻结断言与结算读模型联查。
+  2. 新增 `TEST-013` 官方用例文档、checker 与 GitHub Actions workflow，统一复用 `smoke-local.sh` 与 dispute/billing 主 smoke。
+  3. 更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/payment-billing-cases.md`、`scripts/README.md`、`.github/workflows/README.md`，明确 `TEST-013` 官方入口。
+  4. 执行真实验证、回写 `BATCH-310（待审批）`、本地提交，然后继续 `TEST-014`。
+
+### BATCH-310（待审批）
+- 任务：`TEST-013` 建立争议与结算联动测试：争议中冻结结算、裁决后退款或赔付正确入账
+- 状态：待审批
+- 当前任务编号：`TEST-013`
+- 前置依赖核对结果：`ENV-040` 的 `smoke-local.sh`、PostgreSQL / Kafka / Redis / MinIO / Keycloak / observability 本地基线继续可用；`DB-032` 的 migration / seed / `.sqlx` 回归链路继续可用；`CORE-024` 的 billing / dispute / order / delivery 集成测试与 live test router 齐备。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-013` 必须证明争议冻结与裁决后入账是同一条正式链路，而不是拆成几个局部 smoke 名称。
+  - `docs/业务流程/业务流程图-V1-完整版.md`：复核 `5.3 争议处理流程`，确认争议处理中必须先冻结，再进入裁决与退款/赔付落账。
+  - `docs/原始PRD/支付、资金流与轻结算设计.md`：复核退款/赔付与轻结算口径，确认 `billing.settlement_record` 是正式结算汇总权威源。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认 `TEST` 阶段要将争议-结算联动转成可重复的本地/CI smoke。
+  - `docs/05-test-cases/payment-billing-cases.md`：确认 `PWB-008 / 009 / 010` 的正式预期分别为冻结结算、退款重算、赔付重算。
+  - `apps/platform-core/src/modules/billing/tests/bil014_dispute_linkage_db.rs`、`bil009_refund_db.rs`、`bil010_compensation_db.rs`、`bil019_payment_billing_integration_db.rs`、`bil025_billing_adjustment_freeze_db.rs`、`bil026_share_ro_billing_db.rs`：复核已有 dispute / settlement / refund / compensation 集成基线，确认 `bil019_dispute_refund_compensation_recompute_db_smoke` 是当前 task 最合适的正式主 smoke。
+- 实现要点：
+  - 扩展 `apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs`：
+    - 在退款、赔付两条链路创建争议后，新增 `assert_dispute_frozen_snapshot(...)`
+    - 真实回查 `trade.order_main.settlement_status = frozen`、`trade.order_main.dispute_status = opened`
+    - 真实回查 `billing.settlement_record.settlement_status = frozen`、`reason_code = dispute_opened:delivery_failed`
+    - 真实回查 `billing.billing_event(event_source = settlement_dispute_hold) = 1` 且 `settlement_dispute_release = 0`
+    - 通过 `GET /api/v1/billing/{order_id}` 断言冻结读模型 `summary_state = order_settlement:frozen:manual`
+    - 在退款/赔付执行后补充 `billing.settlement_record` 金额断言：
+      - 退款链路：`refund_amount = 20.00000000`、`compensation_amount = 0.00000000`
+      - 赔付链路：`refund_amount = 0.00000000`、`compensation_amount = 20.00000000`
+    - 同时补 `settlement_summary.summary_state = order_settlement:pending:manual`，证明裁决后冻结释放并进入正式待结算口径
+  - 新增 `docs/05-test-cases/dispute-settlement-linkage-cases.md`，冻结 `TEST-013` 的正式目标、命令、关键不变量、DB/API/audit/outbox 回查与禁止误报边界。
+  - 新增 `scripts/check-dispute-settlement-linkage.sh`，统一复用：
+    - `smoke-local.sh`
+    - `TRADE_DB_SMOKE=1 cargo test -p platform-core bil019_dispute_refund_compensation_recompute_db_smoke -- --nocapture`
+  - 新增 `.github/workflows/dispute-settlement-linkage.yml`，将 `TEST-013` 纳入 GitHub Actions 最小矩阵。
+  - 更新 `docs/05-test-cases/README.md`、`docs/05-test-cases/payment-billing-cases.md`、`scripts/README.md`、`.github/workflows/README.md`，明确 `TEST-013` 官方入口。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `ENV_FILE=infra/docker/.env.local ./scripts/check-dispute-settlement-linkage.sh`
+  3. `cargo check -p platform-core`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-dispute-settlement-linkage.sh` 通过；真实覆盖：
+    - `smoke-local.sh` 的 compose / migration / MinIO / Keycloak / Grafana / canonical topics / Kafka 双地址边界
+    - `bil019_dispute_refund_compensation_recompute_db_smoke` 的争议打开冻结、裁决、退款/赔付执行、结算重算、审计与 outbox 联查
+  - `cargo check -p platform-core` 通过；仓库既有 `unused import / dead_code` warning 继续存在，无新增编译错误。
+  - `cargo test -p platform-core` 通过：`360` passed、`0` failed；另有 `iam_party_access_flow_live` 维持仓库既有 ignored。
+  - `cargo sqlx prepare --workspace` 通过；workspace `.sqlx` 查询缓存可重建，无新增漂移文件残留。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-013`
+  - `业务流程图-V1-完整版.md`：`5.3 争议处理流程`
+  - `支付、资金流与轻结算设计.md`：`7`
+  - `15-测试策略、验收标准与实施里程碑.md`：`15.1`
+  - `docs/05-test-cases/payment-billing-cases.md`
+- 覆盖的任务清单条目：`TEST-013`
+- 未覆盖项：
+  - `TEST-014` 的 provider 切换测试尚未开始。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
 ### BATCH-301（计划中）
 - 任务：`TEST-004` 建立 migration smoke test，验证空库升级、种子导入、应用启动、重置回滚与重新升级
 - 状态：计划中

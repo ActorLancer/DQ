@@ -415,6 +415,14 @@ mod tests {
             .as_str()
             .expect("refund case id")
             .to_string();
+        assert_dispute_frozen_snapshot(
+            &client,
+            &app,
+            &refund_order,
+            &buyer_org_id,
+            &format!("req-bil019-billing-refund-frozen-{suffix}"),
+        )
+        .await;
         let refund_resolution = resolve_case(
             &app,
             &platform_user_id,
@@ -452,6 +460,14 @@ mod tests {
             .as_str()
             .expect("compensation case id")
             .to_string();
+        assert_dispute_frozen_snapshot(
+            &client,
+            &app,
+            &compensation_order,
+            &buyer_org_id,
+            &format!("req-bil019-billing-compensation-frozen-{suffix}"),
+        )
+        .await;
         let compensation_resolution = resolve_case(
             &app,
             &platform_user_id,
@@ -494,6 +510,18 @@ mod tests {
             refund_order_row.get::<_, Option<String>>(2).as_deref(),
             Some("billing_dispute_resolved")
         );
+        let refund_settlement_row = client
+            .query_one(
+                "SELECT settlement_status, refund_amount::text, compensation_amount::text
+                 FROM billing.settlement_record
+                 WHERE settlement_id = $1::text::uuid",
+                &[&refund_order.settlement_id],
+            )
+            .await
+            .expect("query refund settlement row");
+        assert_eq!(refund_settlement_row.get::<_, String>(0), "pending");
+        assert_eq!(refund_settlement_row.get::<_, String>(1), "20.00000000");
+        assert_eq!(refund_settlement_row.get::<_, String>(2), "0.00000000");
 
         let refund_detail = get_billing_order(
             &app,
@@ -509,6 +537,10 @@ mod tests {
         assert_eq!(
             refund_detail["data"]["settlement_summary"]["refund_adjustment_amount"].as_str(),
             Some("20.00000000")
+        );
+        assert_eq!(
+            refund_detail["data"]["settlement_summary"]["summary_state"].as_str(),
+            Some("order_settlement:pending:manual")
         );
 
         let compensation_detail = get_billing_order(
@@ -528,6 +560,28 @@ mod tests {
             compensation_detail["data"]["settlement_summary"]["compensation_adjustment_amount"]
                 .as_str(),
             Some("20.00000000")
+        );
+        assert_eq!(
+            compensation_detail["data"]["settlement_summary"]["summary_state"].as_str(),
+            Some("order_settlement:pending:manual")
+        );
+        let compensation_settlement_row = client
+            .query_one(
+                "SELECT settlement_status, refund_amount::text, compensation_amount::text
+                 FROM billing.settlement_record
+                 WHERE settlement_id = $1::text::uuid",
+                &[&compensation_order.settlement_id],
+            )
+            .await
+            .expect("query compensation settlement row");
+        assert_eq!(compensation_settlement_row.get::<_, String>(0), "pending");
+        assert_eq!(
+            compensation_settlement_row.get::<_, String>(1),
+            "0.00000000"
+        );
+        assert_eq!(
+            compensation_settlement_row.get::<_, String>(2),
+            "20.00000000"
         );
 
         let adjustment_counts = client
@@ -601,6 +655,71 @@ mod tests {
             &[&buyer_org_id, &seller_org_id, &platform_org_id],
         )
         .await;
+    }
+
+    async fn assert_dispute_frozen_snapshot(
+        client: &Client,
+        app: &Router,
+        order: &DisputeSeedOrder,
+        tenant_id: &str,
+        request_id: &str,
+    ) {
+        let order_row = client
+            .query_one(
+                "SELECT settlement_status, dispute_status, last_reason_code
+                 FROM trade.order_main
+                 WHERE order_id = $1::text::uuid",
+                &[&order.order_id],
+            )
+            .await
+            .expect("query frozen order row");
+        assert_eq!(order_row.get::<_, String>(0), "frozen");
+        assert_eq!(order_row.get::<_, String>(1), "opened");
+        assert_eq!(
+            order_row.get::<_, Option<String>>(2).as_deref(),
+            Some("billing_dispute_linkage_applied")
+        );
+
+        let settlement_row = client
+            .query_one(
+                "SELECT settlement_status, reason_code
+                 FROM billing.settlement_record
+                 WHERE settlement_id = $1::text::uuid",
+                &[&order.settlement_id],
+            )
+            .await
+            .expect("query frozen settlement row");
+        assert_eq!(settlement_row.get::<_, String>(0), "frozen");
+        assert_eq!(
+            settlement_row.get::<_, Option<String>>(1).as_deref(),
+            Some("dispute_opened:delivery_failed")
+        );
+
+        let adjustment_row = client
+            .query_one(
+                "SELECT
+                   COUNT(*) FILTER (
+                     WHERE event_type = 'refund_adjustment'
+                       AND event_source = 'settlement_dispute_hold'
+                   )::bigint,
+                   COUNT(*) FILTER (
+                     WHERE event_type = 'refund_adjustment'
+                       AND event_source = 'settlement_dispute_release'
+                   )::bigint
+                 FROM billing.billing_event
+                 WHERE order_id = $1::text::uuid",
+                &[&order.order_id],
+            )
+            .await
+            .expect("query frozen adjustment row");
+        assert_eq!(adjustment_row.get::<_, i64>(0), 1);
+        assert_eq!(adjustment_row.get::<_, i64>(1), 0);
+
+        let detail = get_billing_order(app, &order.order_id, tenant_id, request_id).await;
+        assert_eq!(
+            detail["data"]["settlement_summary"]["summary_state"].as_str(),
+            Some("order_settlement:frozen:manual")
+        );
     }
 
     async fn create_payment_intent(

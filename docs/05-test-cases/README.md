@@ -29,6 +29,7 @@
 - `search-rec-pg-authority-cases.md`：`TEST-010` 搜索 / 推荐回 PostgreSQL 校验正式清单，冻结 alias 切换后回 PG 过滤、OpenSearch 不可用 fallback，以及冻结 / 下架商品不得继续落入结果集或 `recommendation_result_item`。
 - `payment-webhook-idempotency-cases.md`：`TEST-011` 支付 webhook 幂等正式清单，冻结 duplicate success、`success -> fail`、`timeout -> success` 三条回调保护，以及 `payment_intent / order_main / audit` 联查。
 - `delivery-revocation-cases.md`：`TEST-012` 交付与断权正式清单，冻结文件票据撤权、share/API/sandbox 断权后的正式入口失败、`Redis / PostgreSQL / audit` 联查。
+- `dispute-settlement-linkage-cases.md`：`TEST-013` 争议与结算联动正式清单，冻结 `POST /api/v1/cases` 触发的结算冻结，以及裁决后 `refund / compensation` 的正式入账、结算重算、审计与 outbox 联查。
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
 - `migration-smoke-cases.md`：`TEST-004` 的正式 migration smoke 清单，固定 core stack、migration/seed roundtrip、seed_history 回查与 `platform-core` 启动验证入口。

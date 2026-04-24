@@ -54,3 +54,9 @@
 - 业务分层：`docs/原始PRD/支付、资金流与轻结算设计.md` `4`
 - 幂等与一致性：`docs/数据库设计/接口协议/支付域接口协议正式版.md` `6`
 - 集成基线：`docs/全集成文档/数据交易平台-全集成基线-V1.md` `27`
+
+## TEST-013 Official Entry
+
+- 正式用例清单：`docs/05-test-cases/dispute-settlement-linkage-cases.md`
+- 正式 checker：`ENV_FILE=infra/docker/.env.local ./scripts/check-dispute-settlement-linkage.sh`
+- 核心自动化证据：`apps/platform-core/src/modules/billing/tests/bil019_payment_billing_integration_db.rs` 中的 `bil019_dispute_refund_compensation_recompute_db_smoke`
