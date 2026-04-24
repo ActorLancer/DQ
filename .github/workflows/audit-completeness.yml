@@ -1,0 +1,25 @@
+name: audit-completeness
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  audit-completeness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq postgresql-client ripgrep
+
+      - name: Run TEST-009 audit completeness checker
+        run: ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh
+
+      - name: Tear down local stack
+        if: always()
+        run: ./scripts/down-local.sh || true

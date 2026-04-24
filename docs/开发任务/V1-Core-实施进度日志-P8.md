@@ -738,3 +738,75 @@
   - 本批的“重复消费不重复副作用”正式样本落在 `notification-worker`；搜索、推荐、Fabric 等其他 consumer 的幂等矩阵由后续专项任务继续扩展。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-306（计划中）
+- 任务：`TEST-009` 建立审计完备性测试：关键操作必须产生审计事件，证据导出必须 step-up，非法导出被拒绝
+- 状态：计划中
+- 说明：当前仓库已经具备 `apps/platform-core/src/modules/audit/tests/api_db.rs` 中的 route guard 测试，以及 `audit_trace_api_db_smoke` 对审计联查、证据包导出、replay、legal hold、anchor retry 的 live smoke，但这些能力还停留在 `AUD` 子域用例里，尚未形成 `TEST-009` 官方 checker / 文档 / CI，也没有把“关键操作必留审计、导出必须 step-up、非法导出被拒绝”以单一验收入口固定下来。本批次将复用现有正式 API 和审计对象，把审计完备性收口为独立可重复任务。
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / MinIO / Kafka / Redis / Keycloak / observability 的本地联调基线；`DB-032` 已通过 migration 与本地 smoke；`CORE-024` 已提供 `platform-core.audit`、证据包导出、replay 和 legal hold 执行面。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-009` 的正式交付是审计完备性测试，不是单独 `AUD` 文档引用。
+  - `docs/原始PRD/审计、证据链与回放设计.md`：确认审计事件模型、`step_up_challenge_id`、失败事件也必须记录、证据对象与导出包模型。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认“证据包导出页”是正式高风险控制面，导出内容至少覆盖主体摘要、商品快照、合同快照、交付回执、下载日志、裁决结果、链上摘要。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/04-runbooks/audit-replay.md`、`docs/04-runbooks/audit-consistency-lookup.md`：确认 `TEST` 阶段必须用真实 API + DB / MinIO / 审计回查收口审计闭环。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`、`packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`：确认现有 route guard 和 live smoke 资产、`/api/v1/audit/packages/export` 的 step-up 契约以及成功导出后的正式回查点。
+- 当前完成标准理解：
+  - 至少要证明：
+    1. 关键审计控制面操作会写 `audit.audit_event`、`audit.access_audit`、`ops.system_log`。
+    2. `POST /api/v1/audit/packages/export` 缺权限被拒绝、缺 step-up 被拒绝。
+    3. 合法 step-up 导出成功后会真实写 `audit.evidence_package`、`audit.evidence_manifest_item`、MinIO 导出对象，并留下 `audit.package.export` 审计。
+  - 需要形成 `TEST-009` 专属文档、checker 和 CI 入口，复用正式 API / OpenAPI / 审计对象，不新造旁路导出脚本。
+- 实施计划：
+  1. 评估现有 `audit_trace_api_db_smoke` 与 route guard 是否已覆盖 `TEST-009` 三个核心断言；若缺口存在，再补最小必要测试。
+  2. 新增 `TEST-009` 官方文档与 checker，串联非法导出拒绝、缺 step-up 拒绝和合法导出成功 + 审计回查。
+  3. 新增最小 CI workflow，保证 `TEST-009` 在 GitHub Actions 上可重复执行。
+  4. 执行真实验证、回写 `P8` 待审批日志并提交，然后继续 `TEST-010`。
+
+### BATCH-306（待审批）
+- 任务：`TEST-009` 建立审计完备性测试：关键操作必须产生审计事件，证据导出必须 step-up，非法导出被拒绝
+- 状态：待审批
+- 当前任务编号：`TEST-009`
+- 前置依赖核对结果：`ENV-040` 已提供 PostgreSQL / MinIO / Kafka / Redis / Keycloak / observability 的本地联调基线；`DB-032` 已通过 migration 与本地 smoke；`CORE-024` 已提供 `platform-core.audit`、证据包导出、replay 和 legal hold 正式执行面。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-009` 的正式交付是审计完备性测试，不是单独 `AUD` 文档引用。
+  - `docs/原始PRD/审计、证据链与回放设计.md`：确认审计事件模型、`step_up_challenge_id`、失败事件也必须记录以及证据对象 / 导出包模型。
+  - `docs/页面说明书/页面说明书-V1-完整版.md`：确认证据包导出页属于正式高风险控制面，导出内容必须覆盖主体摘要、商品快照、合同快照、交付回执、下载日志、裁决结果、链上摘要。
+  - `docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`、`docs/05-test-cases/audit-consistency-cases.md`、`docs/04-runbooks/audit-replay.md`、`docs/04-runbooks/audit-consistency-lookup.md`：确认 `TEST` 阶段必须以真实 API + DB / MinIO / 审计回查收口审计闭环。
+  - `apps/platform-core/src/modules/audit/tests/api_db.rs`、`packages/openapi/audit.yaml`、`docs/02-openapi/audit.yaml`：确认现有 route guard 与 live smoke 资产，以及 `/api/v1/audit/packages/export` 的 step-up 契约与导出回查点。
+- 实现要点：
+  - 新增 `docs/05-test-cases/audit-completeness-cases.md`，冻结 `TEST-009` 的四个正式 case：非法导出拒绝、缺 step-up 拒绝、关键审计动作留痕，以及合法导出后的 `audit.evidence_package / evidence_manifest_item / MinIO` 回查。
+  - 新增 `scripts/check-audit-completeness.sh`，把 `rejects_package_export_without_permission`、`package_export_requires_step_up`、`smoke-local.sh` 和 `audit_trace_api_db_smoke` 串成 `TEST-009` 官方 checker。
+  - 新增 `.github/workflows/audit-completeness.yml`，在 CI 中执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh`；同步更新 `docs/05-test-cases/README.md`、`scripts/README.md`、`.github/workflows/README.md`。
+  - 本批未新增业务逻辑实现，直接复用现有正式 API、OpenAPI 和 audit DB/live smoke 资产收口验收入口，避免再造第二套审计真相源。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过；存在仓库既有 unused / dead-code warning，但无新增编译失败。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-audit-completeness.sh` 通过，完成以下真实联动验证：
+    - `rejects_package_export_without_permission`：非法角色调用 `POST /api/v1/audit/packages/export` 被正式拒绝。
+    - `package_export_requires_step_up`：具备权限但缺少 `x-step-up-token / x-step-up-challenge-id` 的导出请求被正式拒绝。
+    - `smoke-local.sh` 校验 PostgreSQL / MinIO / Kafka / Redis / Keycloak / observability 基线。
+    - `audit_trace_api_db_smoke` 验证订单审计联查、trace 查询、证据包导出、replay dry-run、legal hold、anchor retry 的真实 API / DB / MinIO / 审计链路，并确认 `audit.package.export`、`audit.access_audit(access_mode='export')`、`ops.system_log`、`audit.evidence_package`、`audit.evidence_manifest_item` 和 MinIO 导出对象全部可回查。
+  - `cargo test -p platform-core` 通过：`360` 个测试通过，`0` 失败；仓库既有 `iam_party_access_flow_live` 继续保持 ignored。
+  - `cargo sqlx prepare --workspace` 通过，workspace 根目录 `.sqlx` 查询编译元数据已重建并更新。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-009`
+  - `审计、证据链与回放设计.md`
+  - `页面说明书-V1-完整版.md`
+  - `15-测试策略、验收标准与实施里程碑.md`
+  - `docs/05-test-cases/audit-consistency-cases.md`
+  - `docs/04-runbooks/audit-replay.md`
+  - `docs/04-runbooks/audit-consistency-lookup.md`
+- 覆盖的任务清单条目：`TEST-009`
+- 未覆盖项：
+  - `TEST-018` 的 replay dry-run 专项、`TEST-020` 之后的审计控制面扩展与 `TEST-022+` 的前端审计页专项不在本批范围，后续按任务顺序继续补齐。
+  - 本批的审计完备性主样本复用 `audit_trace_api_db_smoke`；如果后续冻结任务要求扩大到更多高风险动作，将在后续任务追加到官方 checker。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。

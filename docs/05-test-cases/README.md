@@ -25,6 +25,7 @@
 - `order-e2e-cases.md`：`TEST-006` 五条标准链路 order E2E 正式清单，固定 `fixtures/demo` 主订单基线、门户 live E2E 路径、后端 order/lifecycle/trace 回查与浏览器受控边界。
 - `provider-switch-cases.md`：`TEST-007` provider 切换正式清单，冻结支付 / 签章 / 链写三类 provider 的 mock/real 切换断言、Fabric live smoke 与官方 checker。
 - `outbox-consistency-cases.md`：`TEST-008` outbox 一致性正式清单，冻结事务成功写主对象 + 审计 + outbox、事务失败无脏 outbox，以及 `notification-worker` 重复消费不重复副作用的验收路径。
+- `audit-completeness-cases.md`：`TEST-009` 审计完备性正式清单，冻结关键审计动作留痕、证据导出 step-up 约束、非法导出拒绝和 MinIO 导出对象回查。
 - `delivery-cases.md`：Delivery/Storage/Query Execution 子域的交付超时、重复开通、票据过期、撤权后访问、验收失败用例矩阵。
 - `payment-billing-cases.md`：Billing/Payment/Settlement/Dispute 子域的回调乱序、重复回调、重复扣费防护与结算冻结回归矩阵。
 - `migration-smoke-cases.md`：`TEST-004` 的正式 migration smoke 清单，固定 core stack、migration/seed roundtrip、seed_history 回查与 `platform-core` 启动验证入口。

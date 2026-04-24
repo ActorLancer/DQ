@@ -26,6 +26,7 @@
 - `check-order-e2e.sh`：`TEST-006` 正式 order E2E checker；会复用 `smoke-local.sh`、`seed-local-iam-test-identities.sh` 与 `seed-demo.sh`，然后以 `local-buyer-operator + local-tenant-developer` 运行门户五条标准链路 live E2E，并回查 order detail / lifecycle / developer trace。
 - `check-provider-switch.sh`：`TEST-007` 正式 provider switch checker；会复用 `smoke-local.sh`、`check-mock-payment.sh`、`trade026` 签章 smoke、`fabric-adapter-test.sh` 与 `fabric-adapter-live-smoke.sh`，验证支付 / 签章 / 链写三类 provider 只通过配置完成切换。
 - `check-outbox-consistency.sh`：`TEST-008` 正式 outbox consistency checker；会复用 `smoke-local.sh`、`trade003_create_order_db_smoke`、`outbox_publisher_db_smoke` 与 `notif012_notification_worker_live_smoke`，验证事务成功写主对象 + 审计 + outbox、事务失败无 outbox，以及重复消费不重复副作用。
+- `check-audit-completeness.sh`：`TEST-009` 正式 audit completeness checker；会复用 `smoke-local.sh`、证据包导出 route guard 与 `audit_trace_api_db_smoke`，验证关键审计动作留痕、导出必须 step-up、非法导出被拒绝。
 - `check-api-contract-baseline.sh`：`TEST-003` 正式 contract checker；校验 OpenAPI 成功/失败 envelope、关键响应字段、错误码基线，以及订单状态机 action enum / 禁止错误码绑定。它不替代 `TEST-028` 的 canonical smoke。
 - `check-migration-smoke.sh`：`TEST-004` 正式 migration smoke checker；启动 current local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core-bin` 回查 `/health/live`、`/health/ready`、`/health/deps` 和 `/internal/runtime`。
 - `validate_database_migrations.sh`：兼容入口，现已转发到 `check-migration-smoke.sh`，不再使用历史 `部署脚本/docker-compose.postgres-test.yml`。
