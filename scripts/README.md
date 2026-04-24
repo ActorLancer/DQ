@@ -24,6 +24,7 @@
 - `seed-demo.sh`：执行 `TEST-002` 正式 demo importer；先跑 `db/seeds/manifest.csv`，再把 `fixtures/demo/` 的 10 笔订单、支付记录和交付对象写入 `trade / payment / billing / delivery`。
 - `check-demo-seed.sh`：回查 `seed-demo.sh` 的正式落库结果，验证五条标准链路的 demo 主体、商品、订单、支付和交付对象都已真实落到数据库。
 - `check-order-e2e.sh`：`TEST-006` 正式 order E2E checker；会复用 `smoke-local.sh`、`seed-local-iam-test-identities.sh` 与 `seed-demo.sh`，然后以 `local-buyer-operator + local-tenant-developer` 运行门户五条标准链路 live E2E，并回查 order detail / lifecycle / developer trace。
+- `check-provider-switch.sh`：`TEST-007` 正式 provider switch checker；会复用 `smoke-local.sh`、`check-mock-payment.sh`、`trade026` 签章 smoke、`fabric-adapter-test.sh` 与 `fabric-adapter-live-smoke.sh`，验证支付 / 签章 / 链写三类 provider 只通过配置完成切换。
 - `check-api-contract-baseline.sh`：`TEST-003` 正式 contract checker；校验 OpenAPI 成功/失败 envelope、关键响应字段、错误码基线，以及订单状态机 action enum / 禁止错误码绑定。它不替代 `TEST-028` 的 canonical smoke。
 - `check-migration-smoke.sh`：`TEST-004` 正式 migration smoke checker；启动 current local core stack、初始化 MinIO buckets、执行 migration/seed roundtrip，并在最终升级后真实启动 `platform-core-bin` 回查 `/health/live`、`/health/ready`、`/health/deps` 和 `/internal/runtime`。
 - `validate_database_migrations.sh`：兼容入口，现已转发到 `check-migration-smoke.sh`，不再使用历史 `部署脚本/docker-compose.postgres-test.yml`。

@@ -492,13 +492,49 @@ pub async fn run() -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::requires_opensearch_startup_checks;
-    use config::RuntimeMode;
+    use super::{requires_opensearch_startup_checks, startup_self_check};
+    use config::{FeatureFlags, ProviderMode, RuntimeConfig, RuntimeMode};
 
     #[test]
     fn opensearch_startup_checks_are_only_required_in_staging() {
         assert!(!requires_opensearch_startup_checks(&RuntimeMode::Local));
         assert!(!requires_opensearch_startup_checks(&RuntimeMode::Demo));
         assert!(requires_opensearch_startup_checks(&RuntimeMode::Staging));
+    }
+
+    #[tokio::test]
+    async fn startup_self_check_rejects_real_provider_without_flag() {
+        let err = startup_self_check(&runtime_config(ProviderMode::Real, false))
+            .await
+            .expect_err("real provider without FF_REAL_PROVIDER should fail");
+        assert!(
+            err.to_string()
+                .contains("provider mode is real but FF_REAL_PROVIDER is disabled")
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_self_check_accepts_real_provider_with_flag() {
+        startup_self_check(&runtime_config(ProviderMode::Real, true))
+            .await
+            .expect("real provider with FF_REAL_PROVIDER should pass startup self check");
+    }
+
+    fn runtime_config(provider: ProviderMode, enable_real_provider: bool) -> RuntimeConfig {
+        RuntimeConfig {
+            mode: RuntimeMode::Local,
+            provider,
+            bind_host: "127.0.0.1".to_string(),
+            bind_port: 18094,
+            service_version: "test".to_string(),
+            git_sha: "test".to_string(),
+            migration_version: "test".to_string(),
+            feature_flags: FeatureFlags {
+                enable_demo_features: true,
+                enable_chain_anchoring: false,
+                enable_real_provider,
+                enable_sensitive_experiments: false,
+            },
+        }
     }
 }

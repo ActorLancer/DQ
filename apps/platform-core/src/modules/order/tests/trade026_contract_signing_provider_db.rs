@@ -80,15 +80,16 @@ mod tests {
             .as_str()
             .expect("signature_provider_ref")
             .to_string();
+        let (expected_mode, expected_kind, expected_ref_prefix) = expected_provider_signature();
         assert_eq!(
             json["data"]["signature_provider_mode"].as_str(),
-            Some("mock")
+            Some(expected_mode)
         );
         assert_eq!(
             json["data"]["signature_provider_kind"].as_str(),
-            Some("mock")
+            Some(expected_kind)
         );
-        assert!(provider_ref.contains("mock-signing-ok"));
+        assert!(provider_ref.contains(expected_ref_prefix));
 
         let signer_row = client
             .query_one(
@@ -108,6 +109,16 @@ mod tests {
         );
 
         cleanup_seed_graph(&client, &seed).await;
+    }
+
+    fn expected_provider_signature() -> (&'static str, &'static str, &'static str) {
+        match std::env::var("PROVIDER_MODE")
+            .unwrap_or_else(|_| "mock".to_string())
+            .as_str()
+        {
+            "real" => ("real", "real", "real-signing-ok"),
+            _ => ("mock", "mock", "mock-signing-ok"),
+        }
     }
 
     async fn seed_order_graph(client: &Client, suffix: &str) -> Result<SeedOrder, db::Error> {

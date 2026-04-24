@@ -11,6 +11,7 @@
   - `FABRIC_SIGN_CERT_PATH`
   - `FABRIC_PRIVATE_KEY_DIR` 或 `FABRIC_PRIVATE_KEY_PATH`
 - 本地验证入口：
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`
   - `FABRIC_ADAPTER_PROVIDER_MODE=fabric-test-network ./scripts/fabric-adapter-run.sh`
   - `./scripts/fabric-adapter-live-smoke.sh`
 - 进入 `staging/demo` 前确认签名与回调配置。

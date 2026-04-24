@@ -586,3 +586,78 @@
   - `TEST-022` 的五条标准链路独立验收文档将在后续任务继续展开；本批先落 `TEST-006` 的执行基线与 checker。
 - 新增 TODO / 预留项：
   - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
+
+### BATCH-304（计划中）
+- 任务：`TEST-007` 建立 Provider 切换测试：mock 支付 / mock 链写 / mock 签章 与 real 占位实现的切换不改业务代码
+- 状态：计划中
+- 说明：当前仓库已有 `docs/04-runbooks/provider-switch.md`、`provider-kit` mock/real 占位实现、`platform-core` 的 `PROVIDER_MODE=mock|real` 开关，以及 `fabric-adapter` 的 `FABRIC_ADAPTER_PROVIDER_MODE=mock|fabric-test-network` 配置与 live smoke，但这些能力分散在单元测试、runbook 和脚本里，还没有形成 `TEST-007` 官方 checker / 文档 / CI。当前批次将把支付、签章、链写三类 provider 切换收口成正式测试：验证切换通过配置完成，不改业务代码，并留下本地与 CI 可重复运行的结果。
+- 前置依赖核对结果：`ENV-040` 已提供本地 `mock-payment-provider`、Fabric 测试网络与运行基线；`DB-032` 已提供可重复 migration/seed/DB smoke 基础；`CORE-024` 已提供 `platform-core` 运行骨架与真实 DB 测试夹具。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-007` 的正式交付是 provider 切换测试，不是单独 runbook 或局部单元测试。
+  - `docs/原始PRD/链上链下技术架构与能力边界稿.md`、`docs/开发准备/技术选型正式版.md`、`docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认所有外部能力必须走可审计集成层，本地默认 mock，联调模式接真实/测试依赖。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/04-runbooks/provider-switch.md`：确认 V1 必须存在统一 Provider 适配层，每个 Provider 至少提供 `mock` 与 `real` 两套实现，运行环境只通过配置切换。
+  - `apps/platform-core/crates/provider-kit/src/lib.rs`、`tests.rs`、`apps/platform-core/crates/config/src/lib.rs`、`apps/platform-core/src/modules/contract/application/signing.rs`：确认 `platform-core` 已具备 `PROVIDER_MODE=mock|real`、`FF_REAL_PROVIDER` 门控和签章 / 支付 / 链写的 mock/real 占位实现。
+  - `services/fabric-adapter/internal/config/config.go`、`internal/provider/factory.go`、`internal/provider/live_smoke_test.go`、`scripts/fabric-adapter-live-smoke.sh`：确认链写 provider 的正式切换口径是 `mock|fabric-test-network`，且已有真实 Fabric live smoke 可复用。
+  - `apps/platform-core/src/modules/order/tests/trade026_contract_signing_provider_db.rs`、`apps/platform-core/src/modules/billing/tests/bil004_mock_payment_adapter_db.rs`、`scripts/check-mock-payment.sh`：确认签章和 mock 支付已有真实 DB/live 资产，但尚未收口成统一 provider-switch checker。
+- 当前完成标准理解：
+  - 需要形成 `TEST-007` 专属 checker / 文档 / CI 入口，覆盖支付、签章、链写三类 provider 切换。
+  - 切换结果必须由配置体现，而不是改业务代码或改测试代码路径；至少验证 `platform-core`、`mock-payment-provider`、`fabric-adapter` 三个正式联动对象。
+  - `mock` 与 `real`/`fabric-test-network` 切换都要留下可读证据：provider kind / mode、返回字段、live smoke 或 DB 回查结果。
+- 实施计划：
+  1. 新增 `TEST-007` 文档和官方 checker，冻结支付 / 签章 / 链写三类 provider 的切换断言与执行入口。
+  2. 调整或补充现有测试，使 `platform-core` 签章 provider 能在 `mock/real` 下复用同一业务路径完成断言，并复用 `provider-kit` 与 Fabric live smoke 资产。
+  3. 新增 CI workflow，把 `mock-payment` live adapter、`platform-core` provider switch smoke、`fabric-adapter` mock / fabric-test-network 切换验证串成最小矩阵。
+  4. 执行本地真实验证、更新 `P8` 待审批日志并提交。
+
+### BATCH-304（待审批）
+- 任务：`TEST-007` 建立 Provider 切换测试：mock 支付 / mock 链写 / mock 签章 与 real 占位实现的切换不改业务代码
+- 状态：待审批
+- 当前任务编号：`TEST-007`
+- 前置依赖核对结果：`ENV-040` 已提供本地 `mock-payment-provider`、Fabric 测试网络与运行基线；`DB-032` 已通过 `TEST-004`/`TEST-005` 验证 migration/seed/local smoke；`CORE-024` 已提供 `platform-core` 运行骨架、`provider-kit` 适配层和真实 DB 测试夹具。当前任务依赖满足。
+- 已阅读证据（文件+要点）：
+  - `docs/开发任务/v1-core-开发任务清单.csv`、`docs/开发任务/v1-core-开发任务清单.md`：确认 `TEST-007` 的正式交付是 provider 切换测试，不是局部 runbook 或单元测试集合。
+  - `docs/原始PRD/链上链下技术架构与能力边界稿.md`、`docs/开发准备/技术选型正式版.md`、`docs/data_trading_blockchain_system_design_split/15-测试策略、验收标准与实施里程碑.md`：确认支付、签章、链写都必须通过统一 Provider 适配层，环境切换只能通过配置完成。
+  - `docs/全集成文档/数据交易平台-全集成基线-V1.md`、`docs/04-runbooks/provider-switch.md`：确认 V1 需要 `mock` 与 `real`/测试网络双实现，并要求保留本地 smoke 与联调入口。
+  - `apps/platform-core/crates/provider-kit/src/lib.rs`、`tests.rs`、`apps/platform-core/crates/config/src/lib.rs`、`apps/platform-core/src/lib.rs`、`apps/platform-core/src/modules/contract/application/signing.rs`：确认 `platform-core` 已具备 `PROVIDER_MODE=mock|real`、`FF_REAL_PROVIDER` 门控，以及签章 / 支付 / 链写 provider 抽象。
+  - `services/fabric-adapter/internal/config/config.go`、`internal/provider/factory.go`、`internal/provider/live_smoke_test.go`、`scripts/fabric-adapter-test.sh`、`scripts/fabric-adapter-live-smoke.sh`：确认 Fabric 链写 provider 的正式切换口径与可复用 live smoke 入口。
+  - `apps/platform-core/src/modules/order/tests/trade026_contract_signing_provider_db.rs`、`apps/platform-core/src/modules/billing/tests/bil004_mock_payment_adapter_db.rs`、`scripts/check-mock-payment.sh`：确认签章和支付已有真实 DB / live 资产，可收口为统一 `TEST-007` checker。
+- 实现要点：
+  - 新增 `scripts/check-provider-switch.sh`，把 `smoke-local.sh`、`check-mock-payment.sh`、`provider-kit` mock/real 入口测试、`platform-core` 启动门控与签章 DB smoke、`fabric-adapter` 单元测试和 Fabric live smoke 串成 `TEST-007` 官方 checker。
+  - 新增 `docs/05-test-cases/provider-switch-cases.md`，冻结支付 / 签章 / 链写三类 provider 的切换矩阵、正式断言、宿主机边界与执行命令；同步更新 `docs/05-test-cases/README.md`、`docs/04-runbooks/provider-switch.md`、`scripts/README.md`、`.github/workflows/README.md`。
+  - 新增 `.github/workflows/provider-switch.yml`，在 CI 中执行 `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`，并在结束后统一下线本地 compose 栈与 Fabric 测试网络。
+  - 新增 `services/fabric-adapter/internal/provider/factory_test.go`，补齐 Fabric provider factory 的 `mock` 选择与非法 provider mode 拒绝校验。
+  - 调整 `apps/platform-core/src/modules/order/tests/trade026_contract_signing_provider_db.rs`，使同一合同确认业务路径可在 `PROVIDER_MODE=mock` 与 `PROVIDER_MODE=real FF_REAL_PROVIDER=true` 下复用并校验 `signature_provider_mode / signature_provider_kind / signature_provider_ref`。
+  - 在 `apps/platform-core/src/lib.rs` 增加 `startup_self_check` 的 real-provider 门控测试，确认未启用 `FF_REAL_PROVIDER` 时拒绝启动，启用后允许通过。
+- 验证步骤：
+  1. `cargo fmt --all`
+  2. `cargo check -p platform-core`
+  3. `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh`
+  4. `cargo test -p platform-core`
+  5. `bash -lc 'set -a; source infra/docker/.env.local; source fixtures/smoke/test-005/runtime-baseline.env; set +a; cargo sqlx prepare --workspace'`
+  6. `./scripts/check-query-compile.sh`
+- 验证结果：
+  - `cargo fmt --all` 通过。
+  - `cargo check -p platform-core` 通过。
+  - `ENV_FILE=infra/docker/.env.local ./scripts/check-provider-switch.sh` 通过，完成以下真实联动验证：
+    - `smoke-local.sh` 校验本地 PostgreSQL / Kafka / Redis / OpenSearch / MinIO / Keycloak / Mock Payment / observability 基线。
+    - `check-mock-payment.sh` 校验 mock payment 的 `success / fail / timeout` 三条正式路径。
+    - `provider-kit` 测试验证支付、签章、链写 provider 的 mock/real 入口；其中 `live_mock_payment_adapter_hits_three_mock_paths` 在 live 模式下命中真实 mock payment 服务。
+    - `platform-core` 启动门控测试验证 `PROVIDER_MODE=real` 必须绑定 `FF_REAL_PROVIDER=true`。
+    - `trade026_contract_signing_provider_db_smoke` 在 `PROVIDER_MODE=mock` 与 `PROVIDER_MODE=real` 下复用同一业务路径完成合同确认，并分别回写 `mock-*` / `real-*` provider 证据。
+    - `fabric-adapter-test.sh`、`check-fabric-local.sh`、`fabric-adapter-live-smoke.sh` 验证链写 provider 能在 `mock` 与 `fabric-test-network` 间切换，并留下真实 Fabric receipt / ledger 证据。
+  - `cargo test -p platform-core` 通过：`360` 个测试通过，`0` 失败；仓库既有 `iam_party_access_flow_live` 继续保持 ignored。
+  - `cargo sqlx prepare --workspace` 通过，workspace 根目录 `.sqlx` 查询编译元数据已重建并更新。
+  - `./scripts/check-query-compile.sh` 通过。
+- 覆盖的冻结文档条目：
+  - `v1-core-开发任务清单.csv / .md`：`TEST-007`
+  - `链上链下技术架构与能力边界稿.md`
+  - `技术选型正式版.md`
+  - `数据交易平台-全集成基线-V1.md`
+  - `docs/04-runbooks/provider-switch.md`
+  - `docs/05-test-cases/README.md`
+- 覆盖的任务清单条目：`TEST-007`
+- 未覆盖项：
+  - `TEST-012` 的 webhook 幂等 / 乱序保护、`TEST-018` 的审计回放 dry-run、`TEST-021`/`TEST-028` 的 canonical checker 不在本批范围，后续按任务顺序继续补齐。
+  - real payment / real signing 的外部生产 provider 仍为占位实现；本批验证的是配置切换与业务路径无代码分叉，不包含真实第三方厂商联调。
+- 新增 TODO / 预留项：
+  - 无新增 `TODO(V1-gap)` / `TODO(V2-reserved)` / `TODO(V3-reserved)`。
