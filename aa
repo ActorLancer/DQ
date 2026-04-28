@@ -1,0 +1,69 @@
+先看这 3 份入口文档：
+README.md
+scripts/README.md
+docs/04-runbooks/local-startup.md
+
+1. 首次准备
+
+cd /home/luna/Documents/DataB
+pnpm install
+./scripts/check-local-env.sh infra/docker/docker-compose.local.yml infra/docker/.env.local infra/
+docker/.env.local
+
+2. 启动基础栈（数据库/Kafka/Keycloak/MinIO/OpenSearch 等）
+
+make up-local
+./scripts/wait-for-services.sh core
+ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh core
+
+如果要带 mock 支付联调：
+
+make up-mocks
+ENV_FILE=infra/docker/.env.local ./scripts/check-local-stack.sh mocks
+
+3. 初始化数据并跑本地 smoke
+
+make migrate-up
+./scripts/seed-demo.sh
+./scripts/check-demo-seed.sh
+ENV_FILE=infra/docker/.env.local ./scripts/smoke-local.sh
+
+4. 启动业务进程（宿主机）
+终端 A（platform-core，推荐 8094）：
+
+set -a; source infra/docker/.env.local; set +a
+APP_MODE=staging APP_PORT=8094 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo
+run -p platform-core
+
+终端 B（可选 outbox publisher）：
+
+set -a; source infra/docker/.env.local; set +a
+APP_PORT=8098 KAFKA_BROKERS=127.0.0.1:9094 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9094 cargo run -p outbox-
+publisher
+
+健康检查：
+
+curl -fsS http://127.0.0.1:8094/health/live
+curl -fsS http://127.0.0.1:8094/health/ready
+curl -fsS http://127.0.0.1:8098/health/ready
+
+5. 启动前端（可选）
+
+PLATFORM_CORE_BASE_URL=http://127.0.0.1:8094 pnpm --filter @datab/portal-web dev
+PLATFORM_CORE_BASE_URL=http://127.0.0.1:8094 pnpm --filter @datab/console-web dev --hostname 127.0.0.1
+--port 3102
+
+6. 停止 / 清理
+
+- 停止本地栈（推荐）：
+
+make down-local
+
+- 查看日志：
+
+make logs
+
+- 深度清理（会清卷/本地状态，谨慎）：
+
+./scripts/prune-local.sh --dry-run
+./scripts/prune-local.sh --force

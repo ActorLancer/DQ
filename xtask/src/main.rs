@@ -43,12 +43,21 @@ fn run() -> Result<(), String> {
 }
 
 fn workspace_root() -> Result<PathBuf, String> {
-    let manifest_dir =
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|e| format!("env error: {e}"))?);
-    manifest_dir
-        .parent()
-        .map(PathBuf::from)
-        .ok_or_else(|| "cannot determine workspace root".to_string())
+    let mut dir = env::current_dir().map_err(|e| format!("cwd error: {e}"))?;
+    loop {
+        let cargo_toml = dir.join("Cargo.toml");
+        if cargo_toml.is_file() {
+            if let Ok(contents) = std::fs::read_to_string(&cargo_toml) {
+                if contents.contains("[workspace]") {
+                    return Ok(dir);
+                }
+            }
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    Err("cannot determine workspace root".to_string())
 }
 
 fn exec(root: &PathBuf, program: &str, args: &[&str]) -> Result<(), String> {
