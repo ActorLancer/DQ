@@ -24,6 +24,7 @@ dist/
 build/
 test-results/
 *.tsbuildinfo
+pnpm-lock.yaml
 
 # Logs and temp
 *.log
