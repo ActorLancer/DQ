@@ -33,18 +33,18 @@ export default function UsageDistributionChart({ data }: UsageDistributionChartP
         formatter: '{b}: {c} ({d}%)'
       },
       legend: {
-        orient: 'vertical',
-        right: '5%',
-        top: 'center',
+        orient: 'horizontal',
+        left: 'center',
+        bottom: 0,
         textStyle: {
-          fontSize: 12,
+          fontSize: 11,
         }
       },
       series: [
         {
           type: 'pie',
-          radius: ['40%', '70%'],
-          center: ['35%', '50%'],
+          radius: ['44%', '68%'],
+          center: ['50%', '44%'],
           avoidLabelOverlap: false,
           itemStyle: {
             borderRadius: 8,
@@ -58,7 +58,7 @@ export default function UsageDistributionChart({ data }: UsageDistributionChartP
           emphasis: {
             label: {
               show: true,
-              fontSize: 16,
+              fontSize: 14,
               fontWeight: 'bold',
               formatter: '{b}\n{d}%'
             }

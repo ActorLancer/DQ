@@ -1,85 +1,45 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState, type ComponentType } from 'react'
+import { motion } from 'framer-motion'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
-import ApiCallsTrendChart from '@/components/charts/ApiCallsTrendChart'
-import ResponseTimeChart from '@/components/charts/ResponseTimeChart'
-import UsageDistributionChart from '@/components/charts/UsageDistributionChart'
-import { 
-  Activity,
-  TrendingUp,
-  TrendingDown,
-  BarChart3,
-  PieChart,
-  Calendar,
-  Download,
-  Filter
-} from 'lucide-react'
+import BuyerTrafficHeatmapChart from '@/components/charts/BuyerTrafficHeatmapChart'
+import BuyerErrorBreakdownChart from '@/components/charts/BuyerErrorBreakdownChart'
+import BuyerQuotaForecastChart from '@/components/charts/BuyerQuotaForecastChart'
+import BuyerLatencyPercentileChart from '@/components/charts/BuyerLatencyPercentileChart'
+import { Activity, AlertTriangle, Clock3, Download, Gauge, Layers, Sparkles } from 'lucide-react'
 
-interface UsageStats {
-  subscriptionId: string
-  listingTitle: string
-  supplierName: string
-  totalCalls: number
-  successCalls: number
-  failedCalls: number
-  avgResponseTime: number
-  quota: number | null
-  usedQuota: number
+type Period = '7d' | '30d' | '90d'
+
+interface EndpointPerf {
+  endpoint: string
+  p95: number
+  success: number
+  qps: number
+  trend: 'up' | 'down' | 'flat'
 }
 
-const MOCK_USAGE_STATS: UsageStats[] = [
-  {
-    subscriptionId: 'sub_001',
-    listingTitle: '企业工商风险数据',
-    supplierName: '天眼数据科技',
-    totalCalls: 6580,
-    successCalls: 6520,
-    failedCalls: 60,
-    avgResponseTime: 245,
-    quota: 10000,
-    usedQuota: 6580,
-  },
-  {
-    subscriptionId: 'sub_002',
-    listingTitle: '消费者行为分析数据',
-    supplierName: '智慧消费研究院',
-    totalCalls: 12350,
-    successCalls: 12280,
-    failedCalls: 70,
-    avgResponseTime: 180,
-    quota: 50000,
-    usedQuota: 12350,
-  },
-  {
-    subscriptionId: 'sub_003',
-    listingTitle: '物流轨迹实时数据',
-    supplierName: '智运物流数据',
-    totalCalls: 8920,
-    successCalls: 8850,
-    failedCalls: 70,
-    avgResponseTime: 320,
-    quota: null,
-    usedQuota: 8920,
-  },
+const ENDPOINTS: EndpointPerf[] = [
+  { endpoint: '/v1/risk/profile', p95: 312, success: 99.32, qps: 52, trend: 'up' },
+  { endpoint: '/v1/enterprise/search', p95: 278, success: 99.61, qps: 46, trend: 'flat' },
+  { endpoint: '/v1/legal/cases', p95: 348, success: 98.72, qps: 31, trend: 'down' },
+  { endpoint: '/v1/credit/insight', p95: 221, success: 99.85, qps: 23, trend: 'up' },
+  { endpoint: '/v1/person/relation', p95: 401, success: 98.12, qps: 18, trend: 'down' },
 ]
 
 export default function BuyerUsagePage() {
-  const [selectedPeriod, setSelectedPeriod] = useState('30d')
-  const [selectedSubscription, setSelectedSubscription] = useState<string>('all')
+  const [period, setPeriod] = useState<Period>('30d')
   const sessionExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
 
-  const totalCalls = MOCK_USAGE_STATS.reduce((sum, s) => sum + s.totalCalls, 0)
-  const totalSuccess = MOCK_USAGE_STATS.reduce((sum, s) => sum + s.successCalls, 0)
-  const totalFailed = MOCK_USAGE_STATS.reduce((sum, s) => sum + s.failedCalls, 0)
-  const successRate = ((totalSuccess / totalCalls) * 100).toFixed(2)
-  const avgResponseTime = Math.round(
-    MOCK_USAGE_STATS.reduce((sum, s) => sum + s.avgResponseTime, 0) / MOCK_USAGE_STATS.length
-  )
-
-  const filteredStats = selectedSubscription === 'all'
-    ? MOCK_USAGE_STATS
-    : MOCK_USAGE_STATS.filter(s => s.subscriptionId === selectedSubscription)
+  const metrics = useMemo(() => {
+    if (period === '7d') {
+      return { uniqueApis: 23, p95Latency: 286, errBudget: 82, saturation: 64 }
+    }
+    if (period === '90d') {
+      return { uniqueApis: 39, p95Latency: 334, errBudget: 68, saturation: 88 }
+    }
+    return { uniqueApis: 31, p95Latency: 302, errBudget: 76, saturation: 79 }
+  }, [period])
 
   return (
     <>
@@ -91,255 +51,170 @@ export default function BuyerUsagePage() {
         sessionExpiresAt={sessionExpiresAt}
       />
 
-      <div className="p-8">
-        {/* 页面标题 */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">使用分析</h1>
-            <p className="text-gray-600">查看您的 API 调用统计和使用趋势</p>
+      <div className="p-8 space-y-6">
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.24, ease: 'easeOut' }}
+          className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-100 px-7 py-6"
+        >
+          <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'radial-gradient(#64748b .6px, transparent .6px)', backgroundSize: '10px 10px' }} />
+          <div className="relative flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="text-[30px] font-bold tracking-tight text-slate-900">Usage Intelligence Studio</h1>
+              <p className="mt-2 text-[15px] text-slate-600">关注调用结构、错误预算、容量风险与端点性能，不再与仪表盘重复。</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-xl border border-slate-300 bg-white p-1">
+                {(['7d', '30d', '90d'] as const).map((p) => (
+                  <button key={p} onClick={() => setPeriod(p)} className={`px-3 py-1.5 text-sm rounded-lg transition ${period === p ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>{p}</button>
+                ))}
+              </div>
+              <button className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50">
+                <Download className="h-4 w-4" />导出
+              </button>
+            </div>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-            <Download className="w-4 h-4" />
-            <span>导出报告</span>
-          </button>
-        </div>
+        </motion.section>
 
-        {/* 筛选器 */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-          <div className="flex items-center gap-4">
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="7d">近 7 天</option>
-              <option value="30d">近 30 天</option>
-              <option value="90d">近 90 天</option>
-              <option value="1y">近 1 年</option>
-            </select>
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.22 }}
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+        >
+          <MetricCard icon={Layers} label="活跃 API 端点" value={`${metrics.uniqueApis}`} sub="较上周期 +4" tone="slate" />
+          <MetricCard icon={Clock3} label="P95 响应时延" value={`${metrics.p95Latency}ms`} sub="波动区间收敛" tone="blue" />
+          <MetricCard icon={AlertTriangle} label="错误预算剩余" value={`${metrics.errBudget}%`} sub="需重点关注 5xx" tone="amber" />
+          <MetricCard icon={Gauge} label="容量饱和度" value={`${metrics.saturation}%`} sub="下周可能触发预警" tone="rose" />
+        </motion.section>
 
-            <select
-              value={selectedSubscription}
-              onChange={(e) => setSelectedSubscription(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="all">全部订阅</option>
-              {MOCK_USAGE_STATS.map(stat => (
-                <option key={stat.subscriptionId} value={stat.subscriptionId}>
-                  {stat.listingTitle}
-                </option>
+        <section className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+          <motion.article
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08, duration: 0.22 }}
+            className="xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.45)]"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">调用活跃热力图（小时 × 星期）</h2>
+              <Activity className="h-4 w-4 text-slate-400" />
+            </div>
+            <div className="h-[310px]"><BuyerTrafficHeatmapChart /></div>
+          </motion.article>
+
+          <motion.article
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.22 }}
+            className="xl:col-span-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.45)]"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">错误结构与来源</h2>
+              <AlertTriangle className="h-4 w-4 text-slate-400" />
+            </div>
+            <div className="h-[310px]"><BuyerErrorBreakdownChart /></div>
+          </motion.article>
+        </section>
+
+        <section className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12, duration: 0.22 }}
+            className="xl:col-span-5 grid grid-cols-1 gap-5"
+          >
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.45)]">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">配额消耗预测</h2>
+                <Gauge className="h-4 w-4 text-slate-400" />
+              </div>
+              <div className="h-[190px]"><BuyerQuotaForecastChart /></div>
+            </article>
+
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.45)]">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">时延分位结构</h2>
+                <Clock3 className="h-4 w-4 text-slate-400" />
+              </div>
+              <div className="h-[190px]"><BuyerLatencyPercentileChart /></div>
+            </article>
+          </motion.div>
+
+          <motion.article
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.14, duration: 0.22 }}
+            className="xl:col-span-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.45)]"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">端点性能剖析（Top 5）</h2>
+              <Sparkles className="h-4 w-4 text-slate-400" />
+            </div>
+            <div className="space-y-3">
+              {ENDPOINTS.map((ep, i) => (
+                <motion.div
+                  key={ep.endpoint}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.18 + i * 0.03, duration: 0.2 }}
+                  className="rounded-xl border border-slate-200 bg-slate-50/70 p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-900">{ep.endpoint}</p>
+                    <span className={`text-xs font-medium ${ep.trend === 'up' ? 'text-emerald-600' : ep.trend === 'down' ? 'text-rose-600' : 'text-slate-500'}`}>
+                      {ep.trend === 'up' ? '趋势改善' : ep.trend === 'down' ? '趋势下降' : '基本稳定'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <StatPill label="P95" value={`${ep.p95}ms`} />
+                    <StatPill label="成功率" value={`${ep.success}%`} />
+                    <StatPill label="QPS" value={`${ep.qps}`} />
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, Math.round((520 - ep.p95) / 5.2))}%` }}
+                      transition={{ delay: 0.2 + i * 0.04, duration: 0.45, ease: 'easeOut' }}
+                      className="h-full rounded-full bg-slate-900"
+                    />
+                  </div>
+                </motion.div>
               ))}
-            </select>
-
-            <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-              <Filter className="w-4 h-4" />
-              <span>更多筛选</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 统计卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
-                <Activity className="w-6 h-6 text-blue-600" />
-              </div>
-              <div className="flex items-center gap-1 text-sm font-medium text-green-600">
-                <TrendingUp className="w-4 h-4" />
-                <span>+18%</span>
-              </div>
             </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">{totalCalls.toLocaleString()}</div>
-            <div className="text-sm text-gray-600">总调用次数</div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-green-600" />
-              </div>
-              <div className="flex items-center gap-1 text-sm font-medium text-green-600">
-                <TrendingUp className="w-4 h-4" />
-                <span>+2%</span>
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">{successRate}%</div>
-            <div className="text-sm text-gray-600">成功率</div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center">
-                <TrendingDown className="w-6 h-6 text-red-600" />
-              </div>
-              <div className="flex items-center gap-1 text-sm font-medium text-red-600">
-                <TrendingDown className="w-4 h-4" />
-                <span>-5%</span>
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">{totalFailed}</div>
-            <div className="text-sm text-gray-600">失败次数</div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-purple-50 rounded-lg flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-purple-600" />
-              </div>
-              <div className="flex items-center gap-1 text-sm font-medium text-green-600">
-                <TrendingUp className="w-4 h-4" />
-                <span>-12ms</span>
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">{avgResponseTime}ms</div>
-            <div className="text-sm text-gray-600">平均响应时间</div>
-          </div>
-        </div>
-
-        {/* 图表区域 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* 调用趋势图 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-gray-900">调用趋势</h2>
-              <Calendar className="w-5 h-5 text-gray-400" />
-            </div>
-            <div className="h-80">
-              <ApiCallsTrendChart />
-            </div>
-          </div>
-
-          {/* 响应时间分布 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-gray-900">响应时间分布</h2>
-              <Activity className="w-5 h-5 text-gray-400" />
-            </div>
-            <div className="h-80">
-              <ResponseTimeChart />
-            </div>
-          </div>
-        </div>
-
-        {/* 按订阅统计 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 订阅使用排行 */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6">订阅使用排行</h2>
-            <div className="space-y-4">
-              {filteredStats.map((stat, index) => {
-                const successRate = ((stat.successCalls / stat.totalCalls) * 100).toFixed(1)
-                const quotaPercentage = stat.quota ? Math.round((stat.usedQuota / stat.quota) * 100) : null
-
-                return (
-                  <div key={stat.subscriptionId} className="p-4 border border-gray-200 rounded-lg">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="text-2xl font-bold text-gray-400">#{index + 1}</span>
-                          <h3 className="font-bold text-gray-900">{stat.listingTitle}</h3>
-                        </div>
-                        <p className="text-sm text-gray-600">{stat.supplierName}</p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-gray-900">{stat.totalCalls.toLocaleString()}</div>
-                        <div className="text-xs text-gray-500">总调用</div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-4 mb-3">
-                      <div>
-                        <div className="text-xs text-gray-500 mb-1">成功</div>
-                        <div className="text-sm font-bold text-green-600">{stat.successCalls.toLocaleString()}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-1">失败</div>
-                        <div className="text-sm font-bold text-red-600">{stat.failedCalls}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-1">成功率</div>
-                        <div className="text-sm font-bold text-gray-900">{successRate}%</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-1">响应时间</div>
-                        <div className="text-sm font-bold text-gray-900">{stat.avgResponseTime}ms</div>
-                      </div>
-                    </div>
-
-                    {stat.quota && (
-                      <div>
-                        <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                          <span>配额使用</span>
-                          <span>{stat.usedQuota.toLocaleString()} / {stat.quota.toLocaleString()} ({quotaPercentage}%)</span>
-                        </div>
-                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all ${
-                              quotaPercentage! >= 80 ? 'bg-red-500' : quotaPercentage! >= 60 ? 'bg-yellow-500' : 'bg-green-500'
-                            }`}
-                            style={{ width: `${quotaPercentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 调用分布 */}
-          <div className="lg:col-span-1 bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-gray-900">调用分布</h2>
-              <PieChart className="w-5 h-5 text-gray-400" />
-            </div>
-            <div className="h-64">
-              <UsageDistributionChart />
-            </div>
-
-            {/* 图例 */}
-            <div className="space-y-3 mt-6">
-              {filteredStats.map((stat, index) => {
-                const percentage = ((stat.totalCalls / totalCalls) * 100).toFixed(1)
-                const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-yellow-500', 'bg-red-500']
-                
-                return (
-                  <div key={stat.subscriptionId} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 flex-1">
-                      <div className={`w-3 h-3 rounded-full ${colors[index % colors.length]}`} />
-                      <span className="text-sm text-gray-900 truncate">{stat.listingTitle}</span>
-                    </div>
-                    <span className="text-sm font-bold text-gray-900 ml-2">{percentage}%</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* 错误分析 */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-6">错误分析</h2>
-          <div className="h-64 flex items-center justify-center text-gray-400">
-            <div className="text-center">
-              <TrendingDown className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-sm mb-2">错误分析图表待集成</p>
-              <p className="text-xs text-gray-500">建议使用 ECharts 或 Recharts</p>
-              <div className="mt-4 text-xs text-left bg-gray-50 p-4 rounded-lg max-w-md mx-auto">
-                <p className="font-medium mb-2">图表应展示:</p>
-                <ul className="space-y-1 text-gray-600">
-                  <li>• 错误类型分布（4xx, 5xx, 超时等）</li>
-                  <li>• 错误趋势（按时间）</li>
-                  <li>• Top 错误码排行</li>
-                  <li>• 错误率变化趋势</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
+          </motion.article>
+        </section>
       </div>
     </>
+  )
+}
+
+function MetricCard({ icon: Icon, label, value, sub, tone }: { icon: ComponentType<{ className?: string }>; label: string; value: string; sub: string; tone: 'slate' | 'blue' | 'amber' | 'rose' }) {
+  const toneCls = tone === 'slate'
+    ? 'bg-slate-50 text-slate-700'
+    : tone === 'blue'
+      ? 'bg-blue-50 text-blue-700'
+      : tone === 'amber'
+        ? 'bg-amber-50 text-amber-700'
+        : 'bg-rose-50 text-rose-700'
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_-28px_rgba(15,23,42,0.45)]">
+      <div className="mb-3 flex items-center justify-between">
+        <div className={`inline-flex h-11 w-11 items-center justify-center rounded-lg ${toneCls}`}><Icon className="h-5 w-5" /></div>
+      </div>
+      <p className="text-sm text-slate-600">{label}</p>
+      <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-slate-500">{sub}</p>
+    </article>
+  )
+}
+
+function StatPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+      <p className="text-[11px] text-slate-500">{label}</p>
+      <p className="text-sm font-semibold text-slate-900">{value}</p>
+    </div>
   )
 }

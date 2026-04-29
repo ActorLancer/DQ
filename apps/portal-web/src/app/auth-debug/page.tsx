@@ -60,8 +60,8 @@ export default function AuthDebugPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2">
             <h2 className="text-xl font-bold text-gray-900 mb-4">角色检查（汇总）</h2>
             <div className="space-y-2">
-              <p className={roleChecks.buyer ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>hasRole('buyer'): {roleChecks.buyer ? '✓ 有权限' : '✗ 无权限'}</p>
-              <p className={roleChecks.seller ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>hasRole('seller'): {roleChecks.seller ? '✓ 有权限' : '✗ 无权限'}</p>
+              <p className={roleChecks.buyer ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>hasRole(&apos;buyer&apos;): {roleChecks.buyer ? '✓ 有权限' : '✗ 无权限'}</p>
+              <p className={roleChecks.seller ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>hasRole(&apos;seller&apos;): {roleChecks.seller ? '✓ 有权限' : '✗ 无权限'}</p>
               <p className={roleChecks.adminRole ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>admin session: {roleChecks.adminRole ? '✓ 已登录' : '✗ 未登录'}</p>
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
   Users, 
   DollarSign, 
   BarChart3,
+  Bell,
   FileCheck,
   Settings,
   LogOut,
@@ -39,6 +40,7 @@ const SELLER_NAV: NavItem[] = [
   { id: 'customers', label: '订阅客户', icon: Users, href: '/console/seller/customers' },
   { id: 'revenue', label: '收入看板', icon: DollarSign, href: '/console/seller/revenue' },
   { id: 'analytics', label: '调用看板', icon: BarChart3, href: '/console/seller/analytics' },
+  { id: 'notifications', label: '事件通知', icon: Bell, href: '/console/seller/notifications' },
   { id: 'contracts', label: '合同发票', icon: FileCheck, href: '/console/seller/contracts' },
   { id: 'settings', label: '设置', icon: Settings, href: '/console/seller/settings' },
 ]
@@ -50,6 +52,7 @@ const BUYER_NAV: NavItem[] = [
   { id: 'orders', label: '订单账单', icon: DollarSign, href: '/console/buyer/orders' },
   { id: 'api-keys', label: 'API 密钥', icon: FileCheck, href: '/console/buyer/api-keys' },
   { id: 'usage', label: '使用分析', icon: BarChart3, href: '/console/buyer/usage' },
+  { id: 'notifications', label: '事件通知', icon: Bell, href: '/console/buyer/notifications' },
   { id: 'settings', label: '设置', icon: Settings, href: '/console/buyer/settings' },
 ]
 
@@ -58,6 +61,7 @@ const ADMIN_NAV: NavItem[] = [
   { id: 'subjects', label: '主体审核', icon: Users, href: '/admin/console/subjects', badge: 5 },
   { id: 'listings', label: '商品审核', icon: Package, href: '/admin/console/listings', badge: 8 },
   { id: 'audit', label: '风险审计', icon: FileCheck, href: '/admin/console/audit' },
+  { id: 'notifications', label: '事件通知', icon: Bell, href: '/admin/console/notifications' },
   { id: 'consistency', label: '一致性检查', icon: BarChart3, href: '/admin/console/consistency' },
   { id: 'settings', label: '设置', icon: Settings, href: '/admin/console/settings' },
 ]
@@ -132,7 +136,10 @@ export default function ConsoleLayout({ children, role }: ConsoleLayoutProps) {
           <nav className="p-4 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+              const isDashboard = item.id === 'dashboard'
+              const isActive = isDashboard
+                ? pathname === item.href
+                : pathname === item.href || pathname.startsWith(item.href + '/')
               
               return (
                 <Link

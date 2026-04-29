@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, LogOut, ShieldCheck, ArrowLeftRight } from 'lucide-react'
 import { useAuthStore } from '@/store/useAuthStore'
 
-export default function RoleAccessPage() {
+function RoleAccessPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, logout, setCurrentRole } = useAuthStore()
@@ -82,5 +83,13 @@ export default function RoleAccessPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function RoleAccessPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+      <RoleAccessPageContent />
+    </Suspense>
   )
 }

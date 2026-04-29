@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Shield,
@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useAdminAuthStore } from '@/store/useAdminAuthStore'
 
-export default function AdminLoginPage() {
+function AdminLoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { login } = useAdminAuthStore()
@@ -132,5 +132,13 @@ export default function AdminLoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-900" />}>
+      <AdminLoginPageContent />
+    </Suspense>
   )
 }
