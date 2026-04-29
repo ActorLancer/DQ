@@ -1,50 +1,157 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --page: #edf3f2;
-  --panel-muted: rgba(18, 41, 52, 0.04);
-  --ink-strong: #102733;
-  --ink-soft: #416170;
-  --ink-subtle: #688593;
-  --accent-soft: rgba(13, 110, 138, 0.12);
-  --accent-strong: #0f6b89;
-  --accent-stronger: #0b5770;
-  --accent-shadow: rgba(15, 107, 137, 0.28);
-  --warning-soft: rgba(248, 228, 171, 0.36);
-  --warning-strong: rgba(231, 182, 56, 0.55);
-  --warning-ink: #7a5200;
-  --warning-ring: rgba(196, 148, 31, 0.28);
-  --danger-soft: rgba(255, 228, 228, 0.7);
-  --danger-ink: #9a3838;
-  --danger-ring: rgba(185, 74, 74, 0.22);
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+  }
+
+  * {
+    @apply border-gray-200;
+  }
+  
+  body {
+    @apply bg-white text-gray-900 antialiased;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
 }
 
-@theme inline {
-  --font-sans: var(--font-plex-sans);
-  --font-mono: var(--font-plex-mono);
+@layer components {
+  /* 克制的动画 */
+  .animate-fade-in {
+    animation: fadeIn 150ms ease-in;
+  }
+
+  .animate-slide-in {
+    animation: slideIn 250ms ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  /* 商品卡片悬浮效果 */
+  .product-card {
+    @apply transition-shadow duration-200;
+  }
+
+  .product-card:hover {
+    @apply shadow-lg;
+  }
+
+  /* 按钮 active 状态 */
+  .btn-primary {
+    @apply bg-primary-600 text-white px-6 py-3 rounded-lg font-medium transition-colors;
+  }
+
+  .btn-primary:hover {
+    @apply bg-primary-700;
+  }
+
+  .btn-primary:active {
+    @apply bg-primary-800;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-primary-600 border-2 border-primary-600 px-6 py-3 rounded-lg font-medium transition-colors;
+  }
+
+  .btn-secondary:hover {
+    @apply bg-primary-50;
+  }
+
+  .btn-secondary:active {
+    @apply bg-primary-100;
+  }
+
+  /* 状态标签 */
+  .status-tag {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .status-success {
+    @apply bg-green-100 text-green-800;
+  }
+
+  .status-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+
+  .status-error {
+    @apply bg-red-100 text-red-800;
+  }
+
+  .status-info {
+    @apply bg-blue-100 text-blue-800;
+  }
+
+  /* 链上标记 */
+  .chain-badge {
+    @apply inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-success-600 text-white;
+  }
+
+  /* 骨架屏 */
+  .skeleton {
+    @apply animate-pulse bg-gray-200 rounded;
+  }
+
+  /* 等宽字体用于 Hash 显示 */
+  .font-hash {
+    @apply font-mono text-sm;
+  }
+
+  /* 容器 */
+  .container-custom {
+    @apply max-w-8xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* 卡片 */
+  .card {
+    @apply bg-white rounded-lg border border-gray-200 p-6;
+  }
+
+  .card-dark {
+    @apply bg-primary-900 text-white rounded-lg p-6;
+  }
+
+  /* 输入框 */
+  .input {
+    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  }
+
+  /* 标签 */
+  .tag {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800;
+  }
+
+  .tag-primary {
+    @apply bg-primary-100 text-primary-800;
+  }
+
+  /* 分隔线 */
+  .divider {
+    @apply border-t border-gray-200 my-6;
+  }
 }
 
-body {
-  background:
-    radial-gradient(circle at top left, rgba(15, 107, 137, 0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(8, 138, 104, 0.1), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(237, 243, 242, 1));
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(16, 39, 51, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(16, 39, 51, 0.035) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(circle at center, black 24%, transparent 82%);
-  pointer-events: none;
-  z-index: -1;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 }
