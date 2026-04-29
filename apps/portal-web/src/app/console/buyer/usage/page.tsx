@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import dynamic from 'next/dynamic'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
+import ApiCallsTrendChart from '@/components/charts/ApiCallsTrendChart'
+import ResponseTimeChart from '@/components/charts/ResponseTimeChart'
+import UsageDistributionChart from '@/components/charts/UsageDistributionChart'
 import { 
   Activity,
   TrendingUp,
@@ -13,11 +15,6 @@ import {
   Download,
   Filter
 } from 'lucide-react'
-
-// 动态导入图表组件（避免 SSR 问题）
-const ApiCallsTrendChart = dynamic(() => import('@/components/charts/ApiCallsTrendChart'), { ssr: false })
-const ResponseTimeChart = dynamic(() => import('@/components/charts/ResponseTimeChart'), { ssr: false })
-const UsageDistributionChart = dynamic(() => import('@/components/charts/UsageDistributionChart'), { ssr: false })
 
 interface UsageStats {
   subscriptionId: string

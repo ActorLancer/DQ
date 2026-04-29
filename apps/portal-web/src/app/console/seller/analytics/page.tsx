@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
+import SellerApiTrendChart from '@/components/charts/SellerApiTrendChart'
+import SellerStatusCodeChart from '@/components/charts/SellerStatusCodeChart'
+import SellerLatencyDistributionChart from '@/components/charts/SellerLatencyDistributionChart'
 import { 
   Activity,
   TrendingUp,
@@ -9,11 +12,8 @@ import {
   Zap,
   AlertTriangle,
   CheckCircle,
-  Clock,
   Download,
   Filter,
-  BarChart3,
-  PieChart
 } from 'lucide-react'
 
 interface ApiCall {
@@ -243,13 +243,8 @@ export default function SellerAnalyticsPage() {
               </div>
             </div>
 
-            {/* 图表占位 */}
-            <div className="h-80 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg">
-              <div className="text-center">
-                <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">调用趋势图表</p>
-                <p className="text-sm text-gray-500">集成 ECharts 或 Recharts 后显示</p>
-              </div>
+            <div className="h-80">
+              <SellerApiTrendChart />
             </div>
 
             {/* 图例 */}
@@ -273,12 +268,8 @@ export default function SellerAnalyticsPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-6">状态码分布</h2>
 
-            {/* 饼图占位 */}
-            <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg mb-6">
-              <div className="text-center">
-                <PieChart className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">饼图</p>
-              </div>
+            <div className="h-64 mb-6">
+              <SellerStatusCodeChart />
             </div>
 
             {/* 图例 */}
@@ -312,13 +303,8 @@ export default function SellerAnalyticsPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-900 mb-6">响应时间分布</h2>
 
-          {/* 图表占位 */}
-          <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg">
-            <div className="text-center">
-              <Clock className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-600 mb-2">响应时间分布图</p>
-              <p className="text-sm text-gray-500">显示 P50、P90、P95、P99 响应时间</p>
-            </div>
+          <div className="h-64">
+            <SellerLatencyDistributionChart />
           </div>
 
           {/* 统计数据 */}

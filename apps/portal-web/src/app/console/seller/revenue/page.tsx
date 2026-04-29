@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import SellerRevenueTrendChart from '@/components/charts/SellerRevenueTrendChart'
+import SellerRevenueCompositionChart from '@/components/charts/SellerRevenueCompositionChart'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
 import { 
   DollarSign,
@@ -12,7 +14,6 @@ import {
   Package,
   Users,
   Activity,
-  BarChart3
 } from 'lucide-react'
 
 interface RevenueRecord {
@@ -243,13 +244,8 @@ export default function SellerRevenuePage() {
               </div>
             </div>
 
-            {/* 图表占位 */}
-            <div className="h-80 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg">
-              <div className="text-center">
-                <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 mb-2">收入趋势图表</p>
-                <p className="text-sm text-gray-500">集成 ECharts 或 Recharts 后显示</p>
-              </div>
+            <div className="h-80">
+              <SellerRevenueTrendChart />
             </div>
 
             {/* 图例 */}
@@ -273,12 +269,8 @@ export default function SellerRevenuePage() {
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-6">收入构成</h2>
 
-            {/* 饼图占位 */}
-            <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg mb-6">
-              <div className="text-center">
-                <Activity className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">饼图</p>
-              </div>
+            <div className="h-64 mb-6">
+              <SellerRevenueCompositionChart />
             </div>
 
             {/* 图例 */}

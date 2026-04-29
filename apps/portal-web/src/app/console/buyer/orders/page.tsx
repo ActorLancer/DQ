@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
 import { 
   Search, 
@@ -32,6 +33,14 @@ interface Order {
   paidAt?: string
   invoiceStatus: 'NOT_REQUESTED' | 'REQUESTED' | 'ISSUED'
   invoiceNumber?: string
+}
+
+interface LinkedApiKey {
+  id: string
+  orderId: string
+  name: string
+  status: 'ACTIVE' | 'DISABLED'
+  createdAt: string
 }
 
 const MOCK_ORDERS: Order[] = [
@@ -112,6 +121,12 @@ const MOCK_ORDERS: Order[] = [
   },
 ]
 
+const MOCK_LINKED_API_KEYS: LinkedApiKey[] = [
+  { id: 'key_001', orderId: 'order_20260428_001', name: '生产环境 - 企业风险数据', status: 'ACTIVE', createdAt: '2026-03-28 10:00:00' },
+  { id: 'key_002', orderId: 'order_20260428_001', name: '测试环境 - 企业风险数据', status: 'ACTIVE', createdAt: '2026-03-28 10:05:00' },
+  { id: 'key_003', orderId: 'order_20260401_002', name: '生产环境 - 消费行为数据', status: 'ACTIVE', createdAt: '2026-01-01 09:00:00' },
+]
+
 const ORDER_STATUS_CONFIG = {
   PENDING_PAYMENT: { label: '待支付', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
   PAID: { label: '已支付', color: 'bg-green-100 text-green-800', icon: CheckCircle },
@@ -153,6 +168,10 @@ export default function BuyerOrdersPage() {
   const pendingPayment = MOCK_ORDERS
     .filter(o => o.status === 'PENDING_PAYMENT')
     .reduce((sum, o) => sum + o.amount, 0)
+
+  const selectedOrderKeys = selectedOrder
+    ? MOCK_LINKED_API_KEYS.filter((item) => item.orderId === selectedOrder.orderId)
+    : []
 
   return (
     <>
@@ -434,6 +453,33 @@ export default function BuyerOrdersPage() {
                         <code className="text-sm font-mono text-green-900 font-medium">
                           {selectedOrder.invoiceNumber}
                         </code>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedOrder.status === 'PAID' && (
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">关联 API Key</div>
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="text-xs text-blue-800 mb-2">已绑定 {selectedOrderKeys.length} 个密钥</div>
+                        {selectedOrderKeys.length > 0 ? (
+                          <div className="space-y-1.5 mb-3">
+                            {selectedOrderKeys.map((key) => (
+                              <div key={key.id} className="text-xs text-blue-900 flex items-center justify-between">
+                                <span>{key.name}</span>
+                                <span>{key.status === 'ACTIVE' ? '活跃' : '禁用'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-blue-900 mb-3">当前订单尚未创建 API Key</div>
+                        )}
+                        <Link
+                          href={`/console/buyer/api-keys?orderId=${selectedOrder.orderId}`}
+                          className="text-xs font-medium text-primary-700 hover:text-primary-800"
+                        >
+                          前往 API 密钥管理 →
+                        </Link>
                       </div>
                     </div>
                   )}

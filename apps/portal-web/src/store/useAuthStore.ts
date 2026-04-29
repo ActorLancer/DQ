@@ -69,7 +69,15 @@ export const useAuthStore = create<AuthState>()(
       hasPermission: (permission: string) => {
         const { user } = get()
         if (!user) return false
-        return user.permissions.includes(permission)
+        return user.permissions.some((ownedPermission) => {
+          if (ownedPermission === permission) return true
+
+          const ownedParts = ownedPermission.split(':')
+          const requiredParts = permission.split(':')
+          if (ownedParts.length !== requiredParts.length) return false
+
+          return ownedParts.every((part, idx) => part === '*' || part === requiredParts[idx])
+        })
       },
 
       hasRole: (role: UserRole) => {
