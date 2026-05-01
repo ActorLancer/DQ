@@ -46,7 +46,7 @@ export default function AlertFeed({ items }: { items: AlertItem[] }) {
             <Link
               key={item.id}
               href={item.href}
-              className={`group block cursor-pointer rounded-xl border p-3 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${cls}`}
+              className={`group block cursor-pointer rounded-xl border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${cls}`}
             >
               {content}
               <div className="mt-2 text-right text-xs text-primary-700">查看通知</div>
@@ -55,7 +55,7 @@ export default function AlertFeed({ items }: { items: AlertItem[] }) {
         }
 
         return (
-          <div key={item.id} className={`rounded-xl border p-3 ${cls}`}>
+          <div key={item.id} className={`rounded-xl border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${cls}`}>
             {content}
           </div>
         )

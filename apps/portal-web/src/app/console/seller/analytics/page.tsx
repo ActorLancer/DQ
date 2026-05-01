@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
 import SellerApiTrendChart from '@/components/charts/SellerApiTrendChart'
 import SellerStatusCodeChart from '@/components/charts/SellerStatusCodeChart'
@@ -13,78 +14,10 @@ import {
   AlertTriangle,
   CheckCircle,
   Download,
+  ExternalLink,
   Filter,
 } from 'lucide-react'
-
-interface ApiCall {
-  id: string
-  timestamp: string
-  customer: string
-  listing: string
-  endpoint: string
-  method: string
-  statusCode: number
-  responseTime: number
-  success: boolean
-}
-
-const MOCK_CALLS: ApiCall[] = [
-  {
-    id: 'call_001',
-    timestamp: '2026-04-29 15:45:23',
-    customer: '某某金融科技',
-    listing: '企业工商风险数据',
-    endpoint: '/api/v1/company/risk',
-    method: 'GET',
-    statusCode: 200,
-    responseTime: 95,
-    success: true,
-  },
-  {
-    id: 'call_002',
-    timestamp: '2026-04-29 15:44:18',
-    customer: '智慧物流数据中心',
-    listing: '物流轨迹实时数据',
-    endpoint: '/api/v1/logistics/track',
-    method: 'POST',
-    statusCode: 200,
-    responseTime: 120,
-    success: true,
-  },
-  {
-    id: 'call_003',
-    timestamp: '2026-04-29 15:43:05',
-    customer: '某某数据分析公司',
-    listing: '企业工商风险数据',
-    endpoint: '/api/v1/company/info',
-    method: 'GET',
-    statusCode: 500,
-    responseTime: 3500,
-    success: false,
-  },
-  {
-    id: 'call_004',
-    timestamp: '2026-04-29 15:42:30',
-    customer: '某某金融科技',
-    listing: '金融市场行情数据',
-    endpoint: '/api/v1/market/quote',
-    method: 'GET',
-    statusCode: 200,
-    responseTime: 85,
-    success: true,
-  },
-  {
-    id: 'call_005',
-    timestamp: '2026-04-29 15:41:15',
-    customer: '智慧物流数据中心',
-    listing: '企业工商风险数据',
-    endpoint: '/api/v1/company/risk',
-    method: 'GET',
-    statusCode: 429,
-    responseTime: 50,
-    success: false,
-  },
-]
+import { SELLER_API_CALLS } from '@/lib/seller-analytics-data'
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'bg-blue-100 text-blue-800',
@@ -94,6 +27,7 @@ const METHOD_COLORS: Record<string, string> = {
 }
 
 export default function SellerAnalyticsPage() {
+  const router = useRouter()
   const [selectedPeriod, setSelectedPeriod] = useState<string>('24hours')
   const sessionExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
 
@@ -335,7 +269,10 @@ export default function SellerAnalyticsPage() {
         {/* 最近调用记录 */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900">最近调用记录</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">最近调用记录</h2>
+              <span className="text-xs text-gray-500">双击行可查看请求详情</span>
+            </div>
           </div>
 
           <table className="w-full">
@@ -349,11 +286,12 @@ export default function SellerAnalyticsPage() {
                 <th className="text-center py-4 px-6 text-sm font-medium text-gray-700">状态码</th>
                 <th className="text-right py-4 px-6 text-sm font-medium text-gray-700">响应时间</th>
                 <th className="text-center py-4 px-6 text-sm font-medium text-gray-700">结果</th>
+                <th className="text-right py-4 px-6 text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {MOCK_CALLS.map((call) => (
-                <tr key={call.id} className="hover:bg-gray-50">
+              {SELLER_API_CALLS.map((call) => (
+                <tr key={call.id} className="hover:bg-gray-50 cursor-pointer" onDoubleClick={() => router.push(`/console/seller/analytics/calls/${call.id}`)}>
                   <td className="py-4 px-6">
                     <div className="text-xs text-gray-900 font-mono">{call.timestamp}</div>
                   </td>
@@ -398,6 +336,12 @@ export default function SellerAnalyticsPage() {
                       <AlertTriangle className="w-5 h-5 text-red-600 mx-auto" />
                     )}
                   </td>
+                  <td className="py-4 px-6 text-right">
+                    <button onClick={() => router.push(`/console/seller/analytics/calls/${call.id}`)} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md border border-primary-300 text-primary-700 hover:bg-primary-50">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      详情
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -406,7 +350,7 @@ export default function SellerAnalyticsPage() {
           {/* 分页 */}
           <div className="p-4 border-t border-gray-200 flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              显示最近 {MOCK_CALLS.length} 条调用记录
+              显示最近 {SELLER_API_CALLS.length} 条调用记录
             </div>
             <button className="text-sm text-primary-600 hover:text-primary-700 font-medium">
               查看更多 →

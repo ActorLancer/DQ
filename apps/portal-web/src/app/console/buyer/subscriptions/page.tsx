@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
 import InlineExpandableList from '@/components/console/InlineExpandableList'
 import { QueryToolbar, PaginationBar } from '@/components/console/QueryToolbar'
+import ConsoleListPageShell from '@/components/console/ConsoleListPageShell'
 import { Filter, CheckCircle, Clock, AlertCircle, XCircle, KeyRound, Activity, RefreshCw, Shield, ArrowUpDown, Layers } from 'lucide-react'
 import { MOCK_SUBSCRIPTIONS, SUB_STATUS_CONFIG, type Subscription } from '@/lib/buyer-subscriptions-data'
 
@@ -82,10 +83,10 @@ export default function BuyerSubscriptionsPage() {
   return (
     <>
       <SessionIdentityBar subjectName="某某科技有限公司" roleName="买家管理员" tenantId="tenant_buyer_001" scope="buyer:subscriptions:read" sessionExpiresAt={sessionExpiresAt} />
-      <div className="p-8">
-        <div className="mb-8"><h1 className="text-3xl font-bold text-gray-900 mb-2">我的订阅</h1><p className="text-gray-600">管理数据订阅、配额、授权与调用使用情况</p></div>
-
-        <QueryToolbar
+      <ConsoleListPageShell
+        title="我的订阅"
+        subtitle="管理数据订阅、配额、授权与调用使用情况"
+        toolbar={<QueryToolbar
           searchValue={searchKeyword}
           onSearchChange={setSearchKeyword}
           searchPlaceholder="搜索商品、供应商、订阅ID..."
@@ -100,9 +101,8 @@ export default function BuyerSubscriptionsPage() {
             </div>
           }
           stats={<><span className="inline-flex items-center gap-1"><Filter className="w-4 h-4" />结果 {filteredSubscriptions.length}</span><span className="inline-flex items-center gap-1"><Layers className="w-4 h-4" />分组 {groupedSubscriptions.length}</span><span className="inline-flex items-center gap-1"><ArrowUpDown className="w-4 h-4" />排序 {sortBy === 'recent_call' ? '最近调用' : sortBy === 'quota_usage' ? '配额使用率' : '总调用量'}</span></>}
-        />
-
-        <div className="space-y-5">
+        />}
+        content={<>
           {groupedSubscriptions.map((group) => (
             <section key={group.label}>
               {groupBy !== 'none' && <div className="mb-2 text-sm font-semibold text-gray-700">{group.label} <span className="text-gray-400 font-normal">({group.items.length})</span></div>}
@@ -141,10 +141,9 @@ export default function BuyerSubscriptionsPage() {
               />
             </section>
           ))}
-        </div>
-
-        <PaginationBar page={page} pageSize={pageSize} total={filteredSubscriptions.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
-      </div>
+        </>}
+        pagination={<PaginationBar page={page} pageSize={pageSize} total={filteredSubscriptions.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+      />
     </>
   )
 }

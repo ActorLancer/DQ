@@ -1,4 +1,5 @@
 import { LucideIcon, TrendingUp } from 'lucide-react'
+import MetricCountUp from './MetricCountUp'
 
 export default function KpiCard({
   label,
@@ -23,9 +24,9 @@ export default function KpiCard({
   }
 
   return (
-    <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <article className="group rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="mb-4 flex items-start justify-between">
-        <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border ${toneMap[tone] || toneMap.blue}`}>
+        <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-transform duration-200 group-hover:scale-105 ${toneMap[tone] || toneMap.blue}`}>
           <Icon className="h-5 w-5" />
         </span>
         {delta && (
@@ -35,8 +36,8 @@ export default function KpiCard({
           </span>
         )}
       </div>
-      <div className="mb-1 text-sm text-gray-600">{label}</div>
-      <div className="text-2xl font-semibold text-gray-900">{value}</div>
+      <div className="mb-1 text-sm font-medium text-gray-600">{label}</div>
+      <div className="text-[30px] leading-9 font-semibold tracking-tight text-gray-900"><MetricCountUp value={value} /></div>
     </article>
   )
 }

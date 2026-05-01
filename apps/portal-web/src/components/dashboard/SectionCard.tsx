@@ -12,9 +12,9 @@ export default function SectionCard({
   className?: string
 }) {
   return (
-    <section className={`rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${className}`}>
+    <section className={`rounded-2xl border border-gray-200/90 bg-white/95 p-5 shadow-sm backdrop-blur-[1px] transition-all duration-200 hover:shadow-md ${className}`}>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-gray-900">{title}</h2>
         {right}
       </div>
       {children}

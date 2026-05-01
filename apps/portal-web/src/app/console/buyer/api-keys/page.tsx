@@ -6,6 +6,7 @@ import Link from 'next/link'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
 import PermissionGate from '@/components/auth/PermissionGate'
 import { QueryToolbar, PaginationBar } from '@/components/console/QueryToolbar'
+import ConsoleListPageShell from '@/components/console/ConsoleListPageShell'
 import { Plus, Copy, RotateCw, Trash2, CheckCircle, XCircle, AlertCircle, Shield, Filter, Layers, ArrowUpDown } from 'lucide-react'
 import { ApiKey, PAID_ORDERS } from '@/lib/buyer-api-keys-data'
 import { bootstrapBuyerApiKeys, deleteBuyerApiKey, disableBuyerApiKey, enableBuyerApiKey, getBuyerApiKeys, onBuyerApiKeysUpdated, rotateBuyerApiKey, saveBuyerApiKeys } from '@/lib/buyer-api-keys-storage'
@@ -130,21 +131,20 @@ export default function BuyerApiKeysPage() {
   return (
     <>
       <SessionIdentityBar subjectName="某某科技有限公司" roleName="买家管理员" tenantId="tenant_buyer_001" scope="buyer:api-keys:write" sessionExpiresAt={sessionExpiresAt} />
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-8"><div><h1 className="text-3xl font-bold text-gray-900 mb-2">API 密钥管理</h1><p className="text-gray-600">支持按订单、状态、调用活跃度筛选与分组管理</p></div><PermissionGate requiredPermission="buyer:api-keys:write"><button onClick={() => setShowCreateModal(true)} disabled={paidOrders.length === 0} className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50"><Plus className="w-5 h-5" /><span>创建 API Key</span></button></PermissionGate></div>
-
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 mb-6"><div className="flex gap-4"><Shield className="w-6 h-6 text-yellow-600 flex-shrink-0" /><div><h3 className="font-bold text-yellow-900 mb-2">安全提示</h3><ul className="text-sm text-yellow-800 space-y-1"><li>• API Key 必须绑定已支付订单，自动继承订单可用范围</li><li>• 创建后仅显示一次，请妥善保存</li><li>• 建议定期轮换并配置 IP 白名单</li><li>• 轮换、复制、禁用、删除均记录审计日志</li></ul></div></div></div>
-
-        <QueryToolbar
+      <ConsoleListPageShell
+        title="API 密钥管理"
+        subtitle="支持按订单、状态、调用活跃度筛选与分组管理"
+        headerAction={<PermissionGate requiredPermission="buyer:api-keys:write"><button onClick={() => setShowCreateModal(true)} disabled={paidOrders.length === 0} className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50"><Plus className="w-5 h-5" /><span>创建 API Key</span></button></PermissionGate>}
+        summaryCards={<div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6"><div className="flex gap-4"><Shield className="w-6 h-6 text-yellow-600 flex-shrink-0" /><div><h3 className="font-bold text-yellow-900 mb-2">安全提示</h3><ul className="text-sm text-yellow-800 space-y-1"><li>• API Key 必须绑定已支付订单，自动继承订单可用范围</li><li>• 创建后仅显示一次，请妥善保存</li><li>• 建议定期轮换并配置 IP 白名单</li><li>• 轮换、复制、禁用、删除均记录审计日志</li></ul></div></div></div>}
+        toolbar={<QueryToolbar
           searchValue={searchKeyword}
           onSearchChange={setSearchKeyword}
           searchPlaceholder="搜索名称、订单号、数据商品..."
           onReset={() => { setSearchKeyword(''); setSelectedStatus('all'); setSelectedOrderId('all'); setGroupBy('none'); setSortBy('created_desc'); setPage(1); setPageSize(10) }}
           controls={<div className="grid grid-cols-1 md:grid-cols-5 gap-3"><select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value as any)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="all">全部状态</option><option value="ACTIVE">活跃</option><option value="DISABLED">已禁用</option><option value="EXPIRED">已过期</option></select><select value={selectedOrderId} onChange={(e) => setSelectedOrderId(e.target.value)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="all">全部订单</option>{paidOrders.map((o) => <option key={o.orderId} value={o.orderId}>{o.orderId}</option>)}</select><select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="none">不分组</option><option value="status">按状态分组</option><option value="order">按订单分组</option></select><select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="h-10 px-4 border border-gray-300 rounded-lg"><option value={5}>分页 5 条</option><option value={10}>分页 10 条</option><option value={20}>分页 20 条</option></select><select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="created_desc">创建时间优先</option><option value="last_used_desc">最近使用优先</option><option value="calls_desc">调用次数优先</option></select></div>}
           stats={<><span className="inline-flex items-center gap-1"><Filter className="w-4 h-4" />结果 {filteredKeys.length}</span><span className="inline-flex items-center gap-1"><Layers className="w-4 h-4" />分组 {groupedKeys.length}</span><span className="inline-flex items-center gap-1"><ArrowUpDown className="w-4 h-4" />排序 {sortBy === 'created_desc' ? '创建时间' : sortBy === 'last_used_desc' ? '最近使用' : '调用次数'}</span></>}
-        />
-
-        <div className="space-y-5">
+        />}
+        content={<>
           {groupedKeys.map((group) => (
             <section key={group.label} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               {groupBy !== 'none' && <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 text-sm font-semibold text-gray-700">{group.label} <span className="text-gray-400 font-normal">({group.items.length})</span></div>}
@@ -165,14 +165,20 @@ export default function BuyerApiKeysPage() {
                       </tr>
                     )
                   })}
+                  {group.items.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-14 text-center text-sm text-gray-500">
+                        暂无符合筛选条件的 API 密钥
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </section>
           ))}
-        </div>
-
-        <PaginationBar page={page} pageSize={pageSize} total={filteredKeys.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
-      </div>
+        </>}
+        pagination={<PaginationBar page={page} pageSize={pageSize} total={filteredKeys.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+      />
 
       <PermissionGate requiredPermission="buyer:api-keys:write">
         {showCreateModal && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"><div className="bg-white rounded-xl p-8 max-w-2xl w-full mx-4 animate-fade-in"><h2 className="text-2xl font-bold text-gray-900 mb-6">创建 API Key</h2><div className="space-y-4 mb-6"><div><label className="block text-sm font-medium text-gray-700 mb-2">Key 名称 <span className="text-red-500">*</span></label><input type="text" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="例如：生产环境 - 企业风险数据" className="input" /></div><div><label className="block text-sm font-medium text-gray-700 mb-2">关联已支付订单 <span className="text-red-500">*</span></label><select value={form.orderId} onChange={(e) => setForm((prev) => ({ ...prev, orderId: e.target.value }))} className="input">{paidOrders.map((order) => <option key={order.orderId} value={order.orderId}>{order.orderId} | {order.listingTitle} | {order.plan} | ¥{order.amount.toLocaleString()}</option>)}</select></div><div><label className="block text-sm font-medium text-gray-700 mb-2">过期时间</label><select value={form.expireDays} onChange={(e) => setForm((prev) => ({ ...prev, expireDays: e.target.value }))} className="input"><option value="">无限期</option><option value="30">30 天</option><option value="90">90 天</option><option value="180">180 天</option><option value="365">365 天</option></select></div><div><label className="block text-sm font-medium text-gray-700 mb-2">IP 白名单（可选）</label><textarea value={form.whitelist} onChange={(e) => setForm((prev) => ({ ...prev, whitelist: e.target.value }))} placeholder="每行一个 IP 地址" className="input min-h-[100px]" /></div></div><div className="flex gap-3"><button onClick={() => setShowCreateModal(false)} className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">取消</button><button onClick={handleCreateKey} disabled={!form.name.trim() || !form.orderId} className="flex-1 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50">创建</button></div></div></div>}

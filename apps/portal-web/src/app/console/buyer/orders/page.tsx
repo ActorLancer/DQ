@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
 import InlineExpandableList from '@/components/console/InlineExpandableList'
 import { QueryToolbar, PaginationBar } from '@/components/console/QueryToolbar'
+import ConsoleListPageShell from '@/components/console/ConsoleListPageShell'
 import { Filter, DollarSign, Download, CheckCircle, Clock, XCircle, Calendar, CreditCard, Receipt, FileText, Layers, ArrowUpDown } from 'lucide-react'
 import { INVOICE_STATUS_CONFIG, MOCK_ORDERS, ORDER_STATUS_CONFIG, ORDER_TYPE_CONFIG, Order } from '@/lib/buyer-orders-data'
 import { getBuyerApiKeys } from '@/lib/buyer-api-keys-storage'
@@ -75,25 +76,19 @@ export default function BuyerOrdersPage() {
   return (
     <>
       <SessionIdentityBar subjectName="某某科技有限公司" roleName="买家管理员" tenantId="tenant_buyer_001" scope="buyer:orders:read" sessionExpiresAt={sessionExpiresAt} />
-      <div className="p-8">
-        <div className="mb-8"><h1 className="text-3xl font-bold text-gray-900 mb-2">订单账单</h1><p className="text-gray-600">管理订单记录、账单与发票信息</p></div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-white rounded-xl border border-gray-200 p-6"><div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center mb-4"><DollarSign className="w-6 h-6 text-green-600" /></div><div className="text-2xl font-semibold text-gray-900 mb-1">¥{totalSpent.toLocaleString()}</div><div className="text-sm text-gray-600">累计支出</div></div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6"><div className="w-12 h-12 bg-yellow-50 rounded-lg flex items-center justify-center mb-4"><Clock className="w-6 h-6 text-yellow-600" /></div><div className="text-2xl font-semibold text-gray-900 mb-1">¥{pendingPayment.toLocaleString()}</div><div className="text-sm text-gray-600">待支付</div></div>
-          <div className="bg-white rounded-xl border border-gray-200 p-6"><div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center mb-4"><Receipt className="w-6 h-6 text-blue-600" /></div><div className="text-2xl font-semibold text-gray-900 mb-1">{MOCK_ORDERS.filter((o) => o.invoiceStatus === 'ISSUED').length}</div><div className="text-sm text-gray-600">已开发票</div></div>
-        </div>
-
-        <QueryToolbar
+      <ConsoleListPageShell
+        title="订单账单"
+        subtitle="管理订单记录、账单与发票信息"
+        summaryCards={<div className="grid grid-cols-1 md:grid-cols-3 gap-6"><div className="bg-white rounded-xl border border-gray-200 p-6"><div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center mb-4"><DollarSign className="w-6 h-6 text-green-600" /></div><div className="text-2xl font-semibold text-gray-900 mb-1">¥{totalSpent.toLocaleString()}</div><div className="text-sm text-gray-600">累计支出</div></div><div className="bg-white rounded-xl border border-gray-200 p-6"><div className="w-12 h-12 bg-yellow-50 rounded-lg flex items-center justify-center mb-4"><Clock className="w-6 h-6 text-yellow-600" /></div><div className="text-2xl font-semibold text-gray-900 mb-1">¥{pendingPayment.toLocaleString()}</div><div className="text-sm text-gray-600">待支付</div></div><div className="bg-white rounded-xl border border-gray-200 p-6"><div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center mb-4"><Receipt className="w-6 h-6 text-blue-600" /></div><div className="text-2xl font-semibold text-gray-900 mb-1">{MOCK_ORDERS.filter((o) => o.invoiceStatus === 'ISSUED').length}</div><div className="text-sm text-gray-600">已开发票</div></div></div>}
+        toolbar={<QueryToolbar
           searchValue={searchKeyword}
           onSearchChange={setSearchKeyword}
           searchPlaceholder="搜索订单号、商品、供应商..."
           onReset={() => { setSearchKeyword(''); setSelectedStatus('all'); setSelectedInvoiceStatus('all'); setSelectedType('all'); setGroupBy('none'); setSortBy('created_desc'); setPage(1); setPageSize(10) }}
           controls={<div className="grid grid-cols-1 md:grid-cols-6 gap-3"><select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="all">全部订单状态</option><option value="PENDING_PAYMENT">待支付</option><option value="PAID">已支付</option><option value="CANCELLED">已取消</option><option value="REFUNDED">已退款</option></select><select value={selectedInvoiceStatus} onChange={(e) => setSelectedInvoiceStatus(e.target.value)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="all">全部发票状态</option><option value="NOT_REQUESTED">未申请</option><option value="REQUESTED">已申请</option><option value="ISSUED">已开具</option></select><select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="all">全部订单类型</option><option value="SUBSCRIPTION">订阅</option><option value="ONE_TIME">一次性</option><option value="RENEWAL">续订</option></select><select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="none">不分组</option><option value="status">按订单状态分组</option><option value="invoice">按发票状态分组</option></select><select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="h-10 px-4 border border-gray-300 rounded-lg"><option value={5}>分页 5 条</option><option value={10}>分页 10 条</option><option value={20}>分页 20 条</option></select><select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="h-10 px-4 border border-gray-300 rounded-lg"><option value="created_desc">创建时间优先</option><option value="amount_desc">金额优先</option><option value="paid_desc">支付时间优先</option></select></div>}
           stats={<><span className="inline-flex items-center gap-1"><Filter className="w-4 h-4" />结果 {filteredOrders.length}</span><span className="inline-flex items-center gap-1"><Layers className="w-4 h-4" />分组 {groupedOrders.length}</span><span className="inline-flex items-center gap-1"><ArrowUpDown className="w-4 h-4" />排序 {sortBy === 'created_desc' ? '创建时间' : sortBy === 'amount_desc' ? '金额' : '支付时间'}</span></>}
-        />
-
-        <div className="space-y-5">
+        />}
+        content={<>
           {groupedOrders.map((group) => (
             <section key={group.label}>
               {groupBy !== 'none' && <div className="mb-2 text-sm font-semibold text-gray-700">{group.label} <span className="text-gray-400 font-normal">({group.items.length})</span></div>}
@@ -102,10 +97,9 @@ export default function BuyerOrdersPage() {
                 renderExpanded={(order) => { const linkedCount = getBuyerApiKeys().filter((item) => item.orderId === order.orderId).length; return (<div className="grid grid-cols-1 lg:grid-cols-2 gap-5"><div className="space-y-4"><div><div className="text-xs text-gray-500 mb-1">Order ID</div><code className="font-mono text-xs text-gray-900 bg-gray-50 px-2 py-1 rounded block break-all">{order.orderId}</code></div><div className="text-sm space-y-2"><div className="flex justify-between"><span className="text-gray-600">订单状态</span><span className={`status-tag text-xs ${ORDER_STATUS_CONFIG[order.status].color}`}>{ORDER_STATUS_CONFIG[order.status].label}</span></div><div className="flex justify-between"><span className="text-gray-600">发票状态</span><span className={`status-tag text-xs ${INVOICE_STATUS_CONFIG[order.invoiceStatus].color}`}>{INVOICE_STATUS_CONFIG[order.invoiceStatus].label}</span></div><div className="flex justify-between"><span className="text-gray-600">支付方式</span><span className="font-medium text-gray-900">{order.paymentMethod || '待支付'}</span></div><div className="flex justify-between"><span className="text-gray-600">关联密钥</span><span className="font-medium text-gray-900">{linkedCount} 个</span></div></div></div><div className="space-y-2"><button onClick={(e) => { e.stopPropagation(); router.push(`/console/buyer/orders/${order.orderId}`) }} className="w-full h-10 px-4 border border-primary-300 text-primary-700 rounded-lg hover:bg-primary-50 text-sm font-medium">查看订单详情页</button><button onClick={(e) => { e.stopPropagation(); router.push(`/console/buyer/billing/${order.orderId}`) }} className="w-full h-10 px-4 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 text-sm font-medium">查看账单详情页</button>{order.status === 'PENDING_PAYMENT' && <button onClick={(e) => e.stopPropagation()} className="w-full h-10 px-4 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium inline-flex items-center justify-center gap-2"><CreditCard className="w-4 h-4" /><span>立即支付</span></button>}{order.status === 'PENDING_PAYMENT' && <button onClick={(e) => e.stopPropagation()} className="w-full h-10 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium">取消订单</button>}{order.invoiceStatus === 'ISSUED' && <button onClick={(e) => e.stopPropagation()} className="w-full h-10 px-4 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium inline-flex items-center justify-center gap-2"><Download className="w-4 h-4" /><span>下载发票</span></button>}{order.status === 'PAID' && order.invoiceStatus === 'NOT_REQUESTED' && <button onClick={(e) => e.stopPropagation()} className="w-full h-10 px-4 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium inline-flex items-center justify-center gap-2"><FileText className="w-4 h-4" /><span>申请发票</span></button>}</div></div>) }} />
             </section>
           ))}
-        </div>
-
-        <PaginationBar page={page} pageSize={pageSize} total={filteredOrders.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
-      </div>
+        </>}
+        pagination={<PaginationBar page={page} pageSize={pageSize} total={filteredOrders.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+      />
     </>
   )
 }

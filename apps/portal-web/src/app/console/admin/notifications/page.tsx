@@ -21,7 +21,7 @@ export default function AdminNotificationsPage() {
         title="平台事件通知中心"
         subtitle="处理平台级风险、一致性异常、链上事件与跨系统通知回执。"
         initialItems={ADMIN_NOTIFICATIONS}
-        rulesPath="/admin/console/notifications/rules"
+        rulesPath="/console/admin/notifications/rules"
       />
     </>
   )

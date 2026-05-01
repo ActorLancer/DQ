@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import SellerRevenueTrendChart from '@/components/charts/SellerRevenueTrendChart'
 import SellerRevenueCompositionChart from '@/components/charts/SellerRevenueCompositionChart'
 import SessionIdentityBar from '@/components/console/SessionIdentityBar'
@@ -10,75 +11,13 @@ import {
   TrendingDown,
   Calendar,
   Download,
+  ExternalLink,
   Filter,
   Package,
   Users,
   Activity,
 } from 'lucide-react'
-
-interface RevenueRecord {
-  id: string
-  date: string
-  customer: string
-  listing: string
-  plan: string
-  amount: number
-  type: 'SUBSCRIPTION' | 'RENEWAL' | 'UPGRADE' | 'ONE_TIME'
-  status: 'PAID' | 'PENDING' | 'REFUNDED'
-}
-
-const MOCK_REVENUE: RevenueRecord[] = [
-  {
-    id: 'rev_001',
-    date: '2026-04-29',
-    customer: '某某金融科技',
-    listing: '企业工商风险数据',
-    plan: '企业版',
-    amount: 9999,
-    type: 'SUBSCRIPTION',
-    status: 'PAID',
-  },
-  {
-    id: 'rev_002',
-    date: '2026-04-28',
-    customer: '智慧物流数据中心',
-    listing: '物流轨迹实时数据',
-    plan: '标准版',
-    amount: 999,
-    type: 'RENEWAL',
-    status: 'PAID',
-  },
-  {
-    id: 'rev_003',
-    date: '2026-04-27',
-    customer: '某某数据分析公司',
-    listing: '企业工商风险数据',
-    plan: '标准版',
-    amount: 999,
-    type: 'SUBSCRIPTION',
-    status: 'PAID',
-  },
-  {
-    id: 'rev_004',
-    date: '2026-04-26',
-    customer: '某某金融科技',
-    listing: '金融市场行情数据',
-    plan: '企业版',
-    amount: 19999,
-    type: 'UPGRADE',
-    status: 'PAID',
-  },
-  {
-    id: 'rev_005',
-    date: '2026-04-25',
-    customer: '智慧物流数据中心',
-    listing: '企业工商风险数据',
-    plan: '标准版',
-    amount: 999,
-    type: 'SUBSCRIPTION',
-    status: 'PAID',
-  },
-]
+import { SELLER_REVENUE_RECORDS } from '@/lib/seller-revenue-data'
 
 const TYPE_CONFIG = {
   SUBSCRIPTION: { label: '新订阅', color: 'bg-green-100 text-green-800' },
@@ -94,23 +33,24 @@ const STATUS_CONFIG = {
 }
 
 export default function SellerRevenuePage() {
+  const router = useRouter()
   const [selectedPeriod, setSelectedPeriod] = useState<string>('30days')
   const sessionExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString()
 
   // 计算统计数据
-  const totalRevenue = MOCK_REVENUE.filter(r => r.status === 'PAID').reduce((sum, r) => sum + r.amount, 0)
+  const totalRevenue = SELLER_REVENUE_RECORDS.filter(r => r.status === 'PAID').reduce((sum, r) => sum + r.amount, 0)
   const lastMonthRevenue = 28500 // Mock 上月数据
   const revenueGrowth = ((totalRevenue - lastMonthRevenue) / lastMonthRevenue * 100).toFixed(1)
 
-  const subscriptionRevenue = MOCK_REVENUE
+  const subscriptionRevenue = SELLER_REVENUE_RECORDS
     .filter(r => r.type === 'SUBSCRIPTION' && r.status === 'PAID')
     .reduce((sum, r) => sum + r.amount, 0)
   
-  const renewalRevenue = MOCK_REVENUE
+  const renewalRevenue = SELLER_REVENUE_RECORDS
     .filter(r => r.type === 'RENEWAL' && r.status === 'PAID')
     .reduce((sum, r) => sum + r.amount, 0)
 
-  const avgOrderValue = totalRevenue / MOCK_REVENUE.filter(r => r.status === 'PAID').length
+  const avgOrderValue = totalRevenue / SELLER_REVENUE_RECORDS.filter(r => r.status === 'PAID').length
 
   return (
     <>
@@ -309,7 +249,10 @@ export default function SellerRevenuePage() {
         {/* 收入明细 */}
         <div className="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900">收入明细</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">收入明细</h2>
+              <span className="text-xs text-gray-500">双击行可查看明细</span>
+            </div>
           </div>
 
           <table className="w-full">
@@ -322,15 +265,16 @@ export default function SellerRevenuePage() {
                 <th className="text-center py-4 px-6 text-sm font-medium text-gray-700">类型</th>
                 <th className="text-right py-4 px-6 text-sm font-medium text-gray-700">金额</th>
                 <th className="text-center py-4 px-6 text-sm font-medium text-gray-700">状态</th>
+                <th className="text-right py-4 px-6 text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {MOCK_REVENUE.map((record) => {
+              {SELLER_REVENUE_RECORDS.map((record) => {
                 const typeConfig = TYPE_CONFIG[record.type]
                 const statusConfig = STATUS_CONFIG[record.status]
 
                 return (
-                  <tr key={record.id} className="hover:bg-gray-50">
+                  <tr key={record.id} className="hover:bg-gray-50 cursor-pointer" onDoubleClick={() => router.push(`/console/seller/revenue/records/${record.id}`)}>
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-2 text-sm text-gray-900">
                         <Calendar className="w-4 h-4 text-gray-400" />
@@ -361,6 +305,12 @@ export default function SellerRevenuePage() {
                         {statusConfig.label}
                       </span>
                     </td>
+                    <td className="py-4 px-6 text-right">
+                      <button onClick={() => router.push(`/console/seller/revenue/records/${record.id}`)} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-md border border-primary-300 text-primary-700 hover:bg-primary-50">
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        详情
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -370,7 +320,7 @@ export default function SellerRevenuePage() {
           {/* 分页 */}
           <div className="p-4 border-t border-gray-200 flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              显示 1-{MOCK_REVENUE.length} 条，共 {MOCK_REVENUE.length} 条
+              显示 1-{SELLER_REVENUE_RECORDS.length} 条，共 {SELLER_REVENUE_RECORDS.length} 条
             </div>
             <div className="flex items-center gap-2">
               <button className="px-3 py-1 border border-gray-300 rounded text-sm hover:bg-gray-50 disabled:opacity-50" disabled>

@@ -332,6 +332,82 @@ interface AuthState {
 密码: 任意密码
 ```
 
+### 生产环境建议
+1. **Token 安全**
+   - 使用 HttpOnly Cookie
+   - 实现 Token 刷新
+   - 设置合理过期时间
+
+2. **密码安全**
+   - 密码强度检查
+   - 验证码防暴力破解
+   - 密码重置功能
+
+3. **会话管理**
+   - 会话超时自动登出
+   - 多设备登录管理
+   - 登录日志记录
+
+4. **权限控制**
+   - 后端必须验证所有请求
+   - 前端权限仅用于 UI 显示
+   - 细粒度权限控制
+
+## 💡 使用示例
+
+### 在组件中使用认证状态
+```tsx
+import { useAuthStore } from '@/store/useAuthStore'
+
+function MyComponent() {
+  const { user, isAuthenticated, hasRole, logout } = useAuthStore()
+
+  if (!isAuthenticated) {
+    return <div>请先登录</div>
+  }
+
+  return (
+    <div>
+      <p>欢迎, {user?.name}</p>
+      {hasRole('admin') && <AdminPanel />}
+      <button onClick={logout}>退出登录</button>
+    </div>
+  )
+}
+```
+
+### 保护路由
+```tsx
+import ProtectedRoute from '@/components/auth/ProtectedRoute'
+
+export default function BuyerPage() {
+  return (
+    <ProtectedRoute requiredRole="buyer">
+      <BuyerContent />
+    </ProtectedRoute>
+  )
+}
+```
+
+### 基于权限显示内容
+```tsx
+import PermissionGate from '@/components/auth/PermissionGate'
+
+function MyComponent() {
+  return (
+    <div>
+      <PermissionGate requiredRole="admin">
+        <AdminOnlyButton />
+      </PermissionGate>
+      
+      <PermissionGate requiredPermission="buyer:orders:delete">
+        <DeleteOrderButton />
+      </PermissionGate>
+    </div>
+  )
+}
+```
+
 ### 集成真实 API
 
 当需要集成真实后端 API 时，修改以下文件:
@@ -619,3 +695,102 @@ localStorage.removeItem('auth-storage')
 2. 浏览器控制台日志
 3. LocalStorage 内容
 4. 本文档的调试技巧部分
+
+```
+apps/portal-web/
+├── src/
+│   ├── app/
+│   │   ├── page.tsx                          ✅ 首页
+│   │   ├── marketplace/page.tsx              ✅ 市场页
+│   │   ├── products/[id]/page.tsx            ✅ 商品详情页
+│   │   ├── layout.tsx                        ✅ 根布局
+│   │   └── globals.css                       ✅ 全局样式
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── Header.tsx                    ✅ 顶部导航
+│   │   │   └── Footer.tsx                    ✅ 底部信息
+│   │   ├── home/
+│   │   │   ├── GlobalSearchBar.tsx           ✅ 全局搜索
+│   │   │   ├── IndustryCategoryGrid.tsx      ✅ 行业分类
+│   │   │   ├── ProductCard.tsx               ✅ 商品卡片
+│   │   │   ├── SupplierCard.tsx              ✅ 供应商卡片
+│   │   │   ├── TrustCapabilityCards.tsx      ✅ 可信能力
+│   │   │   └── StandardFlowEntrance.tsx      ✅ 标准链路
+│   │   ├── marketplace/
+│   │   │   ├── TopSearchBar.tsx              ✅ 顶部搜索
+│   │   │   ├── LeftFilterPanel.tsx           ✅ 筛选面板
+│   │   │   └── SortToolbar.tsx               ✅ 排序工具栏
+│   │   └── product/
+│   │       ├── StickyTabs.tsx                ✅ 吸顶 Tabs
+│   │       ├── RightStickyApplyPanel.tsx     ✅ 申请面板
+│   │       ├── ChainProofCard.tsx            ✅ 链上凭证
+│   │       └── AccessRequestDrawer.tsx       ✅ 申请 Drawer
+│   └── types/
+│       └── index.ts                          ✅ 类型定义
+├── public/                                   ✅ 静态资源目录
+├── .eslintrc.json                            ✅ ESLint 配置
+├── .gitignore                                ✅ Git 忽略
+├── .env.example                              ✅ 环境变量示例
+├── tailwind.config.ts                        ✅ Tailwind 配置
+├── tsconfig.json                             ✅ TypeScript 配置
+├── next.config.js                            ✅ Next.js 配置
+├── postcss.config.js                         ✅ PostCSS 配置
+├── package.json                              ✅ 依赖配置
+├── README.md                                 ✅ 项目说明
+├── IMPLEMENTATION.md                         ✅ 实现细节
+├── QUICKSTART.md                             ✅ 快速启动
+├── PROJECT_OVERVIEW.md                       ✅ 项目总览
+└── DELIVERY_CHECKLIST.md                     ✅ 交付清单（本文档）
+```
+
+## 🔄 后续优化建议
+
+### 优先级 1: 数据接入
+- [ ] 接入真实 API
+- [ ] 实现分页加载
+- [ ] 实现实时刷新
+- [ ] 添加错误处理
+
+### 优先级 2: 功能增强
+- [ ] 批量审核操作
+- [ ] 导出审核报告
+- [ ] 审核历史记录
+- [ ] 审核统计图表
+
+### 优先级 3: 性能优化
+- [ ] 虚拟滚动（大列表）
+- [ ] 懒加载（详情面板）
+- [ ] 缓存策略
+- [ ] 防抖节流
+
+## 🔄 下一步
+
+### 优先级 1: 图表集成
+- [ ] 集成 ECharts 或 Recharts
+- [ ] 实现使用分析页面的图表
+- [ ] 实现 Dashboard 的趋势图表
+- [ ] 实现收入和调用看板
+
+### 优先级 2: 注册功能
+- [ ] 买家注册页面
+- [ ] 供应商注册页面
+- [ ] 企业资质上传
+- [ ] 邮箱验证
+
+### 优先级 3: 密码管理
+- [ ] 忘记密码
+- [ ] 重置密码
+- [ ] 修改密码
+
+### 优先级 4: 高级认证
+- [ ] 多因素认证（MFA）
+- [ ] 社交登录
+- [ ] 会话管理
+- [ ] Token 刷新机制
+
+### 优先级 2: 功能增强
+- [ ] 文件上传实现
+- [ ] 表单验证增强
+- [ ] 批量操作
+- [ ] 导出功能实现
+- [ ] 实时数据刷新
